@@ -75,20 +75,22 @@ function AgentLaunchDefaultsRow({ scope, agent }: { scope: Scope; agent: AgentTy
   const levels = effortLevelsForModel(agent, effective.model, all, current.effort)
   const label = agentLabel(agent)
 
-  const describe = (defaults: AgentLaunchDefaults) => {
-    const parts = [defaults.model, defaults.effort && t(EFFORT_LABEL_KEYS[defaults.effort])]
-    const text = parts.filter(Boolean).join(' · ')
-    return text || t('prefs.agentDefaultsCliDefault')
-  }
+  // What a row ends up launching with, or nothing when it is all left to the CLI.
+  const describe = (defaults: AgentLaunchDefaults) =>
+    [defaults.model, defaults.effort && t(EFFORT_LABEL_KEYS[defaults.effort])]
+      .filter(Boolean)
+      .join(' · ')
   const hasOwnValue = Boolean(current.model || current.effort)
+  const own = describe(effective)
+  const inherited = describe(resolveLaunchDefaults(agentDefaults, agent))
+  // A role with nothing of its own says where its values come from; with nothing set anywhere,
+  // every row says the same plain thing.
   const summary =
     scope === 'providers' || hasOwnValue
-      ? describe(
-          resolveLaunchDefaults(agentDefaults, agent, scope === 'providers' ? undefined : scope),
-        )
-      : t('prefs.agentDefaultsInherited', {
-          value: describe(resolveLaunchDefaults(agentDefaults, agent)),
-        })
+      ? own || t('prefs.agentDefaultsCliDefault')
+      : inherited
+        ? t('prefs.agentDefaultsInherited', { value: inherited })
+        : t('prefs.agentDefaultsCliDefault')
 
   const update = (next: AgentLaunchDefaults) => {
     const base = normalizeAgentDefaultsPreferences(agentDefaults)
@@ -113,13 +115,10 @@ function AgentLaunchDefaultsRow({ scope, agent }: { scope: Scope; agent: AgentTy
     update({ ...current, model: model || undefined })
   }
 
-  // On a role the empty choice means "follow the provider", not "no flag", so it says so.
-  const unsetLabel =
-    scope === 'providers'
-      ? t('prefs.agentDefaultsCliDefault')
-      : t('prefs.agentDefaultsSameAsProvider')
+  // The empty choice is named for what it is; the line under the agent's name says what it
+  // resolves to.
   const effortOptions = [
-    { value: '', label: unsetLabel },
+    { value: '', label: t('prefs.agentDefaultsEffortDefault') },
     ...levels.map((level) => ({ value: level, label: t(EFFORT_LABEL_KEYS[level]) })),
   ]
 
@@ -132,20 +131,14 @@ function AgentLaunchDefaultsRow({ scope, agent }: { scope: Scope; agent: AgentTy
         <strong>{label}</strong>
         <span title={summary}>{summary}</span>
       </span>
-      <div
-        className={`${rowStyles.controls} ${levels.length === 0 ? rowStyles.controlsNoEffort : ''}`}
-      >
+      <div className={rowStyles.controls}>
         <ModelSearchablePicker
           value={current.model ?? ''}
           onChange={onModelChange}
           options={models}
           loading={loading}
           providerName={label}
-          placeholder={
-            scope === 'providers'
-              ? t('prefs.agentDefaultsCliDefault')
-              : t('prefs.agentDefaultsSameAsProvider')
-          }
+          placeholder={t('prefs.agentDefaultsModelDefault')}
         />
         {levels.length > 0 ? (
           <Dropdown
@@ -155,13 +148,12 @@ function AgentLaunchDefaultsRow({ scope, agent }: { scope: Scope; agent: AgentTy
               update({ ...current, effort: (value || undefined) as AgentEffortLevel | undefined })
             }
             ariaLabel={t('prefs.agentDefaultsEffortLabel', { agent: label })}
-            placeholder={
-              scope === 'providers'
-                ? t('prefs.agentDefaultsCliDefault')
-                : t('prefs.agentDefaultsSameAsProvider')
-            }
+            placeholder={t('prefs.agentDefaultsEffortDefault')}
           />
-        ) : null}
+        ) : (
+          // An agent with no effort levels keeps the column, so the model fields line up.
+          <span aria-hidden />
+        )}
         <button
           type="button"
           className={rowStyles.reset}

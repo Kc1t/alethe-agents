@@ -120,16 +120,17 @@ export function MultiagentPage() {
         description={t('prefs.multiagentSchedulerDesc')}
       >
         <div className={multiagentStyles.toolbar}>
-          <Dropdown
-            className={styles.select}
-            value={selectedProjectId}
-            onChange={setSelectedProjectId}
-            ariaLabel={t('prefs.multiagentSelectProjectOption')}
-            options={[
-              { value: '', label: t('prefs.multiagentSelectProjectOption') },
-              ...projects.map((p) => ({ value: p.id, label: p.name })),
-            ]}
-          />
+          <div className={styles.fieldControl}>
+            <Dropdown
+              value={selectedProjectId}
+              onChange={setSelectedProjectId}
+              ariaLabel={t('prefs.multiagentSelectProjectOption')}
+              options={[
+                { value: '', label: t('prefs.multiagentSelectProjectOption') },
+                ...projects.map((p) => ({ value: p.id, label: p.name })),
+              ]}
+            />
+          </div>
 
           {selectedProjectId && repoPath ? (
             <button

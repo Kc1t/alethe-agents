@@ -23,8 +23,11 @@
   color: var(--fg-muted);
   font-size: 11px;
 }
-.setting select {
-  width: 110px;
+/* One width for every select, so the rows line up on both edges. */
+.settingControl {
+  display: block;
+  flex: none;
+  width: min(190px, 46%);
 }
 .settingRow {
   display: flex;

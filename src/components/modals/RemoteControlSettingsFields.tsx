@@ -59,22 +59,24 @@ export function RemoteControlSettingsFields({
           {reachHeading}
           <label className={styles.setting}>
             <span>{t('remote.reachTitle')}</span>
-            <Dropdown
-              value={preferences.remoteUseTailscale ? 'tailscale' : 'lan'}
-              onChange={(rawValue) =>
-                setPreferences({ remoteUseTailscale: rawValue === 'tailscale' })
-              }
-              disabled={busy}
-              ariaLabel={t('remote.reachTitle')}
-              options={[
-                { value: 'lan', label: t('remote.reachLan') },
-                {
-                  value: 'tailscale',
-                  label: t('remote.reachTailscale'),
-                  disabled: tailscale?.available !== true,
-                },
-              ]}
-            />
+            <span className={styles.settingControl}>
+              <Dropdown
+                value={preferences.remoteUseTailscale ? 'tailscale' : 'lan'}
+                onChange={(rawValue) =>
+                  setPreferences({ remoteUseTailscale: rawValue === 'tailscale' })
+                }
+                disabled={busy}
+                ariaLabel={t('remote.reachTitle')}
+                options={[
+                  { value: 'lan', label: t('remote.reachLan') },
+                  {
+                    value: 'tailscale',
+                    label: t('remote.reachTailscale'),
+                    disabled: tailscale?.available !== true,
+                  },
+                ]}
+              />
+            </span>
           </label>
           <p className={styles.hint}>
             {tailscale?.available
@@ -107,68 +109,76 @@ export function RemoteControlSettingsFields({
                 <span className={styles.settingLabel}>{t('remote.maxDevices')}</span>
                 <span className={styles.settingCaption}>{t('remote.maxDevicesHint')}</span>
               </span>
-              <Dropdown
-                value={String(preferences.remoteMaxDevices)}
-                onChange={(rawValue) => setPreferences({ remoteMaxDevices: Number(rawValue) })}
-                disabled={busy}
-                ariaLabel={t('remote.maxDevices')}
-                options={[1, 2, 3, 4].map((value) => ({
-                  value: String(value),
-                  label: String(value),
-                }))}
-              />
+              <span className={styles.settingControl}>
+                <Dropdown
+                  value={String(preferences.remoteMaxDevices)}
+                  onChange={(rawValue) => setPreferences({ remoteMaxDevices: Number(rawValue) })}
+                  disabled={busy}
+                  ariaLabel={t('remote.maxDevices')}
+                  options={[1, 2, 3, 4].map((value) => ({
+                    value: String(value),
+                    label: String(value),
+                  }))}
+                />
+              </span>
             </label>
             <label className={styles.settingRow}>
               <span className={styles.settingCopy}>
                 <span className={styles.settingLabel}>{t('remote.sessionExpiry')}</span>
                 <span className={styles.settingCaption}>{t('remote.sessionExpiryHint')}</span>
               </span>
-              <Dropdown
-                value={String(preferences.remoteSessionExpirySecs)}
-                onChange={(rawValue) =>
-                  setPreferences({ remoteSessionExpirySecs: Number(rawValue) })
-                }
-                disabled={busy}
-                ariaLabel={t('remote.sessionExpiry')}
-                options={SESSION_OPTIONS.map((value) => ({
-                  value: String(value),
-                  label: sessionLabel(t, value),
-                }))}
-              />
+              <span className={styles.settingControl}>
+                <Dropdown
+                  value={String(preferences.remoteSessionExpirySecs)}
+                  onChange={(rawValue) =>
+                    setPreferences({ remoteSessionExpirySecs: Number(rawValue) })
+                  }
+                  disabled={busy}
+                  ariaLabel={t('remote.sessionExpiry')}
+                  options={SESSION_OPTIONS.map((value) => ({
+                    value: String(value),
+                    label: sessionLabel(t, value),
+                  }))}
+                />
+              </span>
             </label>
             <label className={styles.settingRow}>
               <span className={styles.settingCopy}>
                 <span className={styles.settingLabel}>{t('remote.readOnly')}</span>
                 <span className={styles.settingCaption}>{t('remote.readOnlyHint')}</span>
               </span>
-              <Dropdown
-                value={readOnly ? 'on' : 'off'}
-                onChange={(rawValue) => setPreferences({ remoteReadOnly: rawValue === 'on' })}
-                disabled={busy}
-                ariaLabel={t('remote.readOnly')}
-                options={[
-                  { value: 'on', label: t('remote.readOnlyOn') },
-                  { value: 'off', label: t('remote.readOnlyOff') },
-                ]}
-              />
+              <span className={styles.settingControl}>
+                <Dropdown
+                  value={readOnly ? 'on' : 'off'}
+                  onChange={(rawValue) => setPreferences({ remoteReadOnly: rawValue === 'on' })}
+                  disabled={busy}
+                  ariaLabel={t('remote.readOnly')}
+                  options={[
+                    { value: 'on', label: t('remote.readOnlyOn') },
+                    { value: 'off', label: t('remote.readOnlyOff') },
+                  ]}
+                />
+              </span>
             </label>
             <label className={styles.settingRow}>
               <span className={styles.settingCopy}>
                 <span className={styles.settingLabel}>{t('remote.shellInput')}</span>
                 <span className={styles.settingCaption}>{t('remote.shellInputHint')}</span>
               </span>
-              <Dropdown
-                value={allowShellInput ? 'on' : 'off'}
-                onChange={(rawValue) =>
-                  setPreferences({ remoteAllowShellInput: rawValue === 'on' })
-                }
-                disabled={busy || readOnly}
-                ariaLabel={t('remote.shellInput')}
-                options={[
-                  { value: 'off', label: t('remote.shellInputOff') },
-                  { value: 'on', label: t('remote.shellInputOn') },
-                ]}
-              />
+              <span className={styles.settingControl}>
+                <Dropdown
+                  value={allowShellInput ? 'on' : 'off'}
+                  onChange={(rawValue) =>
+                    setPreferences({ remoteAllowShellInput: rawValue === 'on' })
+                  }
+                  disabled={busy || readOnly}
+                  ariaLabel={t('remote.shellInput')}
+                  options={[
+                    { value: 'off', label: t('remote.shellInputOff') },
+                    { value: 'on', label: t('remote.shellInputOn') },
+                  ]}
+                />
+              </span>
             </label>
           </div>
 

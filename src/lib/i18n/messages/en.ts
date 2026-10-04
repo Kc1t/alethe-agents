@@ -791,15 +791,13 @@ export const en = {
   'prefs.orchestrationProjectRouting': 'Routing by project',
   'prefs.orchestrationProjectRoutingDesc':
     'A project can use a profile of its own. Its planners then route by it instead of the routing above.',
-  'prefs.orchestrationProjectRoutingShared': 'Shared routing',
+  'prefs.orchestrationProjectRoutingShared': 'Global routing',
   'prefs.orchestrationProjectRoutingSharedDesc': 'Uses the routing above.',
   'prefs.orchestrationProjectRoutingOwnDesc': 'Its planners route by this profile.',
   'prefs.orchestrationProjectRoutingEmpty': 'No projects yet.',
   'prefs.orchestrationNotify': 'Notifications',
   'prefs.orchestrationNotifyDesc':
     "When a worker stops on a question, and when a planner's delegated work has all ended.",
-  'prefs.orchestrationNotifyOn': 'Notify me',
-  'prefs.orchestrationNotifyOff': 'Stay quiet',
   'prefs.orchestrationRouteAdd': 'Add route',
   'prefs.orchestrationRouteRemove': 'Remove route {position}',
   'prefs.orchestrationRouteDrag': 'Drag to change the order, or use the arrow keys',
@@ -938,7 +936,8 @@ export const en = {
   'prefs.agentDefaultsDesc':
     'The model and reasoning effort each agent starts with. Applies to terminals started or restarted from now on; an empty field keeps the CLI’s own setting.',
   'prefs.agentDefaultsCliDefault': 'CLI default',
-  'prefs.agentDefaultsSameAsProvider': 'Same as provider default',
+  'prefs.agentDefaultsModelDefault': 'Default model',
+  'prefs.agentDefaultsEffortDefault': 'Default effort',
   'prefs.agentDefaultsInherited': 'Provider default: {value}',
   'prefs.agentDefaultsReset': 'Reset',
   'prefs.agentDefaultsEffortLabel': 'Reasoning effort ({agent})',
@@ -959,7 +958,7 @@ export const en = {
   'prefs.orchestrationWorker': 'Worker model and effort',
   'prefs.orchestrationWorkerDesc':
     'Used by the workers a planner starts with alethe_delegate. Takes effect for the next worker that starts.',
-  'prefs.orchestrationRouting': 'Smart worker routing',
+  'prefs.orchestrationRouting': 'Worker routing',
   'prefs.orchestrationRoutingDesc':
     'Each tier tries its routes from the top, and the first one with room takes the task. Drag a route to change the order; the dot marks where a task would start right now.',
   'prefs.orchestrationRoutingPreset': 'Routing profile',
@@ -967,17 +966,20 @@ export const en = {
     'Balanced saves capable models for work that benefits from them. Editing any route creates a custom profile.',
   'prefs.orchestrationRoutingPreset.economy': 'Economy',
   'prefs.orchestrationRoutingPreset.balanced': 'Balanced',
-  'prefs.orchestrationRoutingPreset.quality': 'Quality first',
+  'prefs.orchestrationRoutingPreset.quality': 'Quality',
   'prefs.orchestrationRoutingPreset.custom': 'Custom',
-  'prefs.orchestrationRouting.watchPercent': 'Watch',
-  'prefs.orchestrationRouting.protectPercent': 'Protect',
-  'prefs.orchestrationRouting.criticalPercent': 'Ask first',
+  'prefs.orchestrationUsageLimits': 'Usage limits',
+  'prefs.orchestrationUsageLimitsDesc':
+    'How used a provider may be before its routes are passed over. Usage is the share of its plan limit already spent.',
+  'prefs.orchestrationRouting.watchPercent': 'Switch routes at',
+  'prefs.orchestrationRouting.protectPercent': 'Balance usage at',
+  'prefs.orchestrationRouting.criticalPercent': 'Ask first at',
   'prefs.orchestrationRouting.watchPercentDesc':
-    'Past this usage, a task moves to the next route in the list that is still below it.',
+    'A route past this usage is skipped while another route in the list is still below it.',
   'prefs.orchestrationRouting.protectPercentDesc':
-    'With every route past the watch band, the order holds up to this usage; past it, the route with the most room takes the task.',
+    'With every route past the first limit, the list order still holds up to this usage. Past it, the task goes to the route with the most room left.',
   'prefs.orchestrationRouting.criticalPercentDesc':
-    'With every route past this usage, the planner has to ask you before delegating.',
+    'With every route past this usage, the planner asks you before delegating.',
   'prefs.orchestrationTier.light': 'Light',
   'prefs.orchestrationTier.lightDesc': 'Search, extraction, summaries, and mechanical edits.',
   'prefs.orchestrationTier.standard': 'Standard',
@@ -994,11 +996,11 @@ export const en = {
   'prefs.orchestrationRules': 'Worker rules',
   'prefs.orchestrationRulesDesc':
     'What workers may do on their own. A rule fixed here wins over what the planner asks for.',
-  'prefs.orchestrationDefaultAgent': 'Unclassified task fallback',
+  'prefs.orchestrationDefaultAgent': 'Tasks without a tier',
   'prefs.orchestrationDefaultAgentDesc':
-    'Used by older or manual delegations that do not include a complexity tier.',
-  'prefs.orchestrationDefaultAgentAuto': 'Automatic (most room left)',
-  'prefs.orchestrationTimeout': 'Time budget per turn',
+    'Which CLI takes a delegation that names no tier. Automatic picks the one with the most room left.',
+  'prefs.orchestrationDefaultAgentAuto': 'Automatic',
+  'prefs.orchestrationTimeout': 'Turn time limit',
   'prefs.orchestrationTimeoutDesc':
     'A worker turn that runs longer is stopped. Time spent waiting on your approval does not count.',
   'prefs.orchestrationTimeoutMinutes': '{minutes} min',
@@ -1017,7 +1019,7 @@ export const en = {
   'prefs.orchestrationWebSearch': 'Web search',
   'prefs.orchestrationWebSearchDesc': 'Whether workers may search the web when the planner asks.',
   'prefs.orchestrationWebSearchNever': 'Never',
-  'prefs.orchestrationKeepFinished': 'Finished workers kept running',
+  'prefs.orchestrationKeepFinished': 'Finished workers kept open',
   'prefs.orchestrationKeepFinishedDesc':
     'These answer a follow-up straight away. Older ones are stopped and come back on their own thread when messaged.',
   'prefs.orchestrationKeepFinishedDecrease': 'Keep fewer finished workers',
@@ -1027,12 +1029,12 @@ export const en = {
   'prefs.orchestrationCodexSandboxDesc':
     'Full access runs Codex workers with no sandbox at all. Use it only where the sandbox cannot start, such as some containers.',
   'prefs.orchestrationCodexSandboxWorkspace': 'Project folder only',
-  'prefs.orchestrationCodexSandboxFull': 'Full access (no sandbox)',
+  'prefs.orchestrationCodexSandboxFull': 'Full access',
   'prefs.cliPathPick': 'Select the {agent} CLI',
   'prefs.cliPathMismatch': 'That does not look like the CLI',
   'prefs.cliPathMismatchBody':
     'The {agent} command line tool is called "{command}". The file you picked has another name, so it may open the desktop app instead of running in a terminal.',
-  'prefs.enabledAgents': 'Enabled agents ({count}/4)',
+  'prefs.enabledAgents': 'Enabled agents ({count}/{total})',
   'prefs.resetSession': 'Reset last session',
   'prefs.resetSessionDesc':
     'If reopening the app did not resume your agents, this finds each open agent’s most recent conversation and restarts it with resume.',

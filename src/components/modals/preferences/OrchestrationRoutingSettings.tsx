@@ -30,6 +30,7 @@ import prefs from '../PreferencesModal.module.css'
 import styles from './OrchestrationRoutingSettings.module.css'
 
 const COMPLEXITIES: readonly OrchestratorTaskComplexity[] = ['light', 'standard', 'deep']
+const LIMITS = ['watchPercent', 'protectPercent', 'criticalPercent'] as const
 const ROUTE_AGENTS: readonly OrchestratorRoute['agent'][] = ['claude', 'codex']
 const EFFORT_LABEL_KEYS: Record<AgentEffortLevel, MessageKey> = {
   none: 'prefs.agentDefaultsEffortNone',
@@ -100,43 +101,52 @@ function RouteEditor({
         <GripVertical size={13} />
       </button>
       <span className={styles.position}>{position}</span>
-      <Dropdown
-        value={route.agent}
-        options={ROUTE_AGENTS.map((agent) => ({
-          value: agent,
-          label: agentLabel(agent),
-        }))}
-        onChange={(agent) =>
-          onChange({ agent: agent as OrchestratorRoute['agent'], model: '', effort: 'medium' })
-        }
-        ariaLabel={t('prefs.orchestrationRouteProvider', { position: label })}
-      />
-      <ModelSearchablePicker
-        value={route.model ?? ''}
-        onChange={(value) => {
-          const model = value.trim()
-          // The same rule the worker defaults apply: a name the CLI could not take is refused
-          // here, where the person can see why, instead of being dropped when a worker starts.
-          if (model && !isValidModelName(model)) {
-            pushToast({
-              title: t('prefs.agentDefaultsInvalidModel'),
-              body: t('prefs.agentDefaultsInvalidModelBody', { model }),
-            })
-            return
+      <div className={styles.provider}>
+        <Dropdown
+          value={route.agent}
+          options={ROUTE_AGENTS.map((agent) => ({
+            value: agent,
+            label: agentLabel(agent),
+          }))}
+          onChange={(agent) =>
+            onChange({ agent: agent as OrchestratorRoute['agent'], model: '', effort: 'medium' })
           }
-          onChange({ ...route, model })
-        }}
-        options={models}
-        loading={loading}
-        providerName={provider}
-        placeholder={t('prefs.agentDefaultsCliDefault')}
-      />
-      <Dropdown
-        value={route.effort ?? ''}
-        options={efforts.map((effort) => ({ value: effort, label: t(EFFORT_LABEL_KEYS[effort]) }))}
-        onChange={(effort) => onChange({ ...route, effort: effort as AgentEffortLevel })}
-        ariaLabel={t('prefs.orchestrationRouteEffort', { route: label })}
-      />
+          ariaLabel={t('prefs.orchestrationRouteProvider', { position: label })}
+        />
+      </div>
+      <div className={styles.model}>
+        <ModelSearchablePicker
+          value={route.model ?? ''}
+          onChange={(value) => {
+            const model = value.trim()
+            // The same rule the worker defaults apply: a name the CLI could not take is refused
+            // here, where the person can see why, instead of being dropped when a worker starts.
+            if (model && !isValidModelName(model)) {
+              pushToast({
+                title: t('prefs.agentDefaultsInvalidModel'),
+                body: t('prefs.agentDefaultsInvalidModelBody', { model }),
+              })
+              return
+            }
+            onChange({ ...route, model })
+          }}
+          options={models}
+          loading={loading}
+          providerName={provider}
+          placeholder={t('prefs.agentDefaultsModelDefault')}
+        />
+      </div>
+      <div className={styles.effort}>
+        <Dropdown
+          value={route.effort ?? ''}
+          options={efforts.map((effort) => ({
+            value: effort,
+            label: t(EFFORT_LABEL_KEYS[effort]),
+          }))}
+          onChange={(effort) => onChange({ ...route, effort: effort as AgentEffortLevel })}
+          ariaLabel={t('prefs.orchestrationRouteEffort', { route: label })}
+        />
+      </div>
       {installed ? (
         <span
           className={styles.usage}
@@ -147,7 +157,7 @@ function RouteEditor({
         >
           {next ? <i className={styles.nextDot} aria-hidden /> : null}
           {usage === null
-            ? '—'
+            ? null
             : Number.isFinite(usage)
               ? `${Math.round(usage)}%`
               : t('prefs.orchestrationRouteLimited')}
@@ -208,15 +218,12 @@ function PercentInput({ value, onCommit }: { value: number; onCommit: (value: nu
   )
 }
 
-export function OrchestrationRoutingSettings() {
-  const t = useT()
+/** The routing policy, read normalized and written back whole. */
+function useRouting() {
   const stored = useProjectsStore((state) => state.preferences.orchestratorPolicy)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   const policy = normalizeOrchestratorPolicy(stored)
   const routing = policy.routing
-  const fitness = useAgentFitness()
-  // Unknown until the core answers; a route is only flagged once it is known to be missing.
-  const installedAgents = useOrchestratorSnapshot().snapshot.installedAgents
   const save = (next: typeof routing) =>
     setPreferences({
       orchestratorPolicy: normalizeOrchestratorPolicy({
@@ -224,6 +231,16 @@ export function OrchestrationRoutingSettings() {
         routing: normalizeOrchestratorRouting(next),
       }),
     })
+  return { routing, save }
+}
+
+/** The routing profile and each tier's ordered routes. */
+export function OrchestrationRoutingSettings() {
+  const t = useT()
+  const { routing, save } = useRouting()
+  const fitness = useAgentFitness()
+  // Unknown until the core answers; a route is only flagged once it is known to be missing.
+  const installedAgents = useOrchestratorSnapshot().snapshot.installedAgents
   const selectPreset = (preset: OrchestratorRoutingPreset) => {
     if (preset === 'custom') return
     save({ preset, ...ORCHESTRATOR_ROUTING_PRESETS[preset] })
@@ -249,13 +266,6 @@ export function OrchestrationRoutingSettings() {
       { agent: fresh?.agent ?? agents[0], model: '', effort: fresh?.effort ?? efforts[0] },
     ])
   }
-  const updatePercent = (
-    key: 'watchPercent' | 'protectPercent' | 'criticalPercent',
-    value: number,
-  ) => {
-    if (value === routing[key]) return
-    save({ ...routing, preset: 'custom', [key]: value })
-  }
 
   return (
     <div className={prefs.optionList}>
@@ -264,9 +274,8 @@ export function OrchestrationRoutingSettings() {
           <strong>{t('prefs.orchestrationRoutingPreset')}</strong>
           <span>{t('prefs.orchestrationRoutingPresetDesc')}</span>
         </span>
-        <div className={prefs.rowActions}>
+        <div className={prefs.rowControl}>
           <Dropdown
-            className={prefs.select}
             value={routing.preset}
             options={(
               [
@@ -342,7 +351,22 @@ export function OrchestrationRoutingSettings() {
           </section>
         )
       })}
-      {(['watchPercent', 'protectPercent', 'criticalPercent'] as const).map((key) => (
+    </div>
+  )
+}
+
+/** How used a provider may be before its routes are passed over, for every tier at once. */
+export function OrchestrationUsageLimits() {
+  const t = useT()
+  const { routing, save } = useRouting()
+  const updatePercent = (key: (typeof LIMITS)[number], value: number) => {
+    if (value === routing[key]) return
+    save({ ...routing, preset: 'custom', [key]: value })
+  }
+
+  return (
+    <div className={prefs.optionList}>
+      {LIMITS.map((key) => (
         <label key={key} className={prefs.optionRow}>
           <span className={prefs.optionCopy}>
             <strong>{t(`prefs.orchestrationRouting.${key}` as MessageKey)}</strong>

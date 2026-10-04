@@ -14,13 +14,21 @@
   gap: 8px;
   padding: 0 9px 0 10px;
   overflow: hidden;
-  color: var(--fg-muted);
+  /* A surface can restyle every trigger inside it through these two properties, instead of
+     passing a class to each one and depending on which stylesheet loads last. */
+  color: var(--dropdown-fg, var(--fg-muted));
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--dropdown-radius, var(--radius-sm));
   outline: none;
   text-align: left;
   cursor: pointer;
+}
+
+/* A trigger nobody styled sets its own type size. It used to inherit the page's, so the same
+   control read at 16px in one modal and 13px in another, above options that are always 11px. */
+.triggerSized {
+  font-size: 12px;
 }
 
 .trigger:hover:not(:disabled),
@@ -127,9 +135,9 @@
   white-space: nowrap;
 }
 
-.option:hover:not(:disabled),
-.option:focus-visible,
-.optionSelected {
+/* One highlight, as in a native select: it starts on the current value and follows the keys and
+   the pointer. The current value keeps its colour wherever the highlight goes. */
+.optionActive {
   color: var(--fg);
   background: var(--panel-hover, rgba(255, 255, 255, 0.08));
 }

@@ -16,6 +16,8 @@ export function useKeybindings() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // An open select takes Escape for itself: it closes its list, not the modal around it.
+        if (document.querySelector('[data-alethe-dropdown-menu]')) return
         const ui = useUiStore.getState()
         if (ui.openModal) {
           e.preventDefault()

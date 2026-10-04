@@ -154,7 +154,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
 
       <SettingsSection
         id="agents"
-        title={t('prefs.enabledAgents', { count: enabledCount })}
+        title={t('prefs.enabledAgents', { count: enabledCount, total: AVAILABLE_AGENTS.length })}
         description={t('prefs.agentsDesc')}
       >
         <div className={styles.agentList}>

@@ -1,14 +1,21 @@
-/* The shared stepper is sized for a row of its own; beside a description it needs a fixed width,
-   or its value collapses to nothing. */
+/* The shared stepper is sized for a row of its own. In an option row it fills the control column,
+   at the height of the selects it sits among. */
 div.stepper {
-  width: auto;
-  grid-template-columns: 32px 44px 32px 32px;
+  width: 100%;
+  grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
   gap: 6px;
 }
 
 div.stepper button,
 div.stepper strong {
   height: 32px;
+}
+
+/* The compact style makes the selects shorter; the stepper beside them follows. */
+:global([data-visual-style='clean']) div.stepper button,
+:global([data-visual-style='clean']) div.stepper strong {
+  height: var(--clean-control-height);
+  border-radius: var(--clean-control-radius);
 }
 
 .empty {

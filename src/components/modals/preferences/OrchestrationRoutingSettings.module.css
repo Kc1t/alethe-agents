@@ -1,5 +1,5 @@
-/* Rows here sit in the Preferences option list and share its shell; only what a tier adds - two
-   routes under one heading - is styled in this file. */
+/* Rows here sit in the Preferences option list and share its shell; only what a tier adds - an
+   ordered list of routes under one heading - and the percent field are styled in this file. */
 
 .percent {
   flex: none;
@@ -10,22 +10,42 @@
   font-size: 11px;
 }
 
+/* Sized and coloured like the selects and steppers it shares the modal with. */
 .percent input {
   width: 58px;
   height: 32px;
   padding: 0 8px;
   color: var(--fg);
-  background: var(--bg);
+  background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   font-family: var(--font-mono);
   font-size: 12px;
   text-align: right;
   outline: none;
+  appearance: textfield;
 }
 
+.percent input::-webkit-inner-spin-button,
+.percent input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.percent input:hover,
 .percent input:focus-visible {
-  border-color: var(--border-strong);
+  border-color: var(--accent);
+}
+
+/* The compact style makes the selects shorter; the percent field follows. */
+:global([data-visual-style='clean']) .percent input {
+  height: var(--clean-control-height);
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) .percent input:hover,
+:global([data-visual-style='clean']) .percent input:focus-visible {
+  border-color: var(--clean-focus-border);
 }
 
 .tier {
@@ -42,11 +62,21 @@
   gap: 6px;
 }
 
+/* Provider, model and effort keep their widths from one route to the next, so the three tiers
+   read as one table. None goes below what its longest label needs. */
 .route {
   display: grid;
-  grid-template-columns: 18px 12px 140px minmax(0, 1fr) 120px 78px 24px;
+  grid-template-columns:
+    18px 12px minmax(118px, 150px) minmax(132px, 1fr) minmax(104px, 132px)
+    78px 24px;
   align-items: center;
   gap: 8px;
+}
+
+.provider,
+.model,
+.effort {
+  min-width: 0;
 }
 
 .route[data-dragging='true'] {
@@ -155,8 +185,31 @@
   border-color: var(--border-strong);
 }
 
-@media (max-width: 640px) {
+/* A narrow window has no room for one line: the provider keeps the first with the usage, and
+   the model and the effort share a second one under it. */
+@media (max-width: 980px) {
   .route {
-    grid-template-columns: 18px 12px minmax(0, 1fr) 78px 24px;
+    grid-template-columns: 18px 12px minmax(0, 1fr) minmax(0, 1fr) 78px 24px;
+  }
+
+  .provider {
+    grid-row: 1;
+    grid-column: 3 / span 2;
+  }
+
+  .model {
+    grid-area: 2 / 3;
+  }
+
+  .effort {
+    grid-area: 2 / 4;
+  }
+
+  .usage {
+    grid-area: 1 / 5;
+  }
+
+  .remove {
+    grid-area: 1 / 6;
   }
 }

@@ -311,6 +311,13 @@ export function PreferencesModal() {
           'routing route rota quota usage uso model modelo effort esforço light standard deep economy balanced quality',
       },
       {
+        category: 'orchestration',
+        target: 'orchestration-usage-limits',
+        label: t('prefs.orchestrationUsageLimits'),
+        description: t('prefs.orchestrationUsageLimitsDesc'),
+        keywords: 'routing route rota quota usage uso limit limite threshold percent porcentagem',
+      },
+      {
         category: 'organization',
         target: 'workspace-backups',
         label: t('prefs.workspaceBackupsTitle'),
@@ -486,6 +493,15 @@ export function PreferencesModal() {
           ref={dialogRef}
           className={styles.dialog}
           aria-describedby={undefined}
+          // An open select answers Escape and outside clicks itself. Without these the modal
+          // took them too, and closing a list closed the whole of Preferences.
+          onInteractOutside={(event) => {
+            const target = event.target as Element | null
+            if (target?.closest('[data-alethe-dropdown-menu]')) event.preventDefault()
+          }}
+          onEscapeKeyDown={(event) => {
+            if (document.querySelector('[data-alethe-dropdown-menu]')) event.preventDefault()
+          }}
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             const input =
@@ -592,7 +608,9 @@ export function PreferencesModal() {
 
             <div ref={contentRef} className={styles.content}>
               <div className={styles.contentInner}>
-                <ErrorBoundary label="preferences-page">
+                {/* Keyed by category: a page that failed must not keep the others behind its
+                    error screen. */}
+                <ErrorBoundary key={category} label="preferences-page">
                   {category === 'account' ? (
                     <AccountPage
                       avatarUrl={avatarUrl}

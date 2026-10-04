@@ -24,6 +24,28 @@ export function SettingsSection({
   )
 }
 
+/** A setting that is only on or off. Inside a `<label>` the whole row toggles it. */
+export function Switch({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={styles.switch}
+      onClick={() => onChange(!checked)}
+    />
+  )
+}
+
 export function Avatar({
   url,
   initial,

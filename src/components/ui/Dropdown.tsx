@@ -56,6 +56,8 @@ export function Dropdown({
 }: DropdownProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  // The option the keyboard would choose; -1 leaves it on the first one that can be chosen.
+  const [activeIndex, setActiveIndex] = useState(-1)
   const [position, setPosition] = useState({ left: 0, top: 0, width: 220, maxHeight: 240 })
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -80,6 +82,17 @@ export function Dropdown({
     )
   })
   const showCustomOption = allowCustomValue && normalizedSearch.length >= 2 && !hasExactMatch
+  // Everything the list shows, in order, so the keyboard walks the custom entry like any other.
+  const items = [
+    ...visibleOptions.map((option) => ({
+      value: option.value,
+      disabled: Boolean(option.disabled),
+    })),
+    ...(showCustomOption ? [{ value: search.trim(), disabled: false }] : []),
+  ]
+  const firstEnabled = items.findIndex((item) => !item.disabled)
+  const active = items[activeIndex] && !items[activeIndex].disabled ? activeIndex : firstEnabled
+  const optionId = (index: number) => `${listboxId}-option-${index}`
 
   const closeMenu = (restoreFocus = false) => {
     setOpen(false)
@@ -92,7 +105,8 @@ export function Dropdown({
     const updatePosition = () => {
       const rect = triggerRef.current?.getBoundingClientRect()
       if (!rect) return
-      const width = Math.min(320, Math.max(220, rect.width), window.innerWidth - 16)
+      // As wide as its trigger, like a native select, and never narrower than a readable list.
+      const width = Math.min(Math.max(220, rect.width), window.innerWidth - 16)
       const searchHeight = searchable ? 42 : 0
       const estimatedHeight = Math.min(
         280,
@@ -130,39 +144,110 @@ export function Dropdown({
         closeMenu(true)
       }
     }
+    // A modal dialog traps focus: it listens on the document and pulls focus back when it lands
+    // outside the dialog's own DOM. The menu is portaled out of that DOM, so its focus events
+    // stop here, before the trap sees them; otherwise the search field could never be typed in.
+    const menu = menuRef.current
+    const trigger = triggerRef.current
+    const stopFocusEvent = (event: FocusEvent) => event.stopPropagation()
+    const stopFocusIntoMenu = (event: FocusEvent) => {
+      if (event.relatedTarget instanceof Node && menu?.contains(event.relatedTarget)) {
+        event.stopPropagation()
+      }
+    }
+    menu?.addEventListener('focusin', stopFocusEvent)
+    menu?.addEventListener('focusout', stopFocusEvent)
+    trigger?.addEventListener('focusout', stopFocusIntoMenu)
     document.addEventListener('pointerdown', closeOnOutsidePointer)
     document.addEventListener('keydown', closeOnEscape)
     const focusFrame = searchable
       ? window.requestAnimationFrame(() => searchRef.current?.focus())
       : null
     return () => {
+      menu?.removeEventListener('focusin', stopFocusEvent)
+      menu?.removeEventListener('focusout', stopFocusEvent)
+      trigger?.removeEventListener('focusout', stopFocusIntoMenu)
       document.removeEventListener('pointerdown', closeOnOutsidePointer)
       document.removeEventListener('keydown', closeOnEscape)
       if (focusFrame !== null) window.cancelAnimationFrame(focusFrame)
     }
   }, [open, searchable])
 
+  // The list opens on the current value, the way a native select does.
+  useEffect(() => {
+    if (open) setActiveIndex(options.findIndex((option) => option.value === value))
+    // Only the moment it opens matters: the active option then follows the keys and the pointer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  useEffect(() => {
+    if (!open || active < 0) return
+    // Optional call: the test environment's DOM has no scrollIntoView.
+    document.getElementById(optionId(active))?.scrollIntoView?.({ block: 'nearest' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, active])
+
+  // Choosing what is already chosen changes nothing, as with a native select.
   const choose = (nextValue: string) => {
-    onChange(nextValue)
+    if (nextValue !== value) onChange(nextValue)
     closeMenu(true)
   }
 
-  const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      setOpen((current) => !current)
-    } else if (event.key === 'ArrowDown') {
-      event.preventDefault()
-      setOpen(true)
+  const moveActive = (step: 1 | -1) => {
+    if (firstEnabled < 0) return
+    let next = active
+    for (let tries = 0; tries < items.length; tries++) {
+      next = (next + step + items.length) % items.length
+      if (!items[next].disabled) break
     }
+    setActiveIndex(next)
   }
 
-  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== 'Enter') return
-    event.preventDefault()
-    const firstEnabled = visibleOptions.find((option) => !option.disabled)
-    if (firstEnabled) choose(firstEnabled.value)
-    else if (showCustomOption) choose(search.trim())
+  /** The keys the open list answers to, wherever the focus is. Returns whether it took the key. */
+  const handleListKey = (event: KeyboardEvent<HTMLElement>): boolean => {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      moveActive(event.key === 'ArrowDown' ? 1 : -1)
+      return true
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      if (active >= 0) choose(items[active].value)
+      return true
+    }
+    if (event.key === 'Tab') {
+      // The list is going away. From the trigger, focus simply moves on; from the search field
+      // it goes back to the trigger first, since the field goes away with the list.
+      if (event.currentTarget === triggerRef.current) {
+        closeMenu()
+      } else {
+        event.preventDefault()
+        closeMenu(true)
+      }
+      return true
+    }
+    return false
+  }
+
+  const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!open) {
+      if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key)) {
+        event.preventDefault()
+        setOpen(true)
+      }
+      return
+    }
+    if (handleListKey(event)) return
+    if (event.key === ' ') {
+      event.preventDefault()
+      if (active >= 0) choose(items[active].value)
+    } else if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      const enabled = items.flatMap((item, index) => (item.disabled ? [] : [index]))
+      if (enabled.length > 0) {
+        setActiveIndex(event.key === 'Home' ? enabled[0] : enabled[enabled.length - 1])
+      }
+    }
   }
 
   return (
@@ -171,11 +256,12 @@ export function Dropdown({
         ref={triggerRef}
         id={id}
         type="button"
-        className={`${styles.trigger} ${className ?? ''}`}
+        className={`${styles.trigger} ${className ?? styles.triggerSized}`}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-controls={open ? listboxId : undefined}
         aria-expanded={open}
+        aria-activedescendant={open && !searchable && active >= 0 ? optionId(active) : undefined}
         title={title}
         disabled={disabled}
         onClick={(event) => {
@@ -202,6 +288,10 @@ export function Dropdown({
               }}
               onPointerDown={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
+              // A modal dialog locks scrolling outside its own DOM, which is where this list is:
+              // kept from the document, the wheel and a touch drag scroll a long list again.
+              onWheel={(event) => event.stopPropagation()}
+              onTouchMove={(event) => event.stopPropagation()}
             >
               {searchable ? (
                 <div className={styles.searchBox}>
@@ -210,23 +300,35 @@ export function Dropdown({
                     ref={searchRef}
                     className={styles.searchInput}
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    onKeyDown={handleSearchKeyDown}
+                    onChange={(event) => {
+                      setSearch(event.target.value)
+                      setActiveIndex(-1)
+                    }}
+                    onKeyDown={handleListKey}
                     placeholder={searchPlaceholder}
                     aria-label={searchPlaceholder ?? ariaLabel}
+                    aria-controls={listboxId}
+                    aria-activedescendant={active >= 0 ? optionId(active) : undefined}
                   />
                 </div>
               ) : null}
               <div className={styles.options} id={listboxId} role="listbox" aria-label={ariaLabel}>
-                {visibleOptions.map((option) => (
+                {visibleOptions.map((option, index) => (
                   <button
                     key={option.value}
+                    id={optionId(index)}
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={option.value === value}
                     disabled={option.disabled}
-                    className={`${styles.option} ${option.value === value ? styles.optionSelected : ''}`}
+                    className={`${styles.option} ${option.value === value ? styles.optionSelected : ''} ${index === active ? styles.optionActive : ''}`}
                     title={typeof option.label === 'string' ? option.label : undefined}
+                    // Movement, not entry: a list scrolled by the keys must not hand the active
+                    // option to whatever ends up under a pointer that never moved.
+                    onMouseMove={() => {
+                      if (!option.disabled && index !== active) setActiveIndex(index)
+                    }}
                     onClick={(event) => {
                       event.stopPropagation()
                       if (!option.disabled) choose(option.value)
@@ -237,10 +339,15 @@ export function Dropdown({
                 ))}
                 {showCustomOption ? (
                   <button
+                    id={optionId(visibleOptions.length)}
                     type="button"
                     role="option"
+                    tabIndex={-1}
                     aria-selected={value === search.trim()}
-                    className={`${styles.option} ${styles.customOption}`}
+                    className={`${styles.option} ${styles.customOption} ${visibleOptions.length === active ? styles.optionActive : ''}`}
+                    onMouseMove={() => {
+                      if (visibleOptions.length !== active) setActiveIndex(visibleOptions.length)
+                    }}
                     onClick={(event) => {
                       event.stopPropagation()
                       choose(search.trim())

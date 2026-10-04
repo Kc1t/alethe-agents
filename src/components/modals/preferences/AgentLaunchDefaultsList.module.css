@@ -1,7 +1,8 @@
-/* Same shell as the per-agent rows on the Terminal page, with the controls on a second line. */
+/* Same shell as the per-agent rows on the Terminal page: icon, name, and the controls on the
+   right. Every row gives the controls the same width, so the fields line up down the list. */
 .row {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr) minmax(0, 480px);
   align-items: center;
   gap: 10px 12px;
   padding: 10px 12px;
@@ -11,23 +12,19 @@
 }
 
 .controls {
-  grid-column: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 150px auto;
   align-items: center;
   gap: 8px;
 }
 
-.controlsNoEffort {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
 .reset {
-  padding: 4px 10px;
+  height: 32px;
+  padding: 0 10px;
   font-size: 11px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--bg-sunken);
   color: var(--fg-muted);
   cursor: pointer;
 }
@@ -42,9 +39,24 @@
   cursor: default;
 }
 
+:global([data-visual-style='clean']) .reset {
+  height: var(--clean-control-height);
+  border-radius: var(--clean-control-radius);
+}
+
+/* Too narrow for one line: the controls drop under the name. */
+@media (max-width: 1080px) {
+  .row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .controls {
+    grid-column: 2;
+  }
+}
+
 @media (max-width: 560px) {
-  .controls,
-  .controlsNoEffort {
+  .controls {
     grid-template-columns: minmax(0, 1fr);
   }
 }

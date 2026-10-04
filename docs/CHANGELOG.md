@@ -161,9 +161,22 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **The voice command UI is fully localized.** Every string in the command bar, the plan summary,
   the block and warning reasons, and the Jev history now goes through i18n in English and pt-BR,
   so nothing in the voice flow is hardcoded to a single language anymore.
+- **Selects in Preferences follow one standard.** Every select now has the same text size, height
+  and shape as the controls around it, with a single arrow instead of two. In a list of settings
+  the selects and steppers share one width, so they line up and no label is cut off. Terminal
+  theme, topbar style, panel location, the remote control policies and the microphone choice all
+  use the same control, and the speech model's Download and Remove are regular buttons.
 
 ### Fixed
 
+- Selects inside a modal now behave like selects. Pressing Escape with a list open closed the
+  whole modal; it now closes only the list. The search field of a model picker could not be typed
+  in while the picker was inside a modal, and a list could not be used from the keyboard at all:
+  the arrow keys now move through the options and Enter chooses one.
+- Preferences → Terminal counted the enabled agents out of four ("13/4"). The total is now the
+  number of agents available on your system.
+- A Preferences page that failed to open no longer leaves every other category showing its error.
+- Category icons in Preferences no longer shrink beside a long description, so the names line up.
 - Model pickers no longer offer retired models such as Claude 3.x and GPT-4o, which made the agent
   fail on its first request. Claude Code lists its own aliases (opus, sonnet, haiku, fable), which
   always point at the latest model, and Codex lists the models your account has, read from Codex

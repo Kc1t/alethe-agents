@@ -28,8 +28,11 @@ import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { AgentLaunchDefaultsList } from './AgentLaunchDefaultsList'
 import page from './OrchestrationPage.module.css'
-import { OrchestrationRoutingSettings } from './OrchestrationRoutingSettings'
-import { SettingsSection } from './primitives'
+import {
+  OrchestrationRoutingSettings,
+  OrchestrationUsageLimits,
+} from './OrchestrationRoutingSettings'
+import { SettingsSection, Switch } from './primitives'
 
 const TAB_LABELS: Record<OrchestrationTabId, MessageKey> = {
   routing: 'prefs.orchestrationTab.routing',
@@ -41,6 +44,7 @@ const TAB_LABELS: Record<OrchestrationTabId, MessageKey> = {
 /** The sub-tab each section lives on, so a search result or a shortcut can land on it. */
 const TAB_OF_SECTION: Record<string, OrchestrationTabId> = {
   'orchestration-routing': 'routing',
+  'orchestration-usage-limits': 'routing',
   'orchestration-project-routing': 'routing',
   'orchestration-max-workers': 'workers',
   'orchestration-rules': 'permissions',
@@ -105,14 +109,8 @@ function RuleRow({ title, description, value, options, onChange }: RuleRowProps)
         <strong>{title}</strong>
         <span>{description}</span>
       </span>
-      <div className={styles.rowActions}>
-        <Dropdown
-          className={styles.select}
-          value={value}
-          options={options}
-          onChange={onChange}
-          ariaLabel={title}
-        />
+      <div className={styles.rowControl}>
+        <Dropdown value={value} options={options} onChange={onChange} ariaLabel={title} />
       </div>
     </div>
   )
@@ -152,7 +150,7 @@ function WorkerLimits() {
           <strong>{t('prefs.orchestrationMaxWorkers')}</strong>
           <span>{t('prefs.orchestrationMaxWorkersDesc')}</span>
         </span>
-        <div className={styles.rowActions}>
+        <div className={styles.rowControl}>
           <Stepper
             value={maxWorkers}
             min={ORCHESTRATOR_MIN_WORKERS}
@@ -184,7 +182,7 @@ function WorkerLimits() {
           <strong>{t('prefs.orchestrationKeepFinished')}</strong>
           <span>{t('prefs.orchestrationKeepFinishedDesc')}</span>
         </span>
-        <div className={styles.rowActions}>
+        <div className={styles.rowControl}>
           <Stepper
             value={policy.keepFinished}
             min={0}
@@ -200,16 +198,6 @@ function WorkerLimits() {
         </div>
       </div>
       <RuleRow
-        title={t('prefs.orchestrationNotify')}
-        description={t('prefs.orchestrationNotifyDesc')}
-        value={notify ? 'on' : 'off'}
-        options={[
-          { value: 'on', label: t('prefs.orchestrationNotifyOn') },
-          { value: 'off', label: t('prefs.orchestrationNotifyOff') },
-        ]}
-        onChange={(value) => setPreferences({ orchestratorNotify: value === 'on' })}
-      />
-      <RuleRow
         title={t('prefs.orchestrationDefaultAgent')}
         description={t('prefs.orchestrationDefaultAgentDesc')}
         value={policy.defaultAgent}
@@ -224,6 +212,17 @@ function WorkerLimits() {
           update({ defaultAgent: value as OrchestratorPolicyPreferences['defaultAgent'] })
         }
       />
+      <label className={styles.optionRow}>
+        <span className={styles.optionCopy}>
+          <strong>{t('prefs.orchestrationNotify')}</strong>
+          <span>{t('prefs.orchestrationNotifyDesc')}</span>
+        </span>
+        <Switch
+          checked={notify}
+          label={t('prefs.orchestrationNotify')}
+          onChange={(orchestratorNotify) => setPreferences({ orchestratorNotify })}
+        />
+      </label>
     </div>
   )
 }
@@ -383,6 +382,16 @@ export function OrchestrationPage({ target }: { target: string | null }) {
           description={t('prefs.orchestrationRoutingDesc')}
         >
           <OrchestrationRoutingSettings />
+        </SettingsSection>
+      ) : null}
+
+      {tab === 'routing' ? (
+        <SettingsSection
+          id="orchestration-usage-limits"
+          title={t('prefs.orchestrationUsageLimits')}
+          description={t('prefs.orchestrationUsageLimitsDesc')}
+        >
+          <OrchestrationUsageLimits />
         </SettingsSection>
       ) : null}
 

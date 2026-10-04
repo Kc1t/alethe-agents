@@ -198,18 +198,22 @@ export function AppearancePage() {
         title={t('prefs.terminalTheme')}
         description={t('prefs.terminalThemeDesc')}
       >
-        <Dropdown
-          className={styles.select}
-          value={preferences.terminalTheme ?? ''}
-          onChange={(value) =>
-            setTerminalTheme(value ? (value as typeof preferences.uiTheme) : null)
-          }
-          ariaLabel={t('prefs.terminalTheme')}
-          options={[
-            { value: '', label: t('common.followUi') },
-            ...themeOptions.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
-          ]}
-        />
+        <div className={styles.fieldControl}>
+          <Dropdown
+            value={preferences.terminalTheme ?? ''}
+            onChange={(value) =>
+              setTerminalTheme(value ? (value as typeof preferences.uiTheme) : null)
+            }
+            ariaLabel={t('prefs.terminalTheme')}
+            options={[
+              { value: '', label: t('common.followUi') },
+              ...themeOptions.map((theme) => ({
+                value: theme.id,
+                label: themeLabel(t, theme.id),
+              })),
+            ]}
+          />
+        </div>
       </SettingsSection>
 
       <SettingsSection id="ui-zoom" title={t('prefs.uiZoom')} description={t('prefs.uiZoomDesc')}>
@@ -247,15 +251,19 @@ export function AppearancePage() {
         title={t('prefs.topbarStyle')}
         description={t('prefs.topbarStyleDesc')}
       >
-        <Dropdown
-          value={preferences.topbarStyle}
-          onChange={(value) => setPreferences({ topbarStyle: value as 'classic' | 'three-areas' })}
-          ariaLabel={t('prefs.topbarStyle')}
-          options={[
-            { value: 'classic', label: t('prefs.topbarStyleClassic') },
-            { value: 'three-areas', label: t('prefs.topbarStyleThreeAreas') },
-          ]}
-        />
+        <div className={styles.fieldControl}>
+          <Dropdown
+            value={preferences.topbarStyle}
+            onChange={(value) =>
+              setPreferences({ topbarStyle: value as 'classic' | 'three-areas' })
+            }
+            ariaLabel={t('prefs.topbarStyle')}
+            options={[
+              { value: 'classic', label: t('prefs.topbarStyleClassic') },
+              { value: 'three-areas', label: t('prefs.topbarStyleThreeAreas') },
+            ]}
+          />
+        </div>
       </SettingsSection>
 
       <SettingsSection
@@ -271,22 +279,24 @@ export function AppearancePage() {
             return (
               <div key={view.id} className={styles.viewPlacementRow}>
                 <span>{label}</span>
-                <Dropdown
-                  value={preferences.viewPlacements[view.id] ?? view.side}
-                  onChange={(value) =>
-                    setPreferences({
-                      viewPlacements: {
-                        ...preferences.viewPlacements,
-                        [view.id]: value as 'left' | 'right',
-                      },
-                    })
-                  }
-                  ariaLabel={label}
-                  options={[
-                    { value: 'left', label: t('prefs.viewPlacementLeft') },
-                    { value: 'right', label: t('prefs.viewPlacementRight') },
-                  ]}
-                />
+                <div className={styles.rowControl}>
+                  <Dropdown
+                    value={preferences.viewPlacements[view.id] ?? view.side}
+                    onChange={(value) =>
+                      setPreferences({
+                        viewPlacements: {
+                          ...preferences.viewPlacements,
+                          [view.id]: value as 'left' | 'right',
+                        },
+                      })
+                    }
+                    ariaLabel={label}
+                    options={[
+                      { value: 'left', label: t('prefs.viewPlacementLeft') },
+                      { value: 'right', label: t('prefs.viewPlacementRight') },
+                    ]}
+                  />
+                </div>
               </div>
             )
           })

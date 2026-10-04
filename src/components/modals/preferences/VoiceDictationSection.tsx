@@ -15,6 +15,8 @@ import {
   type SpeechModelState,
 } from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { Dropdown } from '../../ui/Dropdown'
+import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
 
@@ -178,32 +180,35 @@ export function VoiceDictationSection() {
         title={t('prefs.dictationMic')}
         description={t('prefs.dictationMicDesc')}
       >
-        <select
-          className={styles.select}
-          disabled={!preferences.dictationEnabled}
-          value={preferences.dictationMicrophoneId ?? ''}
-          onChange={(event) => {
-            const value = event.target.value
-            if (!value) {
-              setPreferences({ dictationMicrophoneId: null, dictationMicrophoneLabel: null })
-              return
-            }
-            const device = mics.find((item) => item.deviceId === value)
-            setPreferences({
-              dictationMicrophoneId: value,
-              dictationMicrophoneLabel: device?.label ?? null,
-            })
-          }}
-          aria-label={t('prefs.dictationMic')}
-        >
-          <option value="">{t('prefs.dictationMicSystem')}</option>
-          {mics.map((device) => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.label}
-              {device.isDefault ? ` (${t('prefs.dictationMicSystem')})` : ''}
-            </option>
-          ))}
-        </select>
+        <div className={styles.fieldControl}>
+          <Dropdown
+            disabled={!preferences.dictationEnabled}
+            value={preferences.dictationMicrophoneId ?? ''}
+            onChange={(value) => {
+              if (!value) {
+                setPreferences({ dictationMicrophoneId: null, dictationMicrophoneLabel: null })
+                return
+              }
+              const device = mics.find((item) => item.deviceId === value)
+              setPreferences({
+                dictationMicrophoneId: value,
+                dictationMicrophoneLabel: device?.label ?? null,
+              })
+            }}
+            ariaLabel={t('prefs.dictationMic')}
+            // A chosen microphone that is unplugged right now still shows by its name.
+            placeholder={preferences.dictationMicrophoneLabel ?? t('prefs.dictationMicSystem')}
+            options={[
+              { value: '', label: t('prefs.dictationMicSystem') },
+              ...mics.map((device) => ({
+                value: device.deviceId,
+                label: device.isDefault
+                  ? `${device.label} (${t('prefs.dictationMicSystem')})`
+                  : device.label,
+              })),
+            ]}
+          />
+        </div>
       </SettingsSection>
 
       <SettingsSection
@@ -228,9 +233,10 @@ export function VoiceDictationSection() {
                 {t('prefs.dictationModelProgress', { percent: Math.round(downloadFraction * 100) })}
               </p>
             ) : null}
-            <div className={styles.segmented}>
+            <div className={styles.cliActions}>
               <button
                 type="button"
+                className={`${controls.btn} ${controls.btnPrimary}`}
                 disabled={busy || modelState?.status === 'ready'}
                 onClick={() => void downloadModel()}
               >
@@ -238,6 +244,7 @@ export function VoiceDictationSection() {
               </button>
               <button
                 type="button"
+                className={controls.btn}
                 disabled={busy || modelState?.status !== 'ready'}
                 onClick={() => void deleteModel()}
               >

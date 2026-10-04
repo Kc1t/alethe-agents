@@ -24,6 +24,9 @@
   border-radius: 14px;
   box-shadow: var(--shadow-lg);
   animation: pop 140ms ease-out;
+  /* Every select in this modal takes the radius and the contrast of its other controls. */
+  --dropdown-radius: var(--radius-md);
+  --dropdown-fg: var(--fg);
 }
 
 .sidebar {
@@ -148,6 +151,9 @@
   border-radius: var(--radius-md);
   font-size: 12px;
   text-align: left;
+}
+.nav button > svg {
+  flex: none;
 }
 .nav button:hover {
   color: var(--fg);
@@ -411,12 +417,63 @@
 .optionCopy span {
   color: var(--fg-muted);
   font-size: 10px;
+  line-height: 1.4;
 }
 .rowActions {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+}
+/* The control side of an option row. One width for every select and stepper, so a list of rows
+   reads as two columns instead of a ragged edge. */
+.rowControl {
+  flex: none;
+  width: min(220px, 46%);
+}
+/* A select that stands alone under a section heading. */
+.fieldControl {
+  width: min(360px, 100%);
+}
+/* The same switch as the plugin list, for a setting that is only on or off. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    background var(--anim-fast) ease,
+    border-color var(--anim-fast) ease;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--fg-faint);
+  border-radius: 50%;
+  transition:
+    transform var(--anim-fast) ease,
+    background var(--anim-fast) ease;
+}
+.switch[aria-checked='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+.switch[aria-checked='true']::after {
+  background: var(--accent);
+  transform: translateX(14px);
+}
+.switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 .iconActionDanger {
   width: 30px;
@@ -715,26 +772,6 @@
   margin: 10px 0 0;
   color: var(--fg-muted);
   font-size: 10px;
-}
-
-.select {
-  width: min(360px, 100%);
-  height: 32px;
-  min-height: 32px;
-  padding: 0 32px 0 12px;
-  color: var(--fg);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  outline: none;
-  cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  background-size: 10px 6px;
-}
-.select:focus {
-  border-color: var(--accent);
 }
 
 .agentList {
@@ -1170,7 +1207,7 @@
   gap: 12px;
   padding: 6px 0;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .viewPlacementRow + .viewPlacementRow {

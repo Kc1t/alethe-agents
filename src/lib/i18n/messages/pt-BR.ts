@@ -804,15 +804,13 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.orchestrationProjectRouting': 'Roteamento por projeto',
   'prefs.orchestrationProjectRoutingDesc':
     'Um projeto pode usar um perfil próprio. Os planners dele passam a rotear por ele, em vez do roteamento acima.',
-  'prefs.orchestrationProjectRoutingShared': 'Roteamento compartilhado',
+  'prefs.orchestrationProjectRoutingShared': 'Roteamento global',
   'prefs.orchestrationProjectRoutingSharedDesc': 'Usa o roteamento acima.',
   'prefs.orchestrationProjectRoutingOwnDesc': 'Os planners dele roteiam por este perfil.',
   'prefs.orchestrationProjectRoutingEmpty': 'Nenhum projeto ainda.',
   'prefs.orchestrationNotify': 'Notificações',
   'prefs.orchestrationNotifyDesc':
     'Quando um worker para numa pergunta, e quando todo o trabalho delegado de um planner termina.',
-  'prefs.orchestrationNotifyOn': 'Avisar',
-  'prefs.orchestrationNotifyOff': 'Não avisar',
   'prefs.orchestrationRouteAdd': 'Adicionar rota',
   'prefs.orchestrationRouteRemove': 'Remover a rota {position}',
   'prefs.orchestrationRouteDrag': 'Arraste para mudar a ordem, ou use as setas',
@@ -954,7 +952,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.agentDefaultsDesc':
     'O modelo e o esforço de raciocínio com que cada agente inicia. Vale para terminais iniciados ou reiniciados a partir de agora; campo vazio mantém a configuração do próprio CLI.',
   'prefs.agentDefaultsCliDefault': 'Padrão do CLI',
-  'prefs.agentDefaultsSameAsProvider': 'Igual ao padrão do provedor',
+  'prefs.agentDefaultsModelDefault': 'Modelo padrão',
+  'prefs.agentDefaultsEffortDefault': 'Esforço padrão',
   'prefs.agentDefaultsInherited': 'Padrão do provedor: {value}',
   'prefs.agentDefaultsReset': 'Limpar',
   'prefs.agentDefaultsEffortLabel': 'Esforço de raciocínio ({agent})',
@@ -975,7 +974,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.orchestrationWorker': 'Modelo e esforço dos workers',
   'prefs.orchestrationWorkerDesc':
     'Usado pelos workers que um planner inicia com alethe_delegate. Vale a partir do próximo worker iniciado.',
-  'prefs.orchestrationRouting': 'Roteamento inteligente de workers',
+  'prefs.orchestrationRouting': 'Roteamento de workers',
   'prefs.orchestrationRoutingDesc':
     'Cada nível tenta as rotas de cima para baixo, e a primeira com folga fica com a tarefa. Arraste para mudar a ordem; o ponto marca onde uma tarefa começaria agora.',
   'prefs.orchestrationRoutingPreset': 'Perfil de roteamento',
@@ -983,17 +982,20 @@ export const ptBR: Record<MessageKey, string> = {
     'O perfil balanceado preserva modelos capazes para trabalhos que se beneficiam deles. Editar uma rota cria um perfil personalizado.',
   'prefs.orchestrationRoutingPreset.economy': 'Econômico',
   'prefs.orchestrationRoutingPreset.balanced': 'Balanceado',
-  'prefs.orchestrationRoutingPreset.quality': 'Qualidade primeiro',
+  'prefs.orchestrationRoutingPreset.quality': 'Qualidade',
   'prefs.orchestrationRoutingPreset.custom': 'Personalizado',
-  'prefs.orchestrationRouting.watchPercent': 'Observar',
-  'prefs.orchestrationRouting.protectPercent': 'Proteger',
-  'prefs.orchestrationRouting.criticalPercent': 'Pedir antes',
+  'prefs.orchestrationUsageLimits': 'Limites de uso',
+  'prefs.orchestrationUsageLimitsDesc':
+    'Quanto um provedor pode estar usado antes de suas rotas serem preteridas. Uso é a parte do limite do plano que já foi gasta.',
+  'prefs.orchestrationRouting.watchPercent': 'Trocar de rota em',
+  'prefs.orchestrationRouting.protectPercent': 'Equilibrar o uso em',
+  'prefs.orchestrationRouting.criticalPercent': 'Perguntar antes em',
   'prefs.orchestrationRouting.watchPercentDesc':
-    'Acima deste uso, a tarefa passa para a próxima rota da lista que ainda estiver abaixo dele.',
+    'Uma rota acima deste uso é pulada enquanto outra rota da lista ainda estiver abaixo dele.',
   'prefs.orchestrationRouting.protectPercentDesc':
-    'Com todas as rotas acima de Observar, a ordem vale até este uso; acima dele, a tarefa vai para a rota com mais folga.',
+    'Com todas as rotas acima do primeiro limite, a ordem da lista ainda vale até este uso. Acima dele, a tarefa vai para a rota com mais folga.',
   'prefs.orchestrationRouting.criticalPercentDesc':
-    'Com todas as rotas acima deste uso, o planner precisa pedir sua aprovação antes de delegar.',
+    'Com todas as rotas acima deste uso, o planner pergunta a você antes de delegar.',
   'prefs.orchestrationTier.light': 'Leve',
   'prefs.orchestrationTier.lightDesc': 'Busca, extração, resumos e edições mecânicas.',
   'prefs.orchestrationTier.standard': 'Padrão',
@@ -1011,11 +1013,11 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.orchestrationRules': 'Regras dos workers',
   'prefs.orchestrationRulesDesc':
     'O que os workers podem fazer por conta própria. Uma regra fixada aqui vale mais que o pedido do planner.',
-  'prefs.orchestrationDefaultAgent': 'Fallback de tarefa não classificada',
+  'prefs.orchestrationDefaultAgent': 'Tarefas sem nível',
   'prefs.orchestrationDefaultAgentDesc':
-    'Usado por delegações antigas ou manuais que não informam um nível de complexidade.',
-  'prefs.orchestrationDefaultAgentAuto': 'Automático (o que tiver mais limite)',
-  'prefs.orchestrationTimeout': 'Tempo por turno',
+    'Qual CLI recebe uma delegação que não informa o nível. Automático escolhe o que tiver mais limite sobrando.',
+  'prefs.orchestrationDefaultAgentAuto': 'Automático',
+  'prefs.orchestrationTimeout': 'Tempo limite por turno',
   'prefs.orchestrationTimeoutDesc':
     'Um turno que passar disso é interrompido. O tempo esperando a sua aprovação não conta.',
   'prefs.orchestrationTimeoutMinutes': '{minutes} min',
@@ -1034,7 +1036,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.orchestrationWebSearch': 'Busca na web',
   'prefs.orchestrationWebSearchDesc': 'Se os workers podem buscar na web quando o planner pedir.',
   'prefs.orchestrationWebSearchNever': 'Nunca',
-  'prefs.orchestrationKeepFinished': 'Workers concluídos mantidos ativos',
+  'prefs.orchestrationKeepFinished': 'Workers concluídos mantidos abertos',
   'prefs.orchestrationKeepFinishedDesc':
     'Esses respondem a uma nova mensagem na hora. Os mais antigos são encerrados e voltam na mesma thread quando recebem mensagem.',
   'prefs.orchestrationKeepFinishedDecrease': 'Manter menos workers concluídos',
@@ -1044,12 +1046,12 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.orchestrationCodexSandboxDesc':
     'Acesso total roda os workers Codex sem nenhum sandbox. Use só onde o sandbox não consegue iniciar, como em alguns containers.',
   'prefs.orchestrationCodexSandboxWorkspace': 'Só a pasta do projeto',
-  'prefs.orchestrationCodexSandboxFull': 'Acesso total (sem sandbox)',
+  'prefs.orchestrationCodexSandboxFull': 'Acesso total',
   'prefs.cliPathPick': 'Selecione o CLI do {agent}',
   'prefs.cliPathMismatch': 'Isso não parece ser o CLI',
   'prefs.cliPathMismatchBody':
     'A ferramenta de linha de comando do {agent} se chama "{command}". O arquivo escolhido tem outro nome, então ele pode abrir o aplicativo gráfico em vez de rodar no terminal.',
-  'prefs.enabledAgents': 'Agentes habilitados ({count}/4)',
+  'prefs.enabledAgents': 'Agentes habilitados ({count}/{total})',
   'prefs.resetSession': 'Resetar última sessão',
   'prefs.resetSessionDesc':
     'Se reabrir o app não retomou seus agentes, isto acha a conversa mais recente de cada agente aberto e reinicia com resume.',

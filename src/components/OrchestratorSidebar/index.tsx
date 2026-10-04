@@ -651,16 +651,17 @@ export function OrchestratorSidebar() {
           <AgentIcon type={planner.agent} size={14} theme={theme} />
         </span>
         {planners.length > 1 ? (
-          <Dropdown
-            className={styles.picker}
-            value={planner.id}
-            options={planners.map((candidate) => ({
-              value: candidate.id,
-              label: candidate.label,
-            }))}
-            onChange={setPicked}
-            ariaLabel={t('orchestrator.sidebarPlannerPicker')}
-          />
+          <div className={styles.picker}>
+            <Dropdown
+              value={planner.id}
+              options={planners.map((candidate) => ({
+                value: candidate.id,
+                label: candidate.label,
+              }))}
+              onChange={setPicked}
+              ariaLabel={t('orchestrator.sidebarPlannerPicker')}
+            />
+          </div>
         ) : (
           <span className={styles.title} title={planner.label}>
             {planner.label}
