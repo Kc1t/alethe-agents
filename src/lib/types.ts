@@ -145,7 +145,15 @@ export type SetupWalkthroughStep = 'project' | 'appearance'
 export const SETUP_WALKTHROUGH_STEPS: SetupWalkthroughStep[] = ['project', 'appearance']
 
 export type FeatureId =
-  'browser' | 'graphify' | 'aiMemory' | 'mcp' | 'playwright' | 'orchestrator' | 'prs' | 'gsdSync'
+  | 'browser'
+  | 'graphify'
+  | 'aiMemory'
+  | 'mcp'
+  | 'playwright'
+  | 'orchestrator'
+  | 'prs'
+  | 'gsdSync'
+  | 'agentsPanel'
 
 export type TodoItem = {
   id: string
@@ -594,6 +602,58 @@ export type OrchestrationSettings = {
   defaultTimeoutSeconds: number
   /** Codex plugin ids (`name@marketplace`) turned off in worker threads. */
   workerDisabledPlugins: string[]
+  /** Kind/effort/quota rules that pick a role when the planner leaves the choice to Alethe. */
+  routing: RoutingSettings
+}
+
+/** Task category the planner reports on a delegate call; drives routing rules. */
+export type DelegateKind = 'research' | 'code' | 'review' | 'command' | 'scrap' | 'docs'
+
+/** Coarse effort the planner assigns to a delegated task; drives routing rules. */
+export type EffortClass = 'light' | 'standard' | 'deep'
+
+/** A quota condition: the named window must sit below `below` percent for the rule to fire. */
+export type QuotaGate = {
+  agent: 'claude' | 'codex'
+  /** Claude: 5h / 7d / 7d-Opus. Codex reads 'opus' as its secondary (weekly) window. */
+  window: 'short' | 'week' | 'opus'
+  below: number
+}
+
+/** First matching enabled rule wins; the delegate call runs as the named role. */
+export type RoutingRule = {
+  id: string
+  enabled: boolean
+  /** Kinds the rule matches; empty matches any kind. */
+  kinds: DelegateKind[]
+  /** Effort classes the rule matches; empty matches any effort. */
+  efforts: EffortClass[]
+  /** Every gate must pass for the rule to fire. */
+  gates: QuotaGate[]
+  /** Name of the OrchestrationRole the matching call runs as. */
+  role: string
+}
+
+export type RoutingPresetId = 'economy' | 'balanced' | 'performance' | 'custom'
+
+export type RoutingSettings = {
+  preset: RoutingPresetId
+  /** Evaluated in order; the first matching enabled rule wins. */
+  rules: RoutingRule[]
+  /** Quota percent past which a provider counts as critical. Default 80. */
+  criticalThreshold: number
+  /** Lets deep-effort calls route to Opus-class roles. Default true. */
+  allowOpusOnDeep: boolean
+  /** What a delegate call does when every provider sits past criticalThreshold. Default 'ask'. */
+  onBothCritical: 'ask' | 'run-cheapest' | 'block'
+}
+
+export const DEFAULT_ROUTING_SETTINGS: RoutingSettings = {
+  preset: 'balanced',
+  rules: [],
+  criticalThreshold: 80,
+  allowOpusOnDeep: true,
+  onBothCritical: 'ask',
 }
 
 export type Preferences = {
@@ -861,12 +921,14 @@ export const DEFAULT_PREFERENCES: Preferences = {
     playwright: false,
     orchestrator: false,
     prs: true,
+    agentsPanel: true,
   },
   orchestration: {
     roles: [],
     maxConcurrent: 4,
     defaultTimeoutSeconds: 900,
     workerDisabledPlugins: [],
+    routing: DEFAULT_ROUTING_SETTINGS,
   },
   playwrightBrowserMode: 'shared',
   playwrightDedicatedHeadless: false,

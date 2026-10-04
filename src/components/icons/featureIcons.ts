@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   AppWindow,
+  Bot,
   BrainCircuit,
   GitPullRequest,
   Network,
@@ -22,4 +23,5 @@ export const FEATURE_ICONS: Record<FeatureId, LucideIcon> = {
   aiMemory: BrainCircuit,
   gsdSync: Sparkles,
   prs: GitPullRequest,
+  agentsPanel: Bot,
 }

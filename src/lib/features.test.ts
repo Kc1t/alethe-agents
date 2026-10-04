@@ -13,6 +13,7 @@ describe('normalizeEnabledFeatures', () => {
       orchestrator: false,
       gsdSync: false,
       prs: true,
+      agentsPanel: true,
     })
   })
 
@@ -26,6 +27,7 @@ describe('normalizeEnabledFeatures', () => {
       orchestrator: false,
       gsdSync: false,
       prs: true,
+      agentsPanel: true,
     })
   })
 
@@ -39,6 +41,7 @@ describe('normalizeEnabledFeatures', () => {
       orchestrator: false,
       gsdSync: false,
       prs: true,
+      agentsPanel: true,
     })
   })
 
@@ -52,7 +55,16 @@ describe('normalizeEnabledFeatures', () => {
       orchestrator: false,
       gsdSync: false,
       prs: true,
+      agentsPanel: true,
     })
+  })
+
+  it('enables the Agents panel by default and backfills it for existing profiles', () => {
+    expect(normalizeEnabledFeatures(undefined).agentsPanel).toBe(true)
+    expect(normalizeEnabledFeatures({ enabledFeatures: { prs: false } }).agentsPanel).toBe(true)
+    expect(normalizeEnabledFeatures({ enabledFeatures: { agentsPanel: false } }).agentsPanel).toBe(
+      false,
+    )
   })
 
   it('keeps the Playwright browser off unless explicitly enabled', () => {

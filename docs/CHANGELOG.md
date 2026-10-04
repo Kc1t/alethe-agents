@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Routing rules pick the role a delegated worker runs as.** The orchestration settings now carry
+  ordered rules over the task kind (`research`, `code`, `review`, `command`, `scrap`, `docs`), a
+  coarse effort class (`light`, `standard`, `deep`) and live quota gates per provider window. A
+  delegate call that names neither a role nor a model runs as the first matching rule's role; an
+  explicit role or model still wins. The quota share that counts as critical is now configurable
+  (default 80%), Opus-class roles can be kept out of rule routing, and when both providers are
+  past critical the settings choose between asking, running anyway with a note, or refusing the
+  delegation.
 - **Preferences → Terminal → Shell** picks which binary plain Shell tabs open. Alethe still detects
   one on its own (PowerShell 7 when available, then Windows PowerShell; `$SHELL` elsewhere), so the
   setting only matters when you want a specific shell — PowerShell 7 installed outside PATH, or
@@ -153,6 +161,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- The AI usage details modal no longer squeezes every provider into three fixed columns. With
+  more than three providers visible, the modal widens to fit them side by side, and the cards
+  redistribute evenly for any count instead of leaving a lone narrow card on a new row.
 - The Linux AppImage no longer opens to an empty window on modern Wayland desktops (Ubuntu
   24.04+, Fedora 40+, Arch). It shipped its own copy of a system graphics library that clashed
   with the one your graphics driver loads, so the window died before drawing anything. It now

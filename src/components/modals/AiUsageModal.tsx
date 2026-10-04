@@ -70,7 +70,16 @@ export function AiUsageModal() {
   const closeModal = useUiStore((state) => state.closeModal)
   const setCodexUsage = useUiStore((state) => state.setCodexUsage)
   const setAntigravityUsage = useUiStore((state) => state.setAntigravityUsage)
+  const preferences = useProjectsStore((state) => state.preferences)
   const [editing, setEditing] = useState(false)
+
+  const visibleProviders = USAGE_PROVIDERS.filter(
+    (provider) => preferences[provider.usagePrefKey],
+  ).length
+  // The card grid needs ~300px per provider to stay readable; grow the modal so
+  // four or more providers still fit side by side instead of wrapping a lone card.
+  const width =
+    visibleProviders <= 3 ? 920 : Math.min(920 + (visibleProviders - 3) * 300, 1600)
 
   useEffect(() => {
     if (!open) return
@@ -94,7 +103,7 @@ export function AiUsageModal() {
       open={open}
       onClose={closeModal}
       title={t('usageModal.title')}
-      width={920}
+      width={width}
       headerAction={
         <button
           type="button"

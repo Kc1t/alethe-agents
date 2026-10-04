@@ -1,0 +1,159 @@
+.presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.globals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.advancedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  background: none;
+  border: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.advancedToggle:hover {
+  color: var(--fg);
+}
+
+.rules {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.rule {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.ruleHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ruleHeaderSpacer {
+  flex: 1;
+}
+
+.ruleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--fg-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition:
+    border-color 100ms,
+    background 100ms,
+    color 100ms;
+}
+
+.chip:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.chipActive {
+  border-color: var(--accent);
+  background: var(--accent-faint);
+  color: var(--fg);
+}
+
+.gate {
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) minmax(96px, 1fr) 80px 28px;
+  gap: 8px;
+  align-items: center;
+}
+
+.warning {
+  margin: 0;
+  font-size: 11px;
+  color: var(--status-waiting);
+}
+
+.switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition:
+    background var(--anim-fast) ease,
+    border-color var(--anim-fast) ease;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+  transition:
+    transform var(--anim-fast) ease,
+    background var(--anim-fast) ease;
+}
+
+.switch[aria-checked='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+.switch[aria-checked='true']::after {
+  transform: translateX(14px);
+  background: var(--accent);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+:global([data-visual-style='clean']) .chipActive {
+  border-color: var(--border-strong);
+  background: var(--clean-active-bg);
+}

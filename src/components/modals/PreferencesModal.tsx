@@ -278,6 +278,21 @@ export function PreferencesModal() {
           'orchestration orquestração workers concurrency paralelo timeout budget orçamento',
       },
       {
+        category: 'orchestration',
+        target: 'orchestration-routing',
+        label: t('prefs.orchestrationRouting'),
+        description: t('prefs.orchestrationRoutingDesc'),
+        keywords:
+          'orchestration routing roteamento preset regras rules delegate economy balanced performance custom 路由 规则 预设',
+      },
+      {
+        category: 'orchestration',
+        target: 'orchestration-routing',
+        label: t('prefs.routingCriticalThreshold'),
+        description: t('prefs.routingCriticalThresholdHint'),
+        keywords: 'quota cota critical crítico threshold limite opus gate 配额 阈值 临界',
+      },
+      {
         category: 'terminal',
         target: 'spawn-concurrency',
         label: t('prefs.spawnConcurrency'),

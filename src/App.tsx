@@ -52,6 +52,7 @@ import { VoiceCommand } from './components/VoiceCommand'
 import { WorkspaceView } from './components/WorkspaceView'
 import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useAgentHookBridge } from './hooks/useAgentHookBridge'
+import { useAgentsSidebarAutoOpen } from './hooks/useAgentsSidebarAutoOpen'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
@@ -168,8 +169,9 @@ export default function App() {
 
   const playwrightEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.playwright)
   const mcpEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.mcp)
+  const agentsPanelEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.agentsPanel)
   const rightSidebarTabs = useSidebarViews('right')
-  const rightPanelEnabled = mcpEnabled || rightSidebarTabs.length > 0
+  const rightPanelEnabled = mcpEnabled || agentsPanelEnabled || rightSidebarTabs.length > 0
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   // Keep panel defaults stable while dragging. Updating defaultSize on every
   // resize event can make react-resizable-panels rebuild the layout mid-drag.
@@ -205,6 +207,7 @@ export default function App() {
   useResourceSupervisor(hydrated)
   useAgentBrowserOffers(playwrightEnabled)
   useAgentHookBridge()
+  useAgentsSidebarAutoOpen()
   useCliOpenRequests(hydrated)
 
   useEffect(() => {

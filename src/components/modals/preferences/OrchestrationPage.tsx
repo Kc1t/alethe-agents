@@ -19,6 +19,7 @@ import { Dropdown } from '../../ui/Dropdown'
 import controls from '../controls.module.css'
 import styles from './OrchestrationPage.module.css'
 import { SettingsSection } from './primitives'
+import { RoutingSection } from './RoutingSection'
 
 const AGENTS: OrchestrationRole['agent'][] = ['codex', 'claude']
 const ORCHESTRATORS: NonNullable<OrchestrationRole['orchestrator']>[] = ['claude', 'codex']
@@ -399,6 +400,8 @@ export function OrchestrationPage() {
           {t('prefs.orchestrationAddRole')}
         </button>
       </SettingsSection>
+
+      <RoutingSection />
     </>
   )
 }

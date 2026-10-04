@@ -1053,7 +1053,9 @@
 }
 
 .usageStripTwo {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* Auto-fit keeps any provider count balanced: cards stretch to fill the row and
+     wrap to a new row instead of leaving a dangling narrow card. */
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
 }
 
 .usageEmpty {

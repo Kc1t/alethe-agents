@@ -114,6 +114,8 @@ export function normalizeEnabledFeatures(
       // Opt-in: OpenCode-only, and it polls the worktrees of every watched project.
       gsdSync: raw.enabledFeatures.gsdSync ?? false,
       prs: raw.enabledFeatures.prs ?? true,
+      // Read-only sidebar view; on by default, backfilled for profiles saved before it existed.
+      agentsPanel: raw.enabledFeatures.agentsPanel ?? true,
     }
   }
   return {
@@ -125,5 +127,6 @@ export function normalizeEnabledFeatures(
     orchestrator: false,
     gsdSync: false,
     prs: true,
+    agentsPanel: true,
   }
 }

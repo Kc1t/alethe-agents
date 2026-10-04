@@ -1,4 +1,14 @@
-import { DEFAULT_PREFERENCES, type OrchestrationRole, type OrchestrationSettings } from './types'
+import {
+  DEFAULT_PREFERENCES,
+  DEFAULT_ROUTING_SETTINGS,
+  type DelegateKind,
+  type EffortClass,
+  type OrchestrationRole,
+  type OrchestrationSettings,
+  type QuotaGate,
+  type RoutingRule,
+  type RoutingSettings,
+} from './types'
 
 const DEFAULTS = DEFAULT_PREFERENCES.orchestration
 
@@ -86,8 +96,82 @@ export function normalizeOrchestrationSettings(raw: unknown): OrchestrationSetti
     workerDisabledPlugins: pluginIds(
       Array.isArray(source.workerDisabledPlugins) ? source.workerDisabledPlugins : [],
     ),
+    routing: normalizeRoutingSettings(source.routing),
   }
 }
+
+const DELEGATE_KINDS: readonly unknown[] = ['research', 'code', 'review', 'command', 'scrap', 'docs']
+const EFFORT_CLASSES: readonly unknown[] = ['light', 'standard', 'deep']
+const GATE_AGENTS: readonly unknown[] = ['claude', 'codex']
+const GATE_WINDOWS: readonly unknown[] = ['short', 'week', 'opus']
+const ROUTING_PRESET_IDS: readonly unknown[] = ['economy', 'balanced', 'performance', 'custom']
+const ON_BOTH_CRITICAL: readonly unknown[] = ['ask', 'run-cheapest', 'block']
+
+/** A gate keeps only what the orchestrator can evaluate: known window, whole percent 1–99. */
+export function isValidQuotaGate(gate: unknown): gate is QuotaGate {
+  if (!gate || typeof gate !== 'object') return false
+  const { agent, window, below } = gate as Record<string, unknown>
+  return (
+    GATE_AGENTS.includes(agent) &&
+    GATE_WINDOWS.includes(window) &&
+    typeof below === 'number' &&
+    Number.isInteger(below) &&
+    below >= 1 &&
+    below <= 99
+  )
+}
+
+/**
+ * Whether the orchestrator would evaluate this rule. A rule naming a role that does not exist is
+ * kept — the router skips it at resolve time and the Preferences editor flags it, so renaming a
+ * role never silently deletes the rules pointing at it.
+ */
+export function isValidRoutingRule(rule: unknown): rule is RoutingRule {
+  if (!rule || typeof rule !== 'object') return false
+  const { id, enabled, kinds, efforts, gates, role } = rule as Record<string, unknown>
+  if (typeof id !== 'string' || id.length === 0) return false
+  if (typeof enabled !== 'boolean') return false
+  if (typeof role !== 'string' || !isOrchestrationName(role)) return false
+  const list = (value: unknown, allowed: readonly unknown[]) =>
+    Array.isArray(value) && value.every((entry) => allowed.includes(entry))
+  if (!list(kinds, DELEGATE_KINDS) || !list(efforts, EFFORT_CLASSES)) return false
+  return Array.isArray(gates) && gates.every(isValidQuotaGate)
+}
+
+/** Routing settings read from disk; invalid rules and gates are dropped, not repaired. */
+export function normalizeRoutingSettings(raw: unknown): RoutingSettings {
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const seen = new Set<string>()
+  const rules = (Array.isArray(source.rules) ? source.rules : []).filter(
+    (rule): rule is RoutingRule => {
+      if (!isValidRoutingRule(rule) || seen.has(rule.id)) return false
+      seen.add(rule.id)
+      return true
+    },
+  )
+  const threshold = source.criticalThreshold
+  return {
+    preset: ROUTING_PRESET_IDS.includes(source.preset)
+      ? (source.preset as RoutingSettings['preset'])
+      : DEFAULT_ROUTING_SETTINGS.preset,
+    rules,
+    criticalThreshold:
+      typeof threshold === 'number' && Number.isInteger(threshold) && threshold >= 10 && threshold <= 99
+        ? threshold
+        : DEFAULT_ROUTING_SETTINGS.criticalThreshold,
+    allowOpusOnDeep:
+      typeof source.allowOpusOnDeep === 'boolean'
+        ? source.allowOpusOnDeep
+        : DEFAULT_ROUTING_SETTINGS.allowOpusOnDeep,
+    onBothCritical: ON_BOTH_CRITICAL.includes(source.onBothCritical)
+      ? (source.onBothCritical as RoutingSettings['onBothCritical'])
+      : DEFAULT_ROUTING_SETTINGS.onBothCritical,
+  }
+}
+
+/** Lists the UI needs when editing rules, typed as the real unions. */
+export const ROUTING_KINDS = DELEGATE_KINDS as readonly DelegateKind[]
+export const ROUTING_EFFORT_CLASSES = EFFORT_CLASSES as readonly EffortClass[]
 
 /**
  * Whether `role` may run as `fallback` while its provider is running out (#268): another role,

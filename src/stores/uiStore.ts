@@ -59,7 +59,7 @@ type ModalKind =
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
 /** Open on purpose: plugins contribute right-sidebar tabs at runtime. */
-export type RightSidebarMode = 'markdown' | 'gsdSync' | 'mcp' | 'prs' | 'plugins' | (string & {})
+export type RightSidebarMode = 'markdown' | 'gsdSync' | 'mcp' | 'prs' | 'plugins' | 'agents' | (string & {})
 export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
@@ -119,6 +119,11 @@ type UiState = {
   activeView: ActiveView
 
   rightSidebarMode: RightSidebarMode
+  /**
+   * Sidebar state from before focus mode auto-opened the Agents tab on a planner, so leaving the
+   * planner can put the panel back exactly as it was. Null while no auto-open is in effect.
+   */
+  agentsSidebarPrev: { mode: RightSidebarMode; visible: boolean } | null
   /** Active left-sidebar tab. Shared so both shells and commands address the same one. */
   leftSidebarTab: string
   /** Reveals projects marked as hidden; resets on every app start. */
@@ -173,6 +178,8 @@ type UiState = {
   showGsdSyncSidebar: () => void
   showMcpSidebar: () => void
   showPrsSidebar: () => void
+  showAgentsSidebar: () => void
+  setAgentsSidebarPrev: (prev: { mode: RightSidebarMode; visible: boolean } | null) => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
@@ -213,6 +220,7 @@ export const useUiStore = create<UiState>((set) => ({
   selectedPanes: [],
   activeView: 'workspace',
   rightSidebarMode: TODOS_VIEW_ID,
+  agentsSidebarPrev: null,
   leftSidebarTab: 'projects',
   revealHiddenProjects: false,
   rightSidebarMarkdown: null,
@@ -322,6 +330,8 @@ export const useUiStore = create<UiState>((set) => ({
   showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
   showPrsSidebar: () => set({ rightSidebarMode: 'prs' }),
+  showAgentsSidebar: () => set({ rightSidebarMode: 'agents' }),
+  setAgentsSidebarPrev: (prev) => set({ agentsSidebarPrev: prev }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, actions, silent }) =>

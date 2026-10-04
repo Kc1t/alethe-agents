@@ -6,6 +6,8 @@ export type AgentFitness = {
   resetsAt: string | null
   plan?: string
   rateLimited: boolean
+  /** Per-window utilization percent by label ('5h', 'week', 'opus', ...); the routing gates read these. */
+  windows: Record<string, number>
 }
 
 type Window = { label: string; used: number; resetsAt: string | null }
@@ -19,6 +21,14 @@ function isoFromMs(ms: number): string | null {
 }
 
 export function claudeFitness(usage: ClaudeUsage): AgentFitness {
+  const windows: Record<string, number> = {
+    '5h': usage.five_hour.utilization,
+    week: usage.seven_day.utilization,
+    opus: usage.seven_day_opus.utilization,
+    ...Object.fromEntries(
+      (usage.model_limits ?? []).map((limit) => [limit.model.toLowerCase(), limit.utilization]),
+    ),
+  }
   const worst = worstOf([
     { label: '5h', used: usage.five_hour.utilization, resetsAt: usage.five_hour.resets_at || null },
     {
@@ -42,10 +52,15 @@ export function claudeFitness(usage: ClaudeUsage): AgentFitness {
     used: Math.round(worst.used),
     resetsAt: worst.resetsAt,
     rateLimited: false,
+    windows,
   }
 }
 
 export function codexFitness(usage: CodexUsage): AgentFitness {
+  const windows: Record<string, number> = {
+    '5h': usage.primary.used_percent,
+    week: usage.secondary.used_percent,
+  }
   const worst = worstOf([
     {
       label: '5h',
@@ -64,5 +79,6 @@ export function codexFitness(usage: CodexUsage): AgentFitness {
     resetsAt: worst.resetsAt,
     plan: usage.plan || undefined,
     rateLimited: usage.rate_limited,
+    windows,
   }
 }

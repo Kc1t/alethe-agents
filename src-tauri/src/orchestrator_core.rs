@@ -127,6 +127,84 @@ fn role_for<'a>(roles: &'a [Role], name: &str, orchestrator: Option<&str>) -> Op
     row(orchestrator).or_else(|| row(None))
 }
 
+/// The default share of a quota window that counts as critical, matching
+/// `USAGE_FALLBACK_THRESHOLD` on the frontend; the routing settings can move it.
+pub const DEFAULT_CRITICAL_THRESHOLD: f64 = 80.0;
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_critical_threshold() -> f64 {
+    DEFAULT_CRITICAL_THRESHOLD
+}
+
+fn default_on_both_critical() -> String {
+    "ask".to_string()
+}
+
+/// A quota condition on a routing rule: the named window of the named agent must sit below
+/// `below` percent for the rule to fire. `window` is "short" (5h), "week" (7d) or "opus"
+/// (Claude's 7d-Opus; Codex reads it as its secondary window).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuotaGate {
+    pub agent: String,
+    pub window: String,
+    pub below: f64,
+}
+
+/// One routing rule. Empty `kinds`/`efforts` match any kind/effort; every gate must pass.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutingRule {
+    pub id: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub kinds: Vec<String>,
+    #[serde(default)]
+    pub efforts: Vec<String>,
+    #[serde(default)]
+    pub gates: Vec<QuotaGate>,
+    /// The role a matching call runs as.
+    pub role: String,
+}
+
+/// The kind/effort/quota rules that pick a role when a delegate call names neither `role` nor
+/// `model`. Absent from older settings payloads, everything defaults to today's behavior.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutingSettings {
+    #[serde(default = "default_preset")]
+    pub preset: String,
+    #[serde(default)]
+    pub rules: Vec<RoutingRule>,
+    #[serde(default = "default_critical_threshold")]
+    pub critical_threshold: f64,
+    #[serde(default = "default_true")]
+    pub allow_opus_on_deep: bool,
+    /// "ask" | "run-cheapest" | "block", for when every provider sits past the threshold.
+    #[serde(default = "default_on_both_critical")]
+    pub on_both_critical: String,
+}
+
+fn default_preset() -> String {
+    "balanced".to_string()
+}
+
+impl Default for RoutingSettings {
+    fn default() -> Self {
+        Self {
+            preset: default_preset(),
+            rules: Vec::new(),
+            critical_threshold: DEFAULT_CRITICAL_THRESHOLD,
+            allow_opus_on_deep: true,
+            on_both_critical: default_on_both_critical(),
+        }
+    }
+}
+
 /// What the Orchestration settings in Preferences hand to the orchestrator.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,6 +217,8 @@ pub struct OrchestrationSettings {
     /// Codex plugin ids turned off in worker threads (#266).
     #[serde(default)]
     pub worker_disabled_plugins: Vec<String>,
+    #[serde(default)]
+    pub routing: RoutingSettings,
 }
 
 /// How long a Codex model list is reused; a Codex update shows up after this.
@@ -671,6 +751,8 @@ struct Inner {
     roles: Vec<Role>,
     /// Codex plugins turned off in worker threads.
     worker_disabled_plugins: Vec<String>,
+    /// Kind/effort/quota rules that pick a role when the call leaves the choice to Alethe.
+    routing: RoutingSettings,
     job_counter: u64,
     run_counter: u64,
     planners: HashMap<String, Planner>,
@@ -924,6 +1006,7 @@ fn fallback_of<'a>(
     roles: &'a [Role],
     role: &Role,
     orchestrator: Option<&str>,
+    threshold: f64,
 ) -> Option<(&'a Role, Value)> {
     let name = role.fallback.as_deref()?;
     let fallback = role_for(roles, name, orchestrator).filter(|other| other.name != role.name)?;
@@ -932,8 +1015,11 @@ fn fallback_of<'a>(
     }
     let snapshot = fitness
         .get(&role.agent)
-        .filter(|snapshot| past_threshold(snapshot))?;
-    if fitness.get(&fallback.agent).is_some_and(past_threshold) {
+        .filter(|snapshot| past_threshold(snapshot, threshold))?;
+    if fitness
+        .get(&fallback.agent)
+        .is_some_and(|snapshot| past_threshold(snapshot, threshold))
+    {
         return None;
     }
     Some((
@@ -947,6 +1033,138 @@ fn fallback_of<'a>(
             "used": snapshot.get("used").and_then(Value::as_f64).unwrap_or(0.0).round(),
         }),
     ))
+}
+
+/// The task categories a delegate call may report; routing rules match on them.
+const DELEGATE_KINDS: [&str; 6] = ["research", "code", "review", "command", "scrap", "docs"];
+/// The coarse effort classes a delegate call may report; routing rules match on them.
+const EFFORT_CLASSES: [&str; 3] = ["light", "standard", "deep"];
+
+/// The kind and effort class a delegate call reports, validated. `effort_class` is accepted as an
+/// alias of `effortClass` for planners that snake_case their arguments.
+fn delegate_kind_and_effort(
+    arguments: &Map<String, Value>,
+) -> Result<(Option<String>, Option<String>), String> {
+    let kind = match arguments.get("kind") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(kind)) if DELEGATE_KINDS.contains(&kind.as_str()) => Some(kind.clone()),
+        Some(other) => {
+            return Err(format!(
+                "kind must be one of {}, got {other}",
+                DELEGATE_KINDS.join(", ")
+            ))
+        }
+    };
+    let effort = match arguments
+        .get("effortClass")
+        .or_else(|| arguments.get("effort_class"))
+    {
+        None | Some(Value::Null) => None,
+        Some(Value::String(effort)) if EFFORT_CLASSES.contains(&effort.as_str()) => {
+            Some(effort.clone())
+        }
+        Some(other) => {
+            return Err(format!(
+                "effortClass must be one of {}, got {other}",
+                EFFORT_CLASSES.join(", ")
+            ))
+        }
+    };
+    Ok((kind, effort))
+}
+
+/// A gate reads the cached fitness snapshot the frontend pushes: the per-window table when it is
+/// there, else the worst window when it is the one named. A window Alethe has no reading for
+/// passes — a gate must never hold work back on a guess.
+fn gate_passes(fitness: &HashMap<String, Value>, gate: &QuotaGate) -> bool {
+    let Some(snapshot) = fitness.get(&gate.agent) else {
+        return true;
+    };
+    // Codex has no Opus window; its secondary (weekly) window is the closest reading.
+    let label = match gate.window.as_str() {
+        "short" => "5h",
+        "opus" if gate.agent == "codex" => "week",
+        other => other,
+    };
+    let used = snapshot
+        .get("windows")
+        .and_then(|windows| windows.get(label))
+        .and_then(Value::as_f64)
+        .or_else(|| {
+            (snapshot.get("worst").and_then(Value::as_str) == Some(label))
+                .then(|| snapshot.get("used").and_then(Value::as_f64))
+                .flatten()
+        });
+    used.is_none_or(|used| used < gate.below)
+}
+
+/// Whether the role runs Claude on an Opus-class model.
+fn is_opus_role(role: &Role) -> bool {
+    role.agent == "claude"
+        && role
+            .model
+            .as_deref()
+            .is_some_and(|model| model.to_ascii_lowercase().contains("opus"))
+}
+
+/// The rule that picks a role for a call that leaves the choice to Alethe: the first enabled rule
+/// whose kinds, efforts and gates all match, skipping rules whose role this planner cannot reach
+/// and — with allowOpusOnDeep off — rules that would land on Opus. The matched call runs exactly
+/// as if it had named the role itself. Returns the rewritten arguments and the routing note for
+/// the worker card.
+fn resolve_routing_rule(
+    core: &Core,
+    arguments: &Map<String, Value>,
+    planner: Option<&str>,
+) -> Result<Option<(Map<String, Value>, Value)>, String> {
+    let (kind, effort) = delegate_kind_and_effort(arguments)?;
+    // An explicit role or model always wins over the rules; without a kind there is nothing to
+    // match on.
+    if kind.is_none()
+        || arguments.get("role").is_some_and(|value| !value.is_null())
+        || arguments.get("model").is_some_and(|value| !value.is_null())
+    {
+        return Ok(None);
+    }
+    let kind = kind.expect("rule routing requires a kind");
+    let inner = guard(&core.inner);
+    if inner.routing.rules.is_empty() {
+        return Ok(None);
+    }
+    let orchestrator = planner
+        .and_then(|id| inner.planners.get(id))
+        .map(|planner| planner.agent.as_str());
+    let fitness = guard(&core.fitness);
+    for rule in &inner.routing.rules {
+        if !rule.enabled {
+            continue;
+        }
+        if !rule.kinds.is_empty() && !rule.kinds.contains(&kind) {
+            continue;
+        }
+        // A call that names no effort only matches a rule open to any effort.
+        let effort_matches = match &effort {
+            None => rule.efforts.is_empty(),
+            Some(effort) => rule.efforts.is_empty() || rule.efforts.contains(effort),
+        };
+        if !effort_matches {
+            continue;
+        }
+        if !rule.gates.iter().all(|gate| gate_passes(&fitness, gate)) {
+            continue;
+        }
+        let Some(role) = role_for(&inner.roles, &rule.role, orchestrator) else {
+            continue;
+        };
+        if !inner.routing.allow_opus_on_deep && is_opus_role(role) {
+            continue;
+        }
+        let mut resolved = arguments.clone();
+        resolved.insert("role".into(), json!(rule.role));
+        let note = json!({ "verdict": "rule", "rule": rule.id, "role": rule.role });
+        return Ok(Some((resolved, note)));
+    }
+    Ok(None)
 }
 
 /// A delegate call that names a role gets that role's settings and nothing else, so a planner can
@@ -994,7 +1212,13 @@ fn resolve_role(
             }
         ));
     };
-    let (role, note) = match fallback_of(&guard(&core.fitness), &inner.roles, asked, orchestrator) {
+    let (role, note) = match fallback_of(
+        &guard(&core.fitness),
+        &inner.roles,
+        asked,
+        orchestrator,
+        inner.routing.critical_threshold,
+    ) {
         Some((fallback, note)) => (fallback, Some(note)),
         None => (asked, None),
     };
@@ -1304,6 +1528,7 @@ impl Core {
             };
             inner.roles = settings.roles;
             inner.worker_disabled_plugins = settings.worker_disabled_plugins;
+            inner.routing = settings.routing;
             self.notify(&inner);
         }
         // A higher limit lets queued work start now instead of after the next worker finishes.
@@ -2232,7 +2457,7 @@ pub fn tools() -> Value {
     json!([
         {
             "name": "alethe_delegate",
-            "description": "Hand independent units of work to Codex or Claude workers that Alethe runs as separate processes. These are NOT your own subagents: they are a different agent on its own token budget, so their reading and writing costs you nothing but the task text. Prefer this over launching subagents of your own for the same work. They also outlive the turn, can be corrected mid-run with alethe_steer, and can each take an isolated git worktree. Returns job ids immediately; the workers run in parallel. Delegate when the work splits into units that each need their own reading and judgement, and there are at least two of them: one unit per area of the codebase, per service, per feature. Send every unit in ONE call so they run at the same time, and make each task self contained. Do NOT delegate work that is uniform across its inputs, that one command or script does in a single pass, or that is quicker to finish than to describe.",
+            "description": "Hand independent units of work to Codex or Claude workers that Alethe runs as separate processes. These are NOT your own subagents: they are a different agent on its own token budget, so their reading and writing costs you nothing but the task text. Prefer this over launching subagents of your own for the same work. They also outlive the turn, can be corrected mid-run with alethe_steer, and can each take an isolated git worktree. Returns job ids immediately; the workers run in parallel. Delegate when the work splits into units that each need their own reading and judgement, and there are at least two of them: one unit per area of the codebase, per service, per feature. Send every unit in ONE call so they run at the same time, and make each task self contained. Always say what the work is in kind, and set effortClass when you can tell how much thinking it needs. Name neither role nor model and Alethe picks the role from the person's routing rules - kind, effortClass and the live quotas decide; a role or model you name always wins over the rules. Do NOT delegate work that is uniform across its inputs, that one command or script does in a single pass, or that is quicker to finish than to describe.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -2267,6 +2492,16 @@ pub fn tools() -> Value {
                     "effort": {
                         "type": "string",
                         "description": "Reasoning effort. For Codex, one the model supports (commonly low, medium, high or xhigh); for Claude, low, medium, high, xhigh or max. Omit it to keep the CLI's own setting."
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["research", "code", "review", "command", "scrap", "docs"],
+                        "description": "What the work is. Always set it: with no role and no model named, it is what Alethe's routing rules match on to pick the role."
+                    },
+                    "effortClass": {
+                        "type": "string",
+                        "enum": ["light", "standard", "deep"],
+                        "description": "How much thinking the work needs, coarse: light, standard or deep. Routing rules can send deep work to stronger roles. Omit it when you cannot tell; rules that ask for an effort class then do not match."
                     },
                     "readOnly": {
                         "type": "boolean",
@@ -2421,10 +2656,6 @@ fn required_str(arguments: &Map<String, Value>, key: &str) -> Result<String, Str
         .ok_or_else(|| format!("{key} is required"))
 }
 
-/// The share of a window that counts as running out, matching `USAGE_FALLBACK_THRESHOLD` on the
-/// frontend so the planner's hint and the human's warning chip never disagree.
-const HEADROOM_THRESHOLD: f64 = 80.0;
-
 /// How close an agent is to its ceiling. Being rate-limited outranks any percentage: the window is
 /// not almost gone, it is gone.
 fn strain_of(snapshot: &Value) -> f64 {
@@ -2438,17 +2669,19 @@ fn strain_of(snapshot: &Value) -> f64 {
     snapshot.get("used").and_then(Value::as_f64).unwrap_or(0.0)
 }
 
-fn past_threshold(snapshot: &Value) -> bool {
-    strain_of(snapshot) >= HEADROOM_THRESHOLD
+/// Past the share of a window the routing settings call critical (default 80%, so the planner's
+/// hint and the human's warning chip agree until the person moves it).
+fn past_threshold(snapshot: &Value, threshold: f64) -> bool {
+    strain_of(snapshot) >= threshold
 }
 
 /// The **most** strained agent past the threshold, not merely the first one found — when both sides
 /// are running out, the board has to name the same one on every call.
-fn strained_agent(block: &Value) -> Option<(String, f64, String)> {
+fn strained_agent(block: &Value, threshold: f64) -> Option<(String, f64, String)> {
     block
         .as_object()?
         .iter()
-        .filter(|(agent, snapshot)| agent.as_str() != "headroom" && past_threshold(snapshot))
+        .filter(|(agent, snapshot)| agent.as_str() != "headroom" && past_threshold(snapshot, threshold))
         .max_by(|a, b| {
             strain_of(a.1)
                 .partial_cmp(&strain_of(b.1))
@@ -2468,8 +2701,8 @@ fn strained_agent(block: &Value) -> Option<(String, f64, String)> {
 /// Recorded on the worker so the board can show why it ran where it ran. `ignored` is the case
 /// worth seeing: the planner had this same reading in every earlier tool response and delegated
 /// into the strained side anyway.
-fn routing_note(block: &Value, requested: &str) -> Option<Value> {
-    let (agent, used, window) = strained_agent(block)?;
+fn routing_note(block: &Value, requested: &str, threshold: f64) -> Option<Value> {
+    let (agent, used, window) = strained_agent(block, threshold)?;
     Some(json!({
         "verdict": if requested == agent { "ignored" } else { "chosen" },
         "agent": agent,
@@ -2478,14 +2711,14 @@ fn routing_note(block: &Value, requested: &str) -> Option<Value> {
     }))
 }
 
-fn headroom_hint(block: &Value, requested: &str) -> Option<Value> {
+fn headroom_hint(block: &Value, requested: &str, threshold: f64) -> Option<Value> {
     let snapshot = block.get(requested)?;
     let used = snapshot.get("used").and_then(Value::as_f64).unwrap_or(0.0);
     let limited = snapshot
         .get("rateLimited")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    if !limited && used < HEADROOM_THRESHOLD {
+    if !limited && used < threshold {
         return None;
     }
     let other = block.get("headroom").and_then(Value::as_str)?;
@@ -2508,7 +2741,7 @@ fn headroom_hint(block: &Value, requested: &str) -> Option<Value> {
     };
     // Naming the roomier side without saying it is also nearly gone would read as "this one is
     // fine", and it is not.
-    let both_strained = past_threshold(other_snapshot);
+    let both_strained = past_threshold(other_snapshot, threshold);
     Some(json!({
         "agent": other,
         "bothStrained": both_strained,
@@ -2624,12 +2857,13 @@ pub fn call_tool(
             })
             .unwrap_or_else(|| "codex".to_string());
         let requested = requested.as_str();
-        if let Some(note) = routing_note(&block, requested) {
+        let threshold = guard(&core.inner).routing.critical_threshold;
+        if let Some(note) = routing_note(&block, requested, threshold) {
             for id in ids {
                 core.set_job_routing(&id, note.clone());
             }
         }
-        if let Some(hint) = headroom_hint(&block, requested) {
+        if let Some(hint) = headroom_hint(&block, requested, threshold) {
             map.insert("headroomHint".into(), hint);
         }
     }
@@ -2645,13 +2879,29 @@ fn dispatch_tool(
 ) -> Result<Value, String> {
     match name {
         "alethe_delegate" => {
-            // A role becomes ordinary arguments, so it goes through the same checks as a call
-            // that spells them out.
+            // A rule becomes a role and a role becomes ordinary arguments, so everything goes
+            // through the same checks as a call that spells them out.
+            let routed = resolve_routing_rule(core, arguments, planner)?;
+            let rule_note = routed.as_ref().map(|(_, note)| note.clone());
+            let arguments = routed.as_ref().map_or(arguments, |(resolved, _)| resolved);
             let resolved = resolve_role(core, arguments, planner)?;
             let fallback_note = resolved.as_ref().and_then(|(_, note)| note.clone());
             let arguments = resolved
                 .as_ref()
                 .map_or(arguments, |(resolved, _)| resolved);
+            // The note the worker card shows: a fallback says more than the rule that picked the
+            // role, so it wins and carries the rule id along.
+            let mut routing_at_start = match (fallback_note.clone(), rule_note.clone()) {
+                (Some(mut fallback), Some(rule)) => {
+                    if let (Some(object), Some(id)) =
+                        (fallback.as_object_mut(), rule.get("rule").cloned())
+                    {
+                        object.insert("rule".into(), id);
+                    }
+                    Some(fallback)
+                }
+                (fallback, rule) => fallback.or(rule),
+            };
             let role = arguments
                 .get("role")
                 .and_then(Value::as_str)
@@ -2712,6 +2962,60 @@ fn dispatch_tool(
             // A read-only worker gives up on a write instead of asking, so it would never ask.
             if read_only && ask {
                 return Err("readOnly and askForApproval cannot be combined".into());
+            }
+            // Both providers past the critical share: the routing settings decide. "block" refuses
+            // the batch; "run-cheapest" runs it with a note; "ask" (or anything else) falls back
+            // to the headroom hint on the response — a delegate call is one request/response and
+            // the existing approval channel answers a running worker's questions, not a routing
+            // decision, so there is nobody to pause for here. A provider Alethe has no reading for
+            // is not critical.
+            if matches!(agent.as_str(), "claude" | "codex") {
+                let routing = guard(&core.inner).routing.clone();
+                let other = if agent == "claude" { "codex" } else { "claude" };
+                let fitness = guard(&core.fitness);
+                let past = |name: &str| {
+                    fitness
+                        .get(name)
+                        .is_some_and(|snapshot| past_threshold(snapshot, routing.critical_threshold))
+                };
+                if past(&agent) && past(other) {
+                    let used = |name: &str| {
+                        fitness
+                            .get(name)
+                            .and_then(|snapshot| snapshot.get("used"))
+                            .and_then(Value::as_f64)
+                            .unwrap_or(0.0)
+                    };
+                    match routing.on_both_critical.as_str() {
+                        "block" => {
+                            return Err(format!(
+                                "both providers are past {:.0}% of quota ({} at {:.0}%, {} at {:.0}%); the routing settings say to block — wait for a window to reset or change onBothCritical",
+                                routing.critical_threshold,
+                                agent,
+                                used(&agent),
+                                other,
+                                used(other),
+                            ));
+                        }
+                        "run-cheapest" => {
+                            routing_at_start = Some(match routing_at_start.take() {
+                                Some(mut note) => {
+                                    if let Some(object) = note.as_object_mut() {
+                                        object.insert("bothCritical".into(), json!(true));
+                                    }
+                                    note
+                                }
+                                None => json!({
+                                    "verdict": "both-critical",
+                                    "policy": "run-cheapest",
+                                    "agent": agent,
+                                    "used": used(&agent).round(),
+                                }),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
             }
             // The named policies decide for themselves what is worth asking about. The granular
             // form is the one that says plainly which callbacks this client will answer, which is
@@ -2852,7 +3156,7 @@ fn dispatch_tool(
                             child: None,
                             stdin: None,
                             inbox: VecDeque::new(),
-                            routing: fallback_note.clone(),
+                            routing: routing_at_start.clone(),
                             awaiting_steer: false,
                             next_request_id: 10,
                             superseded_by: None,
@@ -3622,5 +3926,346 @@ mod tests {
             ]
         );
         assert!(claude_worker_args(None, None, None).is_empty());
+    }
+
+    fn routing_core(settings: Value) -> Core {
+        let core = Core::default();
+        let parsed: OrchestrationSettings = serde_json::from_value(settings).expect("settings");
+        core.apply_settings(parsed);
+        core
+    }
+
+    fn routed(core: &Core, arguments: Value) -> Option<(Map<String, Value>, Value)> {
+        resolve_routing_rule(core, arguments.as_object().expect("arguments"), None)
+            .expect("routing")
+    }
+
+    #[test]
+    fn the_first_matching_rule_picks_the_role() {
+        let core = routing_core(json!({
+            "maxConcurrent": 4,
+            "defaultTimeoutSeconds": 900,
+            "roles": [
+                { "name": "builder", "agent": "codex" },
+                { "name": "scout", "agent": "claude", "model": "haiku" }
+            ],
+            "routing": { "rules": [
+                { "id": "r1", "enabled": true, "kinds": ["research"], "efforts": [], "gates": [], "role": "builder" },
+                { "id": "r2", "enabled": true, "kinds": ["research"], "efforts": [], "gates": [], "role": "scout" },
+                { "id": "r3", "enabled": false, "kinds": ["research"], "efforts": [], "gates": [], "role": "scout" }
+            ]}
+        }));
+        let (arguments, note) =
+            routed(&core, json!({ "tasks": ["x"], "kind": "research" })).expect("a match");
+        assert_eq!(arguments["role"], json!("builder"), "the first match wins");
+        assert_eq!(note, json!({ "verdict": "rule", "rule": "r1", "role": "builder" }));
+
+        // A kind no rule lists still reaches the rules open to any kind — none here.
+        assert!(routed(&core, json!({ "tasks": ["x"], "kind": "code" })).is_none());
+    }
+
+    #[test]
+    fn empty_kinds_and_efforts_match_anything_but_a_call_without_effort_skips_effort_rules() {
+        let core = routing_core(json!({
+            "maxConcurrent": 4,
+            "defaultTimeoutSeconds": 900,
+            "roles": [
+                { "name": "deep", "agent": "codex" },
+                { "name": "any", "agent": "codex" }
+            ],
+            "routing": { "rules": [
+                { "id": "r-deep", "enabled": true, "kinds": [], "efforts": ["deep"], "gates": [], "role": "deep" },
+                { "id": "r-any", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "any" }
+            ]}
+        }));
+        // No effortClass: the deep rule cannot match, the any-effort one does.
+        let (arguments, _) =
+            routed(&core, json!({ "tasks": ["x"], "kind": "code" })).expect("a match");
+        assert_eq!(arguments["role"], json!("any"));
+        // effortClass deep: the deep rule wins; the snake_case alias reads the same.
+        for key in ["effortClass", "effort_class"] {
+            let mut call = Map::new();
+            call.insert("tasks".into(), json!(["x"]));
+            call.insert("kind".into(), json!("code"));
+            call.insert(key.into(), json!("deep"));
+            let (arguments, _) = resolve_routing_rule(&core, &call, None)
+                .expect("routing")
+                .expect("a match");
+            assert_eq!(arguments["role"], json!("deep"), "{key}");
+        }
+        // A standard effort skips the deep rule and lands on the open one.
+        let (arguments, _) =
+            routed(&core, json!({ "tasks": ["x"], "kind": "code", "effortClass": "standard" }))
+                .expect("a match");
+        assert_eq!(arguments["role"], json!("any"));
+    }
+
+    #[test]
+    fn a_rule_for_an_unknown_role_is_skipped() {
+        let core = routing_core(json!({
+            "maxConcurrent": 4,
+            "defaultTimeoutSeconds": 900,
+            "roles": [{ "name": "any", "agent": "codex" }],
+            "routing": { "rules": [
+                { "id": "r-ghost", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "ghost" },
+                { "id": "r-any", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "any" }
+            ]}
+        }));
+        let (_, note) = routed(&core, json!({ "tasks": ["x"], "kind": "code" })).expect("a match");
+        assert_eq!(note["rule"], json!("r-any"));
+    }
+
+    #[test]
+    fn gates_read_the_cached_windows_and_unknown_readings_pass() {
+        let core = routing_core(json!({
+            "maxConcurrent": 4,
+            "defaultTimeoutSeconds": 900,
+            "roles": [
+                { "name": "expert", "agent": "claude", "model": "opus" },
+                { "name": "any", "agent": "codex" }
+            ],
+            "routing": { "rules": [
+                { "id": "r-gated", "enabled": true, "kinds": [], "efforts": [], "gates": [{ "agent": "claude", "window": "opus", "below": 50 }], "role": "expert" },
+                { "id": "r-any", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "any" }
+            ]}
+        }));
+        let call = json!({ "tasks": ["x"], "kind": "code", "effortClass": "deep" });
+
+        // No fitness pushed yet: the gate passes on an unknown reading.
+        let (arguments, _) = routed(&core, call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("expert"));
+
+        // Opus at 40% passes a below-50 gate; the other windows do not matter.
+        core.set_agent_fitness(
+            "claude",
+            json!({ "worst": "week", "used": 70, "rateLimited": false,
+                    "windows": { "5h": 10, "week": 70, "opus": 40 } }),
+        );
+        let (arguments, _) = routed(&core, call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("expert"), "opus is at 40%");
+
+        // Opus at 60% fails the gate even though the worst window is another one.
+        core.set_agent_fitness(
+            "claude",
+            json!({ "worst": "week", "used": 70, "rateLimited": false,
+                    "windows": { "5h": 10, "week": 70, "opus": 60 } }),
+        );
+        let (arguments, _) = routed(&core, call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("any"), "the gate held the expert rule back");
+
+        // An older snapshot without the per-window table reads its worst window when named.
+        core.set_agent_fitness("claude", json!({ "worst": "opus", "used": 90, "rateLimited": false }));
+        let (arguments, _) = routed(&core, call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("any"), "worst = opus at 90%");
+        core.set_agent_fitness("claude", json!({ "worst": "week", "used": 90, "rateLimited": false }));
+        let (arguments, _) = routed(&core, call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("expert"), "opus is unknown here, so it passes");
+    }
+
+    #[test]
+    fn an_explicit_role_or_model_wins_over_the_rules() {
+        let core = routing_core(json!({
+            "maxConcurrent": 4,
+            "defaultTimeoutSeconds": 900,
+            "roles": [{ "name": "any", "agent": "codex" }],
+            "routing": { "rules": [
+                { "id": "r-any", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "any" }
+            ]}
+        }));
+        for call in [
+            json!({ "tasks": ["x"], "kind": "code", "role": "any" }),
+            json!({ "tasks": ["x"], "kind": "code", "model": "gpt-6-astra" }),
+        ] {
+            assert!(routed(&core, call).is_none(), "an explicit choice skips the rules");
+        }
+        // No kind, no rules: nothing to match on.
+        assert!(routed(&core, json!({ "tasks": ["x"] })).is_none());
+        assert!(routed(&Core::default(), json!({ "tasks": ["x"], "kind": "code" })).is_none());
+    }
+
+    #[test]
+    fn an_unknown_kind_or_effort_class_is_refused() {
+        let core = Core::default();
+        for (key, value) in [("kind", "wander"), ("effortClass", "endless")] {
+            let mut arguments = Map::new();
+            arguments.insert("tasks".into(), json!(["x"]));
+            arguments.insert(key.into(), json!(value));
+            let error = resolve_routing_rule(&core, &arguments, None).expect_err("refused");
+            assert!(error.contains(key), "{error}");
+        }
+    }
+
+    #[test]
+    fn allow_opus_off_keeps_rules_away_from_opus_roles() {
+        let settings = |allow: bool| {
+            json!({
+                "maxConcurrent": 4,
+                "defaultTimeoutSeconds": 900,
+                "roles": [
+                    { "name": "expert", "agent": "claude", "model": "claude-opus-4" },
+                    { "name": "any", "agent": "codex" }
+                ],
+                "routing": {
+                    "allowOpusOnDeep": allow,
+                    "rules": [
+                        { "id": "r-expert", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "expert" },
+                        { "id": "r-any", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "any" }
+                    ]
+                }
+            })
+        };
+        let call = json!({ "tasks": ["x"], "kind": "code" });
+        let (arguments, _) = routed(&routing_core(settings(true)), call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("expert"));
+        let (arguments, _) = routed(&routing_core(settings(false)), call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("any"), "opus is off the rules' table");
+    }
+
+    #[test]
+    fn the_critical_threshold_moves_with_the_routing_settings() {
+        let settings = |threshold: f64| {
+            json!({
+                "maxConcurrent": 4,
+                "defaultTimeoutSeconds": 900,
+                "roles": [
+                    { "name": "writer", "agent": "claude", "fallback": "typist" },
+                    { "name": "typist", "agent": "codex" }
+                ],
+                "routing": { "criticalThreshold": threshold }
+            })
+        };
+        let fitness = |core: &Core| {
+            core.set_agent_fitness(
+                "claude",
+                json!({ "worst": "week", "used": 60, "rateLimited": false }),
+            );
+            core.set_agent_fitness(
+                "codex",
+                json!({ "worst": "week", "used": 10, "rateLimited": false }),
+            );
+        };
+        let mut call = Map::new();
+        call.insert("role".into(), json!("writer"));
+
+        let core = routing_core(settings(80.0));
+        fitness(&core);
+        let (_, note) = resolve_role(&core, &call, None)
+            .expect("role")
+            .expect("resolved");
+        assert!(note.is_none(), "60% is not critical at 80: {note:?}");
+
+        let core = routing_core(settings(50.0));
+        fitness(&core);
+        let (resolved, note) = resolve_role(&core, &call, None)
+            .expect("role")
+            .expect("resolved");
+        assert_eq!(resolved["agent"], json!("codex"), "60% is critical at 50");
+        assert_eq!(
+            note.expect("a fallback note")["verdict"],
+            json!("fallback")
+        );
+    }
+
+    #[test]
+    fn both_providers_critical_blocks_or_runs_with_a_note_as_configured() {
+        let exhausted = |core: &Core| {
+            core.set_agent_fitness(
+                "claude",
+                json!({ "worst": "week", "used": 95, "rateLimited": false }),
+            );
+            core.set_agent_fitness(
+                "codex",
+                json!({ "worst": "week", "used": 88, "rateLimited": false }),
+            );
+        };
+        let delegate = |core: &Core| {
+            let mut arguments = Map::new();
+            arguments.insert("tasks".into(), json!(["something"]));
+            arguments.insert("cwd".into(), json!("Z:/alethe-test/missing"));
+            call_tool(core, "alethe_delegate", &arguments, None)
+        };
+        // Asking for the more strained side makes the headroom hint name the other one.
+        let delegate_claude = |core: &Core| {
+            let mut arguments = Map::new();
+            arguments.insert("tasks".into(), json!(["something"]));
+            arguments.insert("cwd".into(), json!("Z:/alethe-test/missing"));
+            arguments.insert("agent".into(), json!("claude"));
+            call_tool(core, "alethe_delegate", &arguments, None)
+        };
+
+        let blocking = routing_core(json!({
+            "maxConcurrent": 4, "defaultTimeoutSeconds": 900,
+            "routing": { "onBothCritical": "block" }
+        }));
+        exhausted(&blocking);
+        let error = delegate(&blocking).expect_err("blocked");
+        assert!(error.contains("both providers"), "{error}");
+
+        let cheapest = routing_core(json!({
+            "maxConcurrent": 4, "defaultTimeoutSeconds": 900,
+            "routing": { "onBothCritical": "run-cheapest" }
+        }));
+        exhausted(&cheapest);
+        let result = delegate(&cheapest).expect("runs anyway");
+        let id = result["jobs"][0]["id"].as_str().expect("a job id");
+        let inner = guard(&cheapest.inner);
+        let note = inner.jobs[id].routing.as_ref().expect("a routing note");
+        assert_eq!(note["verdict"], json!("both-critical"));
+        assert_eq!(note["policy"], json!("run-cheapest"));
+
+        // The default ("ask") runs too; the planner hears it through the headroom hint.
+        let asking = routing_core(json!({ "maxConcurrent": 4, "defaultTimeoutSeconds": 900 }));
+        exhausted(&asking);
+        let result = delegate_claude(&asking).expect("runs, with a hint");
+        assert_eq!(result["headroomHint"]["bothStrained"], json!(true));
+
+        // One provider unknown is not "both critical": block does not fire.
+        let half_known = routing_core(json!({
+            "maxConcurrent": 4, "defaultTimeoutSeconds": 900,
+            "routing": { "onBothCritical": "block" }
+        }));
+        half_known.set_agent_fitness(
+            "codex",
+            json!({ "worst": "week", "used": 88, "rateLimited": false }),
+        );
+        delegate(&half_known).expect("claude unknown is not critical");
+    }
+
+    #[test]
+    fn a_rule_routed_worker_carries_the_rule_note() {
+        let core = routing_core(json!({
+            "maxConcurrent": 4,
+            "defaultTimeoutSeconds": 900,
+            "roles": [{ "name": "scout", "agent": "claude", "model": "haiku" }],
+            "routing": { "rules": [
+                { "id": "r1", "enabled": true, "kinds": ["research"], "efforts": [], "gates": [], "role": "scout" }
+            ]}
+        }));
+        let mut arguments = Map::new();
+        arguments.insert("tasks".into(), json!(["map the flags"]));
+        arguments.insert("cwd".into(), json!("Z:/alethe-test/missing"));
+        arguments.insert("kind".into(), json!("research"));
+        let result = call_tool(&core, "alethe_delegate", &arguments, None).expect("delegated");
+        let id = result["jobs"][0]["id"].as_str().expect("a job id");
+        let inner = guard(&core.inner);
+        let job = &inner.jobs[id];
+        assert_eq!(job.role.as_deref(), Some("scout"));
+        assert_eq!(job.agent, "claude", "the role set the agent");
+        assert_eq!(
+            job.routing.as_ref().expect("a routing note"),
+            &json!({ "verdict": "rule", "rule": "r1", "role": "scout" })
+        );
+    }
+
+    #[test]
+    fn settings_without_routing_get_the_defaults() {
+        let settings: OrchestrationSettings =
+            serde_json::from_value(json!({ "maxConcurrent": 4, "defaultTimeoutSeconds": 900 }))
+                .expect("older settings");
+        assert_eq!(settings.routing.preset, "balanced");
+        assert!(settings.routing.rules.is_empty());
+        assert_eq!(settings.routing.critical_threshold, DEFAULT_CRITICAL_THRESHOLD);
+        assert!(settings.routing.allow_opus_on_deep);
+        assert_eq!(settings.routing.on_both_critical, "ask");
     }
 }
