@@ -2,7 +2,9 @@ import {
   Folder,
   FolderSearch,
   Grid2X2,
+  LayoutTemplate,
   ListChecks,
+  PanelRight,
   SquareTerminal,
   Waypoints,
   Workflow,
@@ -23,7 +25,12 @@ import { basename, pathSegments } from '../../lib/paths'
 import { formatShortcut } from '../../lib/platform'
 import { DEFAULT_GRID_ID } from '../../lib/projectGrids'
 import { router9SupportsAgent } from '../../lib/router9'
-import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
+import {
+  type AgentRuntimeProfile,
+  type AgentType,
+  isShellAgentType,
+  ORCHESTRATOR_PLANNER_AGENTS,
+} from '../../lib/types'
 import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -32,12 +39,11 @@ import { Modal } from './Modal'
 import styles from './NewTerminalModal.module.css'
 import { RowSelect, type RowSelectOption } from './RowSelect'
 
-const PLANNER_AGENTS: AgentType[] = ['claude', 'codex']
-
 const BROWSE_OPTION = '__browse__'
 const UNGROUPED_GRID = '__ungrouped__'
 
 type SessionMode = 'terminal' | 'orchestration'
+type OrchestrationView = 'simplified' | 'canvas'
 
 function shortenPath(path: string): string {
   const segments = pathSegments(path)
@@ -58,9 +64,10 @@ export function NewTerminalModal() {
     titleKey?: 'term.newTerminalTitle' | 'term.newPlannerTitle'
   } | null
   const closeModal = useUiStore((s) => s.closeModal)
+  const setRightSidebarMode = useUiStore((s) => s.setRightSidebarMode)
   const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
   const createOrchestratorPane = useProjectsStore((s) => s.createOrchestratorPane)
-  const groupPanes = useProjectsStore((s) => s.groupPanes)
+  const openTerminalWorkspace = useProjectsStore((s) => s.openTerminalWorkspace)
   const alwaysStartUnrestricted = useProjectsStore((s) => s.preferences.alwaysStartUnrestricted)
   const enabledFeatures = useProjectsStore((s) => s.preferences.enabledFeatures)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
@@ -76,6 +83,7 @@ export function NewTerminalModal() {
   const router9 = useRouter9Runtime(open)
   const [useRouter9, setUseRouter9] = useState(false)
   const [mode, setMode] = useState<SessionMode>('terminal')
+  const [orchestrationView, setOrchestrationView] = useState<OrchestrationView>('simplified')
   const [type, setType] = useState<AgentType>('claude')
   const [goal, setGoal] = useState('')
   const [createMore, setCreateMore] = useState(false)
@@ -90,7 +98,7 @@ export function NewTerminalModal() {
   const visibleAgents = allAgents.filter(
     (agent) => isAgentEnabled(enabled, agent.type) && (!only || only.includes(agent.type)),
   )
-  const plannerAgents = visibleAgents.filter((a) => PLANNER_AGENTS.includes(a.type))
+  const plannerAgents = visibleAgents.filter((a) => ORCHESTRATOR_PLANNER_AGENTS.includes(a.type))
   const canOrchestrate = !isPlannerContext && plannerAgents.length > 0
   const orchestrating = canOrchestrate && mode === 'orchestration'
   const modeAgents = orchestrating ? plannerAgents : visibleAgents
@@ -100,6 +108,8 @@ export function NewTerminalModal() {
     'shell'
   const selectedAgent = allAgents.find((agent) => agent.type === type) ?? allAgents[0]
   const inheritedCwd = useMemo(() => getProjectDefaultCwd(project, projects), [project, projects])
+  const plannerNeedsFolder = orchestrating || isPlannerContext
+  const plannerFolderMissing = plannerNeedsFolder && !(cwd.trim() || inheritedCwd)
   const recentFolders = useMemo(() => {
     const folders = new Map<string, { path: string; lastUsedAt: number }>()
     for (const candidate of projects) {
@@ -125,6 +135,7 @@ export function NewTerminalModal() {
     setCwd(inheritedCwd)
     setType(defaultType)
     setMode('terminal')
+    setOrchestrationView('simplified')
     setGoal('')
     setCreateMore(false)
     setUseRouter9(router9.config.defaultForNewAgents)
@@ -156,6 +167,7 @@ export function NewTerminalModal() {
   const reset = () => {
     setType(defaultType)
     setMode('terminal')
+    setOrchestrationView('simplified')
     setGoal('')
     setCreateMore(false)
     setRuntimeProfile('lean')
@@ -187,7 +199,7 @@ export function NewTerminalModal() {
   )
 
   const submit = async () => {
-    if (!context?.projectId) return
+    if (!context?.projectId || plannerFolderMissing) return
     const finalName = selectedAgent.label
     const finalCwd = cwd.trim() || inheritedCwd
     const flag = resolveUnrestrictedFlag(type)
@@ -211,13 +223,26 @@ export function NewTerminalModal() {
       ...(orchestrating ? { enabledFeatures: { ...enabledFeatures, orchestrator: true } } : {}),
       lastTerminalCreation: creation,
     })
-    const terminal = await createAgentTerminal(context.projectId, {
+    // Kept out of `creation`: that preset is replayed by the "repeat last terminal" shortcut, and a
+    // repeated terminal is an ordinary one, not another planner.
+    const asPlanner = orchestrating || isPlannerContext
+    await createAgentTerminal(context.projectId, {
       ...creation,
+      firstTab: asPlanner
+        ? { ...creation.firstTab, orchestrationRole: 'planner' }
+        : creation.firstTab,
       gridId: selectedGridId === UNGROUPED_GRID ? undefined : selectedGridId,
     })
     if (orchestrating) {
-      const canvas = createOrchestratorPane(context.projectId, finalCwd)
-      groupPanes(context.projectId, [terminal.id, canvas.id], { kind: 'orchestration' })
+      if (orchestrationView === 'canvas') {
+        const board =
+          project?.terminals.find((terminal) => terminal.kind === 'orchestrator') ??
+          createOrchestratorPane(context.projectId, finalCwd)
+        openTerminalWorkspace(context.projectId, board.id)
+      } else {
+        setPreferences({ rightSidebarVisible: true })
+        setRightSidebarMode('workers')
+      }
     }
     if (createMore && !orchestrating) return
     reset()
@@ -255,6 +280,20 @@ export function NewTerminalModal() {
     title: agent.label,
     icon: <AgentIcon type={agent.type} size={17} theme={terminalTheme} />,
   }))
+  const orchestrationViewOptions: RowSelectOption[] = [
+    {
+      value: 'simplified',
+      title: t('term.orchestrationViewSimplified'),
+      description: t('term.orchestrationViewSimplifiedDesc'),
+      icon: <PanelRight size={15} />,
+    },
+    {
+      value: 'canvas',
+      title: t('term.orchestrationViewCanvas'),
+      description: t('term.orchestrationViewCanvasDesc'),
+      icon: <LayoutTemplate size={15} />,
+    },
+  ]
 
   const folderPaths = [inheritedCwd, ...recentFolders.map((folder) => folder.path)].filter(
     (path, index, list) =>
@@ -321,7 +360,7 @@ export function NewTerminalModal() {
             type="button"
             className={`${controls.btn} ${controls.btnPrimary} ${styles.submitButton}`}
             onClick={() => void submit()}
-            disabled={!context?.projectId}
+            disabled={!context?.projectId || plannerFolderMissing}
           >
             {orchestrating
               ? t('term.createOrchestration')
@@ -358,6 +397,38 @@ export function NewTerminalModal() {
                 title={orchestrating ? t('term.openAsOrchestration') : t('term.openAsTerminal')}
                 side={
                   orchestrating ? t('term.openAsOrchestrationSide') : t('term.openAsTerminalSide')
+                }
+              />
+            </div>
+          ) : null}
+
+          {orchestrating ? (
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>
+                <span className={styles.fieldLabelText}>{t('term.orchestrationView')}</span>
+              </span>
+              <RowSelect
+                field="orchestration-view"
+                ariaLabel={t('term.orchestrationView')}
+                value={orchestrationView}
+                options={orchestrationViewOptions}
+                onChange={(value) => setOrchestrationView(value as OrchestrationView)}
+                icon={
+                  orchestrationView === 'canvas' ? (
+                    <LayoutTemplate size={15} />
+                  ) : (
+                    <PanelRight size={15} />
+                  )
+                }
+                title={
+                  orchestrationView === 'canvas'
+                    ? t('term.orchestrationViewCanvas')
+                    : t('term.orchestrationViewSimplified')
+                }
+                side={
+                  orchestrationView === 'canvas'
+                    ? t('term.orchestrationViewCanvasSide')
+                    : t('term.orchestrationViewSimplifiedSide')
                 }
               />
             </div>
@@ -404,6 +475,11 @@ export function NewTerminalModal() {
               title={basename(cwd) || cwd || t('term.shellDefaultPlaceholder')}
               side={cwd ? shortenPath(cwd) : undefined}
             />
+            {plannerFolderMissing ? (
+              <span className={styles.fieldError} role="alert">
+                {t('term.plannerFolderRequired')}
+              </span>
+            ) : null}
           </div>
 
           {orchestrating ? (

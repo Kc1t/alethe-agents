@@ -1,0 +1,17 @@
+{
+  "comment": "Which route of a tier takes a task, given how used each route's provider is. Read by both the orchestrator core's tests and the frontend's, so the preview in Preferences can never say something the core would not do. `pressures` are percentages in route order; 1e300 stands for a provider that is refusing requests.",
+  "cases": [
+    { "name": "the first route when it has room", "watch": 60, "protect": 80, "pressures": [10, 5], "expected": 0 },
+    { "name": "a single route always takes it", "watch": 60, "protect": 80, "pressures": [99], "expected": 0 },
+    { "name": "the next route below the watch band", "watch": 60, "protect": 80, "pressures": [70, 30, 10], "expected": 1 },
+    { "name": "the order holds between the bands", "watch": 60, "protect": 80, "pressures": [70, 65], "expected": 0 },
+    { "name": "a later route still below the protect band", "watch": 60, "protect": 80, "pressures": [85, 90, 75], "expected": 2 },
+    { "name": "the most room once every route is past protect", "watch": 60, "protect": 80, "pressures": [92, 85, 99], "expected": 1 },
+    { "name": "a tie goes to the earlier route", "watch": 60, "protect": 80, "pressures": [90, 90], "expected": 0 },
+    { "name": "a refusing provider is the last resort", "watch": 60, "protect": 80, "pressures": [1e300, 97], "expected": 1 },
+    { "name": "every provider refusing keeps the order", "watch": 60, "protect": 80, "pressures": [1e300, 1e300], "expected": 0 },
+    { "name": "exactly on the watch band counts as past it", "watch": 60, "protect": 80, "pressures": [60, 59], "expected": 1 },
+    { "name": "exactly on the protect band counts as past it", "watch": 60, "protect": 80, "pressures": [80, 79], "expected": 1 },
+    { "name": "tight bands", "watch": 45, "protect": 65, "pressures": [50, 64, 44], "expected": 2 }
+  ]
+}

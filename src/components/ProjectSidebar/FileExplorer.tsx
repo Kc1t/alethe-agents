@@ -1,4 +1,3 @@
-import { convertFileSrc } from '@tauri-apps/api/core'
 import {
   ChevronDown,
   ChevronRight,
@@ -30,6 +29,7 @@ import {
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { useMediaUrl } from '../../lib/mediaUrl'
 import { Modal } from '../modals/Modal'
 import { buildGitExplorerIndex, getGitEntryStatus, type GitExplorerIndex } from './fileExplorerGit'
 import { FileIcon } from './FileIcon'
@@ -538,7 +538,12 @@ function FilePreviewModal({
   onOpenMarkdownSidebar: () => void
 }) {
   const t = useT()
-  const source = preview ? convertFileSrc(preview.path) : ''
+  const isMedia =
+    !!preview &&
+    (IMAGE_PATTERN.test(preview.path) ||
+      VIDEO_PATTERN.test(preview.path) ||
+      PDF_PATTERN.test(preview.path))
+  const source = useMediaUrl(isMedia ? preview.path : null)
   return (
     <Modal
       open={Boolean(preview)}

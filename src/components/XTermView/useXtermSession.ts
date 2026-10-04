@@ -10,14 +10,13 @@ import { useEffect, useRef } from 'react'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
+import { prepareAgentLaunch } from '../../lib/agentLaunchPlan'
 import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
 import { resolveAgentCliCommand } from '../../lib/agentProviders'
-import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { claudeSessionFromHook } from '../../lib/claudeSessionTracking'
 import { getLocale, translate } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
-import { router9EnvFor } from '../../lib/router9'
 import {
   claimDiscoveredSession,
   claimMostRecentSession,
@@ -25,7 +24,6 @@ import {
   registerSessionClaim,
   releaseSessionClaim,
 } from '../../lib/sessionDiscovery'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   peekSession,
   removeSession,
@@ -34,29 +32,16 @@ import {
 } from '../../lib/sessionResume'
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
+import { dropPointInWindow } from '../../lib/surfaceGeometry'
 import {
-  agentHooksSettingsPath,
-  aiMemoryCodexConfigWrite,
-  aiMemoryDetect,
-  aiMemoryMcpConfigPath,
-  aiMemoryOpenCodeConfigWrite,
   attachPty,
   clearPtyScrollback,
-  codexHooksConfigWrite,
-  codexMcpConfigWrite,
   createCursorChat,
   findCliLauncher,
-  graphifyCodexConfigWrite,
-  graphifyEnsureGraph,
-  graphifyMcpConfigPath,
-  graphifyOpenCodeConfigWrite,
-  gsdOpenCodePluginWrite,
   killPty,
   listenPtyActivity,
   listenPtyData,
   listenPtyExit,
-  orchestratorMcpConfigPath,
-  playwrightMcpConfigPath,
   ptyExists,
   readClipboardPayload,
   readGsdChildSession,
@@ -80,10 +65,12 @@ import type { AgentHookPayload } from '../../stores/agentCanvasStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { remeasureWhenFontLoads, TERMINAL_FONT_FAMILY } from './terminalFont'
 import {
   formatDroppedPaths,
   getTerminalScrollbackRows,
   getWheelScrollLines,
+  isInterruptChord,
   normalizePastedText,
   shouldScrollHostScrollback,
 } from './terminalInput'
@@ -97,6 +84,8 @@ import {
   TERMINAL_WRITE_FALLBACK_MS,
   TERMINAL_WRITE_FRAME_BUDGET,
   trimPendingWrites,
+  writeFailureAction,
+  type WriteFailureSource,
   writePtyChunked,
   writePtyWithTimeout,
 } from './terminalWrite'
@@ -114,18 +103,6 @@ function isBrowserInputPending(): boolean {
     }
   ).scheduling
   return scheduling?.isInputPending?.() ?? false
-}
-
-let aiMemoryMissingWarned = false
-
-/** The terminal's own name is what the person recognises a planner by, not its pty id. */
-function plannerLabelFor(ptyId: string): string {
-  for (const project of useProjectsStore.getState().projects) {
-    for (const terminal of project.terminals) {
-      if (terminal.tabs.some((tab) => tab.ptyId === ptyId)) return terminal.name
-    }
-  }
-  return ptyId
 }
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
@@ -347,7 +324,7 @@ export function useXtermSession(params: {
       // Match the Windows ConPTY backend when configuring terminal repaint behavior.
 
       ...(isWindows() ? { windowsPty: { backend: 'conpty' as const, buildNumber: 22000 } } : {}),
-      fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
+      fontFamily: TERMINAL_FONT_FAMILY,
       fontSize: 14,
       theme: getXtermTheme(terminalTheme),
     })
@@ -360,6 +337,12 @@ export function useXtermSession(params: {
     terminal.unicode.activeVersion = '11'
     terminal.open(container)
     terminalRef.current = terminal
+    remeasureWhenFontLoads(terminal.options.fontSize ?? 14, (fontFamily) => {
+      if (disposed) return
+      terminal.options.fontFamily = fontFamily
+      // New cell metrics change how many columns fit, which the PTY has to hear about.
+      scheduleResize(true)
+    })
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
       const xterm = container.querySelector<HTMLElement>('.xterm')
@@ -503,16 +486,22 @@ export function useXtermSession(params: {
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
-    const requestWriteRecovery = (id: string, source: 'input' | 'paste', error: unknown) => {
-      console.warn(`[pty-${source}] write failed for ${id}; requesting recovery`, error)
-      if (source === 'input' && initialInputInFlight) {
-        // Restarting now would kill the process right in the middle of
-        // delivering the initial prompt, losing the session with no chance
-        // to resume — let `sendInitialInput` handle the failure itself
-        // (logs and gives up) instead of triggering this destructive recovery.
+    const requestWriteRecovery = (id: string, source: WriteFailureSource, error: unknown) => {
+      console.warn(`[pty-${source}] write failed for ${id}`, error)
+      const action = writeFailureAction(source, initialInputInFlight)
+      if (action === 'ignore') {
+        // `sendInitialInput` handles its own failure (logs and gives up).
         console.warn(
           `[pty-input] automatic recovery SUPPRESSED on ${id}: initial prompt delivery still in progress`,
         )
+        return
+      }
+      if (action === 'notify') {
+        if (disposed || id !== ptyIdRef.current) return
+        useUiStore.getState().pushToast({
+          title: translate(getLocale(), 'ui.terminal.pasteFailed'),
+          body: translate(getLocale(), 'ui.terminal.pasteFailedBody'),
+        })
         return
       }
       if (disposed || writeRecoveryPending || id !== ptyIdRef.current) return
@@ -558,8 +547,8 @@ export function useXtermSession(params: {
     }
 
     const isOverThisPane = (pos: { x: number; y: number }) => {
-      const dpr = window.devicePixelRatio || 1
-      const el = document.elementFromPoint(pos.x / dpr, pos.y / dpr)
+      const point = dropPointInWindow(pos)
+      const el = document.elementFromPoint(point.x, point.y)
       return !!el && container.contains(el)
     }
     void getCurrentWebview()
@@ -606,12 +595,15 @@ export function useXtermSession(params: {
       if (key === 'c' && terminal.hasSelection()) {
         const selection = terminal.getSelection()
         if (selection) {
+          // Without this the WebView also runs its own copy of xterm's helper textarea, and on
+          // Wayland that second copy can leave this process owning the selection it just wrote.
+          event.preventDefault()
           void writeClipboardText(selection).catch(() => navigator.clipboard?.writeText(selection))
           terminal.clearSelection()
           return false
         }
       }
-      if (key === 'c' && !readOnly) {
+      if (isInterruptChord(event) && !readOnly) {
         const now = Date.now()
         const id = ptyIdRef.current
         if (id && now - lastCtrlCRef.current < 1500) {
@@ -1111,147 +1103,21 @@ export function useXtermSession(params: {
           }
           if (disposed) return
         }
-        const preparedRuntime = command
-          ? preparePtyRuntimeLaunch(command, runtimeProfile, extraArgs ?? [], env)
-          : { args: extraArgs ?? [], env }
-
-        // Read at spawn time rather than through a selector: the PTY environment is fixed when the
-        // process starts, so turning 9router off only ever affects terminals opened afterwards.
-        const router9Env =
-          useRouter9 && command
-            ? router9EnvFor(command, useProjectsStore.getState().preferences.router9)
-            : {}
-        // The Codex hook forwarder and MCP bridge are shared per port, so they read the terminal
-        // they belong to from here instead of from a path Codex would ask to trust again.
-        const launchEnv = {
-          ...(preparedRuntime.env ?? {}),
-          ...router9Env,
-          ALETHE_PLANNER: ptyId,
-        }
-
-        // Prepare optional integrations before spawning.
-        const mcpConfigPaths: string[] = []
-        let hooksSettingsPath: string | undefined
-
-        if (
-          graphifyRepo &&
-          (command === 'claude' || command === 'codex' || command === 'opencode')
-        ) {
-          void graphifyEnsureGraph(graphifyRepo).catch(() => undefined)
-          if (command === 'claude') {
-            const p = await graphifyMcpConfigPath(graphifyRepo).catch(() => undefined)
-            if (p) mcpConfigPaths.push(p)
-          } else if (command === 'opencode') {
-            await graphifyOpenCodeConfigWrite(graphifyRepo).catch(() => {})
-          } else if (command === 'codex') {
-            await graphifyCodexConfigWrite(graphifyRepo).catch(() => {})
-          }
-          if (disposed) return
-        }
-
-        const aiMemoryEnabled = useProjectsStore.getState().preferences.enabledFeatures.aiMemory
-        if (
-          aiMemoryEnabled &&
-          cwd &&
-          (command === 'claude' || command === 'codex' || command === 'opencode')
-        ) {
-          const status = await aiMemoryDetect().catch(() => undefined)
-          if (status?.installed) {
-            if (command === 'claude') {
-              const p = await aiMemoryMcpConfigPath(cwd).catch(() => undefined)
-              if (p) mcpConfigPaths.push(p)
-            } else if (command === 'opencode') {
-              await aiMemoryOpenCodeConfigWrite(cwd).catch(() => {})
-            } else if (command === 'codex') {
-              await aiMemoryCodexConfigWrite(cwd).catch(() => {})
-            }
-          } else if (!aiMemoryMissingWarned) {
-            aiMemoryMissingWarned = true
-            useUiStore.getState().pushToast({
-              title: translate(getLocale(), 'aiMemory.notInstalledTitle'),
-              body: translate(getLocale(), 'aiMemory.notInstalledBody'),
-            })
-          }
-          if (disposed) return
-        }
-
-        // Claude only: it takes an ephemeral --mcp-config, so nothing is left behind pointing at a
-        // dead endpoint. Codex and OpenCode need in-repo config writes.
-        //
-        // This must never start a browser. The config points at the shared browser when one is
-        // already running and otherwise leaves Playwright on its default, which opens a browser
-        // only once the agent reaches for one.
-        const playwrightEnabled = useProjectsStore.getState().preferences.enabledFeatures.playwright
-        if (playwrightEnabled && command === 'claude') {
-          const { playwrightBrowserMode, playwrightDedicatedHeadless } =
-            useProjectsStore.getState().preferences
-          const p = await playwrightMcpConfigPath({
-            dedicated: playwrightBrowserMode === 'dedicated',
-            headless: playwrightDedicatedHeadless,
-          }).catch(() => undefined)
-          if (p) mcpConfigPaths.push(p)
-          if (disposed) return
-        }
-
-        const orchestratorEnabled =
-          useProjectsStore.getState().preferences.enabledFeatures.orchestrator
-        if (orchestratorEnabled && command === 'claude') {
-          const p = await orchestratorMcpConfigPath(ptyId, plannerLabelFor(ptyId), command).catch(
-            () => undefined,
-          )
-          if (p) mcpConfigPaths.push(p)
-          if (disposed) return
-        }
-
-        // Tags every Claude pane's hooks with its ptyId. SessionStart/UserPromptSubmit report the
-        // conversation the CLI is actually on, which is what keeps the pane in sync after an in-CLI
-        // /clear or /resume; with the orchestrator on, the same file also carries its subagent and
-        // tool-call hooks so the canvas can hang them off this planner.
-        if (command === 'claude') {
-          hooksSettingsPath = await agentHooksSettingsPath(ptyId, orchestratorEnabled).catch(
-            () => undefined,
-          )
-          if (disposed) return
-        }
-
-        if (orchestratorEnabled && command === 'codex' && cwd) {
-          // Same idea for Codex: it has its own native subagents (SubagentStart/Stop), just no http
-          // hook handler — codexHooksConfigWrite points them at a generated forwarder instead.
-          await codexHooksConfigWrite(cwd, ptyId).catch(() => undefined)
-          if (disposed) return
-
-          // Registers this Codex terminal as a planner too, so it can call alethe_delegate.
-          await codexMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId), command).catch(
-            () => undefined,
-          )
-          if (disposed) return
-        }
-
-        const { preferences } = useProjectsStore.getState()
-        if (
-          command === 'opencode' &&
-          cwd &&
-          gsdWatcherEnabled &&
-          preferences.enabledFeatures.gsdSync
-        ) {
-          const modelChain = preferences.gsdSyncModelChain ?? []
-
-          await gsdOpenCodePluginWrite(cwd, modelChain).catch((error) => {
-            console.error(`[pty-launch] gsdOpenCodePluginWrite failed for ${cwd}:`, error)
-          })
-          if (disposed) return
-        }
-
-        const launch = command
-          ? buildAgentLaunch(
-              command,
-              preparedRuntime.args,
-              resumeId,
-              undefined,
-              mcpConfigPaths,
-              hooksSettingsPath,
-            )
-          : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
+        const launch = await prepareAgentLaunch({
+          agent: command,
+          ptyId,
+          cwd,
+          extraArgs,
+          runtimeProfile,
+          env,
+          resumeId,
+          useRouter9,
+          graphifyRepo,
+          gsdWatcherEnabled,
+          isCancelled: () => disposed,
+        })
+        if (!launch) return
+        const launchEnv = launch.env
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
         attachedSessionId = launch.sessionId
         if (command && command !== 'shell') {

@@ -6,6 +6,7 @@ export type AgentFitness = {
   resetsAt: string | null
   plan?: string
   rateLimited: boolean
+  windows: Record<string, { used: number; resetsAt: string | null }>
 }
 
 type Window = { label: string; used: number; resetsAt: string | null }
@@ -19,45 +20,39 @@ function isoFromMs(ms: number): string | null {
 }
 
 export function claudeFitness(usage: ClaudeUsage): AgentFitness {
-  const worst = worstOf([
-    { label: '5h', used: usage.five_hour.utilization, resetsAt: usage.five_hour.resets_at || null },
-    {
-      label: 'week',
-      used: usage.seven_day.utilization,
-      resetsAt: usage.seven_day.resets_at || null,
-    },
-    {
-      label: 'opus',
+  const windows = {
+    '5h': { used: usage.five_hour.utilization, resetsAt: usage.five_hour.resets_at || null },
+    week: { used: usage.seven_day.utilization, resetsAt: usage.seven_day.resets_at || null },
+    opus: {
       used: usage.seven_day_opus.utilization,
       resetsAt: usage.seven_day_opus.resets_at || null,
     },
-  ])
+  }
+  const worst = worstOf(Object.entries(windows).map(([label, window]) => ({ label, ...window })))
   return {
     worst: worst.label,
     used: Math.round(worst.used),
     resetsAt: worst.resetsAt,
     rateLimited: false,
+    windows,
   }
 }
 
 export function codexFitness(usage: CodexUsage): AgentFitness {
-  const worst = worstOf([
-    {
-      label: '5h',
-      used: usage.primary.used_percent,
-      resetsAt: isoFromMs(usage.primary.resets_at_ms),
-    },
-    {
-      label: 'week',
+  const windows = {
+    '5h': { used: usage.primary.used_percent, resetsAt: isoFromMs(usage.primary.resets_at_ms) },
+    week: {
       used: usage.secondary.used_percent,
       resetsAt: isoFromMs(usage.secondary.resets_at_ms),
     },
-  ])
+  }
+  const worst = worstOf(Object.entries(windows).map(([label, window]) => ({ label, ...window })))
   return {
     worst: worst.label,
     used: Math.round(worst.used),
     resetsAt: worst.resetsAt,
     plan: usage.plan || undefined,
     rateLimited: usage.rate_limited,
+    windows,
   }
 }

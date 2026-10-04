@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { cliPathMatchesAgent } from './agentCliPath'
+import { cliExecutableFilters, cliPathMatchesAgent } from './agentCliPath'
 
 describe('cliPathMatchesAgent', () => {
   it('accepts the Antigravity CLI and rejects the desktop application', () => {
@@ -17,5 +17,23 @@ describe('cliPathMatchesAgent', () => {
 
   it('accepts Windows launcher extensions for GitHub Copilot', () => {
     expect(cliPathMatchesAgent('copilot', String.raw`C:\npm\copilot.cmd`)).toBe(true)
+  })
+})
+
+describe('cliExecutableFilters', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('narrows to launcher extensions on Windows', () => {
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })
+    expect(cliExecutableFilters()?.[0].extensions).toEqual(['cmd', 'exe', 'bat', 'ps1'])
+  })
+
+  it('applies no filter on Linux, where CLI binaries have no extension', () => {
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15',
+    })
+    expect(cliExecutableFilters()).toBeUndefined()
   })
 })

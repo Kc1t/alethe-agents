@@ -1,7 +1,7 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Bell, X } from 'lucide-react'
-import { type CSSProperties, lazy, Suspense, useEffect, useRef } from 'react'
+import { type CSSProperties, lazy, Suspense, useEffect, useMemo, useRef } from 'react'
 import { Group as PanelGroup, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 
 import styles from './App.module.css'
@@ -58,12 +58,15 @@ import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useMcpIntroPrompt } from './hooks/useMcpIntroPrompt'
+import { useOrchestratorAttention } from './hooks/useOrchestratorAttention'
+import { useOrchestratorSettingsSync } from './hooks/useOrchestratorSettingsSync'
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { useRouter9AutoStart } from './hooks/useRouter9AutoStart'
 import { startActivityTracker } from './lib/activityTracker'
 import { agentAccentVar } from './lib/agentProviders'
 import { APP_SHELL_ID } from './lib/appShell'
+import { rememberBootAppearance } from './lib/bootAppearance'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { applyLegacyPluginMigrations } from './lib/plugins'
@@ -71,7 +74,6 @@ import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPa
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
-import { rememberBootAppearance } from './lib/bootAppearance'
 import { loadThemeIconBytes } from './lib/themeIcons'
 import { useAppliedTheme } from './lib/themes'
 import { checkForUpdate } from './lib/updater'
@@ -237,6 +239,8 @@ export default function App() {
   const language = useProjectsStore((s) => s.preferences.language)
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
   const activeView = useUiStore((s) => s.activeView)
+  const focusedTerminalId = useUiStore((s) => s.focusedTerminalId)
+  const activeTerminalId = useUiStore((s) => s.activeTerminal?.terminalId ?? null)
   const openModal = useUiStore((s) => s.openModal)
   const restoreMarkdownSidebarHistory = useUiStore((s) => s.restoreMarkdownSidebarHistory)
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
@@ -244,11 +248,13 @@ export default function App() {
   const rightSidebarVisible = useProjectsStore((s) => s.preferences.rightSidebarVisible)
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
   const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
+  const projects = useProjectsStore((s) => s.projects)
 
   const playwrightEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.playwright)
   const mcpEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.mcp)
+  const orchestratorEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.orchestrator)
   const rightSidebarTabs = useSidebarViews('right')
-  const rightPanelEnabled = mcpEnabled || rightSidebarTabs.length > 0
+  const rightPanelEnabled = mcpEnabled || orchestratorEnabled || rightSidebarTabs.length > 0
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   // Keep panel defaults stable while dragging. Updating defaultSize on every
   // resize event can make react-resizable-panels rebuild the layout mid-drag.
@@ -266,6 +272,58 @@ export default function App() {
   const windowHiddenRef = useRef(false)
   const leftPanelElementRef = useRef<HTMLDivElement>(null)
   const rightPanelElementRef = useRef<HTMLDivElement>(null)
+  const plannerSidebarRestoreRef = useRef<{
+    visible: boolean
+    mode: ReturnType<typeof useUiStore.getState>['rightSidebarMode']
+  } | null>(null)
+  const plannerTerminalIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const project of projects) {
+      for (const terminal of project.terminals) {
+        const tab = terminal.tabs.find((candidate) => candidate.id === terminal.activeTabId)
+        if (tab?.orchestrationRole === 'planner') ids.add(terminal.id)
+      }
+    }
+    return ids
+  }, [projects])
+  // A planner in focus mode keeps the Workers tab beside it, above the backdrop.
+  const plannerFocus = Boolean(
+    orchestratorEnabled && focusedTerminalId && plannerTerminalIds.has(focusedTerminalId),
+  )
+  const activePlannerTerminalId =
+    orchestratorEnabled && activeTerminalId && plannerTerminalIds.has(activeTerminalId)
+      ? activeTerminalId
+      : null
+  const plannersShownRef = useRef(new Set<string>())
+
+  useEffect(() => {
+    if (plannerFocus && !plannerSidebarRestoreRef.current) {
+      plannerSidebarRestoreRef.current = {
+        visible: useProjectsStore.getState().preferences.rightSidebarVisible,
+        mode: useUiStore.getState().rightSidebarMode,
+      }
+      setPreferences({ rightSidebarVisible: true })
+      useUiStore.getState().setRightSidebarMode('workers')
+      return
+    }
+    if (!plannerFocus && plannerSidebarRestoreRef.current) {
+      const restore = plannerSidebarRestoreRef.current
+      plannerSidebarRestoreRef.current = null
+      setPreferences({ rightSidebarVisible: restore.visible })
+      useUiStore.getState().setRightSidebarMode(restore.mode)
+    }
+  }, [plannerFocus, setPreferences])
+
+  // Outside focus mode the Workers tab is brought up the first time a planner is used, and never
+  // again for that planner: reopening it on every click would undo the person closing the sidebar
+  // or picking another tab.
+  useEffect(() => {
+    if (!activePlannerTerminalId || plannerFocus) return
+    if (plannersShownRef.current.has(activePlannerTerminalId)) return
+    plannersShownRef.current.add(activePlannerTerminalId)
+    setPreferences({ rightSidebarVisible: true })
+    useUiStore.getState().setRightSidebarMode('workers')
+  }, [activePlannerTerminalId, plannerFocus, setPreferences])
 
   // Hydration completes before the panels mount. Capture the persisted widths
   // on that render so their first layout does not fall back to store defaults.
@@ -284,6 +342,19 @@ export default function App() {
   useAgentBrowserOffers(playwrightEnabled)
   useAgentHookBridge()
   useCliOpenRequests(hydrated)
+  // A saved document that could not be read is left untouched and nothing is saved over it; the
+  // person has to be told, or the session would look like it lost their projects.
+  const loadFailed = useProjectsStore((s) => s.loadFailed)
+  useEffect(() => {
+    if (!loadFailed) return
+    useUiStore.getState().pushToast({
+      title: translate(language, 'app.loadFailedTitle'),
+      body: translate(language, 'app.loadFailedBody'),
+    })
+  }, [language, loadFailed])
+
+  useOrchestratorSettingsSync(hydrated)
+  useOrchestratorAttention(hydrated && orchestratorEnabled)
 
   useEffect(() => {
     void hydrate()
@@ -535,7 +606,19 @@ export default function App() {
 
   return (
     <>
-      <div className={styles.appShell} id={APP_SHELL_ID} tabIndex={-1}>
+      <div
+        className={styles.appShell}
+        id={APP_SHELL_ID}
+        tabIndex={-1}
+        data-planner-focus={plannerFocus || undefined}
+        style={
+          {
+            // Room for the Workers tab beside a focused planner; none when it was closed.
+            '--planner-focus-right':
+              plannerFocus && rightSidebarVisible ? `${rightSidebarWidth + 40}px` : '32px',
+          } as CSSProperties
+        }
+      >
         <TitleBar />
         <PanelGroup
           orientation="horizontal"

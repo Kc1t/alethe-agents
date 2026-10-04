@@ -79,6 +79,12 @@ pub fn codex_app_server_start(
 
     #[cfg(windows)]
     command.env("Path", cli_resolver::rebuilt_path());
+    #[cfg(not(windows))]
+    if let Some(path) =
+        cli_resolver::path_with_launcher_dir(&launcher, std::env::var_os("PATH").as_deref())
+    {
+        command.env("PATH", path);
+    }
 
     crate::git_control::hide_console(&mut command);
     let mut child = command

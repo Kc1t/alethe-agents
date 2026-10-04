@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_PREFERENCES, EMPTY_PROJECTS_FILE } from '../lib/types'
-import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
+import { DEFAULT_ORCHESTRATOR_POLICY, DEFAULT_PREFERENCES, EMPTY_PROJECTS_FILE } from '../lib/types'
+import {
+  migrate,
+  normalizePreferences,
+  normalizeTodos,
+  readPreferences,
+  takeMigrationDegraded,
+} from './projectsStore.migrations'
 
 describe('preference normalization', () => {
   it('preserves persisted sidebar visibility and widths', () => {
@@ -101,6 +107,72 @@ describe('preference normalization', () => {
   })
 })
 
+describe('agent defaults normalization', () => {
+  it('starts older installs with no model, no effort and the stock worker limit', () => {
+    const {
+      agentDefaults: _dropped,
+      orchestratorMaxWorkers: _limit,
+      ...older
+    } = {
+      ...DEFAULT_PREFERENCES,
+      agentDefaults: undefined,
+      orchestratorMaxWorkers: undefined,
+    }
+
+    expect(normalizePreferences(older)).toMatchObject({
+      agentDefaults: { providers: {}, planner: {}, worker: {} },
+      orchestratorMaxWorkers: 4,
+    })
+  })
+
+  it('keeps valid choices and drops what a provider cannot be launched with', () => {
+    const preferences = normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      agentDefaults: {
+        providers: {
+          claude: { model: ' opus ', effort: 'high' },
+          codex: { model: 'gpt 5', effort: 'extreme' },
+          kimi: { model: 'k2' },
+        },
+        planner: { claude: { effort: 'xhigh' } },
+        worker: { opencode: { model: 'anthropic/claude-sonnet-5-5', effort: 'high' } },
+      },
+    })
+
+    expect(preferences.agentDefaults).toEqual({
+      providers: { claude: { model: 'opus', effort: 'high' } },
+      planner: { claude: { effort: 'xhigh' } },
+      worker: { opencode: { model: 'anthropic/claude-sonnet-5-5' } },
+    })
+  })
+
+  it('gives older installs the stock worker rules', () => {
+    const { orchestratorPolicy: _rules, ...older } = {
+      ...DEFAULT_PREFERENCES,
+      orchestratorPolicy: undefined,
+    }
+
+    expect(normalizePreferences(older).orchestratorPolicy).toEqual(DEFAULT_ORCHESTRATOR_POLICY)
+  })
+
+  it('clamps the worker limit to what the orchestrator accepts', () => {
+    expect(
+      normalizePreferences({ ...DEFAULT_PREFERENCES, orchestratorMaxWorkers: 99 })
+        .orchestratorMaxWorkers,
+    ).toBe(16)
+    expect(
+      normalizePreferences({ ...DEFAULT_PREFERENCES, orchestratorMaxWorkers: 0 })
+        .orchestratorMaxWorkers,
+    ).toBe(1)
+    expect(
+      normalizePreferences({
+        ...DEFAULT_PREFERENCES,
+        orchestratorMaxWorkers: 'many' as unknown as number,
+      }).orchestratorMaxWorkers,
+    ).toBe(4)
+  })
+})
+
 describe('todos normalization', () => {
   it('backfills PR fields when present and drops them when absent', () => {
     const todos = normalizeTodos([
@@ -176,5 +248,86 @@ describe('projects file migration', () => {
     })
 
     expect(migrated.projects[0].terminals[0].remoteShared).toBe(true)
+  })
+})
+
+describe('a workspace whose settings cannot be read', () => {
+  // Values of the wrong shape, as a hand-edited file or a newer version could leave them.
+  const hostile: unknown[] = [
+    null,
+    42,
+    'text',
+    [],
+    [null],
+    { routing: 7 },
+    { routing: { tiers: 'x' } },
+    { routing: { tiers: { light: [null, 3, 'x', {}] } } },
+    { routing: { tiers: { light: { primary: null, fallback: 5 } } } },
+    { routing: { preset: {}, watchPercent: 'NaN', tiers: null } },
+  ]
+
+  it('reads every orchestration setting without throwing, whatever was saved', () => {
+    for (const value of hostile) {
+      const preferences = normalizePreferences({
+        ...DEFAULT_PREFERENCES,
+        orchestratorPolicy: value,
+        orchestrationTabOrder: value,
+        agentDefaults: value,
+        orchestratorMaxWorkers: value,
+      } as never)
+      expect(preferences.orchestratorPolicy.routing.tiers.light.length).toBeGreaterThan(0)
+      expect(preferences.orchestrationTabOrder).toHaveLength(4)
+    }
+  })
+
+  it('stands in for what it cannot read without sending the person back to onboarding', () => {
+    // A number where a text field is trimmed makes the plain normalizer throw.
+    const broken = {
+      ...DEFAULT_PREFERENCES,
+      displayName: 12,
+      onboardingDone: true,
+      accountCreated: true,
+      language: 'pt-BR',
+    } as never
+    expect(() => normalizePreferences(broken)).toThrow()
+    takeMigrationDegraded()
+
+    const preferences = readPreferences(broken)
+
+    expect(preferences.displayName).toBe(DEFAULT_PREFERENCES.displayName)
+    expect(preferences.onboardingDone).toBe(true)
+    expect(preferences.accountCreated).toBe(true)
+    expect(preferences.language).toBe('pt-BR')
+    // And says so, because what it returned is not what was saved.
+    expect(takeMigrationDegraded()).toBe(true)
+    expect(takeMigrationDegraded()).toBe(false)
+  })
+
+  it('reports nothing when every setting reads as saved', () => {
+    takeMigrationDegraded()
+    readPreferences({ ...DEFAULT_PREFERENCES, onboardingDone: true } as never)
+    expect(takeMigrationDegraded()).toBe(false)
+  })
+
+  it('still loads the projects saved beside them', () => {
+    const migrated = migrate({
+      ...structuredClone(EMPTY_PROJECTS_FILE),
+      projects: [
+        {
+          id: 'p1',
+          name: 'Kept',
+          groupId: null,
+          terminals: [],
+          layoutMode: 'grid',
+          collapsed: false,
+          createdAt: 1,
+        },
+      ],
+      ungroupedOrder: ['p1'],
+      preferences: { ...DEFAULT_PREFERENCES, displayName: 12 },
+    } as never)
+
+    expect(migrated.projects.map((project) => project.name)).toEqual(['Kept'])
+    expect(migrated.preferences.displayName).toBe(DEFAULT_PREFERENCES.displayName)
   })
 })

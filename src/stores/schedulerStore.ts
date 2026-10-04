@@ -9,7 +9,7 @@ import {
 } from '../lib/tauri'
 import { useProjectsStore } from './projectsStore'
 import { useUiStore } from './uiStore'
-import { translate, getLocale } from '../lib/i18n'
+import { getLocale, type Locale, translate } from '../lib/i18n'
 
 type SchedulerState = {
   tasks: SchedulerTask[]
@@ -25,7 +25,14 @@ type SchedulerState = {
 }
 
 /** Prompt inicial do agente de task GSD — aponta pro planejamento e trava escopo. */
-function taskPrompt(taskTitle: string): string {
+export function taskPrompt(taskTitle: string, locale: Locale): string {
+  if (locale === 'en') {
+    return (
+      `Your task: "${taskTitle}". Read .planning/task.md, .planning/plan.md and ` +
+      '.planning/goal.md in the original repository for the full context, implement ONLY this ' +
+      'task in this isolated directory and say when you are done.'
+    )
+  }
   return (
     `Sua tarefa: "${taskTitle}". Leia .planning/task.md, .planning/plan.md e ` +
     '.planning/goal.md do repositório original para o contexto completo, ' +
@@ -110,7 +117,13 @@ export const useSchedulerStore = create<SchedulerState>((set, get) => ({
         const terminal = projects.createTerminal(projectId, {
           name: taskTitle.slice(0, 40),
           cwd: worktreePath,
-          firstTab: { type: provider, cwd: worktreePath, extraArgs: [taskPrompt(taskTitle)] },
+          // Typed in once the CLI is ready, never passed as an argument: an argument is kept on the
+          // tab and sent again on every restart, and OpenCode reads a loose one as a folder.
+          firstTab: {
+            type: provider,
+            cwd: worktreePath,
+            initialInput: taskPrompt(taskTitle, getLocale()),
+          },
         })
         set((state) => ({
           taskTerminals: { ...state.taskTerminals, [realTaskId]: terminal.id },

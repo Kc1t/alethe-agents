@@ -98,6 +98,11 @@ want** for almost all work.
 The first `npm run app` compiles the Rust backend from scratch and takes several minutes. That is
 normal and it is not stuck. Subsequent runs are fast.
 
+The development build keeps its data apart from an installed Alethe, and a profile that has never
+been set up starts as a fixed test user (`src/lib/devTestUser.ts`): onboarding done, the
+orchestrator on, and this repository open as a project. Anything you change in dev is saved as
+usual; the test user only comes back if the dev profile is empty.
+
 ### Working on the UI only
 
 ```sh

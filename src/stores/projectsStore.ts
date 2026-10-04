@@ -45,7 +45,8 @@ import {
   replaceCurrentHistorySnapshot,
   sanitizeWorkspaceSnapshot,
 } from '../lib/workspaceNavigation'
-import { migrate } from './projectsStore.migrations'
+import { seedDevTestUser } from '../lib/devTestUser'
+import { migrate, takeMigrationDegraded } from './projectsStore.migrations'
 import { createGroupsSlice, createProjectsSlice } from './projectsStore.projectSlices'
 import { createPreferencesSlice, createSubTabsSlice } from './projectsStore.slices'
 import { createContainersSlice, createTerminalsSlice } from './projectsStore.terminalSlices'
@@ -65,6 +66,8 @@ export type ProjectsState = ProjectsFile & {
   activeProfileId: string
   profiles: ProfileMeta[]
   hydrated: boolean
+  /** The saved document could not be read: the session runs on defaults and saves nothing. */
+  loadFailed: boolean
   hydrate: () => Promise<void>
   /** True while handleCleanupWorktrees is running, preventing duplicate clicks. */
   isCleaningOrphans: boolean
@@ -114,6 +117,11 @@ export type ProjectsState = ProjectsFile & {
   unarchiveProject: (id: string) => void
   setProjectHidden: (id: string, hidden: boolean) => void
   setProjectColor: (id: string, color: string | undefined) => void
+  /** A routing profile of the project's own for its planners; undefined uses the shared one. */
+  setProjectRoutingPreset: (
+    id: string,
+    preset: Project['orchestratorRoutingPreset'] | undefined,
+  ) => void
   setProjectIconUrl: (id: string, iconUrl: string | undefined) => void
   addMarkdownComment: (
     projectId: string,
@@ -197,6 +205,7 @@ export type ProjectsState = ProjectsFile & {
         handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
         useRouter9?: boolean
+        orchestrationRole?: 'planner'
       }
       worktreeAgentId?: string
       gsdSyncViewer?: boolean
@@ -219,6 +228,7 @@ export type ProjectsState = ProjectsFile & {
         handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
         useRouter9?: boolean
+        orchestrationRole?: 'planner'
       }
     },
   ) => Promise<Terminal>
@@ -338,6 +348,10 @@ export type ProjectsState = ProjectsFile & {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let pendingSave = false
+// Set when the saved document could not be read. The store then runs on defaults, and writing
+// those back would replace the person's projects with nothing: nothing is saved until a later
+// load succeeds.
+let loadFailed = false
 let lastSaveErrorLoggedAt = 0
 
 let lastWriteSequence = Date.now()
@@ -362,7 +376,7 @@ function projectsPayload(state: ProjectsState): ProjectsFile {
 }
 
 function scheduleSave(getState: () => ProjectsState) {
-  if (!getState().hydrated) return
+  if (!getState().hydrated || loadFailed) return
   pendingSave = true
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
@@ -705,6 +719,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     activeProfileId: 'default',
     profiles: [],
     hydrated: false,
+    loadFailed: false,
     isCleaningOrphans: false,
 
     hydrate: async () => {
@@ -715,6 +730,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         saveTimer = null
       }
       pendingSave = false
+      loadFailed = false
       let profileState: ProfilesState = {
         active_profile_id: 'default',
         profiles: [],
@@ -733,17 +749,26 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         if (!raw) {
           set({
             hydrated: true,
+            loadFailed: false,
             activeProfileId: profileState.active_profile_id,
             profiles: profileState.profiles,
           })
           void recordAppEvent('projects.hydrate', 'source=empty')
+          seedDevTestUser(get, set)
           return
         }
         const parsed = JSON.parse(raw)
+        takeMigrationDegraded()
         const migrated = migrate(parsed)
+        // Read with something standing in for a setting: fine to run on, never to save. Writing it
+        // back would replace what the person had with a default they did not choose.
+        loadFailed = takeMigrationDegraded()
+        if (loadFailed)
+          void recordFrontendError('a saved setting could not be read', null, 'projects.load')
         set({
           ...migrated,
           hydrated: true,
+          loadFailed,
           activeProfileId: profileState.active_profile_id,
           profiles: profileState.profiles,
         })
@@ -751,11 +776,16 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           'projects.hydrate',
           `source=disk projects=${migrated.projects.length} groups=${migrated.groups.length} tabs=${migrated.workspace.tabs.length} active_tab=${Boolean(migrated.workspace.activeTabId)} left_sidebar=${migrated.preferences.leftSidebarVisible} right_sidebar=${migrated.preferences.rightSidebarVisible}`,
         )
+        seedDevTestUser(get, set)
       } catch (err) {
-        console.error('Falha ao carregar projects.json — usando estado vazio', err)
+        // The file is there and could not be read, which is not the same as there being nothing
+        // saved: it is left exactly as it is, and this session's defaults are never written over it.
+        console.error('Failed to load projects.json; running on defaults without saving', err)
         void recordFrontendError(String(err), null, 'projects.load')
+        loadFailed = true
         set({
           hydrated: true,
+          loadFailed: true,
           activeProfileId: profileState.active_profile_id,
           profiles: profileState.profiles,
         })
@@ -780,7 +810,7 @@ export async function flushProjectsState(): Promise<void> {
   }
   pendingSave = false
   const state = useProjectsStore.getState()
-  if (!state.hydrated) return
+  if (!state.hydrated || loadFailed) return
   await saveProjectsFile(JSON.stringify(projectsPayload(state), null, 2), nextWriteSequence())
 }
 

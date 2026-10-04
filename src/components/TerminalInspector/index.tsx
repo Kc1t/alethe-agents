@@ -13,13 +13,15 @@ import {
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
-import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { useT } from '../../lib/i18n'
+import {
+  launchContextForPty,
+  launcherOverrideFor,
+  prepareAgentLaunch,
+} from '../../lib/agentLaunchPlan'
 import { resolveAgentCliCommand } from '../../lib/agentProviders'
-import type { SubTab, Terminal } from '../../lib/types'
+import { useT } from '../../lib/i18n'
 import {
   getPtyCwd,
   openInBrowser,
@@ -27,6 +29,7 @@ import {
   openInVscode,
   restartPty,
 } from '../../lib/tauri'
+import type { SubTab, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -123,12 +126,16 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
 
   const onRestart = async () => {
     if (!activeTab?.ptyId || terminal.disabled) return
-    const preparedRuntime = preparePtyRuntimeLaunch(
-      activeTab.type,
-      activeTab.runtimeProfile,
-      activeTab.extraArgs ?? [],
-    )
-    const launch = buildAgentLaunch(activeTab.type, preparedRuntime.args, activeTab.sessionId)
+    const launch = await prepareAgentLaunch({
+      agent: activeTab.type,
+      ptyId: activeTab.ptyId,
+      cwd: activeTab.cwd,
+      extraArgs: activeTab.extraArgs,
+      runtimeProfile: activeTab.runtimeProfile,
+      resumeId: activeTab.sessionId,
+      ...launchContextForPty(activeTab.ptyId),
+    })
+    if (!launch) return
     if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
       setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)
     }
@@ -141,7 +148,8 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
         command: resolveAgentCliCommand(activeTab.type),
         cwd: activeTab.cwd || undefined,
         extraArgs: launch.args,
-        env: preparedRuntime.env,
+        launcherOverride: launcherOverrideFor(activeTab.type),
+        env: launch.env,
       })
       window.dispatchEvent(
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),

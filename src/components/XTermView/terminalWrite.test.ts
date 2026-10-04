@@ -10,9 +10,25 @@ import {
   MAX_TRACKED_PROMPT_LENGTH,
   PASTE_CHUNK_SIZE,
   PTY_WRITE_TIMEOUT_MS,
+  writeFailureAction,
   writePtyChunked,
   writePtyWithTimeout,
 } from './terminalWrite'
+
+describe('writeFailureAction', () => {
+  it('restarts the terminal when a keystroke cannot be delivered', () => {
+    expect(writeFailureAction('input', false)).toBe('restart')
+  })
+
+  it('never restarts the terminal over a stalled paste', () => {
+    expect(writeFailureAction('paste', false)).toBe('notify')
+    expect(writeFailureAction('paste', true)).toBe('notify')
+  })
+
+  it('leaves a failed initial prompt to its own handler', () => {
+    expect(writeFailureAction('input', true)).toBe('ignore')
+  })
+})
 
 describe('applyPromptHistoryInput', () => {
   it('persists multiple submitted lines with one batched change signal', () => {

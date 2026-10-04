@@ -19,10 +19,14 @@ import {
   Workflow,
 } from 'lucide-react'
 
-import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import {
+  launchContextForPty,
+  launcherOverrideFor,
+  prepareAgentLaunch,
+} from '../../lib/agentLaunchPlan'
+import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import { pickFile, saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   getPtyCwd,
   openInFileExplorer,
@@ -31,7 +35,6 @@ import {
   restartPty,
   writeTextFile,
 } from '../../lib/tauri'
-import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import type { Group, Project, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
@@ -474,12 +477,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
   const restartTerminal = async (term: Terminal) => {
     const activeTab = activeTerminalTab(term)
     if (!activeTab?.ptyId || term.disabled) return
-    const runtime = preparePtyRuntimeLaunch(
-      activeTab.type,
-      activeTab.runtimeProfile,
-      activeTab.extraArgs ?? [],
-    )
-    const launch = buildAgentLaunch(activeTab.type, runtime.args, activeTab.sessionId)
+    const launch = await prepareAgentLaunch({
+      agent: activeTab.type,
+      ptyId: activeTab.ptyId,
+      cwd: activeTab.cwd,
+      extraArgs: activeTab.extraArgs,
+      runtimeProfile: activeTab.runtimeProfile,
+      resumeId: activeTab.sessionId,
+      ...launchContextForPty(activeTab.ptyId),
+    })
+    if (!launch) return
     useTerminalsStore.getState().beginRestart(activeTab.ptyId)
     try {
       await restartPty({
@@ -489,7 +496,8 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         command: resolveAgentCliCommand(activeTab.type),
         cwd: activeTab.cwd || undefined,
         extraArgs: launch.args,
-        env: runtime.env,
+        launcherOverride: launcherOverrideFor(activeTab.type),
+        env: launch.env,
       })
       window.dispatchEvent(
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),

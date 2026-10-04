@@ -4,6 +4,7 @@ import {
   formatDroppedPaths,
   getTerminalScrollbackRows,
   getWheelScrollLines,
+  isInterruptChord,
   normalizePastedText,
   shouldScrollHostScrollback,
 } from './terminalInput'
@@ -73,5 +74,31 @@ describe('formatDroppedPaths', () => {
   it('returns empty string when no valid paths', () => {
     expect(formatDroppedPaths([])).toBe('')
     expect(formatDroppedPaths(['', ''])).toBe('')
+  })
+})
+
+describe('isInterruptChord', () => {
+  const press = (key: string, modifiers: Partial<KeyboardEvent> = {}) => ({
+    key,
+    ctrlKey: true,
+    metaKey: false,
+    shiftKey: false,
+    altKey: false,
+    ...modifiers,
+  })
+
+  it('treats a bare Ctrl+C as an interrupt', () => {
+    expect(isInterruptChord(press('c'))).toBe(true)
+  })
+
+  it('never counts a copy chord towards a force kill', () => {
+    expect(isInterruptChord(press('C', { shiftKey: true }))).toBe(false)
+    expect(isInterruptChord(press('c', { ctrlKey: false, metaKey: true }))).toBe(false)
+  })
+
+  it('ignores other chords and other keys', () => {
+    expect(isInterruptChord(press('c', { altKey: true }))).toBe(false)
+    expect(isInterruptChord(press('c', { ctrlKey: false }))).toBe(false)
+    expect(isInterruptChord(press('v'))).toBe(false)
   })
 })

@@ -18,6 +18,8 @@ function runIdFor(plannerId: string | null): string {
 export function nativeSubagentJobs(
   nodes: readonly AgentNode[],
   costs: Readonly<Record<string, SessionCost>> = {},
+  // Shown as the run's name on the board, so the caller passes it translated.
+  runLabel = 'Subagents',
 ): OrchestratorJob[] {
   return nodes.map((node) => {
     const cost = node.kind === 'background' ? undefined : costs[node.id]
@@ -26,7 +28,7 @@ export function nativeSubagentJobs(
       plannerId: node.plannerId,
       agent: node.sourceAgent,
       runId: runIdFor(node.plannerId),
-      runLabel: 'Subagents',
+      runLabel,
       spec: node.prompt ?? node.agentType,
       cwd: '',
       status: statusOf(node),

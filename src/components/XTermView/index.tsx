@@ -14,7 +14,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import { cliPathMatchesAgent } from '../../lib/agentCliPath'
+import { cliExecutableFilters, cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { pickFile } from '../../lib/dialog'
 import { getLocale, translate, useT } from '../../lib/i18n'
@@ -371,11 +371,8 @@ export function XTermView({
   const configurePath = useCallback(
     async (agent: AgentType) => {
       const picked = await pickFile({
-        title: `Select the ${agent} executable`,
-        filters: [
-          { name: 'Executable', extensions: ['cmd', 'exe', 'bat', 'ps1'] },
-          { name: 'All files', extensions: ['*'] },
-        ],
+        title: translate(getLocale(), 'prefs.cliPathPick', { agent }),
+        filters: cliExecutableFilters(),
       })
       if (!picked) return
       if (!cliPathMatchesAgent(agent, picked)) {

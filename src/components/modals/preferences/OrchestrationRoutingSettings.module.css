@@ -1,0 +1,162 @@
+/* Rows here sit in the Preferences option list and share its shell; only what a tier adds - two
+   routes under one heading - is styled in this file. */
+
+.percent {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.percent input {
+  width: 58px;
+  height: 32px;
+  padding: 0 8px;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-align: right;
+  outline: none;
+}
+
+.percent input:focus-visible {
+  border-color: var(--border-strong);
+}
+
+.tier {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.routes {
+  gap: 6px;
+}
+
+.route {
+  display: grid;
+  grid-template-columns: 18px 12px 140px minmax(0, 1fr) 120px 78px 24px;
+  align-items: center;
+  gap: 8px;
+}
+
+.route[data-dragging='true'] {
+  background: var(--bg-sunken);
+}
+
+.grip,
+.remove {
+  display: grid;
+  place-items: center;
+  height: 24px;
+  color: var(--fg-faint);
+  border-radius: var(--radius-sm);
+}
+
+.grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+.grip:active {
+  cursor: grabbing;
+}
+
+.remove {
+  cursor: pointer;
+}
+
+.grip:hover,
+.grip:focus-visible,
+.remove:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.remove:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* How used the route's provider is right now, so the order can be judged against real numbers. */
+.usage {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage[data-band='watch'],
+.usage[data-band='missing'] {
+  color: var(--status-waiting);
+}
+
+.usage[data-band='critical'] {
+  color: var(--status-offline);
+}
+
+.route[data-next='true'] .usage:not([data-band='watch'], [data-band='critical']) {
+  color: var(--fg);
+}
+
+/* Marks the route a task of this tier would start on right now. */
+.nextDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-working);
+}
+
+.route[data-next='true'] .position {
+  color: var(--fg);
+}
+
+/* The place in the order, which is the whole point of the list. */
+.position {
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.addRoute {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 46px;
+  padding: 4px 10px;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.addRoute:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+@media (max-width: 640px) {
+  .route {
+    grid-template-columns: 18px 12px minmax(0, 1fr) 78px 24px;
+  }
+}

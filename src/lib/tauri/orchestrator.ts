@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import type { AgentFitness } from '../agentFitness'
+import type { OrchestratorPolicyPreferences, OrchestratorRoutingPreferences } from '../types'
 
 export type OrchestratorJobStatus =
   | 'queued'
@@ -17,19 +18,25 @@ export type OrchestratorJobStatus =
   // failure.
   | 'blocked'
 
-export type OrchestratorApprovalKind = 'command' | 'fileChange'
+/** `tool` is any other tool call a Claude worker asks about (web fetch, an MCP tool, ...). */
+export type OrchestratorApprovalKind = 'command' | 'fileChange' | 'tool'
 
 /** What a blocked worker is asking, with the rpc id its answer has to be sent on. */
 export type OrchestratorPendingApproval = {
   rpcId: string | number
   kind: OrchestratorApprovalKind
+  /** The tool's display name, for questions from a Claude worker. */
+  tool?: string | null
   command: string | null
   cwd: string | null
   reason: string | null
+  /** The files a change touches, or the path outside the workspace the call reaches for. */
+  files?: string[]
   askedAtMs: number
 }
 
-export type OrchestratorDecision = 'accept' | 'acceptForSession' | 'decline' | 'abort'
+/** `cancel` refuses and ends the worker's turn; the backend still takes the older `abort`. */
+export type OrchestratorDecision = 'accept' | 'acceptForSession' | 'decline' | 'cancel'
 
 export type OrchestratorAnswer = {
   answered: string
@@ -60,11 +67,24 @@ export type OrchestratorClaudeQuota = {
 }
 
 export type OrchestratorRouting = {
-  /** `ignored` means the planner delegated into the strained side with the reading in hand. */
-  verdict: 'chosen' | 'ignored'
+  /**
+   * `routed` is a task Alethe placed by its complexity tier. The other two describe a delegation
+   * that named its own agent while one side was running out: `ignored` means the planner went into
+   * the strained side with the reading in hand.
+   */
+  verdict: 'chosen' | 'ignored' | 'routed'
   agent: string
-  window: string
+  /** The quota window that was running out; absent on a `routed` note. */
+  window?: string
   used: number
+  /** The complexity tier and kind the planner gave the task; only on a `routed` note. */
+  tier?: 'light' | 'standard' | 'deep'
+  kind?: string
+  route?: 'primary' | 'fallback'
+  /** Where the route sits in its tier's order, counted from zero. */
+  position?: number
+  /** The tier's primary route, when the task was moved off it because it was running out. */
+  avoided?: { agent: string; used: number; rateLimited: boolean } | null
 }
 
 export type OrchestratorJob = {
@@ -91,8 +111,22 @@ export type OrchestratorJob = {
   /** Why this worker ran on this agent; null when neither side was running out at the time. */
   routing: OrchestratorRouting | null
   worktree: string | null
+  /** The oldest open question; more can be waiting behind it (`waitingApprovals`). */
   pendingApproval: OrchestratorPendingApproval | null
+  waitingApprovals?: number
   hasDiff: boolean
+  /** The model the worker runs on: what its CLI reported, else what it was started with. */
+  model?: string | null
+  /** The reasoning effort the worker runs with, when known. */
+  effort?: string | null
+  /** Whether this worker stops to ask before reaching outside its workspace. */
+  asksForApproval?: boolean
+  /** The person's rules that won over what the planner asked for this worker. */
+  overrides?: string[]
+  /** Its process is still up: a finished worker that can take a follow-up straight away. */
+  live?: boolean
+  /** Its place among the workers waiting for a slot, counted from zero; null when not waiting. */
+  queuePosition?: number | null
   summary: string
   /** Set only on the frontend, for a Claude/Codex native subagent reshaped into this type — it never
    * had a real backend job, so steering/resuming/messaging it has nothing to reach. */
@@ -111,6 +145,8 @@ export type OrchestratorSnapshot = {
   running: number
   queued: number
   concurrencyLimit: number
+  /** The worker CLIs Alethe found on this machine. */
+  installedAgents?: string[]
 }
 
 const JOBS_EVENT = 'orchestrator://jobs'
@@ -120,11 +156,31 @@ export async function orchestratorMcpConfigPath(
   plannerId: string,
   plannerLabel: string,
   plannerAgent: string,
+  // Where the planner runs: its workers start there unless a delegation names another directory.
+  plannerCwd?: string,
 ): Promise<string> {
   return invoke<string>('orchestrator_mcp_config_path', {
     plannerId,
     plannerLabel,
     plannerAgent,
+    plannerCwd,
+  })
+}
+
+/** The CLI path a worker agent runs from; null goes back to whatever PATH resolves. */
+export async function orchestratorSetCliPath(agent: string, path: string | null): Promise<void> {
+  return invoke<void>('orchestrator_set_cli_path', { agent, path })
+}
+
+/** Sets the model and effort workers of one CLI start with; an absent value clears it. */
+export async function orchestratorSetWorkerDefaults(
+  agent: string,
+  defaults: { model?: string; effort?: string },
+): Promise<void> {
+  return invoke<void>('orchestrator_set_worker_defaults', {
+    agent,
+    model: defaults.model ?? null,
+    effort: defaults.effort ?? null,
   })
 }
 
@@ -134,6 +190,49 @@ export async function orchestratorJobs(): Promise<OrchestratorSnapshot> {
 
 export async function orchestratorSetConcurrency(limit: number): Promise<void> {
   return invoke<void>('orchestrator_set_concurrency', { limit })
+}
+
+/** Pushes the person's worker rules; they apply to delegations from then on. */
+export async function orchestratorSetPolicy(policy: OrchestratorPolicyPreferences): Promise<void> {
+  return invoke<void>('orchestrator_set_policy', {
+    defaultAgent: policy.defaultAgent,
+    // Zero means no budget, as it does for a delegation's `timeoutSeconds`.
+    timeoutSeconds: Math.max(0, policy.timeoutMinutes) * 60,
+    approvals: policy.approvals,
+    isolation: policy.isolation,
+    webSearch: policy.webSearch,
+    parkedLimit: policy.keepFinished,
+    codexSandbox: policy.codexSandbox,
+    routing: policy.routing,
+  })
+}
+
+/** Stops workers that are running, queued or waiting on an approval. */
+export async function orchestratorCancel(jobIds: string[]): Promise<unknown> {
+  return invoke<unknown>('orchestrator_cancel', { jobIds })
+}
+
+/** Gives one planner its own routing, or returns it to the shared one with `null`. */
+export async function orchestratorSetPlannerRouting(
+  plannerId: string,
+  routing: OrchestratorRoutingPreferences | null,
+): Promise<void> {
+  return invoke<void>('orchestrator_set_planner_routing', { plannerId, routing })
+}
+
+/** Puts the workers waiting for a slot in the given order; only the named ones trade places. */
+export async function orchestratorReorderQueue(jobIds: string[]): Promise<unknown> {
+  return invoke<unknown>('orchestrator_reorder_queue', { jobIds })
+}
+
+/** Takes finished workers off the board for good; anything still in flight is left alone. */
+export async function orchestratorClear(jobIds: string[]): Promise<unknown> {
+  return invoke<unknown>('orchestrator_clear', { jobIds })
+}
+
+/** Lets go of finished workers' processes; their records stay on the board. */
+export async function orchestratorRelease(jobIds: string[]): Promise<unknown> {
+  return invoke<unknown>('orchestrator_release', { jobIds })
 }
 
 /** Pushes an agent's remaining-limit snapshot into the orchestrator core, which cannot poll for it. */

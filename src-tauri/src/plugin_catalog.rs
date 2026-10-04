@@ -246,7 +246,9 @@ pub async fn plugin_catalog_open(
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = std::process::Command::new("xdg-open").arg(&url).spawn();
 
-    result.map(|_| ()).map_err(|e| format!("open_failed:{e}"))
+    result
+        .map(crate::diagnostics::reap_in_background)
+        .map_err(|e| format!("open_failed:{e}"))
 }
 
 /// Installs a plugin the catalogue offered. The entry is looked up by id in the

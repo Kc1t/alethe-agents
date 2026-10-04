@@ -40,6 +40,24 @@
   display: none;
 }
 
+.sidebarTab {
+  position: relative;
+}
+
+.sidebarTabDot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-working);
+}
+
+.sidebarTabDot[data-tone='waiting'] {
+  background: var(--status-waiting);
+}
+
 .sidebarTab:hover {
   color: var(--fg);
   background: var(--panel-hover);

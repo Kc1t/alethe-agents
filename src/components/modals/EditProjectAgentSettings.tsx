@@ -2,21 +2,18 @@ import { AlertTriangle, CircleCheck, GitBranch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useGsdSyncFeatureEnabled } from '../../hooks/useGsdSyncSessions'
+import { useProviderModels } from '../../hooks/useProviderModels'
+import { agentLabel, isAgentEnabled, useAgentTypes } from '../../lib/agentProviders'
 import { readableError } from '../../lib/errors'
 import { useT } from '../../lib/i18n'
-import { discoverProviderModels, gitInit, gitStatus } from '../../lib/tauri'
-import { agentLabel, isAgentEnabled, useAgentTypes } from '../../lib/agentProviders'
-import { type AgentType, type BuiltinAgentType, PROVIDER_MODELS } from '../../lib/types'
+import { gitInit, gitStatus } from '../../lib/tauri'
+import { type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
-import { type ModelOption, ModelSearchablePicker } from './ModelSearchablePicker'
-
-// Cache module-level (sobrevive a troca de aba/remount deste componente) —
-
-const globalModelsCache: Record<string, ModelOption[]> = {}
+import { ModelSearchablePicker } from './ModelSearchablePicker'
 
 export function EditProjectAgentSettings({
   projectId,
@@ -79,8 +76,7 @@ export function EditProjectAgentSettings({
   const availableAgents = allAgents.filter((a) => isAgentEnabled(enabledAgents, a.type))
   const conflictAgents = availableAgents.length > 0 ? availableAgents : allAgents
 
-  const [discoveredModels, setDiscoveredModels] = useState<ModelOption[]>([])
-  const [loadingModels, setLoadingModels] = useState(false)
+  const { models: discoveredModels, loading: loadingModels } = useProviderModels(conflictProvider)
   const [migratingWorktrees, setMigratingWorktrees] = useState(false)
 
   const [hasGit, setHasGit] = useState<boolean | null>(null)
@@ -121,42 +117,6 @@ export function EditProjectAgentSettings({
       setGitInitBusy(false)
     }
   }
-
-  useEffect(() => {
-    let active = true
-    const targetProvider = conflictProvider
-    const fallback = PROVIDER_MODELS[targetProvider as BuiltinAgentType] ?? []
-    const cached = globalModelsCache[targetProvider]
-    setDiscoveredModels(cached || fallback)
-
-    // With the cache already filled, this is just a silent background
-    // revalidation — no need to flash "Loading..." again (ModelSearchablePicker
-    // only shows that text when there are no options to display yet).
-    if (!cached) setLoadingModels(true)
-    discoverProviderModels(targetProvider)
-      .then((list) => {
-        if (!active) return
-        if (list && list.length > 0) {
-          globalModelsCache[targetProvider] = list
-          setDiscoveredModels(list)
-        } else {
-          globalModelsCache[targetProvider] = fallback
-          setDiscoveredModels(fallback)
-        }
-      })
-      .catch(() => {
-        if (!active) return
-        globalModelsCache[targetProvider] = fallback
-        setDiscoveredModels(fallback)
-      })
-      .finally(() => {
-        if (active) setLoadingModels(false)
-      })
-
-    return () => {
-      active = false
-    }
-  }, [conflictProvider])
 
   return (
     <>

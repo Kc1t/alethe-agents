@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   installMethodsFor,
@@ -17,6 +17,18 @@ const BARE: InstallToolchain = {
   bun: false,
   pnpm: false,
 }
+
+const WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+const LINUX_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15'
+
+// The catalog was written for Windows first; these cases keep describing that machine.
+beforeEach(() => {
+  vi.stubGlobal('navigator', { userAgent: WINDOWS_UA })
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('installMethodsFor', () => {
   it('offers the native installer first even when npm is available', () => {
@@ -143,6 +155,60 @@ describe('installShellLine', () => {
   it('closes the shell so the runner can detect completion', () => {
     expect(installShellLine('npm install -g opencode-ai')).toBe(
       'npm install -g opencode-ai; exit\r',
+    )
+  })
+})
+
+describe('install methods on Linux', () => {
+  beforeEach(() => {
+    vi.stubGlobal('navigator', { userAgent: LINUX_UA })
+  })
+
+  it('never offers a PowerShell or Windows package-manager command', () => {
+    const everything = { ...BARE, npm: true, winget: true, scoop: true, choco: true }
+    for (const agent of [
+      'claude',
+      'codex',
+      'copilot',
+      'cursor',
+      'antigravity',
+      'mimo',
+      'opencode',
+      'kiro',
+      'grok',
+    ] as const) {
+      for (const method of installMethodsFor(agent, everything)) {
+        expect(method.command, agent).not.toMatch(/\b(irm|iex|winget|scoop|choco)\b/)
+      }
+    }
+  })
+
+  it('offers each vendor script that has a POSIX version, before npm', () => {
+    const methods = installMethodsFor('claude', { ...BARE, npm: true })
+    expect(methods.map((method) => method.id)).toEqual(['native', 'npm'])
+    expect(methods[0].command).toBe('curl -fsSL https://claude.ai/install.sh | bash')
+    expect(installMethodsFor('codex', BARE)[0].command).toBe(
+      'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
+    )
+    expect(installMethodsFor('opencode', BARE)[0].command).toBe(
+      'curl -fsSL https://opencode.ai/install | bash',
+    )
+  })
+
+  it('lets Cursor, Antigravity and Kiro be installed at all', () => {
+    for (const agent of ['cursor', 'antigravity', 'kiro'] as const) {
+      expect(
+        installMethodsFor(agent, null).map((method) => method.id),
+        agent,
+      ).toEqual(['native'])
+    }
+  })
+
+  it('sends Mimo to npm, since its script only exists for Windows', () => {
+    expect(installMethodsFor('mimo', BARE)).toEqual([])
+    expect(needsNodeToolchain('mimo', BARE)).toBe(true)
+    expect(installMethodsFor('mimo', { ...BARE, npm: true })[0].command).toBe(
+      'npm install -g @mimo-ai/cli',
     )
   })
 })

@@ -292,6 +292,7 @@ pub async fn spotify_login(
         std::process::Command::new("rundll32")
             .args(["url.dll,FileProtocolHandler", &auth_url])
             .spawn()
+            .map(crate::diagnostics::reap_in_background)
             .map_err(|e| format!("open browser: {e}"))?;
     }
     #[cfg(target_os = "macos")]
@@ -299,6 +300,7 @@ pub async fn spotify_login(
         std::process::Command::new("open")
             .arg(&auth_url)
             .spawn()
+            .map(crate::diagnostics::reap_in_background)
             .map_err(|e| format!("open browser: {e}"))?;
     }
     #[cfg(target_os = "linux")]
@@ -306,6 +308,7 @@ pub async fn spotify_login(
         std::process::Command::new("xdg-open")
             .arg(&auth_url)
             .spawn()
+            .map(crate::diagnostics::reap_in_background)
             .map_err(|e| format!("open browser: {e}"))?;
     }
 

@@ -15,11 +15,12 @@ import {
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
-import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { applyLaunchDefaults, resolveLaunchDefaults } from '../../lib/agentLaunchDefaults'
+import { launcherOverrideFor, prepareAgentLaunch } from '../../lib/agentLaunchPlan'
+import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   conversationFields,
   getActiveSessions,
@@ -27,7 +28,6 @@ import {
   saveSession,
 } from '../../lib/sessionResume'
 import {
-  agentHooksSettingsPath,
   completeAgentHandoff,
   getClaudeSessionTitle,
   getCodexSessionTitle,
@@ -36,10 +36,9 @@ import {
   restartPty,
   snapshotCodexSessions,
 } from '../../lib/tauri'
-import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import {
-  isShellAgentType,
   type AgentType,
+  isShellAgentType,
   type SubTab,
   type Terminal as TerminalEntry,
   type Theme,
@@ -116,6 +115,7 @@ export const TerminalPane = memo(function TerminalPane({
     }
   }, [focusReq, terminal.id])
 
+  const agentDefaults = useProjectsStore((s) => s.preferences.agentDefaults)
   const setActiveTab = useProjectsStore((s) => s.setActiveTab)
   const closeSubTab = useProjectsStore((s) => s.closeSubTab)
   const setLaneVisible = useProjectsStore((s) => s.setLaneVisible)
@@ -223,26 +223,19 @@ export const TerminalPane = memo(function TerminalPane({
     if (!resumeSessionId && activeTab.type === 'codex' && restartCwd) {
       resumeSessionId = (await snapshotCodexSessions(restartCwd).catch(() => []))[0]?.id
     }
-    const preparedRuntime = preparePtyRuntimeLaunch(
-      activeTab.type,
-      activeTab.runtimeProfile,
-      activeTab.extraArgs ?? [],
-    )
-    const hooksSettingsPath =
-      activeTab.type === 'claude'
-        ? await agentHooksSettingsPath(
-            ptyId,
-            useProjectsStore.getState().preferences.enabledFeatures.orchestrator,
-          ).catch(() => undefined)
-        : undefined
-    const launch = buildAgentLaunch(
-      activeTab.type,
-      preparedRuntime.args,
-      resumeSessionId,
-      undefined,
-      undefined,
-      hooksSettingsPath,
-    )
+    const launch = await prepareAgentLaunch({
+      agent: activeTab.type,
+      ptyId,
+      cwd: restartCwd,
+      // The same arguments the first spawn got, including the handoff directory Claude reads from.
+      extraArgs: runtimeExtraArgs,
+      runtimeProfile: activeTab.runtimeProfile,
+      resumeId: resumeSessionId,
+      useRouter9: activeTab.useRouter9,
+      graphifyRepo,
+      gsdWatcherEnabled,
+    })
+    if (!launch) return
     if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
       setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)
     }
@@ -256,7 +249,8 @@ export const TerminalPane = memo(function TerminalPane({
         command: resolveAgentCliCommand(activeTab.type),
         cwd: restartCwd || undefined,
         extraArgs: launch.args,
-        env: preparedRuntime.env,
+        launcherOverride: launcherOverrideFor(activeTab.type),
+        env: launch.env,
       })
       if (launch.sessionId) {
         saveSession(activeTab.id, {
@@ -653,7 +647,18 @@ export const TerminalPane = memo(function TerminalPane({
                   key={`${activeTab.id}:${resumeNonce}`}
                   surfaceId={activeTab.id}
                   cwd={activeTab.cwd?.trim() || terminal.cwd?.trim() || undefined}
-                  command={buildGhosttyCommand(activeTab.type, activeTab.extraArgs)}
+                  command={buildGhosttyCommand(
+                    activeTab.type,
+                    applyLaunchDefaults(
+                      activeTab.type,
+                      activeTab.extraArgs ?? [],
+                      resolveLaunchDefaults(
+                        agentDefaults,
+                        activeTab.type,
+                        activeTab.orchestrationRole,
+                      ),
+                    ),
+                  )}
                   onSpawned={(id) => {
                     setResumePending(false)
                     if (activeTab.ptyId !== id) {

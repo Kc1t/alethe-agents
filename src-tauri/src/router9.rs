@@ -136,8 +136,12 @@ fn kill_tree(pid: u32) {
     let _ = command.status();
 }
 
+/// 9router serves a Next.js app that can fork its own server; started as a group leader (see
+/// `start`), the whole group goes, so nothing is left holding the port.
 #[cfg(not(windows))]
-fn kill_tree(_pid: u32) {}
+fn kill_tree(pid: u32) {
+    crate::pty::kill_process_tree(pid);
+}
 
 /// Best-effort teardown used both by the command and by app exit.
 pub fn stop_managed(state: &Router9Process) {
@@ -235,7 +239,9 @@ pub fn router9_start(
         .append(true)
         .open(&log)
         .map_err(|e| format!("log_open_failed:{e}"))?;
-    let err = out.try_clone().map_err(|e| format!("log_open_failed:{e}"))?;
+    let err = out
+        .try_clone()
+        .map_err(|e| format!("log_open_failed:{e}"))?;
 
     let mut command = match source {
         Router9Source::Managed => {
@@ -249,7 +255,10 @@ pub fn router9_start(
             let mut command = Command::new(node);
             // The managed copy keeps its data beside the profile so it never shares state with an
             // install the user maintains themselves.
-            command.arg(&script).current_dir(&dir).env("DATA_DIR", &data);
+            command
+                .arg(&script)
+                .current_dir(&dir)
+                .env("DATA_DIR", &data);
             command
         }
         Router9Source::External => {
@@ -269,6 +278,8 @@ pub fn router9_start(
         .stdout(Stdio::from(out))
         .stderr(Stdio::from(err));
     hide_console(&mut command);
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
 
     let child = command.spawn().map_err(|e| format!("spawn_failed:{e}"))?;
     *slot = Some(child);
@@ -279,4 +290,38 @@ pub fn router9_start(
 pub fn router9_stop(state: tauri::State<'_, Router9Process>) -> Result<(), String> {
     stop_managed(state.inner());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    #[test]
+    fn stopping_takes_down_a_server_the_process_forked() {
+        use std::io::{BufRead, BufReader};
+        use std::os::unix::process::CommandExt;
+
+        // Stands in for Next.js forking its server: the child prints its fork's pid and waits.
+        let mut command = std::process::Command::new("sh");
+        command
+            .args(["-c", "sleep 60 & echo $!; wait"])
+            .stdout(std::process::Stdio::piped())
+            .process_group(0);
+        let mut child = command.spawn().expect("spawn");
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().expect("stdout"))
+            .read_line(&mut line)
+            .expect("fork pid");
+        let forked: i32 = line.trim().parse().expect("a pid");
+
+        super::kill_tree(child.id());
+        // Checked before reaping the child: waiting on it first would sit out the whole sleep.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let alive = unsafe { libc::kill(forked, 0) } == 0;
+        let _ = child.kill();
+        let _ = child.wait();
+        if alive {
+            unsafe { libc::kill(forked, libc::SIGKILL) };
+        }
+        assert!(!alive, "the forked server outlived the stop");
+    }
 }

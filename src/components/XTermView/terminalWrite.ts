@@ -62,6 +62,23 @@ export type PromptHistoryInputState = {
   history: string[]
 }
 
+export type WriteFailureSource = 'input' | 'paste'
+export type WriteFailureAction = 'restart' | 'notify' | 'ignore'
+
+/**
+ * A keystroke that cannot be delivered means the PTY is unusable, so the pane restarts it. A paste
+ * is different: it stalls whenever the process is slow to read a large block, and a restart would
+ * kill a healthy session to recover text the person can simply paste again.
+ */
+export function writeFailureAction(
+  source: WriteFailureSource,
+  initialInputInFlight: boolean,
+): WriteFailureAction {
+  if (source === 'paste') return 'notify'
+  // Restarting in the middle of the initial prompt would lose the session with no way to resume.
+  return initialInputInFlight ? 'ignore' : 'restart'
+}
+
 /** Prevents one blocked ConPTY write from holding every subsequent keystroke forever. */
 export async function writePtyWithTimeout(id: string, data: string): Promise<void> {
   let timeoutId: number | null = null

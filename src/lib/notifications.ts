@@ -74,6 +74,19 @@ export async function notifyLimitReset(
   return deliver(title, body, agent)
 }
 
+/**
+ * A worker that needs the person, or a batch of delegated work that just ended. With
+ * `backgroundOnly` nothing is shown while Alethe is in front: the board already says it.
+ */
+export async function notifyOrchestrator(
+  title: string,
+  body: string,
+  options: { agent?: AgentType; backgroundOnly?: boolean } = {},
+): Promise<void> {
+  if (options.backgroundOnly && (await appInForeground())) return
+  return deliver(title, body, options.agent)
+}
+
 export async function notifyPomodoro(title: string, body: string): Promise<void> {
   return deliver(title, body)
 }

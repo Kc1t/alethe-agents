@@ -1,7 +1,7 @@
 import mermaid from 'mermaid'
 import { memo, useEffect, useId, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
+import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { useT } from '../../lib/i18n'
@@ -60,13 +60,16 @@ function MermaidDiagram({ code, dark }: { code: string; dark: boolean }) {
 
 export type MarkdownRendererProps = {
   content: string
-  /** Tema escuro? Controla o tema do mermaid. */
+  /** Controls Mermaid's theme. */
   dark: boolean
+  /** Uses denser typography when Markdown is embedded in a card instead of a document pane. */
+  compact?: boolean
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   dark,
+  compact = false,
 }: MarkdownRendererProps) {
   const t = useT()
   const components: Components = {
@@ -103,7 +106,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     },
   }
   return (
-    <div className={styles.markdownBody}>
+    <div className={`${styles.markdownBody} ${compact ? styles.markdownCompact : ''}`}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {content}
       </ReactMarkdown>

@@ -3,9 +3,7 @@ import { normalizeProjectGrids } from '../lib/projectGrids'
 
 import { nanoid } from 'nanoid'
 
-import { preparePtyRuntimeLaunch } from '../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../lib/i18n'
-import { buildAgentLaunch } from '../lib/sessionLaunch'
 import {
   clearTerminalPtyIds,
   collectTerminalPtyIds,
@@ -366,6 +364,7 @@ type ProjectsSlice = Pick<
   | 'unarchiveProject'
   | 'setProjectHidden'
   | 'setProjectColor'
+  | 'setProjectRoutingPreset'
   | 'setProjectIconUrl'
   | 'addMarkdownComment'
   | 'removeMarkdownComment'
@@ -476,6 +475,9 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
     setProjectColor: (id, color) => updateProject(id, (p) => ({ ...p, color })),
 
+    setProjectRoutingPreset: (id, preset) =>
+      updateProject(id, (p) => ({ ...p, orchestratorRoutingPreset: preset })),
+
     setProjectIconUrl: (id, iconUrl) => updateProject(id, (p) => ({ ...p, iconUrl })),
 
     addMarkdownComment: (projectId, comment) =>
@@ -544,10 +546,21 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         const agentId = `merge-${nanoid(6)}`
         const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
 
+        // Same launch as any other restart: MCP servers, hooks, routing and the CLI path come
+        // along, so an orchestration planner keeps its tools in the new worktree.
+        const { launchContextForPty, launcherOverrideFor, prepareAgentLaunch } =
+          await import('../lib/agentLaunchPlan')
         for (const tab of terminal.tabs) {
           if (!tab.ptyId) continue
-          const runtime = preparePtyRuntimeLaunch(tab.type, tab.runtimeProfile, tab.extraArgs ?? [])
-          const launch = buildAgentLaunch(tab.type, runtime.args)
+          const launch = await prepareAgentLaunch({
+            agent: tab.type,
+            ptyId: tab.ptyId,
+            cwd: info.path,
+            extraArgs: tab.extraArgs,
+            runtimeProfile: tab.runtimeProfile,
+            ...launchContextForPty(tab.ptyId),
+          })
+          if (!launch) continue
           useTerminalsStore.getState().beginRestart(tab.ptyId)
           try {
             await restartPty({
@@ -557,7 +570,8 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               command: resolveAgentCliCommand(tab.type),
               cwd: info.path,
               extraArgs: launch.args,
-              env: runtime.env,
+              launcherOverride: launcherOverrideFor(tab.type),
+              env: launch.env,
             })
             window.dispatchEvent(
               new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
@@ -663,14 +677,21 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               })
             }
 
+            // Same launch as any other restart: MCP servers, hooks, routing and the CLI path come
+            // along, so an orchestration planner keeps its tools in the new worktree.
+            const { launchContextForPty, launcherOverrideFor, prepareAgentLaunch } =
+              await import('../lib/agentLaunchPlan')
             for (const tab of terminal.tabs) {
               if (!tab.ptyId) continue
-              const runtime = preparePtyRuntimeLaunch(
-                tab.type,
-                tab.runtimeProfile,
-                tab.extraArgs ?? [],
-              )
-              const launch = buildAgentLaunch(tab.type, runtime.args)
+              const launch = await prepareAgentLaunch({
+                agent: tab.type,
+                ptyId: tab.ptyId,
+                cwd: info.path,
+                extraArgs: tab.extraArgs,
+                runtimeProfile: tab.runtimeProfile,
+                ...launchContextForPty(tab.ptyId),
+              })
+              if (!launch) continue
               useTerminalsStore.getState().beginRestart(tab.ptyId)
               try {
                 await restartPty({
@@ -680,7 +701,8 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                   command: resolveAgentCliCommand(tab.type),
                   cwd: info.path,
                   extraArgs: launch.args,
-                  env: runtime.env,
+                  launcherOverride: launcherOverrideFor(tab.type),
+                  env: launch.env,
                 })
                 window.dispatchEvent(
                   new CustomEvent('alethe:terminal-resize-request', {

@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 
+import { isWindows } from './platform'
 import { ContributionList, useContributions } from './plugins/registry'
 import {
   AGENT_TYPE_LABELS,
@@ -43,15 +44,27 @@ export function findAgentProvider(id: AgentType): AgentProviderContribution | un
   return agentProviderContributions.get(id)
 }
 
+/** WSL is a Windows feature: anywhere else its CLI never resolves, so it is not offered. */
+export function isAgentAvailableOnThisOs(id: AgentType): boolean {
+  return id !== 'wsl' || isWindows()
+}
+
+function builtinAgentTypes(): AgentType[] {
+  return ALL_AGENT_TYPES.filter(isAgentAvailableOnThisOs)
+}
+
 /** Built-ins first, then contributed providers in registration order. */
 export function allAgentTypes(): AgentType[] {
-  return [...ALL_AGENT_TYPES, ...agentProviderContributions.all().map((provider) => provider.id)]
+  return [
+    ...builtinAgentTypes(),
+    ...agentProviderContributions.all().map((provider) => provider.id),
+  ]
 }
 
 /** Reactive `allAgentTypes()` — re-renders when a plugin adds or removes a provider. */
 export function useAgentTypes(): AgentType[] {
   const contributed = useContributions(agentProviderContributions)
-  return [...ALL_AGENT_TYPES, ...contributed.map((provider) => provider.id)]
+  return [...builtinAgentTypes(), ...contributed.map((provider) => provider.id)]
 }
 
 export function agentLabel(id: AgentType): string {

@@ -1,9 +1,113 @@
-import { ArchiveRestore, FolderArchive, Trash2 } from 'lucide-react'
-import { useMemo } from 'react'
+import { ArchiveRestore, FolderArchive, History, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { useT } from '../../../lib/i18n'
+import { intlLocale, useT } from '../../../lib/i18n'
+import {
+  killPty,
+  listWorkspaceBackups,
+  restoreWorkspaceBackup,
+  type WorkspaceBackup,
+} from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { useTerminalsStore } from '../../../stores/terminalsStore'
+import { useUiStore } from '../../../stores/uiStore'
 import styles from '../PreferencesModal.module.css'
+
+/**
+ * The earlier versions of the workspace Alethe keeps beside it, each of which can be put back. The
+ * workspace being replaced becomes a backup itself, so a restore can be undone the same way.
+ */
+function WorkspaceBackups() {
+  const t = useT()
+  const language = useProjectsStore((state) => state.preferences.language)
+  const projects = useProjectsStore((state) => state.projects)
+  const hydrate = useProjectsStore((state) => state.hydrate)
+  const resetTerminalRuntime = useTerminalsStore((state) => state.reset)
+  const pushToast = useUiStore((state) => state.pushToast)
+  // null while the list is on its way.
+  const [backups, setBackups] = useState<WorkspaceBackup[] | null>(null)
+  const [restoring, setRestoring] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    listWorkspaceBackups()
+      .then((listed) => {
+        if (!cancelled) setBackups(listed)
+      })
+      .catch(() => {
+        if (!cancelled) setBackups([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const restore = async (backup: WorkspaceBackup) => {
+    if (restoring || !window.confirm(t('prefs.workspaceBackupConfirm'))) return
+    setRestoring(true)
+    try {
+      // The terminals on screen belong to the workspace about to be replaced.
+      const ptyIds = projects.flatMap((project) =>
+        project.terminals.flatMap((terminal) =>
+          terminal.tabs.flatMap((tab) => (tab.ptyId ? [tab.ptyId] : [])),
+        ),
+      )
+      await Promise.allSettled(ptyIds.map((ptyId) => killPty(ptyId)))
+      resetTerminalRuntime()
+      await restoreWorkspaceBackup(backup.generation)
+      await hydrate()
+      window.location.reload()
+    } catch (error) {
+      setRestoring(false)
+      pushToast({
+        title: t('prefs.workspaceBackupFailed'),
+        body: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  const when = new Intl.DateTimeFormat(intlLocale(language), {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+
+  return (
+    <>
+      <div className={styles.sectionHeading} data-setting-id="workspace-backups" tabIndex={-1}>
+        <h2>{t('prefs.workspaceBackupsTitle')}</h2>
+        <p>{t('prefs.workspaceBackupsDesc')}</p>
+      </div>
+      {backups === null ? null : backups.length === 0 ? (
+        <div className={styles.emptyState}>{t('prefs.workspaceBackupsEmpty')}</div>
+      ) : (
+        <div className={styles.optionList}>
+          {backups.map((backup) => (
+            <div key={backup.generation} className={styles.optionRow}>
+              <div className={styles.optionCopy}>
+                <strong>{when.format(new Date(backup.modifiedMs))}</strong>
+                <span>
+                  {t('prefs.workspaceBackupHolds', {
+                    projects: backup.projects,
+                    terminals: backup.terminals,
+                  })}
+                </span>
+              </div>
+              <button
+                type="button"
+                className={styles.secondaryButton}
+                disabled={restoring}
+                onClick={() => void restore(backup)}
+              >
+                <History size={14} />
+                {t('prefs.workspaceBackupRestore')}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  )
+}
 
 export function OrganizationPage() {
   const t = useT()
@@ -91,6 +195,7 @@ export function OrganizationPage() {
           ))}
         </div>
       )}
+      <WorkspaceBackups />
     </section>
   )
 }

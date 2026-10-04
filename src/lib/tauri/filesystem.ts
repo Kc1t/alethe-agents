@@ -99,6 +99,11 @@ export async function exportLogs(targetPath: string): Promise<void> {
   await invoke('export_logs', { targetPath })
 }
 
+/** Lets the asset protocol serve one media file and returns the path to load it by. */
+export async function allowAssetPreview(path: string): Promise<string> {
+  return invoke<string>('allow_asset_preview', { path })
+}
+
 export async function writeClipboardText(text: string): Promise<void> {
   await invoke('write_clipboard_text', { text })
 }

@@ -33,7 +33,9 @@ serde = { version = "1", features = ["derive"] }
 # preserve_order keeps a round-tripped Value in file order. Without it, rewriting one
 # key of ~/.claude.json would alphabetise its other 80+ top-level keys.
 serde_json = { version = "1", features = ["preserve_order"] }
-tauri = { version = "2", features = ["image-png", "unstable"] }
+# `protocol-asset` serves the files a preview shows; the scope starts empty (see
+# `filesystem::allow_asset_preview`).
+tauri = { version = "2", features = ["image-png", "protocol-asset", "unstable"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"

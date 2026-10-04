@@ -1,19 +1,20 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   agentAccentToken,
   agentAccentVar,
   agentLabel,
+  type AgentProviderContribution,
   agentProviderContributions,
   allAgentTypes,
   findAgentProvider,
+  isAgentAvailableOnThisOs,
   isAgentEnabled,
   isBuiltinAgentType,
   isKnownAgentType,
   parseAgentType,
   resolveAgentCliCommand,
   resolveUnrestrictedFlag,
-  type AgentProviderContribution,
 } from './agentProviders'
 import type { Disposable } from './plugins/types'
 
@@ -150,5 +151,24 @@ describe('isAgentEnabled', () => {
     expect(isAgentEnabled({}, 'claude')).toBe(false)
     expect(isAgentEnabled({}, 'aider-plus')).toBe(true)
     expect(isAgentEnabled({ 'aider-plus': false }, 'aider-plus')).toBe(false)
+  })
+})
+
+describe('isAgentAvailableOnThisOs', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('offers WSL only on Windows', () => {
+    vi.stubGlobal('navigator', {
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15',
+    })
+    expect(isAgentAvailableOnThisOs('wsl')).toBe(false)
+    expect(allAgentTypes()).not.toContain('wsl')
+    expect(allAgentTypes()).toContain('shell')
+
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })
+    expect(isAgentAvailableOnThisOs('wsl')).toBe(true)
+    expect(allAgentTypes()).toContain('wsl')
   })
 })

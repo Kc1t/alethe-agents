@@ -11,6 +11,7 @@ import {
   Plug,
   RefreshCw,
   Sparkles,
+  UsersRound,
   X,
 } from 'lucide-react'
 import {
@@ -29,6 +30,7 @@ import {
   useGsdSyncAvailable,
   useGsdSyncSessions,
 } from '../../hooks/useGsdSyncSessions'
+import { useOrchestratorSnapshot } from '../../hooks/useOrchestratorSnapshot'
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
 import { isMarkdownPath } from '../../lib/markdownSidebarHistory'
@@ -48,8 +50,10 @@ import { useUiStore } from '../../stores/uiStore'
 const MarkdownRenderer = lazy(() =>
   import('../MarkdownPane/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
 )
+import { dropPointInWindow } from '../../lib/surfaceGeometry'
 import { ContributedView } from '../ContributedView'
 import { McpPanel } from '../McpPanel'
+import { OrchestratorSidebar } from '../OrchestratorSidebar'
 import { PluginsSidebar } from '../PluginsSidebar'
 import { PullRequestsSidebar } from '../PullRequestsSidebar'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
@@ -57,6 +61,40 @@ import { VoiceHistoryPanel } from '../VoiceHistoryPanel'
 import styles from './RightSidebar.module.css'
 
 const markdownScrollPositions = new Map<string, number>()
+
+/**
+ * The Workers tab carries a dot while delegated work is in flight, and a louder one when a worker
+ * is stopped on a question, so neither goes unnoticed behind another tab.
+ */
+function WorkersTab({ selected, onSelect }: { selected: boolean; onSelect: () => void }) {
+  const t = useT()
+  const { snapshot } = useOrchestratorSnapshot()
+  const blocked = snapshot.jobs.filter((job) => job.status === 'blocked').length
+  const active = snapshot.running + snapshot.queued
+  const label =
+    blocked > 0
+      ? t('orchestrator.sidebarTabBlocked', { count: blocked })
+      : active > 0
+        ? t('orchestrator.sidebarTabActive', { count: active })
+        : t('orchestrator.sidebarTab')
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      className={`${styles.sidebarTab} ${selected ? styles.sidebarTabActive : ''}`}
+      onClick={onSelect}
+      title={label}
+      aria-label={label}
+    >
+      <UsersRound size={14} />
+      <span>{t('orchestrator.sidebarTab')}</span>
+      {blocked > 0 || active > 0 ? (
+        <i className={styles.sidebarTabDot} data-tone={blocked > 0 ? 'waiting' : 'working'} />
+      ) : null}
+    </button>
+  )
+}
 
 export function RightSidebar() {
   const t = useT()
@@ -85,12 +123,14 @@ export function RightSidebar() {
   const contributedTab = contributedTabs.find((tab) => tab.id === mode)
   const mcpEnabled = preferences.enabledFeatures.mcp
   const prsEnabled = preferences.enabledFeatures.prs
+  const orchestratorEnabled = preferences.enabledFeatures.orchestrator
   const gsdSyncAvailable = useGsdSyncAvailable()
   // The panel now survives its features being turned off one by one, so a mode whose
   // feature was disabled has to fall back instead of rendering a hidden feature.
   useEffect(() => {
     const modeStillEnabled =
       mode === 'markdown' ||
+      (mode === 'workers' && orchestratorEnabled) ||
       (mode === 'gsdSync' && gsdSyncAvailable) ||
       (mode === 'mcp' && mcpEnabled) ||
       (mode === 'prs' && prsEnabled) ||
@@ -99,7 +139,15 @@ export function RightSidebar() {
       contributedTabs.some((tab) => tab.id === mode)
     if (modeStillEnabled) return
     openMarkdown()
-  }, [contributedTabs, gsdSyncAvailable, mcpEnabled, prsEnabled, mode, openMarkdown])
+  }, [
+    contributedTabs,
+    gsdSyncAvailable,
+    mcpEnabled,
+    orchestratorEnabled,
+    prsEnabled,
+    mode,
+    openMarkdown,
+  ])
 
   return (
     <aside className={styles.sidebar} aria-label={t('rightSidebar.navigation')}>
@@ -127,6 +175,12 @@ export function RightSidebar() {
             <Sparkles size={14} />
             <span>{t('rightSidebar.gsdSyncTab')}</span>
           </button>
+        ) : null}
+        {orchestratorEnabled ? (
+          <WorkersTab
+            selected={mode === 'workers'}
+            onSelect={() => setRightSidebarMode('workers')}
+          />
         ) : null}
         {contributedTabs.map((tab) => {
           const TabIcon = tab.icon
@@ -219,6 +273,7 @@ export function RightSidebar() {
       </div>
       <div className={styles.tabContent}>
         {mode === 'markdown' ? <MarkdownSidebarViewer /> : null}
+        {mode === 'workers' && orchestratorEnabled ? <OrchestratorSidebar /> : null}
         {mode === 'gsdSync' && gsdSyncAvailable ? <GsdSyncSidebarContent /> : null}
         {mode === 'mcp' && mcpEnabled ? <McpPanel /> : null}
         {mode === 'prs' && prsEnabled ? <PullRequestsSidebar /> : null}
@@ -450,8 +505,8 @@ function MarkdownSidebarViewer() {
     let disposed = false
     let unlisten: (() => void) | undefined
     const isOverViewer = (position: { x: number; y: number }) => {
-      const dpr = window.devicePixelRatio || 1
-      const element = document.elementFromPoint(position.x / dpr, position.y / dpr)
+      const point = dropPointInWindow(position)
+      const element = document.elementFromPoint(point.x, point.y)
       return Boolean(element && panelRef.current?.contains(element))
     }
     void getCurrentWebview()

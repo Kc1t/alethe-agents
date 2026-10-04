@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react'
+
 import { useT } from '../../lib/i18n'
 import { Dropdown } from '../ui/Dropdown'
 
@@ -12,6 +14,8 @@ export type ModelSearchablePickerProps = {
   options: ModelOption[]
   loading?: boolean
   providerName: string
+  /** Shown while nothing is selected. Defaults to the first listed model. */
+  placeholder?: ReactNode
 }
 
 export function ModelSearchablePicker({
@@ -20,6 +24,7 @@ export function ModelSearchablePicker({
   options,
   loading = false,
   providerName,
+  placeholder,
 }: ModelSearchablePickerProps) {
   const t = useT()
   const cleanOptions = options.filter((option) => {
@@ -34,7 +39,8 @@ export function ModelSearchablePicker({
       !normalized.startsWith('let')
     )
   })
-  const fallbackLabel = cleanOptions[0]?.label ?? t('merge.modelSelect', { provider: providerName })
+  const fallbackLabel =
+    placeholder ?? cleanOptions[0]?.label ?? t('merge.modelSelect', { provider: providerName })
 
   return (
     <Dropdown

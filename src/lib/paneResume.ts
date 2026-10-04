@@ -1,10 +1,9 @@
 import { useProjectsStore } from '../stores/projectsStore'
-import { preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
-import { registerSessionClaim, releaseSessionClaim } from './sessionDiscovery'
-import { buildAgentLaunch } from './sessionLaunch'
-import { saveSession } from './sessionResume'
-import { agentHooksSettingsPath, restartPty } from './tauri'
+import { launchContextForPty, launcherOverrideFor, prepareAgentLaunch } from './agentLaunchPlan'
 import { resolveAgentCliCommand } from './agentProviders'
+import { registerSessionClaim, releaseSessionClaim } from './sessionDiscovery'
+import { saveSession } from './sessionResume'
+import { restartPty } from './tauri'
 import type { AgentRuntimeProfile, AgentType } from './types'
 
 export type ResumeSessionInPaneParams = {
@@ -38,24 +37,16 @@ export async function resumeSessionInPane({
   releaseSessionClaim(tabId)
   releaseSessionClaim(ptyId)
 
-  const prepared = preparePtyRuntimeLaunch(agent, runtimeProfile, extraArgs ?? [])
-
-  let hooksSettingsPath: string | undefined
-  if (agent === 'claude') {
-    const orchestratorEnabled = useProjectsStore.getState().preferences.enabledFeatures.orchestrator
-    hooksSettingsPath = await agentHooksSettingsPath(ptyId, orchestratorEnabled).catch(
-      () => undefined,
-    )
-  }
-
-  const launch = buildAgentLaunch(
+  const launch = await prepareAgentLaunch({
     agent,
-    prepared.args,
-    sessionId,
-    undefined,
-    undefined,
-    hooksSettingsPath,
-  )
+    ptyId,
+    cwd,
+    extraArgs,
+    runtimeProfile,
+    resumeId: sessionId,
+    ...launchContextForPty(ptyId),
+  })
+  if (!launch) return
 
   await restartPty({
     id: ptyId,
@@ -64,7 +55,8 @@ export async function resumeSessionInPane({
     command: resolveAgentCliCommand(agent),
     cwd: cwd || undefined,
     extraArgs: launch.args,
-    env: prepared.env,
+    launcherOverride: launcherOverrideFor(agent),
+    env: launch.env,
   })
 
   if (cwd) {

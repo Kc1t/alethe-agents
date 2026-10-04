@@ -69,19 +69,61 @@ fn browser_candidates() -> Vec<PathBuf> {
     ]
 }
 
+/// Chromium builds speak CDP; Firefox does not. On PATH first, then where vendors install outside
+/// it (`/opt`, Fedora's `/usr/lib64`), then the Chromium Playwright downloads, which is often the
+/// only one on a distribution that ships Firefox by default.
 #[cfg(all(unix, not(target_os = "macos")))]
 fn browser_candidates() -> Vec<PathBuf> {
-    [
-        "/usr/bin/google-chrome",
-        "/usr/bin/google-chrome-stable",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-        "/usr/bin/microsoft-edge",
-        "/snap/bin/chromium",
+    let mut candidates: Vec<PathBuf> = [
+        "google-chrome-stable",
+        "google-chrome",
+        "chromium",
+        "chromium-browser",
+        "brave-browser",
+        "microsoft-edge-stable",
+        "microsoft-edge",
     ]
     .iter()
-    .map(PathBuf::from)
-    .collect()
+    .filter_map(|name| which::which(name).ok())
+    .collect();
+    candidates.extend(
+        [
+            "/opt/google/chrome/chrome",
+            "/opt/brave.com/brave/brave",
+            "/opt/microsoft/msedge/msedge",
+            "/usr/lib64/chromium-browser/chromium-browser",
+            "/usr/lib/chromium/chromium",
+            "/snap/bin/chromium",
+        ]
+        .iter()
+        .map(PathBuf::from),
+    );
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        candidates.extend(playwright_chromiums(&home));
+    }
+    candidates
+}
+
+/// Every Chromium Playwright has downloaded under `home`, newest revision first.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn playwright_chromiums(home: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(home.join(".cache").join("ms-playwright")) else {
+        return Vec::new();
+    };
+    let mut builds: Vec<(u64, PathBuf)> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let revision = name.strip_prefix("chromium-")?.parse::<u64>().ok()?;
+            ["chrome-linux64", "chrome-linux"]
+                .iter()
+                .map(|dir| entry.path().join(dir).join("chrome"))
+                .find(|path| path.is_file())
+                .map(|path| (revision, path))
+        })
+        .collect();
+    builds.sort_by(|a, b| b.0.cmp(&a.0));
+    builds.into_iter().map(|(_, path)| path).collect()
 }
 
 fn resolve_browser(explicit: Option<String>) -> Result<PathBuf, String> {
@@ -375,6 +417,57 @@ pub fn playwright_mcp_config_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn playwrights_chromium_counts_as_a_browser_newest_first() {
+        let home = std::env::temp_dir().join(format!("alethe-pw-home-{}", nanoid::nanoid!(6)));
+        for (revision, dir) in [
+            (1208, "chrome-linux64"),
+            (1234, "chrome-linux64"),
+            (900, "chrome-linux"),
+        ] {
+            let folder = home
+                .join(".cache/ms-playwright")
+                .join(format!("chromium-{revision}"))
+                .join(dir);
+            std::fs::create_dir_all(&folder).expect("dir");
+            std::fs::write(folder.join("chrome"), "").expect("binary");
+        }
+        // Not Chromium, and a download that never finished: both ignored.
+        std::fs::create_dir_all(home.join(".cache/ms-playwright/firefox-1500")).expect("dir");
+        std::fs::create_dir_all(home.join(".cache/ms-playwright/chromium-1300")).expect("dir");
+
+        let found = playwright_chromiums(&home);
+        let revisions: Vec<String> = found
+            .iter()
+            .map(|path| {
+                path.parent()
+                    .unwrap()
+                    .parent()
+                    .unwrap()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        assert_eq!(
+            revisions,
+            ["chromium-1234", "chromium-1208", "chromium-900"]
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    #[test]
+    fn this_machines_browser_is_found_when_there_is_one() {
+        // Only meaningful where a Chromium exists; it must then be what the pane starts.
+        let candidates = browser_candidates();
+        if let Some(found) = candidates.iter().find(|path| path.exists()) {
+            assert!(resolve_browser(None).expect("a browser") == *found);
+        }
+    }
 
     #[test]
     fn endpoint_is_loopback_only() {

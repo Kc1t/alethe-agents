@@ -1,21 +1,32 @@
-import { normalizeProjectGrids, projectGridContainer } from '../lib/projectGrids'
 import { nanoid } from 'nanoid'
 
+import {
+  clampOrchestratorMaxWorkers,
+  normalizeAgentDefaultsPreferences,
+} from '../lib/agentLaunchDefaults'
 import {
   legacyGitFeatureFlag,
   legacyTodosFeatureFlag,
   normalizeEnabledFeatures,
 } from '../lib/features'
+import {
+  normalizeOrchestrationTabOrder,
+  normalizeOrchestratorPolicy,
+} from '../lib/orchestratorPolicy'
 import { recordLegacyGitFlag, recordLegacyTodosFlag } from '../lib/plugins/legacyMigration'
+import { normalizeProjectGrids, projectGridContainer } from '../lib/projectGrids'
 import { normalizePort } from '../lib/router9'
 import { normalizeAppIconTheme } from '../lib/themeIcons'
 import { normalizeTodoTags, normalizeTodoTitle } from '../lib/todos'
 import {
+  DEFAULT_ORCHESTRATOR_POLICY,
   DEFAULT_PREFERENCES,
   DEFAULT_ROUTER9_PREFERENCES,
   EMPTY_PROJECTS_FILE,
   type Group,
   GROUP_COLORS,
+  ORCHESTRATION_TABS,
+  ORCHESTRATOR_DEFAULT_MAX_WORKERS,
   type Preferences,
   type Project,
   type ProjectsFile,
@@ -83,6 +94,59 @@ function normalizeViewPlacements(
     placements.git = 'right'
   }
   return placements
+}
+
+// Set when a saved setting could not be read and something stood in for it. What stood in is good
+// enough to run on, but it is not what the person saved: the caller must not write it back.
+let degraded = false
+
+/**
+ * Whether the last migration had to stand in for a setting it could not read; asking clears it.
+ * A workspace read this way runs, and is never saved over the file it came from.
+ */
+export function takeMigrationDegraded(): boolean {
+  const was = degraded
+  degraded = false
+  return was
+}
+
+/** One setting that cannot be read falls back to its default instead of failing the rest. */
+function orDefault<T>(read: () => T, fallback: () => T): T {
+  try {
+    return read()
+  } catch (error) {
+    console.error('A saved setting could not be read; standing in for it without saving', error)
+    degraded = true
+    return fallback()
+  }
+}
+
+/**
+ * The defaults, with every plain value the saved preferences still hold put back: the name, whether
+ * onboarding was done, the theme, the language. Used when the preferences as a whole cannot be
+ * read, so the person is not sent back to onboarding by a setting that has nothing to do with it.
+ */
+function salvagePreferences(raw: LegacyPreferences | undefined): Preferences {
+  const salvaged: Record<string, unknown> = structuredClone(DEFAULT_PREFERENCES)
+  const saved = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+  for (const [key, fallback] of Object.entries(DEFAULT_PREFERENCES)) {
+    const kind = typeof fallback
+    const plain = kind === 'string' || kind === 'number' || kind === 'boolean'
+    if (plain && typeof saved[key] === kind) salvaged[key] = saved[key]
+  }
+  return salvaged as Preferences
+}
+
+/**
+ * Preferences as saved, or the closest thing to them when they cannot be read. Settings are
+ * replaceable and the projects saved beside them are not: a value this version cannot make sense
+ * of must never be what keeps the whole workspace from loading.
+ */
+export function readPreferences(raw: LegacyPreferences | undefined): Preferences {
+  return orDefault(
+    () => normalizePreferences(raw),
+    () => salvagePreferences(raw),
+  )
 }
 
 export function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
@@ -205,6 +269,19 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       DEFAULT_PREFERENCES.pomodoroLongBreakMinutes,
     ),
     pomodoroSession: normalizePomodoroSession(raw?.pomodoroSession),
+    agentDefaults: normalizeAgentDefaultsPreferences(raw?.agentDefaults),
+    orchestratorMaxWorkers: clampOrchestratorMaxWorkers(
+      raw?.orchestratorMaxWorkers ?? ORCHESTRATOR_DEFAULT_MAX_WORKERS,
+    ),
+    orchestratorPolicy: orDefault(
+      () => normalizeOrchestratorPolicy(raw?.orchestratorPolicy),
+      () => DEFAULT_ORCHESTRATOR_POLICY,
+    ),
+    orchestrationTabOrder: orDefault(
+      () => normalizeOrchestrationTabOrder(raw?.orchestrationTabOrder),
+      () => [...ORCHESTRATION_TABS],
+    ),
+    orchestratorNotify: raw?.orchestratorNotify !== false,
   }
 }
 
@@ -420,7 +497,7 @@ function migrateToV7(parsed: any): any {
       gridLayoutHistory: group.gridLayoutHistory ?? [],
     })),
     preferences: {
-      ...normalizePreferences(parsed.preferences),
+      ...readPreferences(parsed.preferences),
       workspaceGridLayoutHistory: parsed.preferences?.workspaceGridLayoutHistory ?? [],
     },
   })
@@ -524,7 +601,7 @@ function migrateLegacy(parsed: any): ProjectsFile {
     ...v5Result,
     version: 6,
     projects: v6Projects,
-    preferences: normalizePreferences(v5Result.preferences),
+    preferences: readPreferences(v5Result.preferences),
   })
 }
 
@@ -536,7 +613,7 @@ function migrateToV5(parsed: any): any {
       ...g,
       parentGroupId: g.parentGroupId ?? null,
     }))
-    const preferences = normalizePreferences(parsed.preferences)
+    const preferences = readPreferences(parsed.preferences)
     const base = {
       ...EMPTY_PROJECTS_FILE,
       ...parsed,
@@ -598,9 +675,9 @@ function migrateToV5(parsed: any): any {
         projects,
         groups: [],
         activeProjectId: parsed.activeProjectId ?? projects[0]?.id ?? null,
-        preferences: normalizePreferences(parsed.preferences),
+        preferences: readPreferences(parsed.preferences),
       }),
-      preferences: normalizePreferences(parsed.preferences),
+      preferences: readPreferences(parsed.preferences),
       cliPaths: parsed.cliPaths ?? {},
     }
   }

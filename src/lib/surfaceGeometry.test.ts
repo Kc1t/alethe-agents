@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { surfaceRectsEqual, toPhysicalRect, visibleRectOf } from './surfaceGeometry'
+import { dropPointToCss, surfaceRectsEqual, toPhysicalRect, visibleRectOf } from './surfaceGeometry'
 
 type Box = { x: number; y: number; width: number; height: number }
 
@@ -164,5 +164,19 @@ describe('surfaceRectsEqual', () => {
   it('treats null as equal only to null', () => {
     expect(surfaceRectsEqual(null, null)).toBe(true)
     expect(surfaceRectsEqual(null, { x: 0, y: 0, width: 1, height: 1 })).toBe(false)
+  })
+})
+
+describe('dropPointToCss', () => {
+  it('scales physical drop positions on Windows and macOS', () => {
+    expect(dropPointToCss({ x: 400, y: 200 }, 2, 1, false)).toEqual({ x: 200, y: 100 })
+  })
+
+  it('leaves Linux positions alone at any display scale', () => {
+    expect(dropPointToCss({ x: 400, y: 200 }, 2, 1, true)).toEqual({ x: 400, y: 200 })
+  })
+
+  it('still undoes the page zoom on Linux', () => {
+    expect(dropPointToCss({ x: 500, y: 250 }, 2.5, 1.25, true)).toEqual({ x: 400, y: 200 })
   })
 })

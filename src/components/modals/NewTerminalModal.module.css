@@ -49,6 +49,11 @@
   font-size: 11px;
 }
 
+.fieldError {
+  color: var(--status-offline);
+  font-size: 11px;
+}
+
 .fieldAction {
   display: inline-flex;
   align-items: center;

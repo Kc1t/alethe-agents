@@ -1,4 +1,3 @@
-import { convertFileSrc } from '@tauri-apps/api/core'
 import {
   ChevronDown,
   ChevronLeft,
@@ -8,13 +7,16 @@ import {
   FilePen,
   GitBranch,
   Globe2,
+  GripVertical,
   Minus,
   Network,
   Plus,
   Terminal as TerminalIcon,
+  Wrench,
   X,
 } from 'lucide-react'
 import {
+  type ImgHTMLAttributes,
   memo,
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -31,6 +33,7 @@ import { formatReset } from '../../lib/agentCanvasUtils'
 import { parseAgentType } from '../../lib/agentProviders'
 import { fmtUsd } from '../../lib/costFormat'
 import { type MessageKey, type TFunction, useT } from '../../lib/i18n'
+import { useMediaUrl } from '../../lib/mediaUrl'
 import {
   DOT_SPACING,
   fitView,
@@ -44,6 +47,7 @@ import {
   zoomAt,
 } from '../../lib/orchestratorGraph'
 import { extractMediaItems, type MediaItem } from '../../lib/orchestratorMedia'
+import { routingNoteText, ruleOverrideLabels } from '../../lib/orchestratorRouting'
 import {
   aggregateAgentSpend,
   type Attention,
@@ -59,6 +63,7 @@ import {
 } from '../../lib/orchestratorRuns'
 import { nativeSubagentJobs } from '../../lib/orchestratorSubagents'
 import { basename } from '../../lib/paths'
+import { moveItem } from '../../lib/reorder'
 import {
   gitStatus,
   listenOrchestratorJobs,
@@ -66,18 +71,26 @@ import {
   mergeFinalize,
   mergePrepare,
   orchestratorAnswer,
+  orchestratorCancel,
   type OrchestratorDecision,
   type OrchestratorJob,
   orchestratorJobDiff,
   orchestratorJobs,
   orchestratorMessage,
   type OrchestratorPendingApproval,
+  orchestratorRelease,
+  orchestratorReorderQueue,
   type OrchestratorSnapshot,
   worktreeCommitWorktree,
   worktreeFetchBranch,
   worktreeRemove,
 } from '../../lib/tauri'
-import type { Project, Terminal, Theme } from '../../lib/types'
+import {
+  ORCHESTRATOR_PLANNER_AGENTS,
+  type Project,
+  type Terminal,
+  type Theme,
+} from '../../lib/types'
 import { useAgentCanvasStore } from '../../stores/agentCanvasStore'
 import { useNodeCostStore } from '../../stores/nodeCostStore'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -86,6 +99,7 @@ import { AgentIcon } from '../icons/AgentIcons'
 import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
 import { Modal } from '../modals/Modal'
 import { Collapse } from '../ui/Collapse'
+import { SortableList } from '../ui/SortableList'
 import styles from './OrchestratorPane.module.css'
 
 const EMPTY: OrchestratorSnapshot = {
@@ -133,8 +147,29 @@ const DECISIONS: { decision: OrchestratorDecision; label: MessageKey; hint: Mess
     label: 'orchestrator.answerDecline',
     hint: 'orchestrator.answerDeclineTitle',
   },
-  { decision: 'abort', label: 'orchestrator.answerAbort', hint: 'orchestrator.answerAbortTitle' },
+  { decision: 'cancel', label: 'orchestrator.answerAbort', hint: 'orchestrator.answerAbortTitle' },
 ]
+
+// Outcomes the backend reports in its own words; each gets a label the person can read.
+const OUTCOME_LABEL: Record<string, MessageKey> = {
+  failed: 'orchestrator.outcome.failed',
+  timeout: 'orchestrator.outcome.timeout',
+  interrupted: 'orchestrator.outcome.interrupted',
+  'send-failed': 'orchestrator.outcome.sendFailed',
+  cancelled: 'orchestrator.outcome.cancelled',
+}
+
+/** A stoppable worker is one that holds a slot or is about to: running, queued or blocked. */
+function canStop(job: OrchestratorJob): boolean {
+  if (job.native) return false
+  return job.status === 'running' || job.status === 'queued' || job.status === 'blocked'
+}
+
+/** A finished worker whose process is still up, kept for follow-ups. */
+function canRelease(job: OrchestratorJob): boolean {
+  if (job.native || !job.live) return false
+  return job.status === 'done' || job.status === 'failed' || job.status === 'interrupted'
+}
 
 // A planner id is a terminal id, never empty, so the empty string can stand for the group of jobs
 // that carry no planner at all.
@@ -304,33 +339,57 @@ type ApprovalAskProps = {
   t: TFunction
 }
 
+function askHeadline(ask: OrchestratorPendingApproval, t: TFunction): string {
+  if (ask.kind === 'fileChange') return t('orchestrator.askFileChange')
+  if (ask.kind === 'tool') return t('orchestrator.askTool', { tool: ask.tool ?? '' })
+  return t('orchestrator.askCommand')
+}
+
 /** Everything here comes off `pendingApproval`; nothing is inferred when a field is missing. */
 function ApprovalAsk({ job, ask, answering, onAnswer, t }: ApprovalAskProps) {
   const elsewhere = ask.cwd && ask.cwd !== job.cwd ? ask.cwd : null
+  const files = ask.files ?? []
+  const behind = Math.max(0, (job.waitingApprovals ?? 1) - 1)
 
   return (
     <div className={styles.ask} onPointerDown={(event) => event.stopPropagation()}>
       <div className={styles.askHead}>
         <span className={styles.askIcon} aria-hidden>
-          {ask.kind === 'fileChange' ? <FilePen size={11} /> : <TerminalIcon size={11} />}
+          {ask.kind === 'fileChange' ? (
+            <FilePen size={11} />
+          ) : ask.kind === 'tool' ? (
+            <Wrench size={11} />
+          ) : (
+            <TerminalIcon size={11} />
+          )}
         </span>
         <span>{t('orchestrator.askLabel')}</span>
       </div>
 
-      <p className={styles.askWhat}>
-        {t(ask.kind === 'fileChange' ? 'orchestrator.askFileChange' : 'orchestrator.askCommand')}
-      </p>
+      <p className={styles.askWhat}>{askHeadline(ask, t)}</p>
 
       {ask.command && (
         <code className={styles.askCommand} title={ask.command}>
           {ask.command}
         </code>
       )}
+      {files.length > 0 && (
+        <ul className={styles.askFiles}>
+          {files.map((file) => (
+            <li key={file} className={styles.askCwd} title={file}>
+              {file}
+            </li>
+          ))}
+        </ul>
+      )}
       {ask.reason && <p className={styles.askReason}>{ask.reason}</p>}
       {elsewhere && (
         <span className={styles.askCwd} title={elsewhere}>
           {t('orchestrator.askIn', { path: elsewhere })}
         </span>
+      )}
+      {behind > 0 && (
+        <p className={styles.askHint}>{t('orchestrator.askMore', { count: behind })}</p>
       )}
 
       <div className={styles.askActions}>
@@ -359,6 +418,7 @@ type WorkerNodeProps = {
   node: GraphNode
   selected: boolean
   answering: boolean
+  stopping: boolean
   applying: boolean
   applied: boolean
   projectId: string
@@ -371,6 +431,8 @@ type WorkerNodeProps = {
   onAnswer: AnswerFn
   onToggleDiff: (id: string) => void
   onApply: (job: OrchestratorJob) => void
+  onStop: (id: string) => void
+  onRelease: (id: string) => void
   bind: BindNode
   t: TFunction
 }
@@ -380,6 +442,7 @@ function WorkerNode({
   node,
   selected,
   answering,
+  stopping,
   applying,
   applied,
   projectId,
@@ -392,6 +455,8 @@ function WorkerNode({
   onAnswer,
   onToggleDiff,
   onApply,
+  onStop,
+  onRelease,
   bind,
   t,
 }: WorkerNodeProps) {
@@ -433,7 +498,14 @@ function WorkerNode({
           <AgentGlyph
             agent={job.agent}
             theme={theme}
-            title={t('orchestrator.agentTitle', { agent: job.agent })}
+            title={
+              job.model || job.effort
+                ? t('orchestrator.agentTitleChoice', {
+                    agent: job.agent,
+                    choice: [job.model, job.effort].filter(Boolean).join(' · '),
+                  })
+                : t('orchestrator.agentTitle', { agent: job.agent })
+            }
           />
           <span className={styles.dot} aria-hidden />
           <span className={styles.workerId}>{job.id}</span>
@@ -460,6 +532,11 @@ function WorkerNode({
             </span>
           )}
           {job.hasDiff && <span>{t('orchestrator.hasDiff')}</span>}
+          {ruleOverrideLabels(job.overrides, t).map((rule) => (
+            <span key={rule} className={styles.metaRule} title={t('orchestrator.ruleTitle')}>
+              {rule}
+            </span>
+          ))}
         </span>
       </button>
 
@@ -475,8 +552,9 @@ function WorkerNode({
 
       {job.status === 'failed' && job.outcome && (
         <div className={styles.errBar}>
-          <span className={styles.errText} title={job.outcome}>
-            {job.outcome}
+          <span className={styles.errText} title={report || job.outcome}>
+            {OUTCOME_LABEL[job.outcome] ? t(OUTCOME_LABEL[job.outcome]) : job.outcome}
+            {latestLine(report) ? ` · ${latestLine(report)}` : ''}
           </span>
         </div>
       )}
@@ -496,10 +574,10 @@ function WorkerNode({
           <div className={styles.detailLabel}>{t('orchestrator.summaryLabel')}</div>
           {report ? (
             <div className={styles.report}>
-              <MarkdownRenderer content={report} dark={theme === 'dark'} />
+              <MarkdownRenderer content={report} dark={theme === 'dark'} compact />
             </div>
           ) : (
-            <p className={styles.report}>{t('orchestrator.noReport')}</p>
+            <p className={styles.reportPlain}>{t('orchestrator.noReport')}</p>
           )}
           {remainingMedia.length > 0 && (
             <div className={styles.mediaStrip}>
@@ -530,12 +608,7 @@ function WorkerNode({
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={() => setPreviewMedia(item)}
                   >
-                    <img
-                      className={styles.mediaThumb}
-                      src={item.kind === 'image-local' ? convertFileSrc(item.value) : item.value}
-                      alt=""
-                      loading="lazy"
-                    />
+                    <MediaImage item={item} className={styles.mediaThumb} alt="" loading="lazy" />
                     <span className={styles.mediaCaption}>{basename(item.value)}</span>
                   </button>
                 ),
@@ -550,22 +623,18 @@ function WorkerNode({
               width={720}
             >
               <div className={styles.mediaPreviewBody}>
-                <img
-                  className={styles.mediaPreviewImage}
-                  src={
-                    previewMedia.kind === 'image-local'
-                      ? convertFileSrc(previewMedia.value)
-                      : previewMedia.value
-                  }
-                  alt=""
-                />
+                <MediaImage item={previewMedia} className={styles.mediaPreviewImage} alt="" />
                 <div className={styles.mediaPreviewPath} title={previewMedia.value}>
                   {previewMedia.value}
                 </div>
               </div>
             </Modal>
           )}
-          {(canMessage(job) || job.hasDiff || (job.worktree && job.status === 'done')) && (
+          {(canMessage(job) ||
+            canStop(job) ||
+            canRelease(job) ||
+            job.hasDiff ||
+            (job.worktree && job.status === 'done')) && (
             <div className={styles.detailActions}>
               {canMessage(job) && (
                 <button
@@ -598,12 +667,37 @@ function WorkerNode({
                   {t(applying ? 'orchestrator.applying' : 'orchestrator.applyAction')}
                 </button>
               )}
+              {canStop(job) && (
+                <button
+                  type="button"
+                  className={styles.action}
+                  data-tone="danger"
+                  disabled={stopping}
+                  title={t('orchestrator.stopTitle')}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => onStop(job.id)}
+                >
+                  {t('orchestrator.stopAction')}
+                </button>
+              )}
+              {canRelease(job) && (
+                <button
+                  type="button"
+                  className={styles.action}
+                  disabled={stopping}
+                  title={t('orchestrator.releaseTitle')}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => onRelease(job.id)}
+                >
+                  {t('orchestrator.releaseAction')}
+                </button>
+              )}
             </div>
           )}
           {diffOpen && (
             <div className={styles.diffBlock} onPointerDown={(event) => event.stopPropagation()}>
               {diffLoading ? (
-                <p className={styles.report}>{t('orchestrator.diffLoading')}</p>
+                <p className={styles.reportPlain}>{t('orchestrator.diffLoading')}</p>
               ) : (
                 <pre className={styles.diffText}>
                   {(diffText || t('diff.empty')).split('\n').map((line, index) => (
@@ -638,9 +732,23 @@ type MediaCardNodeProps = {
   bind: BindNode
 }
 
+/** The URL an image item loads from: a remote one as is, a local file once the backend allows it. */
+function useMediaItemSrc(item: MediaItem): string | undefined {
+  const local = useMediaUrl(item.kind === 'image-local' ? item.value : null)
+  return item.kind === 'image-local' ? local : item.value
+}
+
+function MediaImage({
+  item,
+  ...props
+}: { item: MediaItem } & Omit<ImgHTMLAttributes<HTMLImageElement>, 'src'>) {
+  const src = useMediaItemSrc(item)
+  return <img {...props} src={src} />
+}
+
 function MediaCardNode({ node, item, bind }: MediaCardNodeProps) {
   const [open, setOpen] = useState(false)
-  const src = item.kind === 'image-local' ? convertFileSrc(item.value) : item.value
+  const src = useMediaItemSrc(item)
 
   return (
     <article
@@ -796,6 +904,56 @@ function RailRow({ job, depth, selected, theme, onSelect, t }: RailRowProps) {
   )
 }
 
+type QueueRailProps = {
+  jobs: OrchestratorJob[]
+  selectedId: string | null
+  theme: Theme
+  onSelect: (id: string) => void
+  onReorder: (ids: string[]) => void
+  t: TFunction
+}
+
+/** The workers waiting for a slot, in the order they will start; dragging one changes that order. */
+function QueueRail({ jobs, selectedId, theme, onSelect, onReorder, t }: QueueRailProps) {
+  return (
+    <SortableList
+      items={jobs}
+      getId={(job) => job.id}
+      onReorder={(from, to) =>
+        onReorder(
+          moveItem(
+            jobs.map((job) => job.id),
+            from,
+            to,
+          ),
+        )
+      }
+      renderItem={(job, _, drag) => (
+        // The grip's own press starts the drag; stopping it here keeps the board from panning.
+        <div className={styles.queueRow} onPointerDown={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            className={styles.queueGrip}
+            {...drag.handleProps}
+            title={t('orchestrator.queueDrag')}
+            aria-label={t('orchestrator.queueDrag')}
+          >
+            <GripVertical size={11} />
+          </button>
+          <RailRow
+            job={job}
+            depth={0}
+            selected={job.id === selectedId}
+            theme={theme}
+            onSelect={onSelect}
+            t={t}
+          />
+        </div>
+      )}
+    />
+  )
+}
+
 type RunBranchProps = {
   run: OrchestratorRun
   open: boolean
@@ -926,7 +1084,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const addPlanner = useCallback(() => {
     openModal('newTerminal', {
       projectId,
-      only: ['claude'],
+      only: [...ORCHESTRATOR_PLANNER_AGENTS],
       titleKey: 'term.newPlannerTitle',
     })
   }, [openModal, projectId])
@@ -1003,7 +1161,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   }, [projectSubagentNodes])
 
   const jobs = useMemo(() => {
-    const native = nativeSubagentJobs(subagentNodes, nodeCosts)
+    const native = nativeSubagentJobs(subagentNodes, nodeCosts, t('orchestrator.subagentsRun'))
     const all = native.length > 0 ? [...snapshot.jobs, ...native] : snapshot.jobs
     return all.filter((job) =>
       job.plannerId
@@ -1012,7 +1170,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
           ? job.cwd.startsWith(project.defaultCwd)
           : true,
     )
-  }, [snapshot.jobs, subagentNodes, nodeCosts, projectPtyIds, project])
+  }, [snapshot.jobs, subagentNodes, nodeCosts, projectPtyIds, project, t])
   const planners = useMemo(
     () => snapshot.planners.filter((p) => projectPtyIds.has(p.id)),
     [snapshot.planners, projectPtyIds],
@@ -1023,6 +1181,15 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const groupJobs = useMemo(() => activeGroup?.jobs ?? [], [activeGroup])
   const spendByAgent = useMemo(() => aggregateAgentSpend(groupJobs), [groupJobs])
   const runs = useMemo(() => activeGroup?.runs ?? [], [activeGroup])
+  // Waiting for a slot, in the order they will be given one.
+  const queuedJobs = useMemo(
+    () =>
+      runs
+        .flatMap((run) => run.jobs)
+        .filter((job) => job.status === 'queued' && !job.native)
+        .sort((a, b) => (a.queuePosition ?? 0) - (b.queuePosition ?? 0)),
+    [runs],
+  )
   const plannerId = activeGroup?.id ?? null
   // Only the first image a worker's report mentions gets promoted to its own canvas card — enough
   // to surface "the thing it made" without the layout having to reflow siblings for 2nd/3rd images.
@@ -1221,6 +1388,38 @@ export const OrchestratorPane = memo(function OrchestratorPane({
 
   const mode: MessageMode = selected ? messageMode(selected) : 'next'
   const canSend = selected !== null && canMessage(selected)
+
+  // Stop and release share one in-flight set: both end with the worker's process gone, and a
+  // second click while the first is still on its way has nothing left to act on.
+  const [stopping, setStopping] = useState<Set<string>>(() => new Set())
+  const reorderQueue = (ids: string[]) => {
+    orchestratorReorderQueue(ids).catch((error: unknown) =>
+      pushToast({
+        title: t('orchestrator.queueReorderFailed'),
+        body: error instanceof Error ? error.message : String(error),
+      }),
+    )
+  }
+
+  const endWorker = async (jobId: string, action: 'stop' | 'release') => {
+    if (stopping.has(jobId)) return
+    setStopping((prev) => new Set(prev).add(jobId))
+    try {
+      if (action === 'stop') await orchestratorCancel([jobId])
+      else await orchestratorRelease([jobId])
+    } catch (error) {
+      pushToast({
+        title: t(action === 'stop' ? 'orchestrator.stopFailed' : 'orchestrator.releaseFailed'),
+        body: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setStopping((prev) => {
+        const next = new Set(prev)
+        next.delete(jobId)
+        return next
+      })
+    }
+  }
 
   const answer = async (jobId: string, decision: OrchestratorDecision) => {
     if (answering.has(jobId)) return
@@ -1499,16 +1698,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           data-verdict={edge.note.verdict}
                           style={{ left: edge.note.x, top: edge.note.y }}
                         >
-                          {t(
-                            edge.note.verdict === 'ignored'
-                              ? 'orchestrator.routingIgnored'
-                              : 'orchestrator.routingChosen',
-                            {
-                              agent: edge.note.agent,
-                              window: edge.note.window,
-                              used: String(edge.note.used),
-                            },
-                          )}
+                          {routingNoteText(edge.note, t)}
                         </span>
                       ) : null,
                     )}
@@ -1545,6 +1735,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           node={node}
                           selected={node.id === selectedId}
                           answering={answering.has(node.id)}
+                          stopping={stopping.has(node.id)}
                           applying={applying.has(node.id)}
                           applied={applied.has(node.id)}
                           projectId={projectId}
@@ -1557,6 +1748,8 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           onAnswer={(id, decision) => void answer(id, decision)}
                           onToggleDiff={(id) => void toggleDiff(id)}
                           onApply={(job) => void applyWorktree(job)}
+                          onStop={(id) => void endWorker(id, 'stop')}
+                          onRelease={(id) => void endWorker(id, 'release')}
                           bind={bind}
                           t={t}
                         />
@@ -1709,6 +1902,23 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                     </div>
                   </div>
                 </div>
+
+                {queuedJobs.length > 1 && (
+                  <div className={styles.railSection} data-tree="true">
+                    <div className={styles.railLabel}>
+                      <span>{t('orchestrator.queueLabel')}</span>
+                      <span className={styles.laneCount}>{queuedJobs.length}</span>
+                    </div>
+                    <QueueRail
+                      jobs={queuedJobs}
+                      selectedId={selectedId}
+                      theme={theme}
+                      onSelect={reveal}
+                      onReorder={reorderQueue}
+                      t={t}
+                    />
+                  </div>
+                )}
 
                 <div className={styles.railSection} data-tree="true">
                   <div className={styles.railLabel}>

@@ -13,11 +13,14 @@ import {
   ShieldCheck,
   TerminalSquare,
   UserRound,
+  Workflow,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { isAgentAvailableOnThisOs } from '../../lib/agentProviders'
 import { useT } from '../../lib/i18n'
+import { isWindows } from '../../lib/platform'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -28,6 +31,7 @@ import { AppearancePage } from './preferences/AppearancePage'
 import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
+import { OrchestrationPage } from './preferences/OrchestrationPage'
 import { OrganizationPage } from './preferences/OrganizationPage'
 import { PluginsPage } from './preferences/PluginsPage'
 import { Avatar } from './preferences/primitives'
@@ -43,6 +47,7 @@ type CategoryId =
   | 'terminal'
   | 'integrations'
   | 'multiagent'
+  | 'orchestration'
   | 'organization'
   | 'about'
   | 'remoteControl'
@@ -127,6 +132,12 @@ export function PreferencesModal() {
         Icon: Plug,
       },
       {
+        id: 'orchestration',
+        label: t('prefs.categoryOrchestration'),
+        description: t('prefs.categoryOrchestrationDesc'),
+        Icon: Workflow,
+      },
+      {
         id: 'multiagent',
         label: t('prefs.categoryMultiagent'),
         description: t('prefs.categoryMultiagentDesc'),
@@ -193,13 +204,17 @@ export function PreferencesModal() {
         description: t('prefs.uiZoomDesc'),
         keywords: 'zoom scale escala tamanho interface',
       },
-      {
-        category: 'appearance',
-        target: 'window-opacity',
-        label: t('prefs.windowOpacity'),
-        description: t('prefs.windowOpacityDesc'),
-        keywords: 'opacity opacidade transparency transparência desktop window janela',
-      },
+      ...(isWindows()
+        ? [
+            {
+              category: 'appearance' as const,
+              target: 'window-opacity',
+              label: t('prefs.windowOpacity'),
+              description: t('prefs.windowOpacityDesc'),
+              keywords: 'opacity opacidade transparency transparência desktop window janela',
+            },
+          ]
+        : []),
       {
         category: 'appearance',
         target: 'topbar-style',
@@ -264,6 +279,67 @@ export function PreferencesModal() {
         label: t('prefs.agentsTitle'),
         description: t('prefs.agentsDesc'),
         keywords: 'agents agentes claude codex opencode shell',
+      },
+      {
+        category: 'terminal',
+        target: 'agent-defaults',
+        label: t('prefs.agentDefaults'),
+        description: t('prefs.agentDefaultsDesc'),
+        keywords:
+          'model modelo effort esforço reasoning raciocínio thinking level nível claude codex opencode opus sonnet',
+      },
+      {
+        category: 'orchestration',
+        target: 'orchestration-planner',
+        label: t('prefs.orchestrationPlanner'),
+        description: t('prefs.orchestrationPlannerDesc'),
+        keywords: 'orchestrator orquestrador planner lead model modelo effort esforço',
+      },
+      {
+        category: 'orchestration',
+        target: 'orchestration-worker',
+        label: t('prefs.orchestrationWorker'),
+        description: t('prefs.orchestrationWorkerDesc'),
+        keywords: 'orchestrator orquestrador worker delegate model modelo effort esforço',
+      },
+      {
+        category: 'orchestration',
+        target: 'orchestration-routing',
+        label: t('prefs.orchestrationRouting'),
+        description: t('prefs.orchestrationRoutingDesc'),
+        keywords:
+          'routing route rota quota usage uso model modelo effort esforço light standard deep economy balanced quality',
+      },
+      {
+        category: 'organization',
+        target: 'workspace-backups',
+        label: t('prefs.workspaceBackupsTitle'),
+        description: t('prefs.workspaceBackupsDesc'),
+        keywords:
+          'backup cópia restore restaurar recover recuperar version versão workspace projects',
+      },
+      {
+        category: 'orchestration',
+        target: 'orchestration-project-routing',
+        label: t('prefs.orchestrationProjectRouting'),
+        description: t('prefs.orchestrationProjectRoutingDesc'),
+        keywords: 'routing route rota project projeto profile perfil economy balanced quality',
+      },
+      {
+        category: 'orchestration',
+        target: 'orchestration-rules',
+        label: t('prefs.orchestrationRules'),
+        description: t('prefs.orchestrationRulesDesc'),
+        keywords:
+          'orchestrator orquestrador worker rules regras approval aprovação timeout tempo budget worktree isolate isolamento web search busca sandbox claude codex',
+      },
+      {
+        category: 'orchestration',
+        target: 'orchestration-max-workers',
+        label: t('prefs.orchestrationLimits'),
+        description: t('prefs.orchestrationLimitsDesc'),
+        keywords:
+          'orchestrator orquestrador workers concurrency concorrência parallel paralelo limit limite',
       },
       {
         category: 'terminal',
@@ -346,7 +422,11 @@ export function PreferencesModal() {
   const avatarUrl = getProfileImageUrl(preferences)
   const displayName = preferences.displayName || t('profile.fallbackName')
   const initial = getProfileInitial(displayName)
-  const enabledCount = Object.values(preferences.enabledAgents).filter(Boolean).length
+  // Agents this OS cannot run are hidden, so they must not count: otherwise the last visible agent
+  // could be switched off while a hidden one keeps the count above one.
+  const enabledCount = Object.entries(preferences.enabledAgents).filter(
+    ([agent, enabled]) => enabled && isAgentAvailableOnThisOs(agent),
+  ).length
 
   useEffect(() => {
     if (!open) return
@@ -354,7 +434,8 @@ export function PreferencesModal() {
     setCategory(initial)
     setQuery('')
     setResultCursor(0)
-    setPendingTarget(null)
+    // A caller can open straight onto one section, the same way a search result does.
+    setPendingTarget(typeof modalContext?.target === 'string' ? modalContext.target : null)
   }, [open, modalContext])
 
   useEffect(() => {
@@ -524,6 +605,9 @@ export function PreferencesModal() {
                   {category === 'plugins' ? <PluginsPage /> : null}
                   {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                   {category === 'integrations' ? <IntegrationsPage /> : null}
+                  {category === 'orchestration' ? (
+                    <OrchestrationPage target={pendingTarget} />
+                  ) : null}
                   {category === 'multiagent' ? <MultiagentPage /> : null}
                   {category === 'organization' ? <OrganizationPage /> : null}
                   {category === 'about' ? <AboutPage /> : null}

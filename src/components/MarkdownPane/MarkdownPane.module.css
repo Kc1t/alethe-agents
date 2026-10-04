@@ -390,6 +390,63 @@
   border-radius: var(--radius-md);
 }
 
+.markdownCompact {
+  padding: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.markdownCompact h1,
+.markdownCompact h2,
+.markdownCompact h3,
+.markdownCompact h4,
+.markdownCompact h5,
+.markdownCompact h6 {
+  margin: 1em 0 0.45em;
+  line-height: 1.25;
+}
+
+.markdownCompact h1 {
+  font-size: 1.35em;
+}
+
+.markdownCompact h2 {
+  font-size: 1.2em;
+}
+
+.markdownCompact h3 {
+  font-size: 1.08em;
+}
+
+.markdownCompact p,
+.markdownCompact ul,
+.markdownCompact ol,
+.markdownCompact blockquote,
+.markdownCompact table,
+.markdownCompact pre {
+  margin-bottom: 0.7em;
+}
+
+.markdownCompact ul,
+.markdownCompact ol {
+  padding-left: 1.35em;
+}
+
+.markdownCompact pre {
+  padding: 8px 9px;
+  border-radius: 5px;
+}
+
+.markdownCompact pre code {
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.markdownCompact th,
+.markdownCompact td {
+  padding: 4px 6px;
+}
+
 .mermaid {
   display: flex;
   justify-content: center;

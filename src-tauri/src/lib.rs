@@ -125,7 +125,10 @@ pub fn run() {
     // https://v2.tauri.app/develop/debug/linux-graphics/. Desligar o
 
     #[cfg(target_os = "linux")]
-    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    {
+        cli_resolver::remember_session_env_before_workarounds();
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
 
     let _ = dotenvy::dotenv();
     // `npm run app` (dev) injeta EDITOR=vi e GIT_EDITOR=true no ambiente do
@@ -265,8 +268,16 @@ pub fn run() {
             orchestrator::orchestrator_jobs,
             orchestrator::orchestrator_set_concurrency,
             orchestrator::orchestrator_set_agent_fitness,
+            orchestrator::orchestrator_set_worker_defaults,
+            orchestrator::orchestrator_set_cli_path,
+            orchestrator::orchestrator_set_policy,
             orchestrator::orchestrator_message,
             orchestrator::orchestrator_answer,
+            orchestrator::orchestrator_cancel,
+            orchestrator::orchestrator_release,
+            orchestrator::orchestrator_reorder_queue,
+            orchestrator::orchestrator_clear,
+            orchestrator::orchestrator_set_planner_routing,
             orchestrator::orchestrator_job_diff,
             browser_session::browser_session_start,
             browser_session::browser_session_stop,
@@ -297,6 +308,7 @@ pub fn run() {
             economy_agents::set_economy_agents,
             economy_agents::economy_agents_enabled,
             filesystem::list_directory,
+            filesystem::allow_asset_preview,
             filesystem::browse_directory,
             filesystem::read_text_file,
             filesystem::write_text_file,
@@ -346,6 +358,8 @@ pub fn run() {
             process_tree::kill_pty_tree_cmd,
             projects::load_projects,
             projects::save_projects,
+            projects::list_workspace_backups,
+            projects::restore_workspace_backup,
             projects::clone_github_repo,
             cli_resolver::discover_provider_models,
             profiles::list_profiles,

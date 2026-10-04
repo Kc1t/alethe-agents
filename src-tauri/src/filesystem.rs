@@ -145,7 +145,9 @@ pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
         let p = PathBuf::from(trimmed);
         if p.exists() {
             if p.is_file() {
-                p.parent().map(|parent| parent.to_path_buf()).unwrap_or(home.clone())
+                p.parent()
+                    .map(|parent| parent.to_path_buf())
+                    .unwrap_or(home.clone())
             } else {
                 p
             }
@@ -154,7 +156,9 @@ pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
         }
     };
 
-    let canonical = directory.canonicalize().unwrap_or_else(|_| directory.clone());
+    let canonical = directory
+        .canonicalize()
+        .unwrap_or_else(|_| directory.clone());
     let current_path_str = canonical.to_string_lossy().into_owned();
     let clean_current_path = current_path_str
         .strip_prefix(r"\\?\")
@@ -177,7 +181,10 @@ pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
                     return None;
                 }
                 let full_path = entry.path().to_string_lossy().into_owned();
-                let clean_path = full_path.strip_prefix(r"\\?\").unwrap_or(&full_path).to_string();
+                let clean_path = full_path
+                    .strip_prefix(r"\\?\")
+                    .unwrap_or(&full_path)
+                    .to_string();
                 Some(BrowseDirectoryEntry {
                     name,
                     path: clean_path,
@@ -196,7 +203,10 @@ pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
     });
 
     let clean_home = home.to_string_lossy().into_owned();
-    let home_path = clean_home.strip_prefix(r"\\?\").unwrap_or(&clean_home).to_string();
+    let home_path = clean_home
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&clean_home)
+        .to_string();
 
     Ok(DirectoryListing {
         current_path: clean_current_path,
@@ -379,4 +389,80 @@ pub fn unwatch_file(state: tauri::State<'_, FileWatchers>, path: String) -> Resu
         }
     }
     Ok(())
+}
+
+/// Media a preview can show. The asset protocol serves only these, so a path that reaches it by
+/// mistake, such as a key or a token file, is refused instead of handed to the webview.
+const PREVIEWABLE_EXTENSIONS: &[&str] = &[
+    "avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp", "m4v", "mov", "mp4", "ogv",
+    "webm", "pdf",
+];
+
+/// The real path of a previewable media file. Resolved first, so a `.png` symlink pointing at
+/// something else is judged by what it points at.
+fn previewable_media(path: &Path) -> Result<PathBuf, String> {
+    let canonical = fs::canonicalize(path).map_err(|_| "preview_not_found".to_string())?;
+    if !canonical.is_file() {
+        return Err("preview_not_a_file".to_string());
+    }
+    let extension = canonical
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .unwrap_or_default();
+    if !PREVIEWABLE_EXTENSIONS.contains(&extension.as_str()) {
+        return Err("preview_unsupported".to_string());
+    }
+    Ok(canonical)
+}
+
+/// Lets the asset protocol serve one media file the UI is about to show, and returns the path to
+/// load it by. The protocol starts with nothing in scope, so only files a preview asked for are
+/// ever reachable through it.
+#[tauri::command]
+pub async fn allow_asset_preview(app: AppHandle, path: String) -> Result<String, String> {
+    use tauri::Manager;
+    let canonical = previewable_media(Path::new(path.trim()))?;
+    app.asset_protocol_scope()
+        .allow_file(&canonical)
+        .map_err(|error| error.to_string())?;
+    Ok(canonical.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod preview_tests {
+    use super::previewable_media;
+
+    #[test]
+    fn only_real_media_files_can_be_previewed() {
+        let dir = std::env::temp_dir().join(format!("alethe-preview-{}", nanoid::nanoid!(8)));
+        std::fs::create_dir_all(&dir).expect("dir");
+        let image = dir.join("shot.PNG");
+        let secret = dir.join("id_ed25519");
+        std::fs::write(&image, "png").expect("image");
+        std::fs::write(&secret, "key").expect("secret");
+
+        assert!(previewable_media(&image).is_ok());
+        assert_eq!(
+            previewable_media(&secret).unwrap_err(),
+            "preview_unsupported"
+        );
+        assert_eq!(previewable_media(&dir).unwrap_err(), "preview_not_a_file");
+        assert_eq!(
+            previewable_media(&dir.join("missing.png")).unwrap_err(),
+            "preview_not_found"
+        );
+
+        #[cfg(unix)]
+        {
+            // Named like an image, pointing at the key: judged by its target.
+            let disguised = dir.join("innocent.png");
+            std::os::unix::fs::symlink(&secret, &disguised).expect("symlink");
+            assert_eq!(
+                previewable_media(&disguised).unwrap_err(),
+                "preview_unsupported"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

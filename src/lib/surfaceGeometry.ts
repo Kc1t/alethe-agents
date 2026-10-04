@@ -1,3 +1,5 @@
+import { isLinux } from './platform'
+
 export type SurfaceRect = { x: number; y: number; width: number; height: number }
 
 const MIN_VISIBLE_PX = 1
@@ -75,4 +77,26 @@ export function toPhysicalRect(rect: SurfaceRect, ratio: number): SurfaceRect {
 export function surfaceRectsEqual(a: SurfaceRect | null, b: SurfaceRect | null): boolean {
   if (a === null || b === null) return a === b
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height
+}
+
+/**
+ * Where a native drag-and-drop event landed, in CSS pixels. Tauri reports physical pixels on
+ * Windows and macOS. On Linux, WebKitGTK passes the widget's own coordinates through unscaled:
+ * display scaling never touched them, so only the page zoom stands between them and CSS pixels.
+ */
+export function dropPointToCss(
+  position: { x: number; y: number },
+  devicePixelRatio: number,
+  pageZoom: number,
+  linux: boolean,
+): { x: number; y: number } {
+  const ratio = linux ? pageZoom : devicePixelRatio
+  const scale = ratio > 0 ? ratio : 1
+  return { x: position.x / scale, y: position.y / scale }
+}
+
+/** `dropPointToCss` for this window: its pixel ratio, the zoom App applied, and the platform. */
+export function dropPointInWindow(position: { x: number; y: number }): { x: number; y: number } {
+  const zoom = Number(document.documentElement.dataset.zoom) || 1
+  return dropPointToCss(position, window.devicePixelRatio || 1, zoom, isLinux())
 }

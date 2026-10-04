@@ -1,0 +1,59 @@
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+.list[data-orientation='horizontal'] {
+  flex-direction: row;
+}
+
+.item {
+  position: relative;
+  min-width: 0;
+}
+
+/* Lifted off the list, so what it passes over does not show through it. */
+.item[data-dragging='true'] {
+  z-index: 2;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Where the dragged item lands: a line on the side of the row it will take the place of. */
+.item[data-drop]::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  background: var(--accent);
+  border-radius: 1px;
+  pointer-events: none;
+}
+
+.item[data-orientation='vertical'][data-drop]::after {
+  right: 0;
+  left: 0;
+  height: 2px;
+}
+
+.item[data-orientation='vertical'][data-drop='before']::after {
+  top: -1px;
+}
+
+.item[data-orientation='vertical'][data-drop='after']::after {
+  bottom: -1px;
+}
+
+.item[data-orientation='horizontal'][data-drop]::after {
+  top: 0;
+  bottom: 0;
+  width: 2px;
+}
+
+.item[data-orientation='horizontal'][data-drop='before']::after {
+  left: -1px;
+}
+
+.item[data-orientation='horizontal'][data-drop='after']::after {
+  right: -1px;
+}

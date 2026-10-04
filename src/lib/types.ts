@@ -201,6 +201,193 @@ export type SubTab = {
   runtimeProfile?: AgentRuntimeProfile
   /** Route this agent's API traffic through the local 9router proxy. */
   useRouter9?: boolean
+  /** Set on a terminal opened to drive an orchestration, so it launches with the planner defaults. */
+  orchestrationRole?: 'planner'
+}
+
+/**
+ * Reasoning effort an agent CLI can be asked for. Each provider accepts a subset of these, and for
+ * Codex each model advertises its own (`model/list`), from `none` up to `ultra`.
+ */
+export type AgentEffortLevel =
+  'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'
+
+export const AGENT_EFFORT_LEVELS: readonly AgentEffortLevel[] = [
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+  'ultra',
+]
+
+/** An absent field means "do not pass the flag", which leaves the CLI on its own default. */
+export type AgentLaunchDefaults = {
+  model?: string
+  effort?: AgentEffortLevel
+}
+
+export type OrchestrationRole = 'planner' | 'worker'
+
+/**
+ * Model and effort per provider, plus what an orchestration role overrides. A role entry wins
+ * field by field over the provider default for the same agent.
+ */
+export type AgentDefaultsPreferences = {
+  providers: Partial<Record<AgentType, AgentLaunchDefaults>>
+  planner: Partial<Record<AgentType, AgentLaunchDefaults>>
+  worker: Partial<Record<AgentType, AgentLaunchDefaults>>
+}
+
+export const DEFAULT_AGENT_DEFAULTS_PREFERENCES: AgentDefaultsPreferences = {
+  providers: {},
+  planner: {},
+  worker: {},
+}
+
+/** CLIs that can drive an orchestration: they reach `alethe_delegate` over MCP. */
+export const ORCHESTRATOR_PLANNER_AGENTS: readonly AgentType[] = ['claude', 'codex']
+/** CLIs `alethe_delegate` can start a worker with. */
+export const ORCHESTRATOR_WORKER_AGENTS: readonly AgentType[] = ['claude', 'codex']
+
+export const ORCHESTRATOR_DEFAULT_MAX_WORKERS = 4
+export const ORCHESTRATOR_MIN_WORKERS = 1
+export const ORCHESTRATOR_MAX_WORKERS = 16
+
+/** `auto` picks the installed worker CLI with the most room left. */
+export type OrchestratorWorkerChoice = 'auto' | 'claude' | 'codex'
+/** `planner` leaves the choice to each delegation; the others fix it. */
+export type OrchestratorApprovalRule = 'planner' | 'always' | 'never'
+export type OrchestratorIsolationRule = 'planner' | 'always'
+export type OrchestratorWebSearchRule = 'planner' | 'never'
+/** `danger-full-access` runs Codex workers without its sandbox, for systems where it cannot run. */
+export type OrchestratorCodexSandbox = 'workspace-write' | 'danger-full-access'
+export type OrchestratorRoutingPreset = 'economy' | 'balanced' | 'quality' | 'custom'
+export type OrchestratorTaskComplexity = 'light' | 'standard' | 'deep'
+
+export type OrchestratorRoute = {
+  agent: Exclude<OrchestratorWorkerChoice, 'auto'>
+  /** Empty means the provider's current default, which keeps Codex account discovery dynamic. */
+  model?: string
+  effort?: AgentEffortLevel
+}
+
+export type OrchestratorRoutingPreferences = {
+  preset: OrchestratorRoutingPreset
+  /** Percentage bands are deliberately explicit so routing remains predictable and editable. */
+  watchPercent: number
+  protectPercent: number
+  criticalPercent: number
+  /** Each tier's routes in order of preference: the first one with room is the one used. */
+  tiers: Record<OrchestratorTaskComplexity, OrchestratorRoute[]>
+}
+
+/**
+ * The person's rules for orchestration workers. A delegation decides within them; where one is
+ * fixed, it wins over what the planner asked for.
+ */
+export type OrchestratorPolicyPreferences = {
+  defaultAgent: OrchestratorWorkerChoice
+  /** Each worker turn's budget in minutes; 0 lets a turn run without one. */
+  timeoutMinutes: number
+  approvals: OrchestratorApprovalRule
+  isolation: OrchestratorIsolationRule
+  webSearch: OrchestratorWebSearchRule
+  /** Finished workers kept running so a follow-up does not have to start them again. */
+  keepFinished: number
+  codexSandbox: OrchestratorCodexSandbox
+  routing: OrchestratorRoutingPreferences
+}
+
+/** How many routes one tier can chain; past a handful the order stops being readable. */
+export const ORCHESTRATOR_MAX_ROUTES = 4
+
+/** The sub-tabs of the orchestration preferences; the person can put them in any order. */
+export const ORCHESTRATION_TABS = ['routing', 'workers', 'permissions', 'models'] as const
+export type OrchestrationTabId = (typeof ORCHESTRATION_TABS)[number]
+
+export const ORCHESTRATOR_TIMEOUT_CHOICES: readonly number[] = [5, 15, 30, 60, 120, 0]
+export const ORCHESTRATOR_MAX_KEPT_FINISHED = 8
+
+export const ORCHESTRATOR_ROUTING_PRESETS: Record<
+  Exclude<OrchestratorRoutingPreset, 'custom'>,
+  Omit<OrchestratorRoutingPreferences, 'preset'>
+> = {
+  economy: {
+    watchPercent: 45,
+    protectPercent: 65,
+    criticalPercent: 90,
+    tiers: {
+      light: [
+        { agent: 'claude', model: 'haiku', effort: 'low' },
+        { agent: 'codex', effort: 'low' },
+      ],
+      standard: [
+        { agent: 'codex', effort: 'medium' },
+        { agent: 'claude', model: 'sonnet', effort: 'medium' },
+      ],
+      deep: [
+        { agent: 'codex', effort: 'high' },
+        { agent: 'claude', model: 'sonnet', effort: 'high' },
+      ],
+    },
+  },
+  balanced: {
+    watchPercent: 60,
+    protectPercent: 80,
+    criticalPercent: 95,
+    tiers: {
+      light: [
+        { agent: 'claude', model: 'haiku', effort: 'low' },
+        { agent: 'codex', effort: 'low' },
+      ],
+      standard: [
+        { agent: 'codex', effort: 'medium' },
+        { agent: 'claude', model: 'sonnet', effort: 'medium' },
+      ],
+      deep: [
+        { agent: 'claude', model: 'opus', effort: 'high' },
+        { agent: 'codex', effort: 'high' },
+      ],
+    },
+  },
+  quality: {
+    watchPercent: 75,
+    protectPercent: 90,
+    criticalPercent: 98,
+    tiers: {
+      light: [
+        { agent: 'claude', model: 'sonnet', effort: 'medium' },
+        { agent: 'codex', effort: 'medium' },
+      ],
+      standard: [
+        { agent: 'claude', model: 'sonnet', effort: 'high' },
+        { agent: 'codex', effort: 'high' },
+      ],
+      deep: [
+        { agent: 'claude', model: 'opus', effort: 'max' },
+        { agent: 'codex', effort: 'max' },
+      ],
+    },
+  },
+}
+
+export const DEFAULT_ORCHESTRATOR_ROUTING: OrchestratorRoutingPreferences = {
+  preset: 'balanced',
+  ...ORCHESTRATOR_ROUTING_PRESETS.balanced,
+}
+
+export const DEFAULT_ORCHESTRATOR_POLICY: OrchestratorPolicyPreferences = {
+  defaultAgent: 'auto',
+  timeoutMinutes: 15,
+  approvals: 'planner',
+  isolation: 'planner',
+  webSearch: 'planner',
+  keepFinished: 4,
+  codexSandbox: 'workspace-write',
+  routing: DEFAULT_ORCHESTRATOR_ROUTING,
 }
 
 export type AgentHandoffBootstrap = {
@@ -260,7 +447,7 @@ export type BrowserPaneConfig = {
   zoom?: number
   /** How aggressively a hidden native webview is released. Defaults to app-first. */
   resourceMode?: BrowserResourceMode
-  /** Which surface renders the page. Defaults to native. */
+  /** Which surface renders the page. Defaults to `defaultBrowserEngine()`. */
   engine?: BrowserEngine
   /**
    * Attach to this tab in the shared browser instead of opening a new one. Set when a pane is
@@ -349,7 +536,7 @@ export type OrphanWorktree = {
   pruneOnly?: boolean
 
   cleanAttempts?: number
-  /** Motivo do lock administrativo (`git worktree lock`), se for esse o bloqueio atual. */
+  /** Reason for the administrative lock (`git worktree lock`), when that is what blocks it. */
   adminLockReason?: string
 }
 
@@ -377,7 +564,7 @@ export type Project = {
 
   defaultCwd?: string
   terminals: Terminal[]
-  /** Blocos visuais criados selecionando panes com Shift. */
+  /** Visual blocks created by selecting panes with Shift. */
   paneGroups?: PaneGroup[]
 
   markdownComments?: MarkdownComment[]
@@ -402,6 +589,8 @@ export type Project = {
   /** HTTP path checked by the probe (e.g. "/", "/health"). Defaults to '/' when empty. */
   healthCheckPath?: string
   gsdWatcherEnabled?: boolean
+  /** A routing profile of this project's own for its planners; absent uses the shared routing. */
+  orchestratorRoutingPreset?: Exclude<OrchestratorRoutingPreset, 'custom'>
 
   conflictAgentProvider?: AgentType
 
@@ -551,7 +740,7 @@ export const DEFAULT_ROUTER9_PREFERENCES: Router9Preferences = {
 }
 
 export type Preferences = {
-  /** Idioma da UI. Default 'en'. */
+  /** UI language. Defaults to 'en'. */
   language: Locale
   uiTheme: Theme
   /** Application-wide visual language. Normal preserves the production UI. */
@@ -560,7 +749,7 @@ export type Preferences = {
   motionPreference: MotionPreference
   /** Native desktop icon theme. Defaults to Dark independently from the UI theme. */
   appIconTheme: AppIconTheme
-  /** Zoom global da WebView. 1 = 100%. */
+  /** Global WebView zoom. 1 = 100%. */
   uiZoom: number
 
   windowOpacity: number
@@ -577,7 +766,7 @@ export type Preferences = {
   firstLaunchAt: number | null
   /** Nome exibido no welcome modal. */
   displayName: string
-  /** URL da foto de perfil escolhida no cadastro local. */
+  /** URL of the profile picture chosen in the local account. */
   profileImageUrl: string
 
   accountCreated: boolean
@@ -589,22 +778,22 @@ export type Preferences = {
   lastTerminalCreation: TerminalCreationPreset | null
 
   topbarStyle: 'classic' | 'three-areas'
-  /** Local do controle Git: sidebar esquerda ou direita. */
+  /** Where the Git control sits: left or right sidebar. */
   /** @deprecated Migrated into `viewPlacements.git`. Read only by the migration. */
   gitControlPlacement?: 'left' | 'right'
   /** Sidebar a contributed view sits in, overriding the container its manifest declares. */
   viewPlacements: Record<string, 'left' | 'right'>
 
-  /** Credenciais locais do Spotify Developer Dashboard para Now Playing. */
+  /** Local Spotify Developer Dashboard credentials for Now Playing. */
   spotifyClientId: string
   spotifyClientSecret: string
-  /** Exibe a atividade atual do Alethe no perfil do Discord. */
+  /** Shows Alethe's current activity on the Discord profile. */
   discordRichPresenceEnabled: boolean
   /** Usage cards shown in the AI usage details modal and the home usage strip. */
   usageShowClaude: boolean
   usageShowCodex: boolean
   usageShowAntigravity: boolean
-  /** Itens opcionais exibidos no canto direito da topbar. */
+  /** Optional items shown on the right side of the top bar. */
   topbarShowClaudeUsage: boolean
   topbarShowCodexUsage: boolean
   topbarShowAntigravityUsage: boolean
@@ -672,14 +861,25 @@ export type Preferences = {
 
   nativeTerminalMacos?: boolean
   /**
-   * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
-   * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
+   * v3 — Node.js heap profile for agents (Claude, Codex, OpenCode).
+   * Injects --max-old-space-size and UV_THREADPOOL_SIZE into the PTY environment.
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
 
   gsdSyncModelChain?: string[]
 
   router9?: Router9Preferences
+
+  /** Default model and effort per provider and per orchestration role. */
+  agentDefaults?: AgentDefaultsPreferences
+  /** How many orchestrator workers may run at once. */
+  orchestratorMaxWorkers?: number
+  /** The person's rules for orchestration workers. */
+  orchestratorPolicy?: OrchestratorPolicyPreferences
+  /** Whether a worker waiting on the person, or delegated work ending, raises a notification. */
+  orchestratorNotify?: boolean
+  /** The order of the orchestration preferences' sub-tabs; the first one is the one that opens. */
+  orchestrationTabOrder?: OrchestrationTabId[]
 
   /** Pomodoro cycle durations, in minutes. */
   pomodoroWorkMinutes: number
@@ -877,30 +1077,28 @@ export const GROUP_COLORS = [
 ] as const
 
 export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: string }[]> = {
+  // Claude Code's own aliases: each always points at the latest model of its family, so they never
+  // go stale the way a fixed model id does.
   claude: [
-    { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet (Padrão)' },
-    { id: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
-    { id: 'claude-3-5-haiku', label: 'Claude 3.5 Haiku' },
-    { id: 'claude-3-opus', label: 'Claude 3 Opus' },
+    { id: 'opus', label: 'Opus' },
+    { id: 'sonnet', label: 'Sonnet' },
+    { id: 'haiku', label: 'Haiku' },
+    { id: 'fable', label: 'Fable' },
   ],
-  codex: [
-    { id: 'gpt-4o', label: 'GPT-4o (Padrão)' },
-    { id: 'o3-mini', label: 'o3-mini (Raciocínio)' },
-    { id: 'o1', label: 'o1 (Avançado)' },
-    { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
-  ],
+  // Listed live by the Codex app-server for the signed-in account; nothing to fall back on.
+  codex: [],
   copilot: [],
   // Cursor rotates its model list per account and answers `cursor-agent models`, so nothing is
   // hardcoded here — discovery fills the picker.
   cursor: [],
   opencode: [
-    { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Raciocínio)' },
+    { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (reasoning)' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
     { id: 'qwen/qwen-2.5-coder-32b', label: 'Qwen 2.5 Coder 32B' },
     { id: 'meta-llama/llama-3.3-70b', label: 'Llama 3.3 70B' },
   ],
   antigravity: [
-    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (Padrão)' },
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (default)' },
     { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
     { id: 'claude-3.7-sonnet', label: 'Claude 3.7 Sonnet' },
   ],
@@ -910,7 +1108,7 @@ export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: stri
   ],
   freebuff: [{ id: 'freebuff-auto', label: 'Freebuff Auto' }],
   kiro: [
-    { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5 (Padrão)' },
+    { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5 (default)' },
     { id: 'claude-haiku-4.5', label: 'Claude Haiku 4.5' },
   ],
   // Kimi Code uses the account default model established at login, so nothing is
@@ -919,7 +1117,7 @@ export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: stri
   // Grok Build and Codewhale expose live model lists via their CLIs; discovery fills the picker.
   grok: [],
   codewhale: [],
-  shell: [{ id: 'default', label: 'Shell Padrão' }],
+  shell: [{ id: 'default', label: 'Default shell' }],
   wsl: [{ id: 'default', label: 'WSL' }],
 }
 

@@ -116,6 +116,23 @@ export async function loadProjectsFile(): Promise<string | null> {
   return invoke<string | null>('load_projects')
 }
 
+/** One earlier version of the workspace kept beside it; generation 1 is the most recent. */
+export type WorkspaceBackup = {
+  generation: number
+  modifiedMs: number
+  projects: number
+  terminals: number
+}
+
+export async function listWorkspaceBackups(): Promise<WorkspaceBackup[]> {
+  return invoke<WorkspaceBackup[]>('list_workspace_backups')
+}
+
+/** Puts an earlier version back; the workspace it replaces is kept as a backup itself. */
+export async function restoreWorkspaceBackup(generation: number): Promise<void> {
+  await invoke('restore_workspace_backup', { generation })
+}
+
 export async function saveProjectsFile(content: string, sequence: number): Promise<void> {
   await invoke('save_projects', { content, sequence })
 }

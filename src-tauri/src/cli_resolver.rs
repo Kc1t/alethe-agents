@@ -12,6 +12,38 @@ use winreg::{enums::*, RegKey};
 /// `None` until the first lookup, and reset to it by `invalidate_rebuilt_path` after an install.
 static REBUILT_PATH: RwLock<Option<String>> = RwLock::new(None);
 
+/// Rendering workarounds Alethe sets on its own process at startup. They are meant for its
+/// WebView, not for the programs a terminal runs, so a PTY gets the session's own value back.
+pub const WEBVIEW_ONLY_ENV: &[&str] = &["WEBKIT_DISABLE_DMABUF_RENDERER"];
+
+static SESSION_ENV_BEFORE_WORKAROUNDS: OnceLock<Vec<(&'static str, Option<std::ffi::OsString>)>> =
+    OnceLock::new();
+
+/// Records what the session had for each WebView-only variable. Call before setting any of them.
+pub fn remember_session_env_before_workarounds() {
+    let _ = SESSION_ENV_BEFORE_WORKAROUNDS.get_or_init(|| {
+        WEBVIEW_ONLY_ENV
+            .iter()
+            .map(|key| (*key, env::var_os(key)))
+            .collect()
+    });
+}
+
+fn restore_session_env(builder: &mut CommandBuilder) {
+    if let Some(before) = SESSION_ENV_BEFORE_WORKAROUNDS.get() {
+        restore_env(builder, before);
+    }
+}
+
+fn restore_env(builder: &mut CommandBuilder, before: &[(&str, Option<std::ffi::OsString>)]) {
+    for (key, value) in before {
+        match value {
+            Some(value) => builder.env(key, value),
+            None => builder.env_remove(key),
+        }
+    }
+}
+
 pub fn default_shell() -> String {
     #[cfg(windows)]
     {
@@ -27,6 +59,26 @@ pub fn default_shell() -> String {
             .filter(|s| !s.trim().is_empty())
             .unwrap_or_else(|| "/bin/bash".to_string())
     }
+}
+
+/// PATH with the launcher's own directory first, or None when it is already on PATH. An npm CLI is a
+/// `#!/usr/bin/env node` script installed next to its `node`, so a CLI found outside PATH (an nvm,
+/// fnm or volta version directory) dies with "env: node: not found" unless the process it starts
+/// can see that directory too.
+#[cfg(not(windows))]
+pub fn path_with_launcher_dir(
+    launcher: &std::path::Path,
+    current: Option<&std::ffi::OsStr>,
+) -> Option<std::ffi::OsString> {
+    let dir = launcher.parent().filter(|dir| dir.is_absolute())?;
+    let mut paths: Vec<PathBuf> = current
+        .map(|value| env::split_paths(value).collect())
+        .unwrap_or_default();
+    if paths.iter().any(|path| path == dir) {
+        return None;
+    }
+    paths.insert(0, dir.to_path_buf());
+    env::join_paths(paths).ok()
 }
 
 pub fn command_builder_for_terminal(
@@ -106,6 +158,18 @@ pub fn command_builder_for_terminal(
         }
         builder.env("Path", combined);
     }
+    #[cfg(not(windows))]
+    if let Some(launcher) = resolved_launcher.filter(|_| trimmed.is_some()) {
+        let current = builder
+            .get_env("PATH")
+            .map(ToOwned::to_owned)
+            .or_else(|| env::var_os("PATH"));
+        if let Some(path) =
+            path_with_launcher_dir(std::path::Path::new(launcher), current.as_deref())
+        {
+            builder.env("PATH", path);
+        }
+    }
     builder.env("TERM", "xterm-256color");
     builder.env("COLORTERM", "truecolor");
 
@@ -119,6 +183,7 @@ pub fn command_builder_for_terminal(
         builder.env("OPENTUI_FORCE_EXPLICIT_WIDTH", "false");
     }
     scrub_editor_environment(&mut builder);
+    restore_session_env(&mut builder);
     builder.env_remove("EDITOR");
     builder.env_remove("VISUAL");
     builder.env_remove("CLAUDECODE");
@@ -384,7 +449,27 @@ fn linux_user_bin_dirs() -> Vec<PathBuf> {
 pub fn find_vscode_launcher() -> Option<PathBuf> {
     #[cfg(not(windows))]
     {
-        which::which("code").ok()
+        // VS Code under any of its names, then VSCodium, then the launchers Flatpak and snap
+        // install outside PATH, which a GUI session often does not include.
+        for name in ["code", "code-insiders", "codium"] {
+            if let Ok(path) = which::which(name) {
+                return Some(path);
+            }
+        }
+        let mut candidates = vec![
+            PathBuf::from("/snap/bin/code"),
+            PathBuf::from("/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"),
+        ];
+        let mut flatpak_roots = vec![PathBuf::from("/var/lib/flatpak/exports/bin")];
+        if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
+            flatpak_roots.push(home.join(".local/share/flatpak/exports/bin"));
+        }
+        for root in flatpak_roots {
+            for id in ["com.visualstudio.code", "com.vscodium.codium"] {
+                candidates.push(root.join(id));
+            }
+        }
+        candidates.into_iter().find(|path| path.is_file())
     }
 
     #[cfg(windows)]
@@ -719,10 +804,46 @@ fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     result
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelOption {
     pub id: String,
     pub label: String,
+    /// The reasoning efforts this model takes, when its CLI says; None when it does not.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub efforts: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_effort: Option<String>,
+    /// The model the CLI runs when none is chosen.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_default: bool,
+}
+
+impl ModelOption {
+    fn named(id: impl Into<String>, label: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            ..Self::default()
+        }
+    }
+}
+
+/// An effort list as a CLI reports it, kept to values that are safe to pass back on argv.
+fn effort_list(value: &serde_json::Value, key: Option<&str>) -> Option<Vec<String>> {
+    let levels: Vec<String> = value
+        .as_array()?
+        .iter()
+        .filter_map(|entry| match key {
+            Some(key) => entry[key].as_str(),
+            None => entry.as_str(),
+        })
+        .filter(|level| {
+            !level.is_empty() && level.len() <= 16 && level.chars().all(|c| c.is_ascii_lowercase())
+        })
+        .map(ToOwned::to_owned)
+        .collect();
+    (!levels.is_empty()).then_some(levels)
 }
 
 fn is_valid_model_id(id: &str) -> bool {
@@ -743,6 +864,197 @@ fn is_valid_model_id(id: &str) -> bool {
         return false;
     }
     true
+}
+
+/// Models from a Codex app-server `model/list` reply, hidden ones left out, each with the
+/// reasoning efforts it advertises.
+fn parse_codex_model_list(reply: &serde_json::Value) -> Vec<ModelOption> {
+    reply["result"]["data"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| item["hidden"].as_bool() != Some(true))
+                .filter_map(|item| {
+                    let id = item["model"].as_str().or_else(|| item["id"].as_str())?;
+                    if !is_valid_model_id(id) {
+                        return None;
+                    }
+                    let label = item["displayName"].as_str().unwrap_or(id);
+                    Some(ModelOption {
+                        id: id.to_string(),
+                        label: label.to_string(),
+                        efforts: effort_list(
+                            &item["supportedReasoningEfforts"],
+                            Some("reasoningEffort"),
+                        ),
+                        default_effort: item["defaultReasoningEffort"]
+                            .as_str()
+                            .map(ToOwned::to_owned),
+                        is_default: item["isDefault"].as_bool() == Some(true),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The aliases Claude Code always accepts, used when the CLI cannot be asked. Each points at the
+/// latest model of its family.
+fn claude_alias_models() -> Vec<ModelOption> {
+    [
+        ("opus", "Opus"),
+        ("sonnet", "Sonnet"),
+        ("haiku", "Haiku"),
+        ("fable", "Fable"),
+    ]
+    .into_iter()
+    .map(|(id, label)| ModelOption::named(id, label))
+    .collect()
+}
+
+/// Models from a Claude Code `initialize` control response: what the signed-in account can use,
+/// with the effort levels each one takes. `default` is kept, marked as the default, so the
+/// effort choices can follow it when no model is chosen; it is not offered as a model to pick.
+fn parse_claude_initialize_models(reply: &serde_json::Value) -> Vec<ModelOption> {
+    reply["response"]["response"]["models"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let id = item["value"].as_str()?;
+                    if !is_valid_model_id(id) {
+                        return None;
+                    }
+                    let label = item["displayName"].as_str().unwrap_or(id);
+                    let efforts = if item["supportsEffort"].as_bool() == Some(false) {
+                        Some(Vec::new())
+                    } else {
+                        effort_list(&item["supportedEffortLevels"], None)
+                    };
+                    Some(ModelOption {
+                        id: id.to_string(),
+                        label: label.to_string(),
+                        efforts,
+                        default_effort: None,
+                        is_default: id == "default",
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Asks Claude Code for its models through the stream-json `initialize` handshake, the way the
+/// Agent SDK does: nothing reaches a model and no session is written. Bounded like the Codex
+/// lookup; an empty list means the caller falls back to the aliases.
+fn claude_initialize_models(bin_path: &str) -> Vec<ModelOption> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Command, Stdio};
+
+    let mut command = Command::new(bin_path);
+    command
+        .args([
+            "-p",
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--strict-mcp-config",
+        ])
+        .current_dir(std::env::temp_dir())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    crate::git_control::hide_console(&mut command);
+    let Ok(mut child) = command.spawn() else {
+        return Vec::new();
+    };
+    let (Some(mut stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Vec::new();
+    };
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) {
+                if message["type"] == "control_response" {
+                    let _ = sender.send(message);
+                    return;
+                }
+            }
+        }
+    });
+    let request = serde_json::json!({
+        "type": "control_request",
+        "request_id": "alethe-models",
+        "request": { "subtype": "initialize" }
+    });
+    let _ = writeln!(stdin, "{request}");
+    let reply = receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .ok();
+    drop(stdin);
+    let _ = child.kill();
+    let _ = child.wait();
+    reply
+        .map(|reply| parse_claude_initialize_models(&reply))
+        .unwrap_or_default()
+}
+
+/// Asks a Codex app-server for its model list and stops it. Bounded: a server that never answers
+/// is killed after a few seconds and the list comes back empty.
+fn codex_app_server_models(bin_path: &str) -> Vec<ModelOption> {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Command, Stdio};
+
+    let mut command = Command::new(bin_path);
+    command
+        .args(["app-server", "--stdio"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    crate::git_control::hide_console(&mut command);
+    let Ok(mut child) = command.spawn() else {
+        return Vec::new();
+    };
+    let (Some(mut stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Vec::new();
+    };
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if let Ok(message) = serde_json::from_str::<serde_json::Value>(&line) {
+                if message["id"] == 2 {
+                    let _ = sender.send(message);
+                    return;
+                }
+            }
+        }
+    });
+    let requests = [
+        serde_json::json!({ "id": 1, "method": "initialize", "params": { "clientInfo": { "name": "alethe", "title": "Alethe", "version": "1" } } }),
+        serde_json::json!({ "method": "initialized" }),
+        serde_json::json!({ "id": 2, "method": "model/list", "params": {} }),
+    ];
+    for request in requests {
+        if writeln!(stdin, "{request}").is_err() {
+            break;
+        }
+    }
+    let reply = receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .ok();
+    let _ = child.kill();
+    let _ = child.wait();
+    reply
+        .map(|reply| parse_codex_model_list(&reply))
+        .unwrap_or_default()
 }
 
 fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, String> {
@@ -772,30 +1084,27 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                         .unwrap_or(trimmed)
                         .to_string();
                     if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Antigravity agy)"),
-                            id,
-                        });
+                        models.push(ModelOption::named(
+                            id.clone(),
+                            format!("{id} (Antigravity agy)"),
+                        ));
                     }
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption {
-                    id: "gemini-2.5-pro".into(),
-                    label: "Gemini 2.5 Pro (Google DeepMind)".into(),
-                });
-                models.push(ModelOption {
-                    id: "gemini-2.5-flash".into(),
-                    label: "Gemini 2.5 Flash (Google DeepMind)".into(),
-                });
-                models.push(ModelOption {
-                    id: "claude-3.7-sonnet".into(),
-                    label: "Claude 3.7 Sonnet (Anthropic)".into(),
-                });
-                models.push(ModelOption {
-                    id: "deepseek-r1".into(),
-                    label: "DeepSeek R1 (Reasoning)".into(),
-                });
+                models.push(ModelOption::named(
+                    "gemini-2.5-pro",
+                    "Gemini 2.5 Pro (Google DeepMind)",
+                ));
+                models.push(ModelOption::named(
+                    "gemini-2.5-flash",
+                    "Gemini 2.5 Flash (Google DeepMind)",
+                ));
+                models.push(ModelOption::named(
+                    "claude-3.7-sonnet",
+                    "Claude 3.7 Sonnet (Anthropic)",
+                ));
+                models.push(ModelOption::named("deepseek-r1", "DeepSeek R1 (Reasoning)"));
             }
         }
         // `cursor-agent models` lists what the signed-in account can actually reach, which is the
@@ -811,10 +1120,7 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                         .unwrap_or(trimmed)
                         .to_string();
                     if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Cursor)"),
-                            id,
-                        });
+                        models.push(ModelOption::named(id.clone(), format!("{id} (Cursor)")));
                     }
                 }
             }
@@ -830,87 +1136,27 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                         .unwrap_or(trimmed)
                         .to_string();
                     if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (OpenCode CLI)"),
-                            id,
-                        });
+                        models.push(ModelOption::named(
+                            id.clone(),
+                            format!("{id} (OpenCode CLI)"),
+                        ));
                     }
                 }
             }
         }
+        // Claude Code has no command that lists models (`claude models` would be taken as a
+        // prompt), but its stream-json handshake reports them. The aliases are the fallback: each
+        // always points at the latest model of its family.
         "claude" => {
-            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    let trimmed = line.trim();
-                    let id = trimmed
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or(trimmed)
-                        .to_string();
-                    if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Claude CLI)"),
-                            id,
-                        });
-                    }
-                }
-            }
+            models = claude_initialize_models(&bin_path);
             if models.is_empty() {
-                models.push(ModelOption {
-                    id: "claude-3-7-sonnet".into(),
-                    label: "Claude 3.7 Sonnet (Anthropic)".into(),
-                });
-                models.push(ModelOption {
-                    id: "claude-3-5-sonnet".into(),
-                    label: "Claude 3.5 Sonnet (Anthropic)".into(),
-                });
-                models.push(ModelOption {
-                    id: "claude-3-5-haiku".into(),
-                    label: "Claude 3.5 Haiku (Anthropic)".into(),
-                });
-                models.push(ModelOption {
-                    id: "claude-3-opus".into(),
-                    label: "Claude 3 Opus (Anthropic)".into(),
-                });
+                models = claude_alias_models();
             }
         }
+        // Codex has no `models` command either, but its app-server lists what the signed-in account
+        // can use, without starting a session or sending anything to a model.
         "codex" => {
-            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    let trimmed = line.trim();
-                    let id = trimmed
-                        .split_whitespace()
-                        .next()
-                        .unwrap_or(trimmed)
-                        .to_string();
-                    if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Codex CLI)"),
-                            id,
-                        });
-                    }
-                }
-            }
-            if models.is_empty() {
-                models.push(ModelOption {
-                    id: "gpt-4o".into(),
-                    label: "GPT-4o (OpenAI)".into(),
-                });
-                models.push(ModelOption {
-                    id: "o3-mini".into(),
-                    label: "o3-mini (Raciocínio OpenAI)".into(),
-                });
-                models.push(ModelOption {
-                    id: "o1".into(),
-                    label: "o1 (OpenAI)".into(),
-                });
-                models.push(ModelOption {
-                    id: "gpt-4o-mini".into(),
-                    label: "GPT-4o mini (OpenAI)".into(),
-                });
-            }
+            models = codex_app_server_models(&bin_path);
         }
         "mimo" => {
             if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
@@ -923,22 +1169,16 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                         .unwrap_or(trimmed)
                         .to_string();
                     if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Mimo CLI)"),
-                            id,
-                        });
+                        models.push(ModelOption::named(id.clone(), format!("{id} (Mimo CLI)")));
                     }
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption {
-                    id: "mimo-v1-pro".into(),
-                    label: "Mimo V1 Pro (Xiaomi AI)".into(),
-                });
-                models.push(ModelOption {
-                    id: "mimo-v1-flash".into(),
-                    label: "Mimo V1 Flash (Xiaomi AI)".into(),
-                });
+                models.push(ModelOption::named("mimo-v1-pro", "Mimo V1 Pro (Xiaomi AI)"));
+                models.push(ModelOption::named(
+                    "mimo-v1-flash",
+                    "Mimo V1 Flash (Xiaomi AI)",
+                ));
             }
         }
         "freebuff" => {
@@ -952,22 +1192,16 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                         .unwrap_or(trimmed)
                         .to_string();
                     if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Freebuff CLI)"),
-                            id,
-                        });
+                        models.push(ModelOption::named(
+                            id.clone(),
+                            format!("{id} (Freebuff CLI)"),
+                        ));
                     }
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption {
-                    id: "freebuff-auto".into(),
-                    label: "Freebuff Auto-Router".into(),
-                });
-                models.push(ModelOption {
-                    id: "freebuff-fast".into(),
-                    label: "Freebuff Fast".into(),
-                });
+                models.push(ModelOption::named("freebuff-auto", "Freebuff Auto-Router"));
+                models.push(ModelOption::named("freebuff-fast", "Freebuff Fast"));
             }
         }
         "grok" => {
@@ -981,10 +1215,7 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                         .unwrap_or(trimmed)
                         .to_string();
                     if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Grok Build)"),
-                            id,
-                        });
+                        models.push(ModelOption::named(id.clone(), format!("{id} (Grok Build)")));
                     }
                 }
             }
@@ -1000,10 +1231,7 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                         .unwrap_or(trimmed)
                         .to_string();
                     if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Codewhale)"),
-                            id,
-                        });
+                        models.push(ModelOption::named(id.clone(), format!("{id} (Codewhale)")));
                     }
                 }
             }
@@ -1019,22 +1247,19 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                         .unwrap_or(trimmed)
                         .to_string();
                     if is_valid_model_id(&id) {
-                        models.push(ModelOption {
-                            label: format!("{id} (Kiro CLI)"),
-                            id,
-                        });
+                        models.push(ModelOption::named(id.clone(), format!("{id} (Kiro CLI)")));
                     }
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption {
-                    id: "claude-sonnet-4.5".into(),
-                    label: "Claude Sonnet 4.5 (Anthropic via Kiro)".into(),
-                });
-                models.push(ModelOption {
-                    id: "claude-haiku-4.5".into(),
-                    label: "Claude Haiku 4.5 (Anthropic via Kiro)".into(),
-                });
+                models.push(ModelOption::named(
+                    "claude-sonnet-4.5",
+                    "Claude Sonnet 4.5 (Anthropic via Kiro)",
+                ));
+                models.push(ModelOption::named(
+                    "claude-haiku-4.5",
+                    "Claude Haiku 4.5 (Anthropic via Kiro)",
+                ));
             }
         }
         _ => {}
@@ -1043,18 +1268,175 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
     Ok(models)
 }
 
-/// `discover_provider_models_inner` roda `std::process::Command::output()`
-
-/// `find_cli_launcher` acima.
+/// `discover_provider_models_inner` runs CLIs and waits on them, so it goes to the blocking pool
+/// rather than the main thread.
 #[tauri::command]
 pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOption>, String> {
     tokio::task::spawn_blocking(move || discover_provider_models_inner(provider))
         .await
-        .map_err(|error| format!("discover_provider_models: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("discover_provider_models: the blocking task failed: {error}"))?
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn codex_models_come_from_the_app_server_reply_without_hidden_ones() {
+        let reply = serde_json::json!({
+            "id": 2,
+            "result": { "data": [
+                { "id": "gpt-5.6-sol", "model": "gpt-5.6-sol", "displayName": "GPT-5.6-Sol", "hidden": false },
+                { "id": "internal", "model": "internal-preview", "displayName": "Internal", "hidden": true },
+                { "id": "gpt-5.5", "model": "gpt-5.5" }
+            ] }
+        });
+        let models = super::parse_codex_model_list(&reply);
+        let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(ids, ["gpt-5.6-sol", "gpt-5.5"]);
+        assert_eq!(models[0].label, "GPT-5.6-Sol");
+        assert_eq!(models[1].label, "gpt-5.5");
+        assert!(super::parse_codex_model_list(&serde_json::json!({ "error": {} })).is_empty());
+    }
+
+    /// Runs the real Codex CLI: `cargo test --lib codex_app_server_lists -- --ignored`.
+    #[test]
+    #[ignore = "needs an installed, signed-in Codex CLI"]
+    fn codex_app_server_lists_models_when_installed() {
+        let bin = super::find_windows_cli_launcher("codex").expect("codex installed");
+        let models = super::codex_app_server_models(&bin.to_string_lossy());
+        assert!(!models.is_empty(), "no models from the app-server");
+    }
+
+    #[test]
+    fn codex_models_carry_the_efforts_each_one_advertises() {
+        let reply = serde_json::json!({
+            "id": 2,
+            "result": { "data": [
+                {
+                    "model": "gpt-5.6-sol",
+                    "displayName": "GPT-5.6-Sol",
+                    "isDefault": true,
+                    "defaultReasoningEffort": "low",
+                    "supportedReasoningEfforts": [
+                        { "reasoningEffort": "low" },
+                        { "reasoningEffort": "ultra" },
+                        { "reasoningEffort": "bad value; rm" }
+                    ]
+                },
+                { "model": "gpt-5.5" }
+            ] }
+        });
+        let models = super::parse_codex_model_list(&reply);
+        assert_eq!(
+            models[0].efforts.as_deref(),
+            Some(&["low".to_string(), "ultra".to_string()][..])
+        );
+        assert_eq!(models[0].default_effort.as_deref(), Some("low"));
+        assert!(models[0].is_default);
+        assert_eq!(models[1].efforts, None);
+        assert!(!models[1].is_default);
+    }
+
+    #[test]
+    fn claude_models_come_from_the_initialize_handshake() {
+        let reply = serde_json::json!({
+            "type": "control_response",
+            "response": { "subtype": "success", "request_id": "x", "response": { "models": [
+                { "value": "default", "displayName": "Default (recommended)", "supportsEffort": true, "supportedEffortLevels": ["low", "max"] },
+                { "value": "haiku", "displayName": "Haiku 4.5", "supportsEffort": false },
+                { "value": "claude-opus-4-6", "displayName": "Opus 4.6", "supportsEffort": true, "supportedEffortLevels": ["low", "medium", "high", "max"] }
+            ] } }
+        });
+        let models = super::parse_claude_initialize_models(&reply);
+        let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(ids, ["default", "haiku", "claude-opus-4-6"]);
+        assert!(models[0].is_default);
+        assert_eq!(
+            models[1].efforts.as_deref(),
+            Some(&[][..]),
+            "no effort for haiku"
+        );
+        assert_eq!(models[2].label, "Opus 4.6");
+        assert!(super::parse_claude_initialize_models(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn claude_falls_back_to_its_aliases() {
+        let ids: Vec<String> = super::claude_alias_models()
+            .into_iter()
+            .map(|model| model.id)
+            .collect();
+        assert_eq!(ids, ["opus", "sonnet", "haiku", "fable"]);
+    }
+
+    /// Runs the real Claude CLI: `cargo test --lib claude_initialize_lists -- --ignored`.
+    #[test]
+    #[ignore = "needs an installed Claude Code CLI"]
+    fn claude_initialize_lists_models_when_installed() {
+        let bin = super::find_windows_cli_launcher("claude").expect("claude installed");
+        let models = super::claude_initialize_models(&bin.to_string_lossy());
+        assert!(models.iter().any(|model| model.is_default), "{models:?}");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_cli_found_outside_path_brings_its_own_directory_along() {
+        let launcher = std::path::Path::new("/home/me/.nvm/versions/node/v24.15.0/bin/claude");
+        let path = super::path_with_launcher_dir(launcher, Some("/usr/bin:/bin".as_ref()))
+            .expect("a new PATH");
+        assert_eq!(
+            path,
+            "/home/me/.nvm/versions/node/v24.15.0/bin:/usr/bin:/bin"
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn a_cli_already_on_path_leaves_it_alone() {
+        let launcher = std::path::Path::new("/usr/bin/claude");
+        assert_eq!(
+            super::path_with_launcher_dir(launcher, Some("/usr/bin:/bin".as_ref())),
+            None
+        );
+        assert_eq!(
+            super::path_with_launcher_dir(std::path::Path::new("claude"), None),
+            None
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn an_agent_terminal_can_find_node_next_to_its_cli() {
+        let builder = super::command_builder_for_terminal(
+            Some("claude"),
+            Some("/opt/alethe-test/node/bin/claude"),
+            &[],
+        );
+        let path = builder
+            .get_env("PATH")
+            .expect("PATH")
+            .to_string_lossy()
+            .into_owned();
+        assert!(path.starts_with("/opt/alethe-test/node/bin:"), "{path}");
+    }
+
+    #[test]
+    fn a_terminal_gets_the_sessions_own_value_of_a_webview_workaround() {
+        let mut builder = portable_pty::CommandBuilder::new("sh");
+        builder.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        super::restore_env(&mut builder, &[("WEBKIT_DISABLE_DMABUF_RENDERER", None)]);
+        assert_eq!(builder.get_env("WEBKIT_DISABLE_DMABUF_RENDERER"), None);
+
+        builder.env("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        super::restore_env(
+            &mut builder,
+            &[("WEBKIT_DISABLE_DMABUF_RENDERER", Some("0".into()))],
+        );
+        assert_eq!(
+            builder.get_env("WEBKIT_DISABLE_DMABUF_RENDERER"),
+            Some(std::ffi::OsStr::new("0"))
+        );
+    }
+
     use super::*;
     use std::path::PathBuf;
 

@@ -52,3 +52,20 @@ export function getWheelScrollLines(event: WheelLike, lineHeight: number): numbe
   const lines = Math.ceil(Math.abs(event.deltaY) / safeLineHeight)
   return Math.sign(event.deltaY) * Math.max(1, lines)
 }
+
+/**
+ * Only a bare Ctrl+C is an interrupt, and so only it counts towards the double-press force kill.
+ * The copy chords must never end the agent when pressed twice out of habit: Ctrl+Shift+C in Linux
+ * terminals and Cmd+C on macOS, which sends nothing to the PTY at all.
+ */
+export function isInterruptChord(
+  event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>,
+): boolean {
+  return (
+    event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    event.key.toLowerCase() === 'c'
+  )
+}

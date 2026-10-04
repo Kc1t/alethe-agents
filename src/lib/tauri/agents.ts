@@ -90,7 +90,15 @@ export async function uninstallAgent(folder: string, name: string, force = true)
   await invoke('uninstall_agent', { folder, name, force })
 }
 
-export type DiscoveredModel = { id: string; label: string }
+export type DiscoveredModel = {
+  id: string
+  label: string
+  /** The reasoning efforts this model takes, when its CLI reports them. */
+  efforts?: string[]
+  defaultEffort?: string
+  /** The model the CLI runs when none is chosen. */
+  isDefault?: boolean
+}
 
 export async function discoverProviderModels(provider: string): Promise<DiscoveredModel[]> {
   return invoke<DiscoveredModel[]>('discover_provider_models', { provider })

@@ -1,9 +1,11 @@
 import { Activity, Minus, Plus, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 
-import { cliPathMatchesAgent } from '../../../lib/agentCliPath'
+import { cliExecutableFilters, cliPathMatchesAgent } from '../../../lib/agentCliPath'
+import { agentsWithLaunchDefaults } from '../../../lib/agentLaunchDefaults'
 import { pickFile } from '../../../lib/dialog'
 import { useT, useTDynamic } from '../../../lib/i18n'
+import { isAgentAvailableOnThisOs } from '../../../lib/agentProviders'
 import { isMacOS } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
 import { agentCliCommand, isShellAgentType, type AgentType } from '../../../lib/types'
@@ -11,6 +13,7 @@ import { SPAWN_CONCURRENCY_LIMITS, useProjectsStore } from '../../../stores/proj
 import { useUiStore } from '../../../stores/uiStore'
 import { AgentIcon } from '../../icons/AgentIcons'
 import styles from '../PreferencesModal.module.css'
+import { AgentLaunchDefaultsList } from './AgentLaunchDefaultsList'
 import { SettingsSection } from './primitives'
 
 const AGENTS: { id: AgentType; label: string }[] = [
@@ -29,6 +32,8 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'grok', label: 'Grok Build' },
   { id: 'codewhale', label: 'Codewhale' },
 ]
+
+const AVAILABLE_AGENTS = AGENTS.filter((agent) => isAgentAvailableOnThisOs(agent.id))
 
 export function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const t = useT()
@@ -53,10 +58,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const onPickCliPath = async (agent: AgentType) => {
     const picked = await pickFile({
       title: t('prefs.cliPathPick', { agent }),
-      filters: [
-        { name: 'Executable', extensions: ['cmd', 'exe', 'bat', 'ps1'] },
-        { name: 'All files', extensions: ['*'] },
-      ],
+      filters: cliExecutableFilters(),
     })
     if (!picked) return
     if (!cliPathMatchesAgent(agent, picked)) {
@@ -156,7 +158,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
         description={t('prefs.agentsDesc')}
       >
         <div className={styles.agentList}>
-          {AGENTS.map((agent) => {
+          {AVAILABLE_AGENTS.map((agent) => {
             const checked = preferences.enabledAgents[agent.id]
             const disabled = checked && enabledCount === 1
             return (
@@ -190,7 +192,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
         description={t('prefs.cliPathsDesc')}
       >
         <div className={styles.agentList}>
-          {AGENTS.filter((agent) => !isShellAgentType(agent.id)).map((agent) => {
+          {AVAILABLE_AGENTS.filter((agent) => !isShellAgentType(agent.id)).map((agent) => {
             const override = cliPaths[agent.id]
             const mismatch = override ? !cliPathMatchesAgent(agent.id, override) : false
             return (
@@ -225,6 +227,14 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
             )
           })}
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        id="agent-defaults"
+        title={t('prefs.agentDefaults')}
+        description={t('prefs.agentDefaultsDesc')}
+      >
+        <AgentLaunchDefaultsList scope="providers" agents={agentsWithLaunchDefaults()} />
       </SettingsSection>
 
       <SettingsSection

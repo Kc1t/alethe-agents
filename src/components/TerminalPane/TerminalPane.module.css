@@ -54,7 +54,7 @@
 /* Pane in focus mode: the panel itself goes fixed; the overlay is just backdrop. */
 .paneFocus {
   position: fixed;
-  inset: 24px 32px;
+  inset: 24px var(--planner-focus-right, 32px) 24px 32px;
   z-index: 91;
   width: auto;
   height: auto;

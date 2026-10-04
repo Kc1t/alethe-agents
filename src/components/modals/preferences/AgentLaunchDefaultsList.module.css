@@ -1,0 +1,50 @@
+/* Same shell as the per-agent rows on the Terminal page, with the controls on a second line. */
+.row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px 12px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.controls {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.controlsNoEffort {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.reset {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.reset:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 560px) {
+  .controls,
+  .controlsNoEffort {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

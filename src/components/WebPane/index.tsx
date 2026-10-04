@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { memo, useEffect, useRef, useState } from 'react'
 
+import { defaultBrowserEngine } from '../../lib/browserEngine'
 import { browserHiddenEvictionDelay } from '../../lib/browserResourcePolicy'
 import { useT } from '../../lib/i18n'
 import { suspendNativeSurfaces } from '../../lib/overlayPresence'
@@ -40,7 +41,7 @@ export const WebPane = memo(function WebPane({
   const t = useT()
   const url = terminal.url ?? ''
   const [reloadKey, setReloadKey] = useState(0)
-  const engine = terminal.browserConfig?.engine ?? 'native'
+  const engine = terminal.browserConfig?.engine ?? defaultBrowserEngine()
   const setBrowserEngine = useProjectsStore((state) => state.setBrowserEngine)
   const focusedTerminalId = useUiStore((state) => state.focusedTerminalId)
   const activeView = useUiStore((state) => state.activeView)

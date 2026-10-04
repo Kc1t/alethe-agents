@@ -1,8 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
+  define: {
+    // Where the dev test user's project points. A release build gets an empty string, so the
+    // build machine's path never ends up in the bundle.
+    __ALETHE_DEV_ROOT__: JSON.stringify(command === 'serve' ? process.cwd() : ''),
+  },
   clearScreen: false,
   server: {
     // Sem host explícito o vite escolhe ::1 ou 127.0.0.1 por sorte da resolução
@@ -45,4 +50,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

@@ -1,5 +1,6 @@
 import type { MediaItem } from './orchestratorMedia'
 import { LANE_OF, type OrchestratorRun, type RunLane } from './orchestratorRuns'
+import type { OrchestratorRouting } from './tauri'
 
 export const NODE_WIDTH = 252
 export const SIBLING_GAP = 24
@@ -38,11 +39,7 @@ export type GraphEdge = {
   note: GraphEdgeNote | null
 }
 
-export type GraphEdgeNote = {
-  verdict: 'chosen' | 'ignored'
-  agent: string
-  window: string
-  used: number
+export type GraphEdgeNote = OrchestratorRouting & {
   x: number
   y: number
 }

@@ -7,14 +7,35 @@ use tauri::AppHandle;
 use crate::cli_resolver::find_vscode_launcher;
 use crate::paths::{app_data_dir, spawn_log_path};
 
+/// A program handed a file or URL to open (a file manager, a browser, an editor) is not waited
+/// on, but its exit still has to be collected, or it stays a zombie until Alethe itself exits.
+pub(crate) fn reap_in_background(mut child: std::process::Child) {
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+}
+
+/// Expands a leading `~` the way a shell would. Paths printed in a terminal often start with it,
+/// and nothing below a shell understands it.
+fn expand_home(path: &str, home: Option<PathBuf>) -> PathBuf {
+    let rest = match path.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') => rest,
+        _ => return PathBuf::from(path),
+    };
+    match home {
+        Some(home) => home.join(rest.trim_start_matches(['/', '\\'])),
+        None => PathBuf::from(path),
+    }
+}
+
 fn existing_path_from_user_input(path: &str) -> Result<PathBuf, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
-        return Err("path vazio".to_string());
+        return Err("empty path".to_string());
     }
-    let target = PathBuf::from(trimmed);
+    let target = expand_home(trimmed, dirs_next::home_dir());
     if !target.exists() {
-        return Err(format!("path nao existe: {trimmed}"));
+        return Err(format!("path does not exist: {trimmed}"));
     }
     Ok(target)
 }
@@ -44,26 +65,81 @@ pub fn open_in_file_explorer(path: String) -> Result<(), String> {
     };
 
     #[cfg(all(unix, not(target_os = "macos")))]
-    let result = {
-        let dir = if target.is_file() {
-            target
-                .parent()
-                .map(|p| p.to_path_buf())
-                .unwrap_or_else(|| target.clone())
-        } else {
-            target.clone()
-        };
-        Command::new("xdg-open").arg(dir.as_os_str()).spawn()
+    let result = if target.is_file() {
+        // The reveal runs in the background, so the one failure worth reporting is checked here:
+        // with neither helper installed nothing could open at all.
+        if which::which("gdbus").is_err() && which::which("xdg-open").is_err() {
+            return Err("neither gdbus nor xdg-open is installed".to_string());
+        }
+        reveal_file_in_file_manager(target);
+        return Ok(());
+    } else {
+        Command::new("xdg-open").arg(target.as_os_str()).spawn()
     };
 
-    result.map(|_| ()).map_err(|e| e.to_string())
+    result.map(reap_in_background).map_err(|e| e.to_string())
+}
+
+/// A `file://` URI for `path`, with every byte outside the unreserved set escaped, so it can sit
+/// inside a quoted GVariant string as is.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn file_uri(path: &std::path::Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut uri = String::from("file://");
+    for &byte in path.as_os_str().as_bytes() {
+        if byte.is_ascii_alphanumeric() || b"/-_.~".contains(&byte) {
+            uri.push(byte as char);
+        } else {
+            uri.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    uri
+}
+
+/// Opens the folder with the file selected, through the freedesktop FileManager1 interface that
+/// Nautilus, Dolphin, Nemo and Thunar implement. Without one, the folder opens as before. Runs off
+/// the calling thread, since the D-Bus round trip can take a moment.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn reveal_file_in_file_manager(target: PathBuf) {
+    std::thread::spawn(move || {
+        let selected = Command::new("gdbus")
+            .args([
+                "call",
+                "--session",
+                "--dest",
+                "org.freedesktop.FileManager1",
+                "--object-path",
+                "/org/freedesktop/FileManager1",
+                "--method",
+                "org.freedesktop.FileManager1.ShowItems",
+            ])
+            .arg(format!("['{}']", file_uri(&target)))
+            .arg("")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+        if selected {
+            return;
+        }
+        let folder = target.parent().map(PathBuf::from).unwrap_or(target);
+        if let Ok(child) = Command::new("xdg-open").arg(folder.as_os_str()).spawn() {
+            reap_in_background(child);
+        }
+    });
 }
 
 #[tauri::command]
 pub fn open_in_vscode(path: String) -> Result<(), String> {
     let target = existing_path_from_user_input(&path)?;
     let launcher = find_vscode_launcher().ok_or_else(|| {
-        "VS Code não encontrado (procurado em PATH, LOCALAPPDATA, ProgramFiles)".to_string()
+        if cfg!(windows) {
+            "VS Code not found (searched PATH, LOCALAPPDATA and ProgramFiles)".to_string()
+        } else {
+            "VS Code not found (searched PATH for code, code-insiders and codium, Flatpak and snap)"
+                .to_string()
+        }
     })?;
     let is_cmd = launcher
         .extension()
@@ -85,7 +161,7 @@ pub fn open_in_vscode(path: String) -> Result<(), String> {
         crate::git_control::hide_console(&mut command);
         command.spawn()
     };
-    result.map(|_| ()).map_err(|e| e.to_string())
+    result.map(reap_in_background).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -117,43 +193,62 @@ pub fn open_in_browser(target: String) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = Command::new("xdg-open").arg(open_target).spawn();
 
-    result.map(|_| ()).map_err(|e| e.to_string())
+    result.map(reap_in_background).map_err(|e| e.to_string())
+}
+
+/// Clipboard backends shell out or take OS locks, and a synchronous command runs on the main
+/// thread. On Wayland the selection owner can be this very process, so a helper waiting on the
+/// owner while that thread is blocked never returns and the whole window freezes with it.
+async fn clipboard_task<T, F>(name: &'static str, task: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(task)
+        .await
+        .map_err(|error| format!("{name}: blocking task failed: {error}"))?
 }
 
 #[tauri::command]
-pub fn write_clipboard_text(text: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        windows_clipboard::write_text(&text)
-    }
+pub async fn write_clipboard_text(text: String) -> Result<(), String> {
+    clipboard_task("write_clipboard_text", move || {
+        #[cfg(target_os = "windows")]
+        {
+            windows_clipboard::write_text(&text)
+        }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        unix_clipboard::write_text(&text)
-    }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            unix_clipboard::write_text(&text)
+        }
 
-    #[cfg(target_os = "macos")]
-    {
-        macos_clipboard::write_text(&text)
-    }
+        #[cfg(target_os = "macos")]
+        {
+            macos_clipboard::write_text(&text)
+        }
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn read_clipboard_text() -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        windows_clipboard::read_text()
-    }
+pub async fn read_clipboard_text() -> Result<String, String> {
+    clipboard_task("read_clipboard_text", || {
+        #[cfg(target_os = "windows")]
+        {
+            windows_clipboard::read_text()
+        }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        unix_clipboard::read_text()
-    }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            unix_clipboard::read_text()
+        }
 
-    #[cfg(target_os = "macos")]
-    {
-        macos_clipboard::read_text()
-    }
+        #[cfg(target_os = "macos")]
+        {
+            macos_clipboard::read_text()
+        }
+    })
+    .await
 }
 
 /// Unified clipboard payload: text, file paths (CF_HDROP on Windows, text/uri-list
@@ -169,21 +264,24 @@ pub enum ClipboardPayload {
 }
 
 #[tauri::command]
-pub fn read_clipboard_payload() -> Result<ClipboardPayload, String> {
-    #[cfg(target_os = "windows")]
-    {
-        windows_clipboard::read_payload()
-    }
+pub async fn read_clipboard_payload() -> Result<ClipboardPayload, String> {
+    clipboard_task("read_clipboard_payload", || {
+        #[cfg(target_os = "windows")]
+        {
+            windows_clipboard::read_payload()
+        }
 
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        unix_clipboard::read_payload()
-    }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        {
+            unix_clipboard::read_payload()
+        }
 
-    #[cfg(target_os = "macos")]
-    {
-        macos_clipboard::read_payload()
-    }
+        #[cfg(target_os = "macos")]
+        {
+            macos_clipboard::read_payload()
+        }
+    })
+    .await
 }
 
 #[cfg(target_os = "windows")]
@@ -432,15 +530,64 @@ mod windows_clipboard {
     }
 }
 
-/// Backend de clipboard pra Linux/BSD via ferramentas de linha de comando
-/// (`wl-paste`/`wl-copy` no Wayland, `xclip` no X11) — sem essas ferramentas
-/// instaladas, os comandos de clipboard retornam erro em vez de panicar.
+/// Clipboard backend for Linux/BSD through command-line helpers (`wl-paste`/`wl-copy` on Wayland,
+/// `xclip` on X11). Without them installed the clipboard commands return an error instead of
+/// panicking.
 #[cfg(all(unix, not(target_os = "macos")))]
 mod unix_clipboard {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
+    use std::io::{Read, Write};
+    use std::process::{Child, Command, ExitStatus, Stdio};
+    use std::time::{Duration, Instant};
 
     use super::ClipboardPayload;
+
+    /// `wl-paste` waits on the selection owner with no limit of its own, so one unanswered request
+    /// would hold its caller forever. Past this a helper counts as stuck and is killed.
+    const HELPER_DEADLINE: Duration = Duration::from_secs(5);
+
+    fn wait_with_deadline(child: &mut Child, deadline: Duration) -> Result<ExitStatus, String> {
+        let started = Instant::now();
+        loop {
+            match child.try_wait().map_err(|e| e.to_string())? {
+                Some(status) => return Ok(status),
+                None if started.elapsed() >= deadline => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err("clipboard helper timed out".to_string());
+                }
+                None => std::thread::sleep(Duration::from_millis(10)),
+            }
+        }
+    }
+
+    /// Runs a helper and returns what it printed, or an error once the deadline passes.
+    fn output_with_deadline(
+        mut command: Command,
+        deadline: Duration,
+    ) -> Result<(ExitStatus, Vec<u8>), String> {
+        let mut child = command
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        let mut stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "clipboard helper has no stdout".to_string())?;
+        // Drained on its own thread: a payload larger than the pipe buffer would otherwise stall
+        // the helper before it can exit.
+        let reader = std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            let _ = stdout.read_to_end(&mut bytes);
+            bytes
+        });
+        let status = wait_with_deadline(&mut child, deadline)?;
+        let bytes = reader
+            .join()
+            .map_err(|_| "clipboard reader thread panicked".to_string())?;
+        Ok((status, bytes))
+    }
 
     fn wayland() -> bool {
         std::env::var_os("WAYLAND_DISPLAY").is_some()
@@ -454,7 +601,7 @@ mod unix_clipboard {
         };
         which::which(tool)
             .map(|_| tool)
-            .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
+            .map_err(|_| format!("{tool} not found on PATH (package `{package}`)"))
     }
 
     fn copy_tool() -> Result<&'static str, String> {
@@ -465,27 +612,26 @@ mod unix_clipboard {
         };
         which::which(tool)
             .map(|_| tool)
-            .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
+            .map_err(|_| format!("{tool} not found on PATH (package `{package}`)"))
     }
 
-    /// Lista os mimetypes disponíveis no clipboard (equivalente a
-    /// IsClipboardFormatAvailable, mas descobrindo tudo de uma vez).
+    /// Lists the mime types on the clipboard (the equivalent of IsClipboardFormatAvailable, but
+    /// discovering all of them at once).
     fn list_types() -> Vec<String> {
         let Ok(tool) = paste_tool() else {
             return Vec::new();
         };
-        let output = if tool == "wl-paste" {
-            Command::new("wl-paste").arg("--list-types").output()
+        let mut command = Command::new(tool);
+        if tool == "wl-paste" {
+            command.arg("--list-types");
         } else {
-            Command::new("xclip")
-                .args(["-selection", "clipboard", "-t", "TARGETS", "-o"])
-                .output()
-        };
-        output
+            command.args(["-selection", "clipboard", "-t", "TARGETS", "-o"]);
+        }
+        output_with_deadline(command, HELPER_DEADLINE)
             .ok()
-            .filter(|o| o.status.success())
-            .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
+            .filter(|(status, _)| status.success())
+            .map(|(_, stdout)| {
+                String::from_utf8_lossy(&stdout)
                     .lines()
                     .map(str::trim)
                     .filter(|line| !line.is_empty())
@@ -497,27 +643,23 @@ mod unix_clipboard {
 
     fn read_type(mime: &str) -> Result<Vec<u8>, String> {
         let tool = paste_tool()?;
-        let output = if tool == "wl-paste" {
-            Command::new("wl-paste")
-                .args(["--type", mime, "--no-newline"])
-                .output()
+        let mut command = Command::new(tool);
+        if tool == "wl-paste" {
+            command.args(["--type", mime, "--no-newline"]);
         } else {
-            Command::new("xclip")
-                .args(["-selection", "clipboard", "-t", mime, "-o"])
-                .output()
+            command.args(["-selection", "clipboard", "-t", mime, "-o"]);
         }
-        .map_err(|e| e.to_string())?;
-        if !output.status.success() {
-            return Err(format!("falha ao ler clipboard ({mime})"));
+        let (status, stdout) = output_with_deadline(command, HELPER_DEADLINE)?;
+        if !status.success() {
+            return Err(format!("failed to read clipboard ({mime})"));
         }
-        Ok(output.stdout)
+        Ok(stdout)
     }
 
-    /// `text/uri-list` é o mimetype padrão que gerenciadores de arquivo
-    /// (Nautilus, Dolphin, Thunar, ...) usam ao copiar arquivos: uma lista de
-    /// URIs `file://` separadas por linha, com comentários opcionais em `#`.
-    /// GNOME/Nautilus às vezes só expõe `x-special/gnome-copied-files`
-    /// (mesmo formato, com uma linha extra "copy"/"cut" no início).
+    /// `text/uri-list` is the standard mime type file managers (Nautilus, Dolphin, Thunar, ...) use
+    /// when copying files: one `file://` URI per line, with optional `#` comments. GNOME/Nautilus
+    /// sometimes only exposes `x-special/gnome-copied-files` (same format, with an extra
+    /// "copy"/"cut" first line).
     fn parse_uri_list(raw: &str) -> Vec<String> {
         raw.lines()
             .map(str::trim)
@@ -544,7 +686,7 @@ mod unix_clipboard {
             return Ok(ClipboardPayload::Empty);
         }
 
-        // Mesma ordem de prioridade do backend Windows: arquivos > imagem > texto.
+        // Same priority order as the Windows backend: files > image > text.
         let uri_mime = ["text/uri-list", "x-special/gnome-copied-files"]
             .into_iter()
             .find(|mime| types.iter().any(|t| t == mime));
@@ -556,10 +698,9 @@ mod unix_clipboard {
             }
         }
 
-        // image/png cobre a esmagadora maioria dos casos reais (screenshots,
-        // "copiar imagem" no navegador). Formatos crus como image/bmp ou
-        // image/jpeg não são reencodados aqui de propósito, pra não exigir
-        // features extras da crate `image` só pra esse caminho.
+        // image/png covers the overwhelming majority of real cases (screenshots, "copy image" in a
+        // browser). Raw formats such as image/bmp or image/jpeg are deliberately not re-encoded
+        // here, so this path does not need extra features from the `image` crate.
         if types.iter().any(|t| t == "image/png") {
             let bytes = read_type("image/png")?;
             if !bytes.is_empty() {
@@ -594,20 +735,29 @@ mod unix_clipboard {
             cmd
         };
 
+        // Both helpers fork a background process that keeps serving the selection and inherits
+        // these handles, so output goes nowhere rather than into a pipe nobody would close.
         let mut child = command
             .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .map_err(|e| e.to_string())?;
-        child
+        let mut stdin = child
             .stdin
             .take()
-            .ok_or_else(|| "stdin do clipboard indisponível".to_string())?
-            .write_all(text.as_bytes())
-            .map_err(|e| e.to_string())?;
+            .ok_or_else(|| "clipboard helper has no stdin".to_string())?;
+        // Written from its own thread so a helper that stops reading cannot outlast the deadline.
+        let payload = text.as_bytes().to_vec();
+        let writer = std::thread::spawn(move || stdin.write_all(&payload));
 
-        let status = child.wait().map_err(|e| e.to_string())?;
+        let status = wait_with_deadline(&mut child, HELPER_DEADLINE)?;
+        let written = writer
+            .join()
+            .map_err(|_| "clipboard writer thread panicked".to_string())?;
+        written.map_err(|e| e.to_string())?;
         if !status.success() {
-            return Err(format!("{tool} retornou erro"));
+            return Err(format!("{tool} returned an error"));
         }
         Ok(())
     }
@@ -637,6 +787,34 @@ mod unix_clipboard {
         #[test]
         fn parse_uri_list_handles_empty_input() {
             assert!(parse_uri_list("").is_empty());
+        }
+
+        #[test]
+        fn a_helper_that_never_exits_is_killed_at_the_deadline() {
+            let mut command = Command::new("sleep");
+            command.arg("30");
+            let started = Instant::now();
+            let result = output_with_deadline(command, Duration::from_millis(200));
+            assert_eq!(result.unwrap_err(), "clipboard helper timed out");
+            assert!(started.elapsed() < Duration::from_secs(5));
+        }
+
+        #[test]
+        fn a_helper_that_exits_in_time_returns_its_output() {
+            let mut command = Command::new("printf");
+            command.arg("text/plain\\nimage/png\\n");
+            let (status, stdout) = output_with_deadline(command, Duration::from_secs(5)).unwrap();
+            assert!(status.success());
+            assert_eq!(String::from_utf8_lossy(&stdout), "text/plain\nimage/png\n");
+        }
+
+        #[test]
+        fn output_larger_than_the_pipe_buffer_does_not_stall_the_helper() {
+            let mut command = Command::new("head");
+            command.args(["-c", "300000", "/dev/zero"]);
+            let (status, stdout) = output_with_deadline(command, Duration::from_secs(5)).unwrap();
+            assert!(status.success());
+            assert_eq!(stdout.len(), 300_000);
         }
     }
 }
@@ -674,7 +852,9 @@ pub fn open_data_folder(app: AppHandle) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = Command::new("xdg-open").arg(&path).spawn();
 
-    result.map(|_| ()).map_err(|error| error.to_string())
+    result
+        .map(reap_in_background)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -694,7 +874,9 @@ pub fn open_spawn_log(app: AppHandle) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = Command::new("xdg-open").arg(&path).spawn();
 
-    result.map(|_| ()).map_err(|error| error.to_string())
+    result
+        .map(reap_in_background)
+        .map_err(|error| error.to_string())
 }
 
 /// permitir que o app continue rodando.
@@ -756,7 +938,9 @@ pub fn open_logs_folder(app: AppHandle) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = Command::new("xdg-open").arg(&path).spawn();
 
-    result.map(|_| ()).map_err(|error| error.to_string())
+    result
+        .map(reap_in_background)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -840,5 +1024,48 @@ mod macos_clipboard {
         } else {
             Ok(ClipboardPayload::Text { text })
         }
+    }
+}
+
+#[cfg(all(test, unix, not(target_os = "macos")))]
+mod reveal_tests {
+    #[test]
+    fn a_file_uri_escapes_everything_a_gvariant_string_could_trip_on() {
+        let uri = super::file_uri(std::path::Path::new("/home/me/it's [a] café.txt"));
+        assert_eq!(uri, "file:///home/me/it%27s%20%5Ba%5D%20caf%C3%A9.txt");
+        assert!(!uri.contains('\''));
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use std::path::PathBuf;
+
+    use super::expand_home;
+
+    #[test]
+    fn a_leading_tilde_is_the_home_directory() {
+        let home = Some(PathBuf::from("/home/me"));
+        assert_eq!(
+            expand_home("~/proj/a.txt", home.clone()),
+            PathBuf::from("/home/me/proj/a.txt")
+        );
+        assert_eq!(expand_home("~", home), PathBuf::from("/home/me"));
+    }
+
+    #[test]
+    fn other_paths_are_left_alone() {
+        let home = Some(PathBuf::from("/home/me"));
+        assert_eq!(
+            expand_home("/tmp/~/x", home.clone()),
+            PathBuf::from("/tmp/~/x")
+        );
+        // `~user` names another account; resolving it is not this function's job.
+        assert_eq!(
+            expand_home("~other/x", home.clone()),
+            PathBuf::from("~other/x")
+        );
+        assert_eq!(expand_home("relative/x", home), PathBuf::from("relative/x"));
+        assert_eq!(expand_home("~/x", None), PathBuf::from("~/x"));
     }
 }

@@ -21,6 +21,7 @@ import {
   reconcileGridLayout,
 } from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
+import { isAgentAvailableOnThisOs } from '../../lib/agentProviders'
 import { formatShortcut } from '../../lib/platform'
 import type {
   AgentType,
@@ -908,7 +909,7 @@ function NoWorkspace({
     () =>
       (
         ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'shell', 'wsl'] as AgentType[]
-      ).filter((agent) => enabledAgents[agent]),
+      ).filter((agent) => enabledAgents[agent] && isAgentAvailableOnThisOs(agent)),
     [enabledAgents],
   )
   const [quickAgent, setQuickAgent] = useState<AgentType>('claude')

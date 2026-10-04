@@ -39,30 +39,30 @@ fn conversation_modified_ms(item: &serde_json::Value, default_ms: u128) -> u128 
     default_ms
 }
 
+/// Turns a workspace `file://` URI into the same shape `normalize_cwd` gives a pane's cwd.
 fn normalize_uri_path(uri: &str) -> String {
-    let mut clean = uri.trim();
-    if clean.starts_with("file:///") {
-        clean = &clean["file:///".len()..];
-    } else if clean.starts_with("file://") {
-        clean = &clean["file://".len()..];
-    }
-    let decoded = clean
-        .replace("%3A", ":")
-        .replace("%3a", ":")
-        .replace("%5C", "\\")
-        .replace("%5c", "\\");
-    let trimmed = decoded.trim_matches('/');
+    let clean = uri.trim();
+    let encoded = clean.strip_prefix("file://").unwrap_or(clean);
+    // Every escape, not just the drive colon: a folder with a space or an accent is `%20`/`%C3%A1`.
+    let decoded = urlencoding::decode(encoded)
+        .map(|path| path.into_owned())
+        .unwrap_or_else(|_| encoded.to_string());
     if cfg!(windows) {
-        trimmed.replace('/', "\\").to_ascii_lowercase()
+        // `/c:/Users/x`: the drive letter carries the root, so the leading slash goes.
+        decoded
+            .trim_matches('/')
+            .replace('/', "\\")
+            .to_ascii_lowercase()
     } else {
-        trimmed.to_string()
+        // `/home/x` is already absolute; dropping its leading slash is what kept it from ever
+        // matching a cwd.
+        crate::provider_common::normalize_cwd(&decoded)
     }
 }
 
-/// outro (workspace root vs subpasta — o Antigravity registra `WorkspaceURIs`
-
-/// "c:\users\foo\project" e "c:\users\foo\project2" combinariam
-
+/// A conversation belongs to a pane when either path contains the other on a separator boundary:
+/// Antigravity records workspace roots (`WorkspaceURIs`), while a pane can sit in a subfolder. The
+/// boundary is what keeps `/home/foo/project` from matching `/home/foo/project2`.
 fn cwd_matches(norm: &str, target_cwd: &str) -> bool {
     if norm == target_cwd {
         return true;
@@ -151,4 +151,38 @@ fn snapshot_antigravity_sessions_inner(
 
     snapshots.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
     Ok(snapshots)
+}
+
+#[cfg(all(test, not(windows)))]
+mod tests {
+    use super::{cwd_matches, normalize_uri_path};
+    use crate::provider_common::normalize_cwd;
+
+    #[test]
+    fn a_linux_workspace_uri_keeps_its_root_and_matches_the_pane() {
+        let uri = "file:///home/kc1t/projetos/grupoavenida/gameficacao";
+        assert_eq!(
+            normalize_uri_path(uri),
+            "/home/kc1t/projetos/grupoavenida/gameficacao"
+        );
+        assert!(cwd_matches(
+            &normalize_uri_path(uri),
+            &normalize_cwd("/home/kc1t/projetos/grupoavenida/gameficacao/")
+        ));
+    }
+
+    #[test]
+    fn spaces_and_accents_in_the_uri_are_decoded() {
+        assert_eq!(
+            normalize_uri_path("file:///home/me/Meus%20Projetos/gamefica%C3%A7%C3%A3o/"),
+            "/home/me/Meus Projetos/gameficação"
+        );
+    }
+
+    #[test]
+    fn a_pane_in_a_subfolder_matches_but_a_sibling_with_a_longer_name_does_not() {
+        let root = normalize_uri_path("file:///home/me/project");
+        assert!(cwd_matches(&root, &normalize_cwd("/home/me/project/src")));
+        assert!(!cwd_matches(&root, &normalize_cwd("/home/me/project2")));
+    }
 }

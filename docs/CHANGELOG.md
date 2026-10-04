@@ -12,6 +12,52 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Orchestration can stay centered on the planner terminal.** New orchestration sessions open a
+  Claude or Codex planner and now offer a choice between a simplified Workers sidebar and the full
+  visual canvas at creation time. The compact list follows the planner you are working in and keeps
+  showing it when you move to another terminal, with a picker when several planners are open. It
+  includes native and Alethe workers in the board's own style: each row shows the task, the agent,
+  model and effort, how long it has run and what it last reported, and opens to the full task and
+  report. A worker waiting on an approval shows the command or files it is asking about, with
+  approve and decline in place. The Workers tab opens the first time a planner is used, stays
+  beside a planner in focus mode, and carries a dot while work is in flight or a worker is waiting
+  on you. A gear in its header opens the orchestration settings, and the advanced board stays one
+  click away. A configurable routing profile now maps light, standard, and deep tasks to an
+  ordered list of up to four routes, each a provider with a model and effort. A tier tries its
+  routes from the top, moves down the list as each one's live quota enters the protected bands,
+  treats the Opus weekly window only as pressure on Opus routes, and asks before spending a
+  provider when every available route is critical. The board and the Workers tab say which tier a
+  task was routed as and, when it was moved off its first route, how used that route was.
+- **Orchestration has its own Preferences category, ordered by dragging.** Routing, worker
+  limits, permissions and models moved out of Multi-Agent into Preferences → Orchestration, one
+  subject per sub-tab. The sub-tabs can be dragged into any order and the first one is the one
+  that opens. Each tier's routes are dragged to set their priority, with routes added and removed
+  in place. Workers waiting for a slot can be dragged in the Workers tab and in the board's side
+  rail to decide which one starts next. Every list also reorders from the keyboard.
+- **Routing shows what it would do right now.** Each route in Preferences → Orchestration shows
+  how used its provider currently is, a dot marks the route a task of that tier would start on,
+  and a route whose CLI is not installed is flagged instead of being skipped silently. A project
+  can also be given a routing profile of its own, which its planners use instead of the shared
+  routing.
+- **A worker that runs out of quota moves to the next route.** A task routed by its tier that hits
+  its provider's usage limit before finishing anything is started again on the tier's next route,
+  instead of failing and leaving the planner to delegate it again. The board says which provider
+  it was moved off.
+- **The Workers tab does more without the board.** A worker can be sent more work, approved for
+  the rest of its session, and have its diff opened from its row. Each row shows the tokens and
+  cost it has used, the header totals them for the planner, and finished workers can be cleared
+  from the list.
+- **Restore an earlier version of your workspace.** Preferences → Organization lists the versions
+  Alethe keeps, with when each was saved and what it holds, and puts one back in a click. The
+  workspace being replaced is kept as a version too, so a restore can be undone.
+- **Work waiting for a slot survives a restart.** Delegated work that had not started when Alethe
+  closed goes back in line, in the order it was left, and starts once its CLI is found again. Work
+  that was already running is still shown as interrupted, as before.
+- **The board says when your rules won.** A worker whose delegation was changed by a rule in
+  Preferences (approvals on or off, its own worktree, no web search) shows which rule applied.
+- **Notifications for delegated work.** Alethe notifies you when a worker stops on a question and,
+  while it is in the background, when a planner's delegated work has all ended. Preferences →
+  Orchestration → Workers turns this off.
 - **Grok Build and Codewhale are now native agents.** Grok Build (xAI, `grok` CLI) and
   Codewhale (`codewhale` CLI) appear in every agent picker with their own icons and accent
   colors. Install entries cover the official Grok PowerShell/npm installers and
@@ -74,8 +120,41 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   a modal open; only a destructive plan reopens it to ask. Each entry also lists what actually
   happened, terminal by terminal, so the plan and the result can be told apart.
 
+- **Default model and reasoning effort per agent.** Preferences → Terminal sets the model and
+  effort Claude Code, Codex and OpenCode start with (OpenCode takes a model only). Preferences →
+  Orchestration can give the orchestration planner and its workers their own model and effort, with
+  empty fields falling back to the provider default. Values apply to terminals started or
+  restarted afterwards (including the native terminal on macOS) and to the next worker a planner
+  starts; a model or effort already present in a terminal's extra arguments is never overridden.
+- **A planner can choose the model and effort per delegation.** `alethe_delegate` takes an optional
+  `model` and `effort`, for example a smaller model for mechanical edits, and falls back to the
+  worker defaults from Preferences for what it leaves out. A value the CLI cannot take is refused
+  with the reason instead of being ignored, the choice survives an Alethe restart, and the worker's
+  tooltip on the board shows it.
+- **Configurable worker limit for the orchestrator.** Preferences → Orchestration sets how many
+  delegated workers may run at once (1–16, default 4); further work waits in the queue.
+- **Configurable orchestration rules.** Preferences → Orchestration now controls the default
+  worker CLI, per-turn time budget, approval posture, separate worktrees, web search, how many
+  finished workers stay warm for follow-ups, and the Codex sandbox. Rules set by the person take
+  precedence over a planner's request and are applied to every later delegation.
+- **Direct worker controls on the orchestrator board.** A running, queued or blocked worker can be
+  stopped without losing its thread, and an idle finished worker can be released to save memory.
+  Approval cards now identify commands, file changes and other tools, list affected paths and show
+  when more questions are waiting.
+- **Claude workers can ask for approval on the board.** A Claude Code worker delegated with
+  approvals on now stops at commands, file edits and other tools that need permission and asks
+  through the board, like Codex workers do. "Approve for session" keeps the rule for the rest of
+  that worker's session.
+- **Real model lists and per-model effort.** The Claude Code model picker now lists the models
+  your account has, read from Claude Code itself without starting a conversation, and falls back to
+  the aliases when it cannot. Effort menus offer only the levels the chosen model supports, which
+  for Codex now reaches up to `max` and `ultra` where available.
+
 ### Changed
 
+- Expanded worker cards now render Markdown as a compact, bounded document instead of squeezing
+  full-page typography into the canvas card. Long reports scroll inside the card, while headings,
+  lists, code blocks and tables keep readable spacing at the card's width.
 - The startup loading screen now opens in your selected theme and visual style instead of the
   default dark theme, and its card, backdrop and progress indicator follow the design system
   tokens used across the rest of the app.
@@ -85,6 +164,111 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Model pickers no longer offer retired models such as Claude 3.x and GPT-4o, which made the agent
+  fail on its first request. Claude Code lists its own aliases (opus, sonnet, haiku, fable), which
+  always point at the latest model, and Codex lists the models your account has, read from Codex
+  itself. Looking them up also no longer runs `claude models` or `codex models`: neither command
+  exists, so each visit to the settings could start a session that never ended.
+- Image, video and PDF previews now load: in the file explorer, in image and video panes, and for
+  local images on the orchestrator board. The file protocol they rely on was never switched on.
+  It now is, scoped to nothing up front: Alethe allows each media file only when a preview shows
+  it, and never anything that is not an image, a video or a PDF.
+- On Linux, copying text in one terminal and pasting it into another could freeze the whole window
+  until the app was killed. Clipboard access no longer runs on the window's own thread, clipboard
+  helpers that stop responding are given up on after a few seconds, and a paste the terminal does
+  not accept in time now shows a notice instead of restarting the terminal.
+- On Linux and macOS, the files that carry Alethe's local access token (agent hook settings, the
+  orchestrator MCP config and the Codex bridge scripts) were readable by every user on the machine.
+  They are now readable only by you and, on Linux, kept in your own runtime folder rather than the
+  shared `/tmp`, where another account could have claimed their names first. The Codex bridge also
+  hands the token to `curl` through a private file, so it never shows up in the process list.
+- Pressing a copy shortcut twice with nothing selected (Ctrl+Shift+C on Linux, Cmd+C on macOS)
+  could force-kill the agent in that terminal. Only a plain Ctrl+C now counts towards the
+  double-press force kill.
+- Choosing a CLI path on Linux and macOS now shows the CLI itself: the file picker filtered on
+  Windows extensions, which hid binaries such as `claude` and `codex`.
+- Antigravity terminals on Linux and macOS now find their conversation and resume it after a
+  restart. Workspace paths lost their leading slash, and folders with spaces or accents never
+  matched.
+- Paths starting with `~/` in terminal output now open in the file manager, browser or editor.
+- "Show in file manager" on Linux now opens the folder with the file selected, through the file
+  manager's standard interface, instead of only opening the folder.
+- On Linux with display scaling above 100%, files dropped onto a terminal or the side viewer now
+  land where they were dropped instead of on another pane.
+- Browser panes on Linux now find a Chromium-based browser wherever it is installed: on PATH,
+  under `/opt` (Chrome, Brave, Edge), Fedora's Chromium, or the Chromium Playwright downloaded.
+  Before, only a fixed list of `/usr/bin` paths was checked, so panes failed on most Fedora
+  machines.
+- New browser panes on Linux open with the in-pane CDP engine. The native webview cannot be
+  placed inside a pane on Linux; it can still be switched on from the pane's toolbar.
+- Installing an agent from Alethe on Linux and macOS now uses each vendor's official shell
+  installer instead of typing PowerShell into the terminal. Cursor, Antigravity and Kiro can now be
+  installed there at all, and OpenCode gains its install script; Mimo, which has no shell
+  installer, goes through npm.
+- On Linux and macOS, an agent CLI that Alethe finds outside the app's PATH (for example in an nvm
+  or volta version folder) now starts. Its terminal, its orchestrator workers and the Codex
+  app-server get the CLI's own folder on PATH, so `#!/usr/bin/env node` finds the `node` next to
+  it instead of failing with "node: not found".
+- Stopping the managed 9router on Linux and macOS now also stops the server it started, which
+  used to keep running and hold the port.
+- The Linux .deb and .rpm packages now recommend `wl-clipboard`, `xclip` and `curl`, which
+  terminal copy and paste and Codex planners rely on, so a default install brings them along.
+- On Linux and macOS, WSL is no longer offered as an agent and the window opacity slider is no
+  longer shown: both are Windows-only and did nothing there.
+- Opening a folder, link or log from Alethe no longer leaves a finished process behind each time
+  until Alethe exits.
+- Terminals now use the bundled "Caskaydia Cove Nerd Font Mono" on every OS, as the font was
+  added to do. On Linux they fell back to Liberation Mono, and icons and separators drawn by TUIs
+  came from yet another font and overlapped their neighbours.
+- "Open in VS Code" on Linux now also finds VS Code Insiders, VSCodium, and Flatpak or snap
+  installs.
+- The orchestrator board's "Subagents" run is now translated.
+- A WebView rendering workaround Alethe applies to itself on Linux no longer leaks into terminals,
+  so WebKit apps started from a terminal render as they would anywhere else.
+- Restarting a terminal, resuming another chat in it, or moving it to a new worktree now brings
+  back the same integrations it was started with, including the handoff folder of a Claude pane
+  that was handed work from another agent. A restarted orchestration planner keeps its `alethe_*` tools, and Graphify,
+  AI memory and Playwright MCP servers, 9router routing and a custom CLI path are no longer
+  dropped on restart.
+- A Codex terminal can now drive the orchestrator on Linux and macOS. Its bridge to Alethe and its
+  subagent hooks were Windows-only; they now run through `sh` and `curl` elsewhere. On every
+  platform, a Codex planner's delegations are now attributed to its own terminal: Codex starts MCP
+  servers with a short list of environment variables, and the terminal id was not among them.
+- When an orchestrator worker exits early, its failure now includes the last lines the CLI printed
+  (for example a login or configuration error) instead of only “worker connection closed”.
+- A scheduler task now hands its prompt to the agent once, in your language, when the CLI is ready.
+  It used to be a launch argument, so restarting the task's terminal sent the task again, and
+  OpenCode read the prompt as a folder to open.
+- A planner now gets a current reading of how much Claude and Codex usage is left whether or not
+  its orchestrator board is open. The reading used to stop updating when the board was closed, so
+  delegation could lean on a side that had since run out.
+- With two planners open, one planner's check for results no longer takes the other's: each
+  planner now collects only the workers it delegated, and waits only on those.
+- A Codex worker brought back after Alethe restarted now keeps the approval policy, sandbox and web
+  search it was delegated with, instead of falling back to the person's own Codex configuration.
+- A Codex worker delegated with approval requests on now actually asks. Every turn it started told
+  Codex never to ask, which replaced the policy the delegation had set. It asks only for commands
+  and file changes, which the board can answer; requests for extra permissions or MCP form input
+  are declined by Codex itself, as before.
+- Codex workers now receive the requested web-search mode through the top-level setting the Codex
+  app-server reads. The nested tool setting was accepted but ignored, so delegated research could
+  run without web search even when the planner enabled it.
+- A worker that was waiting on an approval when Alethe closed no longer keeps its planner's
+  results check waiting for minutes after a restart.
+- A worker given a follow-up is now timed on that turn alone. It could be stopped partway through
+  a second turn when the time limit of its first turn ran out.
+- Orchestrator workers now run the Claude Code or Codex CLI set in Preferences → Terminal → CLI
+  paths, and a CLI installed while Alethe is open is picked up by the next delegation. Before, a
+  CLI that was not found at the first delegation stayed unavailable until Alethe restarted.
+- The orchestrator board's "add planner" now offers Codex as well as Claude Code, matching the
+  orchestration mode of the new-terminal dialog.
+- A delegation that names no working directory now runs in the planner's directory, as the tool
+  describes, instead of in whatever directory Alethe itself was started from.
+- Creating an orchestration without a project folder no longer opens a planner that looks valid but
+  cannot receive its orchestration tools. The dialog now explains why the folder is required and
+  waits for one before creating the planner.
+- If Claude or Codex cannot install its planner bridge in the selected folder, Alethe now reports
+  the path and write error instead of silently opening an agent without orchestration tools.
 - Every coding agent reached the routing model described the same way, so a request that named no
   agent had nothing to choose on and the answer spread evenly across them, which showed up as a low
   confidence and a fallback. Agents now carry how many panes they have open and whether one of them
@@ -124,6 +308,41 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Opening a pull request now uses the system browser instead of creating an unexpected app surface.
 - The Features preferences page now matches the grouped, searchable feature selector used during
   onboarding, with consistent Browser and Playwright controls.
+- Alethe now keeps the three most recent versions of your workspace beside it
+  (`projects.backup-1.json` to `projects.backup-3.json` in the profile folder). One is taken on the
+  first save after Alethe starts, and another whenever a save would replace a workspace that has
+  projects with one that has none. An empty workspace is never backed up, so it cannot push the
+  copies worth having out.
+- A setting Alethe cannot make sense of, from a hand-edited file or a newer version, no longer
+  keeps the whole workspace from loading. Alethe stands in for it, keeps your name, your finished
+  setup and your other plain settings, and saves nothing for that session, so what you had is
+  never replaced by a default. A backup is also taken before any save that would undo a finished
+  setup.
+- Cloning a repository whose README has accented letters, CJK text or emoji around its 1500th byte
+  no longer fails.
+- A saved workspace that could not be read is no longer replaced by an empty one. Alethe used to
+  open on defaults and then save them over the file, so a single failed load cost every project
+  and setting. It now leaves the file untouched, saves nothing for that session and says so.
+- Stopping a worker now also stops the commands it started, such as a test run or a build, which
+  used to keep running after the worker was gone.
+- A Codex worker whose turn failed is now reported as failed with Codex's error, instead of
+  succeeded. A stopped turn is reported as interrupted.
+- An error while a Codex worker starts or resumes its thread now fails the worker with the reason
+  instead of leaving it running forever. A follow-up Codex could not take is delivered again on
+  the next turn instead of being lost.
+- Stopping a worker from an approval card now sends Codex the decision it accepts (`cancel`); the
+  old `abort` was rejected. An approval Codex withdraws leaves the board, and when a worker asks
+  several things at once, every question is shown in turn instead of only the last one.
+- Cancelling a queued worker no longer brings it back later or miscounts how many workers are
+  running, and releasing a worker that was waiting on an approval no longer keeps its slot taken.
+- Time a worker spends waiting for your approval no longer counts against its time budget.
+- A worker reply cut at a multi-byte character (accents, CJK, emoji) no longer crashes Alethe.
+- A follow-up sent to a finished worker while every slot is busy now waits for a slot instead of
+  being refused, and still arrives if the worker's idle process exits while it waits. A revived
+  worker can no longer be started twice or stopped by the exit of its previous process.
+- A finished worker released to free memory keeps its result on the board, and the board shows
+  the model and effort the worker actually ran with. Failure reasons on worker cards are now
+  translated.
 
 ### Fixed
 

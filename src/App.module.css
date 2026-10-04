@@ -71,6 +71,11 @@
   will-change: opacity, transform;
 }
 
+.appShell[data-planner-focus='true'] [data-panel='alethe-todo-sidebar'] {
+  position: relative;
+  z-index: 92;
+}
+
 .sidebarContent[data-hidden='true'] {
   opacity: 0;
   transform: translateX(-16px) scale(0.985);

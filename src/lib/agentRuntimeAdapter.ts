@@ -1,4 +1,10 @@
-import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from './types'
+import { applyLaunchDefaults } from './agentLaunchDefaults'
+import {
+  type AgentLaunchDefaults,
+  type AgentRuntimeProfile,
+  type AgentType,
+  isShellAgentType,
+} from './types'
 
 export type AgentRuntimeBackend = 'pty' | 'codex-app-server' | 'claude-agent-sdk'
 
@@ -61,8 +67,11 @@ export function preparePtyRuntimeLaunch(
   profile: AgentRuntimeProfile = 'full',
   baseArgs: readonly string[] = [],
   baseEnv?: Record<string, string>,
+  // Resolved by the caller: this stays a pure function, and the model is decided per launch rather
+  // than stored on the tab, so changing the preference reaches a pane on its next restart.
+  defaults?: AgentLaunchDefaults,
 ): PreparedRuntimeLaunch {
-  const args = [...baseArgs]
+  const args = applyLaunchDefaults(agent, baseArgs, defaults)
   const env = { ...(baseEnv ?? {}) }
 
   if (profile === 'full' || isShellAgentType(agent)) {

@@ -9,6 +9,7 @@ import { UI_ZOOM_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { Dropdown } from '../../ui/Dropdown'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
+import { isWindows } from '../../../lib/platform'
 
 export function AppearancePage() {
   const t = useT()
@@ -292,35 +293,38 @@ export function AppearancePage() {
         )}
       </SettingsSection>
 
-      <SettingsSection
-        id="window-opacity"
-        title={t('prefs.windowOpacity')}
-        description={t('prefs.windowOpacityDesc')}
-      >
-        <div className={styles.opacityControl}>
-          <input
-            type="range"
-            min="60"
-            max="100"
-            step="5"
-            value={Math.round(preferences.windowOpacity * 100)}
-            onChange={(event) =>
-              setPreferences({ windowOpacity: Number(event.target.value) / 100 })
-            }
-            aria-label={t('prefs.windowOpacity')}
-          />
-          <strong>{Math.round(preferences.windowOpacity * 100)}%</strong>
-          <button
-            type="button"
-            onClick={() => setPreferences({ windowOpacity: 1 })}
-            disabled={preferences.windowOpacity === 1}
-            aria-label={t('prefs.opacityReset')}
-          >
-            <RotateCcw size={15} />
-          </button>
-        </div>
-        <p className={styles.experimentalHint}>{t('prefs.windowOpacityHint')}</p>
-      </SettingsSection>
+      {/* Window opacity is a Windows-only capability of the native window. */}
+      {isWindows() ? (
+        <SettingsSection
+          id="window-opacity"
+          title={t('prefs.windowOpacity')}
+          description={t('prefs.windowOpacityDesc')}
+        >
+          <div className={styles.opacityControl}>
+            <input
+              type="range"
+              min="60"
+              max="100"
+              step="5"
+              value={Math.round(preferences.windowOpacity * 100)}
+              onChange={(event) =>
+                setPreferences({ windowOpacity: Number(event.target.value) / 100 })
+              }
+              aria-label={t('prefs.windowOpacity')}
+            />
+            <strong>{Math.round(preferences.windowOpacity * 100)}%</strong>
+            <button
+              type="button"
+              onClick={() => setPreferences({ windowOpacity: 1 })}
+              disabled={preferences.windowOpacity === 1}
+              aria-label={t('prefs.opacityReset')}
+            >
+              <RotateCcw size={15} />
+            </button>
+          </div>
+          <p className={styles.experimentalHint}>{t('prefs.windowOpacityHint')}</p>
+        </SettingsSection>
+      ) : null}
     </>
   )
 }

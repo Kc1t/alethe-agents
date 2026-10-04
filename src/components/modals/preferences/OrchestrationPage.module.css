@@ -1,0 +1,18 @@
+/* The shared stepper is sized for a row of its own; beside a description it needs a fixed width,
+   or its value collapses to nothing. */
+div.stepper {
+  width: auto;
+  grid-template-columns: 32px 44px 32px 32px;
+  gap: 6px;
+}
+
+div.stepper button,
+div.stepper strong {
+  height: 32px;
+}
+
+.empty {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
