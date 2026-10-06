@@ -189,6 +189,41 @@ export function CodewhaleIcon({ size = 16 }: { size?: number }) {
   )
 }
 
+// Pi family marks: rounded square + pi glyph, stroke-based for 16px + currentColor. oh-my-pi
+// carries the same base glyph plus a corner chevron, so the two runtimes stay distinguishable.
+export function PiIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="3" />
+      <path d="M5 6h6M9 6l-2.4 5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function OhMyPiIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="3" />
+      <path d="M5 6.8h6M9 6.8l-2.4 5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M9.4 3.4l1.8 1.2-1.8 1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function AgentIcon({
   type,
   size = 16,
@@ -210,6 +245,8 @@ export function AgentIcon({
   if (type === 'kimi') return <KimiIcon size={size} />
   if (type === 'grok') return <GrokIcon size={size} />
   if (type === 'codewhale') return <CodewhaleIcon size={size} />
+  if (type === 'pi') return <PiIcon size={size} />
+  if (type === 'oh-my-pi') return <OhMyPiIcon size={size} />
   if (type === 'antigravity') return <AntigravityIcon size={size} />
   if (type === 'opencode') return <OpenCodeIcon size={size} theme={theme} />
   const ProviderIcon = findAgentProvider(type)?.icon

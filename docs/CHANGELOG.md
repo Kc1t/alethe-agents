@@ -12,6 +12,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Pi and oh-my-pi.** Both CLI runtimes of the Pi family can be enabled, detected and opened
+  like any other agent: **Pi** runs the `pi` binary and **oh-my-pi** runs the `omp` binary. Each
+  one keeps its own name, logo and accent color, so a pane shows which runtime it is running; they
+  share the same PTY session flow as the other agents.
+
 - **Projects inside WSL.** On Windows, a project or terminal whose folder lives under
   `\\wsl.localhost\<distro>\…` now runs inside that distro: shell tabs open the distro's login
   shell in the right Linux directory, and agent tabs run the CLI installed in the distro, found

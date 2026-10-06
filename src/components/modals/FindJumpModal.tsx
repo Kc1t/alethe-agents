@@ -7,6 +7,8 @@ import {
   Gift,
   Moon,
   MousePointer2,
+  Pi,
+  Sigma,
   Sparkles,
   Terminal,
   Waves,
@@ -38,6 +40,8 @@ const ICONS: Record<BuiltinAgentType, LucideIcon> = {
   kimi: Moon,
   grok: Zap,
   codewhale: Waves,
+  pi: Pi,
+  'oh-my-pi': Sigma,
 }
 
 type TerminalHit = {
