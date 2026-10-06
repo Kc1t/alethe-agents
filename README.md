@@ -108,6 +108,8 @@ Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, Rea
 | **Codewhale** | `codewhale` | |
 | **Mimo** | `mimo` | |
 | **Freebuff** | `freebuff` | |
+| **Pi** | `pi` | Two runtimes of the Pi family: `pi` and oh-my-pi share the agent, not the binary |
+| **oh-my-pi** | `omp` | |
 | **Shell** | pwsh / bash / zsh | The plain terminal, same pane model |
 | **WSL** | `wsl.exe` | The default distro, as a plain shell (Windows) |
 
