@@ -189,37 +189,28 @@ export function CodewhaleIcon({ size = 16 }: { size?: number }) {
   )
 }
 
-// Pi family marks: rounded square + pi glyph, stroke-based for 16px + currentColor. oh-my-pi
-// carries the same base glyph plus a corner chevron, so the two runtimes stay distinguishable.
+// Pi family marks use the vendors' geometric logos; they stay inline so they scale cleanly in
+// pickers, tabs and notification markers without adding image assets.
 export function PiIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <rect x="2" y="2" width="12" height="12" rx="3" />
-      <path d="M5 6h6M9 6l-2.4 5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 200 200" fill="none" aria-hidden="true">
+      <path fill="var(--agent-pi-logo-top)" d="M12 17h130v43H55V60H12zM99 60h43v43H99z" />
+      <path fill="var(--agent-pi-logo-side)" d="M12 60h43v43h44v44H55v43H12z" />
+      <path fill="var(--agent-pi-logo-end)" d="M142 103h43v85h-43z" />
     </svg>
   )
 }
 
 export function OhMyPiIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <rect x="2" y="2" width="12" height="12" rx="3" />
-      <path d="M5 6.8h6M9 6.8l-2.4 5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.4 3.4l1.8 1.2-1.8 1.2" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 200 200" aria-hidden="true">
+      <defs>
+        <linearGradient id="oh-my-pi-logo" x1="15" y1="17" x2="185" y2="185" gradientUnits="userSpaceOnUse">
+          <stop stopColor="var(--agent-oh-my-pi-logo-start)" />
+          <stop offset="1" stopColor="var(--agent-oh-my-pi-logo-end)" />
+        </linearGradient>
+      </defs>
+      <path fill="url(#oh-my-pi-logo)" d="M15 17h175v36h-43v134h-37V53H76v89H39V53H15z" />
     </svg>
   )
 }

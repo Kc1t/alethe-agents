@@ -142,6 +142,11 @@
   --agent-codewhale: #0ea5e9;
   --agent-pi: #e0457b;
   --agent-oh-my-pi: #7c3aed;
+  --agent-pi-logo-top: #f18b82;
+  --agent-pi-logo-side: #4fa5c8;
+  --agent-pi-logo-end: #f2c04f;
+  --agent-oh-my-pi-logo-start: #f044c7;
+  --agent-oh-my-pi-logo-end: #7cb7f1;
   --agent-shell-soft: rgba(16, 185, 129, 0.14);
   --agent-claude-soft: rgba(236, 147, 51, 0.15);
   --agent-codex-soft: rgba(6, 182, 212, 0.15);

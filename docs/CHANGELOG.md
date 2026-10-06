@@ -17,6 +17,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   one keeps its own name, logo and accent color, so a pane shows which runtime it is running; they
   share the same PTY session flow as the other agents.
 
+- **Pi and oh-my-pi logos.** The Pi runtimes now use their geometric Pi and oh-my-pi marks in the agent pickers, tabs and notifications, with the supplied brand colors.
+
 - **Custom agents.** Preferences → Terminal and agents has a Custom agents section where you
   can add your own agent CLIs with an ID, display name, CLI command, optional unrestricted flag,
   accent color and icon. They appear next to the built-ins in the new-terminal and new-tab
