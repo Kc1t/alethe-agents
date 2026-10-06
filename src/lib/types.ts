@@ -202,6 +202,8 @@ export type SubTab = {
   completionUnread?: boolean
 
   sessionId?: string
+  /** Dynamic title derived from the active chat/session or terminal OSC sequence. */
+  autoTitle?: string
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
 

@@ -42,6 +42,7 @@ type SubTabsSlice = Pick<
   | 'setSubTabCompletionUnread'
   | 'setSubTabSessionId'
   | 'setSubTabName'
+  | 'setSubTabAutoTitle'
   | 'setSubTabInitialInput'
   | 'setSubTabHandoff'
 >
@@ -129,6 +130,13 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
         ...s,
         name: name.trim() || s.type,
       })),
+
+    setSubTabAutoTitle: (projectId, terminalId, tabId, autoTitle) => {
+      const clean = autoTitle?.trim() || undefined
+      updateSubTab(projectId, terminalId, tabId, (s) =>
+        s.autoTitle === clean ? s : { ...s, autoTitle: clean },
+      )
+    },
 
     setSubTabInitialInput: (projectId, terminalId, tabId, initialInput) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, initialInput })),

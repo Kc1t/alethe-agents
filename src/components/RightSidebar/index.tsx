@@ -454,6 +454,9 @@ function MarkdownSidebarViewer() {
       const element = document.elementFromPoint(position.x / dpr, position.y / dpr)
       return Boolean(element && panelRef.current?.contains(element))
     }
+    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+      return
+    }
     void getCurrentWebview()
       .onDragDropEvent((event) => {
         const payload = event.payload

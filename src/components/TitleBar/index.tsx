@@ -22,7 +22,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { requestAppClose } from '../../hooks/useCloseConfirmation'
 import { useRouter9Runtime } from '../../hooks/useRouter9Runtime'
@@ -419,7 +419,14 @@ export function TitleBar() {
     }
   }, [setAntigravityUsage, usageAccess.antigravity])
 
-  const win = getCurrentWindow()
+  const win = useMemo(() => {
+    try {
+      if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+        return getCurrentWindow()
+      }
+    } catch {}
+    return null
+  }, [])
 
   useEffect(() => {
     const update = (focused: boolean) => {
@@ -429,11 +436,13 @@ export function TitleBar() {
     const onVisibility = () => update(document.hasFocus())
     document.addEventListener('visibilitychange', onVisibility)
     let unlisten: (() => void) | undefined
-    void win
-      .onFocusChanged(({ payload }) => update(payload))
-      .then((fn) => {
-        unlisten = fn
-      })
+    if (win) {
+      void win
+        .onFocusChanged(({ payload }: { payload: boolean }) => update(payload))
+        .then((fn: () => void) => {
+          unlisten = fn
+        })
+    }
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
       unlisten?.()
@@ -442,7 +451,9 @@ export function TitleBar() {
 
   useEffect(() => {
     document.title = APP_TITLE
-    void win.setTitle(APP_TITLE)
+    if (win) {
+      void win.setTitle(APP_TITLE)
+    }
   }, [win])
 
   return (
@@ -930,7 +941,7 @@ export function TitleBar() {
         <button
           type="button"
           className={styles.windowBtn}
-          onClick={() => void win.minimize()}
+          onClick={() => void win?.minimize()}
           title={t('ui.titlebar.minimize')}
           aria-label={t('ui.titlebar.minimize')}
         >
@@ -939,7 +950,7 @@ export function TitleBar() {
         <button
           type="button"
           className={styles.windowBtn}
-          onClick={() => void win.toggleMaximize()}
+          onClick={() => void win?.toggleMaximize()}
           title={t('ui.titlebar.maximize')}
           aria-label={t('ui.titlebar.maximize')}
         >

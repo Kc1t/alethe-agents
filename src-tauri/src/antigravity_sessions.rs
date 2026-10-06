@@ -10,9 +10,21 @@ use crate::provider_common::{
 #[derive(Serialize, Debug, Clone)]
 pub struct AntigravitySessionSnapshot {
     pub id: String,
+    pub title: Option<String>,
     pub preview: String,
     pub modified_at_ms: u128,
 }
+
+const DB_SEGMENTS: [&str; 3] = [
+    ".gemini",
+    "antigravity-cli",
+    "conversation_summaries.db",
+];
+
+const DIR_SEGMENTS: [&str; 2] = [
+    ".gemini",
+    "antigravity-cli",
+];
 
 const METADATA_SEGMENTS: [&str; 4] = [
     ".gemini",
@@ -21,8 +33,30 @@ const METADATA_SEGMENTS: [&str; 4] = [
     "conversation_metadata.json",
 ];
 
+pub(crate) fn antigravity_db_file() -> Option<PathBuf> {
+    provider_home_dir(&DB_SEGMENTS)
+}
+
+pub(crate) fn antigravity_dir() -> Option<PathBuf> {
+    provider_home_dir(&DIR_SEGMENTS)
+}
+
 pub(crate) fn antigravity_metadata_file() -> Option<PathBuf> {
     provider_home_dir(&METADATA_SEGMENTS)
+}
+
+fn parse_db_datetime(raw: &str) -> Option<u128> {
+    let formatted = raw.trim().replace(' ', "T");
+    DateTime::parse_from_rfc3339(&formatted)
+        .ok()
+        .and_then(|dt| {
+            let millis = dt.timestamp_millis();
+            if millis >= 0 {
+                Some(millis as u128)
+            } else {
+                None
+            }
+        })
 }
 
 fn conversation_modified_ms(item: &serde_json::Value, default_ms: u128) -> u128 {
@@ -52,16 +86,19 @@ fn normalize_uri_path(uri: &str, guest: bool) -> String {
         .replace("%3A", ":")
         .replace("%3a", ":")
         .replace("%5C", "\\")
-        .replace("%5c", "\\");
+        .replace("%5c", "\\")
+        .replace("%20", " ")
+        .replace("%2F", "/")
+        .replace("%2f", "/");
     if guest {
         // The leading slash of a guest URI is part of the path, not a separator to strip.
         return normalize_cwd_for(&decoded, true);
     }
-    let trimmed = decoded.trim_matches('/');
     if cfg!(windows) {
+        let trimmed = decoded.trim_start_matches('/').trim_end_matches(['/', '\\']);
         trimmed.replace('/', "\\").to_ascii_lowercase()
     } else {
-        trimmed.to_string()
+        normalize_cwd_for(&decoded, false)
     }
 }
 
@@ -85,6 +122,115 @@ fn cwd_matches(norm: &str, target_cwd: &str, sep: char) -> bool {
     false
 }
 
+fn truncate_chars(s: &str, max: usize) -> String {
+    let mut chars = s.chars();
+    let mut result = String::with_capacity(max);
+    for _ in 0..max {
+        if let Some(c) = chars.next() {
+            result.push(c);
+        } else {
+            return result;
+        }
+    }
+    result
+}
+
+#[tauri::command]
+pub async fn get_antigravity_session_title(
+    cwd: Option<String>,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || get_antigravity_session_title_inner(cwd, session_id))
+        .await
+        .map_err(|error| {
+            format!("get_antigravity_session_title: falha na task bloqueante: {error}")
+        })?
+}
+
+fn get_antigravity_session_title_inner(
+    cwd: Option<String>,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    let session_id = session_id.trim();
+    if session_id.is_empty() || session_id.contains(['/', '\\', '.']) {
+        return Ok(None);
+    }
+
+    let db_path = if let Some(target) = cwd.as_deref().filter(|s| !s.trim().is_empty()) {
+        provider_scope(target.trim(), &DB_SEGMENTS).map(|s| s.root)
+    } else {
+        None
+    }
+    .or_else(antigravity_db_file);
+
+    if let Some(path) = db_path {
+        if path.is_file() {
+            if let Ok(conn) = rusqlite::Connection::open_with_flags(
+                &path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            ) {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT title, preview FROM conversation_summaries WHERE conversation_id = ?1 LIMIT 1",
+                    )
+                    .map_err(|e| e.to_string())?;
+
+                let row = stmt.query_row(rusqlite::params![session_id], |row| {
+                    let title: String = row.get(0).unwrap_or_default();
+                    let preview: String = row.get(1).unwrap_or_default();
+                    Ok((title, preview))
+                });
+
+                if let Ok((title, preview)) = row {
+                    let clean_title = title.trim();
+                    if !clean_title.is_empty() {
+                        return Ok(Some(truncate_chars(clean_title, 240)));
+                    }
+                    let clean_preview = preview.trim();
+                    if !clean_preview.is_empty() {
+                        return Ok(Some(truncate_chars(clean_preview, 240)));
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: conversation_metadata.json
+    let meta_path = if let Some(target) = cwd.as_deref().filter(|s| !s.trim().is_empty()) {
+        provider_scope(target.trim(), &METADATA_SEGMENTS).map(|s| s.root)
+    } else {
+        None
+    }
+    .or_else(antigravity_metadata_file);
+
+    if let Some(path) = meta_path {
+        if path.is_file() {
+            if let Ok(contents) = fs::read_to_string(&path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    if let Some(conversations) = json.get("conversations").and_then(|v| v.as_object()) {
+                        if let Some(item) = conversations.get(session_id) {
+                            let summary = item.get("summary");
+                            if let Some(title) = summary.and_then(|s| s.get("Title")).and_then(|v| v.as_str()) {
+                                if !title.trim().is_empty() {
+                                    return Ok(Some(truncate_chars(title.trim(), 240)));
+                                }
+                            }
+                            if let Some(preview) = summary.and_then(|s| s.get("Preview")).and_then(|v| v.as_str()) {
+                                if !preview.trim().is_empty() {
+                                    return Ok(Some(truncate_chars(preview.trim(), 240)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 #[tauri::command]
 pub async fn snapshot_antigravity_sessions(
     cwd: String,
@@ -100,6 +246,89 @@ fn snapshot_antigravity_sessions_inner(
     cwd: String,
 ) -> Result<Vec<AntigravitySessionSnapshot>, String> {
     let trimmed = cwd.trim();
+    let (db_path, target_cwd, sep, guest) = if trimmed.is_empty() {
+        let Some(path) = antigravity_db_file() else {
+            return Ok(Vec::new());
+        };
+        let host_sep = if cfg!(windows) { '\\' } else { '/' };
+        (path, String::new(), host_sep, false)
+    } else {
+        let Some(scope) = provider_scope(trimmed, &DB_SEGMENTS) else {
+            return Ok(Vec::new());
+        };
+        (
+            scope.root.clone(),
+            scope.match_key(),
+            scope.separator(),
+            scope.is_guest(),
+        )
+    };
+
+    if db_path.is_file() {
+        if let Ok(conn) = rusqlite::Connection::open_with_flags(
+            &db_path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        ) {
+            let default_ms = fs::metadata(&db_path)
+                .ok()
+                .as_ref()
+                .map(file_modified_ms)
+                .unwrap_or(0);
+
+            let mut stmt = conn
+                .prepare(
+                    "SELECT conversation_id, title, preview, last_modified_time, workspace_uris FROM conversation_summaries",
+                )
+                .map_err(|e| e.to_string())?;
+
+            let rows = stmt
+                .query_map([], |row| {
+                    let id: String = row.get(0)?;
+                    let title: String = row.get(1).unwrap_or_default();
+                    let preview: String = row.get(2).unwrap_or_default();
+                    let last_modified_raw: String = row.get(3).unwrap_or_default();
+                    let uris_raw: String = row.get(4).unwrap_or_default();
+                    Ok((id, title, preview, last_modified_raw, uris_raw))
+                })
+                .map_err(|e| e.to_string())?;
+
+            let mut snapshots = Vec::new();
+            for r in rows.flatten() {
+                let (id, title, preview, last_modified_raw, uris_raw) = r;
+                let mut matches_cwd = target_cwd.is_empty();
+                if let Ok(uris) = serde_json::from_str::<Vec<String>>(&uris_raw) {
+                    for uri in uris {
+                        let norm = normalize_uri_path(&uri, guest);
+                        if cwd_matches(&norm, &target_cwd, sep) {
+                            matches_cwd = true;
+                            break;
+                        }
+                    }
+                }
+
+                if matches_cwd {
+                    let modified_at_ms = parse_db_datetime(&last_modified_raw).unwrap_or(default_ms);
+                    let clean_title = title.trim();
+                    snapshots.push(AntigravitySessionSnapshot {
+                        id,
+                        title: if !clean_title.is_empty() {
+                            Some(clean_title.to_string())
+                        } else {
+                            None
+                        },
+                        preview,
+                        modified_at_ms,
+                    });
+                }
+            }
+
+            snapshots.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
+            return Ok(snapshots);
+        }
+    }
+
+    // Fallback: conversation_metadata.json
     let (meta_path, target_cwd, sep, guest) = if trimmed.is_empty() {
         let Some(path) = antigravity_metadata_file() else {
             return Ok(Vec::new());
@@ -139,6 +368,11 @@ fn snapshot_antigravity_sessions_inner(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            let title = summary
+                .and_then(|s| s.get("Title"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
 
             let uris = summary
                 .and_then(|s| s.get("WorkspaceURIs"))
@@ -160,6 +394,7 @@ fn snapshot_antigravity_sessions_inner(
             if matches_cwd {
                 snapshots.push(AntigravitySessionSnapshot {
                     id: id.clone(),
+                    title,
                     preview,
                     modified_at_ms: conversation_modified_ms(item, default_ms),
                 });
@@ -187,6 +422,15 @@ mod cwd_match_tests {
             '/'
         ));
         assert!(!cwd_matches(&norm, "/home/Dev/Other", '/'));
+    }
+
+    #[test]
+    fn a_linux_workspace_uri_keeps_its_leading_slash() {
+        let norm = normalize_uri_path("file:///home/kali/Documents/code", false);
+        assert_eq!(norm, "/home/kali/Documents/code");
+        assert!(cwd_matches(&norm, "/home/kali/Documents/code", '/'));
+        assert!(cwd_matches(&norm, "/home/kali/Documents/code/alethe-agents-gustavo", '/'));
+        assert!(!cwd_matches(&norm, "/home/kali/Documents/other", '/'));
     }
 
     #[test]
