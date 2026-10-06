@@ -205,7 +205,14 @@ export function OhMyPiIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 200 200" aria-hidden="true">
       <defs>
-        <linearGradient id="oh-my-pi-logo" x1="15" y1="17" x2="185" y2="185" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id="oh-my-pi-logo"
+          x1="15"
+          y1="17"
+          x2="185"
+          y2="185"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop stopColor="var(--agent-oh-my-pi-logo-start)" />
           <stop offset="1" stopColor="var(--agent-oh-my-pi-logo-end)" />
         </linearGradient>
