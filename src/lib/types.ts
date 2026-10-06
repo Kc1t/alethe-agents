@@ -93,7 +93,7 @@ export function agentCliCommand(agent: AgentType): string | undefined {
  * Compatibility grouping for agents that share a base runtime. Pi and oh-my-pi are separate
  * runtimes of the same family: same base agent and PTY-driven CLI, different binary and brand.
  */
-export type AgentFamily = BuiltinAgentType | 'pi'
+export type AgentFamily = BuiltinAgentType
 
 const AGENT_FAMILY_BY_TYPE: Record<BuiltinAgentType, AgentFamily> = {
   shell: 'shell',
@@ -118,6 +118,30 @@ const AGENT_FAMILY_BY_TYPE: Record<BuiltinAgentType, AgentFamily> = {
 export function agentFamily(agent: AgentType): AgentFamily | undefined {
   if (!(agent in AGENT_TYPE_LABELS)) return undefined
   return AGENT_FAMILY_BY_TYPE[agent as BuiltinAgentType]
+}
+
+/** Where a custom agent icon comes from: a built-in preset, a local .ico asset, or a PNG link. */
+export type CustomAgentIconSpec =
+  | { kind: 'preset'; key: string }
+  | { kind: 'file'; assetId: string }
+  | { kind: 'url'; href: string }
+
+/** User-defined custom agent stored in preferences. Never a built-in. */
+export type CustomAgentDefinition = {
+  /** Slug: ^[a-z0-9-]{2,32}$, unique, never a BuiltinAgentType. */
+  id: string
+  /** Display label shown everywhere the built-ins appear. */
+  label: string
+  /** CLI invocation as typed by the user: binary plus optional default args. */
+  cliCommand: string
+  /** Optional flag that skips permission prompts (e.g. --allow-all). */
+  unrestrictedFlag?: string | null
+  /** An `--agent-*` CSS custom property, including the leading dashes. */
+  accentToken?: string
+  /** Legacy icon preset key. Prefer `iconSpec`; kept so older files still render. */
+  icon?: string
+  /** Discriminated icon spec. Absent means the legacy `icon` preset key. */
+  iconSpec?: CustomAgentIconSpec
 }
 
 export type Locale = 'en' | 'pt-BR' | 'zh-CN'
@@ -670,6 +694,7 @@ export type Preferences = {
   windowOpacity: number
   terminalTheme: Theme | null
   enabledAgents: Record<AgentType, boolean>
+  customAgents: CustomAgentDefinition[]
   onboardingDone: boolean
 
   workspaceFlat: boolean
@@ -893,6 +918,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     pi: true,
     'oh-my-pi': true,
   },
+  customAgents: [],
   onboardingDone: false,
   workspaceFlat: false,
   fullscreenContainerId: null,

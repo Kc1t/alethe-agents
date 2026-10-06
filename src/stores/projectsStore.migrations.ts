@@ -1,6 +1,6 @@
-import { normalizeProjectGrids, projectGridContainer } from '../lib/projectGrids'
 import { nanoid } from 'nanoid'
 
+import { sanitizeCustomAgents } from '../lib/customAgents'
 import {
   legacyGitFeatureFlag,
   legacyTodosFeatureFlag,
@@ -9,6 +9,7 @@ import {
 import { normalizeExperimentalAgentPermissionMode } from '../lib/experimentalAgentPolicy'
 import { normalizeOrchestrationSettings } from '../lib/orchestrationSettings'
 import { recordLegacyGitFlag, recordLegacyTodosFlag } from '../lib/plugins/legacyMigration'
+import { normalizeProjectGrids, projectGridContainer } from '../lib/projectGrids'
 import { normalizePort } from '../lib/router9'
 import { normalizeAppIconTheme } from '../lib/themeIcons'
 import { normalizeTodoTags, normalizeTodoTitle } from '../lib/todos'
@@ -151,7 +152,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       : 1,
 
     enabledAgents: { ...DEFAULT_PREFERENCES.enabledAgents, ...preferences.enabledAgents },
-
+    customAgents: sanitizeCustomAgents((raw as { customAgents?: unknown })?.customAgents ?? []),
     enabledFeatures: normalizeEnabledFeatures(raw),
     usageAccess: normalizeUsageAccess(raw?.usageAccess),
     orchestration: normalizeOrchestrationSettings(preferences.orchestration),

@@ -11,7 +11,7 @@ import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
-import { resolveAgentCliCommand } from '../../lib/agentProviders'
+import { resolveAgentCliCommand, resolveCustomAgentArgs } from '../../lib/agentProviders'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import {
   type ClaudeLaunchExtras,
@@ -1148,8 +1148,14 @@ export function useXtermSession(params: {
           }
           if (disposed) return
         }
+        const customDefaultArgs = command ? resolveCustomAgentArgs(command) : []
         const preparedRuntime = command
-          ? preparePtyRuntimeLaunch(command, runtimeProfile, extraArgs ?? [], env)
+          ? preparePtyRuntimeLaunch(
+              command,
+              runtimeProfile,
+              [...customDefaultArgs, ...(extraArgs ?? [])],
+              env,
+            )
           : { args: extraArgs ?? [], env }
 
         // Read at spawn time rather than through a selector: the PTY environment is fixed when the

@@ -116,3 +116,17 @@ export function listenOpenCodeBridgeStatus(
 ): Promise<UnlistenFn> {
   return listen<OpenCodeBridgeStatus>('opencode-bridge-status', (event) => handler(event.payload))
 }
+
+/** Copies a validated `.ico` into app data as the icon of the custom agent `agentId`. */
+export async function importCustomAgentIcon(sourcePath: string, agentId: string): Promise<void> {
+  await invoke('import_custom_agent_icon', { sourcePath, agentId })
+}
+
+/** A custom agent's stored icon as a data URL; rejects when it has none. */
+export async function customAgentIconDataUrl(agentId: string): Promise<string> {
+  return invoke<string>('custom_agent_icon_data_url', { agentId })
+}
+
+export async function removeCustomAgentIcon(agentId: string): Promise<void> {
+  await invoke('remove_custom_agent_icon', { agentId })
+}
