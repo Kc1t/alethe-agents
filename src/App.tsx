@@ -249,7 +249,11 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return
     void loadThemeIconBytes(appIconTheme)
-      .then((bytes) => getCurrentWindow().setIcon(bytes))
+      .then((bytes) => {
+        if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+          return getCurrentWindow().setIcon(bytes)
+        }
+      })
       .catch((error) => {
         console.error('[app-icon] failed to apply window icon', error)
       })
@@ -270,14 +274,18 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return
     document.documentElement.dataset.zoom = String(uiZoom)
-    void getCurrentWebview()
-      .setZoom(uiZoom)
-      .catch(() => {
-        /* Browser tests may not expose the Tauri permission. */
-      })
-      .finally(() => {
-        window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
-      })
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      void getCurrentWebview()
+        .setZoom(uiZoom)
+        .catch(() => {
+          /* Browser tests may not expose the Tauri permission. */
+        })
+        .finally(() => {
+          window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
+        })
+    } else {
+      window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
+    }
   }, [hydrated, uiZoom])
 
   useEffect(() => {

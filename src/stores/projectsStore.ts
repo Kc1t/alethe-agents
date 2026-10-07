@@ -323,6 +323,12 @@ export type ProjectsState = ProjectsFile & {
     sessionId: string | undefined,
   ) => void
   setSubTabName: (projectId: string, terminalId: string, tabId: string, name: string) => void
+  setSubTabAutoTitle: (
+    projectId: string,
+    terminalId: string,
+    tabId: string,
+    autoTitle: string | null | undefined,
+  ) => void
   setSubTabInitialInput: (
     projectId: string,
     terminalId: string,

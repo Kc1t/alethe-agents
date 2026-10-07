@@ -167,6 +167,7 @@ export function useXtermSession(params: {
   forceFreshRef: MutableRefObject<boolean>
   onSpawnedRef: MutableRefObject<((id: string) => void) | undefined>
   onSessionIdRef: MutableRefObject<((id: string | undefined) => void) | undefined>
+  onTitleChangeRef?: MutableRefObject<((title: string) => void) | undefined>
   onInitialInputSentRef: MutableRefObject<(() => void) | undefined>
   onExitRef: MutableRefObject<((code: number | null) => void) | undefined>
   onLaunchErrorRef: MutableRefObject<((error: unknown) => void) | undefined>
@@ -212,6 +213,7 @@ export function useXtermSession(params: {
     forceFreshRef,
     onSpawnedRef,
     onSessionIdRef,
+    onTitleChangeRef,
     onInitialInputSentRef,
     onExitRef,
     onLaunchErrorRef,
@@ -325,6 +327,7 @@ export function useXtermSession(params: {
     let completionMonitor: AgentCompletionMonitor | null = null
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
+    let titleDisposable: { dispose: () => void } | null = null
     let writeRecoveryPending = false
     let queuedInput = ''
     let inputFlushScheduled = false
@@ -366,6 +369,12 @@ export function useXtermSession(params: {
     terminal.unicode.activeVersion = '11'
     terminal.open(container)
     terminalRef.current = terminal
+    if (typeof terminal.onTitleChange === 'function') {
+      titleDisposable = terminal.onTitleChange((newTitle) => {
+        const clean = newTitle?.trim()
+        if (clean) onTitleChangeRef?.current?.(clean)
+      })
+    }
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
       const xterm = container.querySelector<HTMLElement>('.xterm')
@@ -568,26 +577,28 @@ export function useXtermSession(params: {
       const el = document.elementFromPoint(pos.x / dpr, pos.y / dpr)
       return !!el && container.contains(el)
     }
-    void getCurrentWebview()
-      .onDragDropEvent((event) => {
-        const p = event.payload
-        if (p.type === 'enter' || p.type === 'over') {
-          setDropActive(isOverThisPane(p.position))
-        } else if (p.type === 'leave') {
-          setDropActive(false)
-        } else if (p.type === 'drop') {
-          setDropActive(false)
-          if (isOverThisPane(p.position) && p.paths.length > 0) {
-            pasteText(formatDroppedPaths(p.paths))
-            terminal.focus()
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      void getCurrentWebview()
+        .onDragDropEvent((event) => {
+          const p = event.payload
+          if (p.type === 'enter' || p.type === 'over') {
+            setDropActive(isOverThisPane(p.position))
+          } else if (p.type === 'leave') {
+            setDropActive(false)
+          } else if (p.type === 'drop') {
+            setDropActive(false)
+            if (isOverThisPane(p.position) && p.paths.length > 0) {
+              pasteText(formatDroppedPaths(p.paths))
+              terminal.focus()
+            }
           }
-        }
-      })
-      .then((un) => {
-        if (disposed) un()
-        else unlistenDragDrop = un
-      })
-      .catch(() => {})
+        })
+        .then((un) => {
+          if (disposed) un()
+          else unlistenDragDrop = un
+        })
+        .catch(() => {})
+    }
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
@@ -1142,6 +1153,22 @@ export function useXtermSession(params: {
           if (disposed) return
         }
 
+        if (command === 'antigravity' && !resumeId && cwd && !forceFreshRef.current) {
+          try {
+            const sessions = await snapshotAntigravitySessions(cwd)
+            const claimed = claimMostRecentSession(
+              'antigravity',
+              cwd,
+              sessions,
+              sessionPersistenceKey,
+            )
+            if (claimed) resumeId = claimed.id
+          } catch {
+            /* Discovery is optional when no previous Antigravity session is available. */
+          }
+          if (disposed) return
+        }
+
         if (command === 'opencode' && !resumeId && cwd && !forceFreshRef.current) {
           try {
             const sessions = await snapshotOpenCodeSessions(cwd)
@@ -1378,10 +1405,10 @@ export function useXtermSession(params: {
               let attempt = 0
               while (!disposed) {
                 const delayMs = attempt < 10 ? 3000 : 15000
-                if (command === 'codex') {
+                if (command === 'codex' || command === 'antigravity') {
                   await Promise.race([
                     new Promise((resolve) => setTimeout(resolve, delayMs)),
-                    waitForSessionHint('codex'),
+                    waitForSessionHint(command as 'codex' | 'antigravity'),
                   ])
                 } else {
                   await new Promise((resolve) => setTimeout(resolve, delayMs))
@@ -1402,13 +1429,42 @@ export function useXtermSession(params: {
                 }
 
                 if (disposed) return
-                const newSession = claimDiscoveredSession(
+                let newSession = claimDiscoveredSession(
                   command,
                   cwd,
                   before,
                   filteredSessions,
                   sessionPersistenceKey,
                 )
+                if (!newSession && command === 'antigravity') {
+                  const unclaimed = filteredSessions.filter(
+                    (s) =>
+                      !before.has(s.id) &&
+                      !isSessionClaimed('antigravity', cwd, s.id, sessionPersistenceKey),
+                  )
+                  if (unclaimed.length > 0) {
+                    newSession = claimMostRecentSession(
+                      'antigravity',
+                      cwd,
+                      unclaimed,
+                      sessionPersistenceKey,
+                    )
+                  } else {
+                    const recentlyModified = filteredSessions.filter(
+                      (s) =>
+                        s.modified_at_ms >= (spawnedAtRef.current ?? 0) &&
+                        !isSessionClaimed('antigravity', cwd, s.id, sessionPersistenceKey),
+                    )
+                    if (recentlyModified.length > 0) {
+                      newSession = claimMostRecentSession(
+                        'antigravity',
+                        cwd,
+                        recentlyModified,
+                        sessionPersistenceKey,
+                      )
+                    }
+                  }
+                }
                 if (newSession) {
                   adoptSession(newSession.id)
                   return
@@ -1694,6 +1750,7 @@ export function useXtermSession(params: {
       unlistenMemoryWait?.()
       linkProviderDisposable?.dispose()
       linkScrollDisposable?.dispose()
+      titleDisposable?.dispose()
       completionMonitor?.dispose()
       completionMonitor = null
       setLinkActions(null)

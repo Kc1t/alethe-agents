@@ -31,7 +31,17 @@ function reportCloseFailure(stage: CloseFailureStage, error: unknown): void {
   })
 }
 
-const appWindow = getCurrentWindow()
+function getSafeAppWindow(): ReturnType<typeof getCurrentWindow> | null {
+  try {
+    if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+      return getCurrentWindow()
+    }
+  } catch {
+    // running in plain browser dev server
+  }
+  return null
+}
+
 const closeCoordinator = createCloseCoordinator({
   confirmNative: () => {
     const locale = getLocale()
@@ -44,7 +54,7 @@ const closeCoordinator = createCloseCoordinator({
   },
   confirmFallback: () => window.confirm(translate(getLocale(), 'appClose.message')),
   beforeClose: flushProjectsState,
-  destroyWindow: () => appWindow.destroy(),
+  destroyWindow: () => getSafeAppWindow()?.destroy() ?? Promise.resolve(),
   quitApp: () => quitApp(),
   onFailure: reportCloseFailure,
 })
@@ -55,6 +65,8 @@ export function requestAppClose(): Promise<void> {
 
 export function useCloseConfirmation(): void {
   useEffect(() => {
+    const appWindow = getSafeAppWindow()
+    if (!appWindow) return
     let cancelled = false
     let unlisten: (() => void) | null = null
 

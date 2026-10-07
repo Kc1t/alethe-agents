@@ -34,14 +34,15 @@ export function SubTabsLane({
       {leadingControl ? <div className={styles.leadingControl}>{leadingControl}</div> : null}
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
+        const tabTitle = tab.autoTitle || tab.name || tab.type
         return (
           <div key={tab.id} className={`${styles.itemWrap} ${isActive ? styles.active : ''}`}>
             <button
               type="button"
               className={styles.item}
               onClick={() => onActivate(tab.id)}
-              title={tab.name || tab.type}
-              aria-label={tab.name || tab.type}
+              title={tabTitle}
+              aria-label={tabTitle}
             >
               <AgentIcon type={tab.type} size={14} theme={terminalTheme} />
               {tab.completionUnread ? (
@@ -57,7 +58,7 @@ export function SubTabsLane({
                 onClick={(e) => {
                   e.stopPropagation()
                   if (
-                    window.confirm(t('ui.subtabs.confirmCloseTab', { name: tab.name || tab.type }))
+                    window.confirm(t('ui.subtabs.confirmCloseTab', { name: tabTitle }))
                   )
                     onClose(tab.id)
                 }}

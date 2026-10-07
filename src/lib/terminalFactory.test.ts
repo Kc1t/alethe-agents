@@ -26,7 +26,24 @@ describe('sidebarTerminalDisplayName', () => {
     expect(sidebarTerminalDisplayName(terminal, 'Fix the login bug')).toBe('Fix the login bug')
   })
 
-  it('falls back to the active sub-tab name when there is no chat title', () => {
+  it('falls back to the active sub-tab autoTitle when there is no chat title', () => {
+    const terminal = terminalWith({
+      tabs: [
+        {
+          id: 'tab1',
+          type: 'antigravity',
+          name: 'antigravity',
+          autoTitle: 'Chat Title From Agy',
+          cwd: '/tmp',
+          lastUsedAt: 0,
+          ptyId: null,
+        },
+      ],
+    })
+    expect(sidebarTerminalDisplayName(terminal, null)).toBe('Chat Title From Agy')
+  })
+
+  it('falls back to the active sub-tab name when there is no chat title or autoTitle', () => {
     const terminal = terminalWith({})
     expect(sidebarTerminalDisplayName(terminal, null)).toBe('claude')
   })
