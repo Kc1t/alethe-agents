@@ -110,6 +110,8 @@ Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, Rea
 | <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/codewhale-dark.svg"><img src="./docs/assets/agents/codewhale-light.svg" width="28" height="28" alt=""></picture> | **Codewhale** | `codewhale` | |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/mimo-dark.svg"><img src="./docs/assets/agents/mimo-light.svg" width="28" height="28" alt=""></picture> | **Mimo** | `mimo` | |
 | <img src="./docs/assets/agents/freebuff.png" width="28" height="28" alt=""> | **Freebuff** | `freebuff` | |
+|  | **Pi** | `pi` | Two runtimes of the Pi family: `pi` and oh-my-pi share the agent, not the binary |
+|  | **oh-my-pi** | `omp` | |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/shell-dark.svg"><img src="./docs/assets/agents/shell-light.svg" width="28" height="28" alt=""></picture> | **Shell** | pwsh / bash / zsh | The plain terminal, same pane model |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/wsl-dark.svg"><img src="./docs/assets/agents/wsl-light.svg" width="28" height="28" alt=""></picture> | **WSL** | `wsl.exe` | The default distro, as a plain shell (Windows) |
 

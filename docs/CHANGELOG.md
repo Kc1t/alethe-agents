@@ -12,6 +12,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Pi and oh-my-pi.** Both CLI runtimes of the Pi family can be enabled, detected and opened
+  like any other agent: **Pi** runs the `pi` binary and **oh-my-pi** runs the `omp` binary. Each
+  one keeps its own name, logo and accent color, so a pane shows which runtime it is running; they
+  share the same PTY session flow as the other agents.
+
+- **Pi and oh-my-pi logos.** The Pi runtimes now use their geometric Pi and oh-my-pi marks in the agent pickers, tabs and notifications, with the supplied brand colors.
+
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with

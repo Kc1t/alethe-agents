@@ -36,6 +36,8 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'kimi', label: 'Kimi Code' },
   { id: 'grok', label: 'Grok Build' },
   { id: 'codewhale', label: 'Codewhale' },
+  { id: 'pi', label: 'Pi' },
+  { id: 'oh-my-pi', label: 'oh-my-pi' },
 ]
 
 export function TerminalPage({ enabledCount }: { enabledCount: number }) {

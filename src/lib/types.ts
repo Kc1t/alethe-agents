@@ -14,6 +14,8 @@ export type BuiltinAgentType =
   | 'kimi'
   | 'grok'
   | 'codewhale'
+  | 'pi'
+  | 'oh-my-pi'
 
 /**
  * An agent type id. Open on purpose: plugins contribute agent providers at
@@ -37,8 +39,10 @@ export const AGENT_TYPE_LABELS: Record<BuiltinAgentType, string> = {
   freebuff: 'Freebuff',
   kiro: 'Kiro CLI',
   kimi: 'Kimi Code',
-  grok: 'Grok Build',
   codewhale: 'Codewhale',
+  grok: 'Grok Build',
+  pi: 'Pi',
+  'oh-my-pi': 'oh-my-pi',
   shell: 'Shell',
   wsl: 'WSL',
 }
@@ -56,6 +60,8 @@ export const ALL_AGENT_TYPES: BuiltinAgentType[] = [
   'kimi',
   'grok',
   'codewhale',
+  'pi',
+  'oh-my-pi',
   'shell',
   'wsl',
 ]
@@ -72,6 +78,7 @@ const BUILTIN_CLI_COMMANDS: Partial<Record<BuiltinAgentType, string | null>> = {
   antigravity: 'agy',
   cursor: 'cursor-agent',
   kiro: 'kiro-cli',
+  'oh-my-pi': 'omp',
 }
 
 /** Built-ins only. Use `resolveAgentCliCommand` to also reach contributed providers. */
@@ -80,6 +87,37 @@ export function agentCliCommand(agent: AgentType): string | undefined {
   const mapped = BUILTIN_CLI_COMMANDS[agent as BuiltinAgentType]
   if (mapped === null) return undefined
   return mapped ?? agent
+}
+
+/**
+ * Compatibility grouping for agents that share a base runtime. Pi and oh-my-pi are separate
+ * runtimes of the same family: same base agent and PTY-driven CLI, different binary and brand.
+ */
+export type AgentFamily = BuiltinAgentType
+
+const AGENT_FAMILY_BY_TYPE: Record<BuiltinAgentType, AgentFamily> = {
+  shell: 'shell',
+  wsl: 'wsl',
+  claude: 'claude',
+  codex: 'codex',
+  copilot: 'copilot',
+  cursor: 'cursor',
+  opencode: 'opencode',
+  freebuff: 'freebuff',
+  mimo: 'mimo',
+  antigravity: 'antigravity',
+  kiro: 'kiro',
+  kimi: 'kimi',
+  grok: 'grok',
+  codewhale: 'codewhale',
+  pi: 'pi',
+  'oh-my-pi': 'pi',
+}
+
+/** Family of a built-in agent. Contributed providers declare none yet. */
+export function agentFamily(agent: AgentType): AgentFamily | undefined {
+  if (!(agent in AGENT_TYPE_LABELS)) return undefined
+  return AGENT_FAMILY_BY_TYPE[agent as BuiltinAgentType]
 }
 
 /** Where a custom agent icon comes from: a built-in preset, a local .ico asset, or a PNG link. */
@@ -266,6 +304,8 @@ export const UNRESTRICTED_FLAG: Record<BuiltinAgentType, string | null> = {
   grok: '--yolo',
   // Codewhale Full Access is a TUI posture (Shift+Tab / /config), not a launch flag.
   codewhale: null,
+  pi: null,
+  'oh-my-pi': null,
 }
 
 /**
@@ -899,6 +939,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     kimi: true,
     grok: true,
     codewhale: true,
+    pi: true,
+    'oh-my-pi': true,
   },
   customAgents: [],
   onboardingDone: false,
@@ -1072,6 +1114,8 @@ export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: stri
   // Grok Build and Codewhale expose live model lists via their CLIs; discovery fills the picker.
   grok: [],
   codewhale: [],
+  pi: [],
+  'oh-my-pi': [],
   shell: [{ id: 'default', label: 'Shell Padrão' }],
   wsl: [{ id: 'default', label: 'WSL' }],
 }

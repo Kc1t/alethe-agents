@@ -77,6 +77,8 @@ const NOTIF_AGENT_CLASS: Record<BuiltinAgentType, string> = {
   kimi: styles.notifKimi,
   grok: styles.notifGrok,
   codewhale: styles.notifCodewhale,
+  pi: styles.notifPi,
+  'oh-my-pi': styles.notifOhMyPi,
 }
 
 function notifAgentClass(agent: AgentType): string {
