@@ -283,8 +283,46 @@
 .section:focus .sectionHeading h2 {
   color: var(--accent);
 }
+.sectionToggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sectionToggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 4px;
+}
+.sectionToggle:hover {
+  color: var(--accent);
+}
+.sectionChevron {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-bottom: 2px;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  opacity: 0.65;
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+.sectionToggle[aria-expanded='false'] .sectionChevron {
+  margin-bottom: 0;
+  transform: rotate(-45deg);
+}
 .sectionHeading {
   margin-bottom: 18px;
+}
+.section[data-collapsed] .sectionHeading {
+  margin-bottom: 0;
 }
 .sectionHeading h2 {
   margin: 0;

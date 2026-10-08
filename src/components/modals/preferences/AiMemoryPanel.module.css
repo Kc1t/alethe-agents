@@ -1,0 +1,38 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.captures {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.state {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.warning {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.link {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+.link:hover {
+  color: var(--accent);
+}

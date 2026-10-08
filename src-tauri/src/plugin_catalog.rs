@@ -13,10 +13,29 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 const INDEX_URL: &str = "https://raw.githubusercontent.com/Kc1t/alethe-agents/main/plugins.json";
+
+/// Where the catalogue is actually read from.
+///
+/// `ALETHE_PLUGIN_INDEX_URL` redirects it, and is honoured **only in debug builds**: the index is
+/// what publishes each package's checksum, so whoever controls it controls which bytes the app is
+/// willing to run. That is a fine thing for a fork or a test to point somewhere else, and not
+/// something a shipped binary should let an environment variable decide.
+fn index_url() -> String {
+    #[cfg(debug_assertions)]
+    if let Ok(override_url) = std::env::var("ALETHE_PLUGIN_INDEX_URL") {
+        let trimmed = override_url.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    INDEX_URL.to_string()
+}
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const CACHE_TTL_SECS: u64 = 6 * 60 * 60;
 const SUPPORTED_SCHEMA: u32 = 1;
-const MAX_INDEX_BYTES: usize = 512 * 1024;
+// At roughly 570 bytes an entry, 512 KiB ran out at about 900 plugins — a ceiling a catalogue
+// would hit while still being called one. The file only grows if there are plugins to fill it.
+const MAX_INDEX_BYTES: usize = 4 * 1024 * 1024;
 
 static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
@@ -173,7 +192,7 @@ pub async fn plugin_catalog(
 
     let fetched = async {
         let response = http_client()
-            .get(INDEX_URL)
+            .get(index_url())
             .send()
             .await
             .map_err(|e| format!("request_failed:{e}"))?;

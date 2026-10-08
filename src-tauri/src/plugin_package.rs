@@ -13,9 +13,9 @@ use sha2::{Digest, Sha256};
 
 /// Caps chosen to stop a zip bomb, not to be generous. A plugin is source code
 /// and a few assets; anything near these numbers is not a plugin.
-const MAX_DOWNLOAD_BYTES: usize = 8 * 1024 * 1024;
-const MAX_UNPACKED_BYTES: u64 = 32 * 1024 * 1024;
-const MAX_ENTRIES: usize = 2_000;
+pub const MAX_DOWNLOAD_BYTES: usize = 8 * 1024 * 1024;
+pub const MAX_UNPACKED_BYTES: u64 = 32 * 1024 * 1024;
+pub const MAX_ENTRIES: usize = 2_000;
 const MANIFEST_FILE: &str = "plugin.json";
 
 pub fn is_sha256(value: &str) -> bool {
@@ -90,9 +90,20 @@ pub fn check_download_size(len: usize) -> Result<(), String> {
 /// created from entry paths rather than from directory entries, so an archive
 /// cannot create a directory it never declares a file in.
 pub fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), String> {
+    extract_zip_bounded(bytes, destination, MAX_ENTRIES, MAX_UNPACKED_BYTES)
+}
+
+/// Bounded variant of extract_zip, with configurable limits for callers with
+/// different size constraints (e.g., ai-memory binaries are much larger than plugins).
+pub fn extract_zip_bounded(
+    bytes: &[u8],
+    destination: &Path,
+    max_entries: usize,
+    max_bytes: u64,
+) -> Result<(), String> {
     let reader = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(reader).map_err(|e| format!("bad_archive:{e}"))?;
-    if archive.len() > MAX_ENTRIES {
+    if archive.len() > max_entries {
         return Err("too_many_entries".to_string());
     }
 
@@ -108,7 +119,7 @@ pub fn extract_zip(bytes: &[u8], destination: &Path) -> Result<(), String> {
         }
         let relative = safe_entry_path(entry.name())?;
         written = written.saturating_add(entry.size());
-        if written > MAX_UNPACKED_BYTES {
+        if written > max_bytes {
             return Err("unpacked_too_large".to_string());
         }
 
@@ -151,6 +162,12 @@ pub fn find_manifest_root(unpacked: &Path) -> Result<PathBuf, String> {
 }
 
 pub async fn download(url: &str) -> Result<Vec<u8>, String> {
+    download_bounded(url, MAX_DOWNLOAD_BYTES).await
+}
+
+/// Bounded variant of download, with configurable size limit for callers with
+/// different constraints (e.g., ai-memory binaries are much larger than plugins).
+pub async fn download_bounded(url: &str, max_bytes: usize) -> Result<Vec<u8>, String> {
     if !url.starts_with("https://") {
         return Err("unsupported_url".to_string());
     }
@@ -163,13 +180,17 @@ pub async fn download(url: &str) -> Result<Vec<u8>, String> {
         return Err(format!("http_{}", response.status().as_u16()));
     }
     if let Some(len) = response.content_length() {
-        check_download_size(len as usize)?;
+        if len as usize > max_bytes {
+            return Err("package_too_large".to_string());
+        }
     }
     let bytes = response
         .bytes()
         .await
         .map_err(|e| format!("read_failed:{e}"))?;
-    check_download_size(bytes.len())?;
+    if bytes.len() > max_bytes {
+        return Err("package_too_large".to_string());
+    }
     Ok(bytes.to_vec())
 }
 

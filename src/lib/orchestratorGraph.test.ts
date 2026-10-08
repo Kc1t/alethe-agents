@@ -15,11 +15,12 @@ import {
   NODE_WIDTH,
   plannerNodeId,
   rootNodeId,
+  shellGroupNodeId,
   SIBLING_GAP,
   TREE_GAP,
   zoomAt,
 } from './orchestratorGraph'
-import { groupRuns } from './orchestratorRuns'
+import { groupRuns, type OrchestratorRun } from './orchestratorRuns'
 import type { OrchestratorJob } from './tauri'
 
 function job(
@@ -29,6 +30,7 @@ function job(
     plannerId: null,
     agent: 'codex',
     runLabel: null,
+    rules: null,
     spec: 'spec',
     cwd: 'C:/repo',
     status: 'running',
@@ -413,5 +415,86 @@ describe('routing trace on the edge', () => {
     expect(note?.used).toBe(91)
     expect(Number.isFinite(note?.x)).toBe(true)
     expect(Number.isFinite(note?.y)).toBe(true)
+  })
+})
+
+const run = (id: string): OrchestratorRun => ({
+  id,
+  label: id,
+  rules: null,
+  jobs: [],
+  counts: { blocked: 0, running: 0, queued: 0, interrupted: 0, failed: 0, finished: 0 },
+  state: 'finished',
+})
+
+const shell = (id: string, attachment: 'attached' | 'detached') => ({
+  id,
+  attachment,
+  status: 'running' as const,
+})
+
+describe('layoutPlannerBoard with shells', () => {
+  it('hangs the attached group off the planner, right of the runs', () => {
+    const graph = layoutPlannerBoard([run('run-1')], undefined, 'p1', undefined, [
+      shell('shell-01', 'attached'),
+    ])
+    const group = graph.shellGroups.find((node) => node.id === shellGroupNodeId('attached'))
+    expect(group).toBeTruthy()
+    expect(group!.x).toBeGreaterThan(graph.roots[0].x)
+    expect(group!.y).toBe(graph.roots[0].y)
+    expect(graph.shells.map((node) => node.id)).toEqual(['shell-01'])
+    expect(graph.shells[0].y).toBeGreaterThan(group!.y + group!.height)
+    expect(
+      graph.edges.some(
+        (edge) => edge.from === plannerNodeId('p1') && edge.to === shellGroupNodeId('attached'),
+      ),
+    ).toBe(true)
+    expect(
+      graph.edges.some(
+        (edge) => edge.from === shellGroupNodeId('attached') && edge.to === 'shell-01',
+      ),
+    ).toBe(true)
+  })
+
+  it('lines up a shell node with a worker node on the shared baseline', () => {
+    const graph = layoutPlannerBoard(
+      groupRuns([job({ id: 'job-01', runId: 'run-1' })]),
+      undefined,
+      'p1',
+      undefined,
+      [shell('shell-01', 'attached')],
+    )
+    expect(graph.shells[0].y).toBe(graph.workers[0]?.y)
+  })
+
+  it('gives a detached group no incoming edge', () => {
+    const graph = layoutPlannerBoard([run('run-1')], undefined, 'p1', undefined, [
+      shell('shell-09', 'detached'),
+    ])
+    expect(graph.edges.some((edge) => edge.to === shellGroupNodeId('detached'))).toBe(false)
+    expect(graph.shells.map((node) => node.id)).toEqual(['shell-09'])
+  })
+
+  it('still lays out the planner node when only a detached group is on the board', () => {
+    const graph = layoutPlannerBoard([], undefined, 'p1', undefined, [
+      shell('shell-09', 'detached'),
+    ])
+    expect(graph.planner).not.toBeNull()
+    expect(graph.edges.some((edge) => edge.to === shellGroupNodeId('detached'))).toBe(false)
+  })
+
+  it('lays out shells with no runs at all', () => {
+    const graph = layoutPlannerBoard([], undefined, null, undefined, [
+      shell('shell-01', 'detached'),
+    ])
+    expect(graph.width).toBeGreaterThan(0)
+    expect(graph.height).toBeGreaterThan(0)
+    expect(graph.shells).toHaveLength(1)
+  })
+
+  it('adds no group when there are no shells', () => {
+    const graph = layoutPlannerBoard([run('run-1')], undefined, 'p1', undefined, [])
+    expect(graph.shellGroups).toEqual([])
+    expect(graph.shells).toEqual([])
   })
 })

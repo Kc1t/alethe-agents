@@ -11,7 +11,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { pickDirectory } from '../../../lib/dialog'
 import { type MessageKey, type TFunction, useT } from '../../../lib/i18n'
 import type { PluginRuntimeEntry } from '../../../lib/plugins'
-import { refreshLocalPlugins, setPluginEnabled, usePlugins } from '../../../lib/plugins'
+import {
+  refreshLocalPlugins,
+  requiresTrustConfirmation,
+  setPluginEnabled,
+  usePlugins,
+} from '../../../lib/plugins'
 import type { PluginKind, PluginManifest } from '../../../lib/tauri'
 import {
   openInFileExplorer,
@@ -24,7 +29,6 @@ import { useUiStore } from '../../../stores/uiStore'
 import controls from '../controls.module.css'
 import { Modal } from '../Modal'
 import { CapabilityList } from './pluginCapabilities'
-import { PluginCatalog } from './PluginCatalog'
 import styles from './PluginsPage.module.css'
 import { SettingsSection } from './primitives'
 
@@ -44,6 +48,7 @@ function kindLabel(t: TFunction, kind: PluginKind): string {
 export function PluginsPage() {
   const t = useT()
   const pushToast = useUiStore((state) => state.pushToast)
+  const openModal = useUiStore((state) => state.openModal_)
   const plugins = usePlugins()
 
   const [folder, setFolder] = useState<string | null>(null)
@@ -76,7 +81,7 @@ export function PluginsPage() {
   }, [])
 
   const handleToggle = (entry: PluginRuntimeEntry, next: boolean) => {
-    if (next && entry.source === 'local') {
+    if (requiresTrustConfirmation(entry.source, next)) {
       setTrustTarget(entry)
       return
     }
@@ -243,7 +248,19 @@ export function PluginsPage() {
         )}
       </SettingsSection>
 
-      <PluginCatalog />
+      <SettingsSection
+        id="plugins-marketplace"
+        title={t('market.title')}
+        description={t('prefs.pluginsMarketplaceDesc')}
+      >
+        <button
+          type="button"
+          className={`${controls.btn} ${controls.btnPrimary}`}
+          onClick={() => openModal('pluginMarketplace')}
+        >
+          {t('prefs.pluginsMarketplaceOpen')}
+        </button>
+      </SettingsSection>
 
       <SettingsSection
         id="plugins-install"

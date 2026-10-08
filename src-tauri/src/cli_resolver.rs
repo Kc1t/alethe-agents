@@ -43,6 +43,7 @@ pub fn command_builder_for_terminal(
     initial_command: Option<&str>,
     resolved_launcher: Option<&str>,
     extra_args: &[String],
+    command_line: Option<&str>,
 ) -> CommandBuilder {
     let trimmed = initial_command
         .map(str::trim)
@@ -93,6 +94,12 @@ pub fn command_builder_for_terminal(
             let mut builder = CommandBuilder::new(&shell);
             if is_powershell(&shell) {
                 builder.arg("-NoLogo");
+            }
+            // An orchestrator shell: the line runs through the shell and the PTY ends with it, so
+            // the board can tell a running service from one that exited.
+            if let Some(line) = command_line.map(str::trim).filter(|line| !line.is_empty()) {
+                builder.arg(if cfg!(windows) { "-Command" } else { "-lc" });
+                builder.arg(line);
             }
             builder
         }
@@ -1096,6 +1103,28 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    fn argv_of(builder: &CommandBuilder) -> Vec<String> {
+        builder
+            .get_argv()
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn a_shell_given_a_command_line_runs_it_and_exits_with_it() {
+        let argv = argv_of(&command_builder_for_terminal(None, None, &[], Some("npm run dev")));
+        assert_eq!(argv.last().map(String::as_str), Some("npm run dev"), "{argv:?}");
+        let flag = if cfg!(windows) { "-Command" } else { "-lc" };
+        assert_eq!(argv[argv.len() - 2], flag, "{argv:?}");
+    }
+
+    #[test]
+    fn a_plain_shell_stays_interactive() {
+        let argv = argv_of(&command_builder_for_terminal(None, None, &[], None));
+        assert!(!argv.iter().any(|arg| arg == "-Command" || arg == "-lc"), "{argv:?}");
+    }
+
     #[test]
     fn recognizes_powershell_by_file_stem() {
         for shell in [
@@ -1116,7 +1145,7 @@ mod tests {
     #[test]
     fn plain_shell_tab_uses_the_configured_shell() {
         let shell = if cfg!(windows) { "nu.exe" } else { "/bin/zsh" };
-        let builder = command_builder_for_terminal(None, Some(shell), &[]);
+        let builder = command_builder_for_terminal(None, Some(shell), &[], None);
         assert_eq!(builder.get_argv()[0], shell);
         // A non-PowerShell shell must not inherit PowerShell's switches.
         assert_eq!(builder.get_argv().len(), 1);
@@ -1125,7 +1154,7 @@ mod tests {
     #[test]
     fn plain_shell_tab_falls_back_to_the_default_shell() {
         for override_value in [None, Some("")] {
-            let builder = command_builder_for_terminal(None, override_value, &[]);
+            let builder = command_builder_for_terminal(None, override_value, &[], None);
             assert_eq!(builder.get_argv()[0], default_shell().as_str());
         }
     }
@@ -1137,7 +1166,7 @@ mod tests {
         } else {
             "/usr/bin/pwsh"
         };
-        let builder = command_builder_for_terminal(None, Some(shell), &[]);
+        let builder = command_builder_for_terminal(None, Some(shell), &[], None);
         assert_eq!(builder.get_argv()[1], "-NoLogo");
     }
 

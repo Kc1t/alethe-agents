@@ -30,6 +30,7 @@ import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSubTabModal } from './components/modals/NewSubTabModal'
 import { NewTerminalModal } from './components/modals/NewTerminalModal'
 import { OnboardingModal } from './components/modals/OnboardingModal'
+import { PluginMarketplaceModal } from './components/modals/PluginMarketplaceModal'
 import { PreferencesModal } from './components/modals/PreferencesModal'
 import { ProfilesModal } from './components/modals/ProfilesModal'
 import { ProjectGridModal } from './components/modals/ProjectGridModal'
@@ -52,6 +53,7 @@ import { VoiceCommand } from './components/VoiceCommand'
 import { WorkspaceView } from './components/WorkspaceView'
 import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useAgentHookBridge } from './hooks/useAgentHookBridge'
+import { useAiMemoryAutoStart } from './hooks/useAiMemoryAutoStart'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
@@ -69,7 +71,11 @@ import { applyLegacyPluginMigrations } from './lib/plugins'
 import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { ghosttyKillAll, setWindowOpacity, setWslIntegrationEnabled } from './lib/tauri'
-import { getLastCrashReport } from './lib/tauri'
+import {
+  getLastCrashReport,
+  orchestratorDefaultRuleSets,
+  orchestratorSetRuleSets,
+} from './lib/tauri'
 import { rememberBootAppearance } from './lib/bootAppearance'
 import { loadThemeIconBytes } from './lib/themeIcons'
 import { useAppliedTheme } from './lib/themes'
@@ -215,6 +221,7 @@ export default function App() {
   }, [activeProfileId, hydrated, restoreMarkdownSidebarHistory])
 
   useRouter9AutoStart(hydrated)
+  useAiMemoryAutoStart(hydrated)
 
   useEffect(() => {
     void ghosttyKillAll().catch(() => {
@@ -435,6 +442,28 @@ export default function App() {
     }
   }, [hydrated])
 
+  const storedRuleSets = useProjectsStore((state) => state.preferences.workerRuleSets)
+  const rulesPublishTokenRef = useRef(0)
+
+  // The core composes the block at delegation time, so it needs the person's list — and a fresh one
+  // whenever they edit it, not only at startup. Two quick edits can otherwise resolve out of order
+  // over IPC, so a monotonic token makes the last one win instead of whichever lands last.
+  useEffect(() => {
+    if (!hydrated) return
+    const token = ++rulesPublishTokenRef.current
+    const publish = async () => {
+      // Ours are only needed when the person never customized; fetching them otherwise would be a
+      // wasted round trip that also widens the window for an out-of-order write.
+      const sets = storedRuleSets ?? (await orchestratorDefaultRuleSets())
+      // A later edit already published: dropping this one is what keeps the newest list in the core.
+      if (rulesPublishTokenRef.current !== token) return
+      await orchestratorSetRuleSets(sets)
+    }
+    void publish().catch((error) =>
+      console.error('[rules] could not publish the rule sets:', error),
+    )
+  }, [hydrated, storedRuleSets])
+
   useEffect(() => {
     if (!hydrated) return
     void getLastCrashReport()
@@ -652,6 +681,7 @@ export default function App() {
         <AddBrowserModal />
         <NewSubTabModal />
         <PreferencesModal />
+        <PluginMarketplaceModal />
         <ProfilesModal />
         <SyncModal />
         <FindJumpModal />

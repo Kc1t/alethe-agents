@@ -88,19 +88,19 @@
 
 ## 智能体
 
-| 智能体 | CLI | |
-|---|---|---|
-| **Claude Code** | `claude` | 会话恢复、用量卡片、本地历史 |
-| **Codex** | `codex` | 会话恢复、用量卡片 |
-| **GitHub Copilot CLI** | `copilot` | |
-| **Cursor** | `cursor-agent` | 会话恢复 |
-| **Antigravity** | `agy` | 用量卡片 |
-| **OpenCode** | `opencode` | 会话恢复 |
-| **Kiro CLI** | `kiro-cli` | |
-| **Mimo** | `mimo` | |
-| **Freebuff** | `freebuff` | |
-| **Shell** | pwsh / bash / zsh | 普通终端，同一套窗格模型 |
-| **WSL** | `wsl.exe` | 默认发行版，作为普通 Shell（Windows） |
+| | 智能体 | CLI | |
+|:-:|---|---|---|
+| <img src="./src/assets/claude-code.png" width="28" height="28" alt=""> | **Claude Code** | `claude` | 会话恢复、用量卡片、本地历史 |
+| <img src="./src/assets/codex.png" width="28" height="28" alt=""> | **Codex** | `codex` | 会话恢复、用量卡片 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/copilot-dark.svg"><img src="./docs/assets/agents/copilot-light.svg" width="28" height="28" alt=""></picture> | **GitHub Copilot CLI** | `copilot` | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/cursor-dark.svg"><img src="./docs/assets/agents/cursor-light.svg" width="28" height="28" alt=""></picture> | **Cursor** | `cursor-agent` | 会话恢复 |
+| <img src="./src/assets/antigravity.png" width="28" height="28" alt=""> | **Antigravity** | `agy` | 用量卡片 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/opencode-dark.png"><img src="./docs/assets/agents/opencode-light.png" width="28" height="28" alt=""></picture> | **OpenCode** | `opencode` | 会话恢复 |
+| <img src="./src/assets/kiro.svg" width="28" height="28" alt=""> | **Kiro CLI** | `kiro-cli` | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/mimo-dark.svg"><img src="./docs/assets/agents/mimo-light.svg" width="28" height="28" alt=""></picture> | **Mimo** | `mimo` | |
+| <img src="./docs/assets/agents/freebuff.png" width="28" height="28" alt=""> | **Freebuff** | `freebuff` | |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/shell-dark.svg"><img src="./docs/assets/agents/shell-light.svg" width="28" height="28" alt=""></picture> | **Shell** | pwsh / bash / zsh | 普通终端，同一套窗格模型 |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="./docs/assets/agents/wsl-dark.svg"><img src="./docs/assets/agents/wsl-light.svg" width="28" height="28" alt=""></picture> | **WSL** | `wsl.exe` | 默认发行版，作为普通 Shell（Windows） |
 
 缺失的 CLI 可以在 Alethe 内安装、更新与卸载——它会探测本机的 Node、npm、WinGet、Scoop、Chocolatey，只提供真正可用的方式，并优先使用各厂商官方安装器。已安装的 CLI 会从 PATH、注册表、npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey 等位置发现，也可手动指定自定义路径。插件还可以向此列表添加自有智能体。
 

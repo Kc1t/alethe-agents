@@ -112,6 +112,16 @@ export type PluginContext = {
   registerView: (viewId: string, component: ComponentType<SidebarTabProps>) => Disposable
   /** Supplies the handler for a command this plugin's manifest declares. */
   registerCommand: (commandId: string, run: () => void | Promise<void>) => Disposable
+  /**
+   * Navigation, limited to what this plugin itself contributed. A plugin may open its own
+   * view and its own modal; it may not move anything else in the app.
+   */
+  readonly ui: {
+    /** Reveals a view this plugin declared, opening whichever sidebar currently holds it. */
+    revealView: (viewId: string) => void
+    /** Opens a modal this plugin contributed. */
+    openModal: (modalId: string) => void
+  }
   /** Registers messages under `plugin.<id>.` — the prefix is added for you. */
   registerMessages: (locale: Locale, messages: Record<string, string>) => Disposable
   /** Translates one of this plugin's own keys, without the prefix. */

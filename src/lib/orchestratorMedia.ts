@@ -13,6 +13,28 @@ function stripTrailingPunctuation(value: string): string {
   return value.replace(/[.,;:!?)\]]+$/, '')
 }
 
+export type PromotedMedia = {
+  /** The first non-link item, if any - promoted to its own card on the canvas. */
+  promoted: MediaItem | null
+  /** Everything else: every link, and any image that didn't get promoted. */
+  remaining: MediaItem[]
+}
+
+/**
+ * The first non-link media item is promoted to its own card; everything else - links, and any
+ * 2nd+ image - stays behind. Both the canvas card (`promotedMediaByJobId` in index.tsx) and the
+ * inspector's media strip (`remainingMedia` in OrchestratorInspector.tsx) apply this same split so
+ * they can never disagree about which item got promoted.
+ */
+export function splitPromotedMedia(items: MediaItem[]): PromotedMedia {
+  const promotedIndex = items.findIndex((item) => item.kind !== 'link')
+  if (promotedIndex === -1) return { promoted: null, remaining: items }
+  return {
+    promoted: items[promotedIndex],
+    remaining: items.filter((_, index) => index !== promotedIndex),
+  }
+}
+
 export function extractMediaItems(text: string): MediaItem[] {
   const items: MediaItem[] = []
   const seen = new Set<string>()

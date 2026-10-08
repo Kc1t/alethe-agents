@@ -172,6 +172,11 @@
   border-top: 1px dashed var(--border);
 }
 
+.subPanel {
+  padding: 8px 0;
+  border-top: 1px dashed var(--border);
+}
+
 .subIcon {
   width: 28px;
   flex: none;

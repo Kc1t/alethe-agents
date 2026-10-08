@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const tauri = vi.hoisted(() => ({
+  attachPty: vi.fn(),
   killPty: vi.fn(),
   listenPtyData: vi.fn(),
   listenPtyExit: vi.fn(),
@@ -9,6 +10,7 @@ const tauri = vi.hoisted(() => ({
   router9Status: vi.fn(),
   router9Stop: vi.fn(),
   router9UninstallCommand: vi.fn(),
+  ptyExists: vi.fn(),
   spawnPty: vi.fn(),
   writePty: vi.fn(),
 }))
@@ -26,6 +28,8 @@ beforeEach(() => {
   tauri.listenPtyExit.mockResolvedValue(() => undefined)
   tauri.writePty.mockResolvedValue(undefined)
   tauri.killPty.mockResolvedValue(undefined)
+  tauri.attachPty.mockResolvedValue('')
+  tauri.ptyExists.mockResolvedValue(true)
 })
 
 afterEach(() => {

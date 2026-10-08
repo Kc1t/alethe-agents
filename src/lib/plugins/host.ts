@@ -18,6 +18,7 @@ import {
 import { PLUGIN_API_VERSION } from './constants'
 import { pluginIcon } from './icons'
 import { loadLocalPlugin } from './localTransport'
+import { openContributedModal, revealContributedView } from './navigation'
 import { canInvoke, grants, isValidCapability } from './permissions'
 import {
   commandContributions,
@@ -154,6 +155,21 @@ function createContext(manifest: PluginManifest): PluginContext {
       }
       commandImplementations.set(commandId, run)
       return track({ dispose: () => commandImplementations.delete(commandId) })
+    },
+    ui: {
+      revealView: (viewId) => {
+        const declared = sidebarTabContributions.get(viewId)
+        if (!declared || sidebarTabContributions.ownerOf(viewId) !== manifest.id) {
+          throw new Error(`undeclared_view:${manifest.id}:${viewId}`)
+        }
+        revealContributedView(declared)
+      },
+      openModal: (modalId) => {
+        if (modalContributions.ownerOf(modalId) !== manifest.id) {
+          throw new Error(`undeclared_modal:${manifest.id}:${modalId}`)
+        }
+        openContributedModal(modalId)
+      },
     },
     registerMessages: (locale: Locale, messages) => {
       const prefixed: Record<string, string> = {}

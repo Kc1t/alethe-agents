@@ -4,6 +4,7 @@ import { getPluginEntries, subscribePlugins } from './host'
 import type { PluginRuntimeEntry } from './types'
 
 export { PLUGIN_API_VERSION } from './constants'
+export { requiresTrustConfirmation } from './trust'
 export {
   activateForView,
   activationEvents,

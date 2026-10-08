@@ -58,6 +58,9 @@ fn prepare(app: &AppHandle, state: &OrchestratorState) {
     if let Some(program) = cli_resolver::find_windows_cli_launcher("claude") {
         core.set_launcher(Launcher::claude_headless(PathBuf::from(program)));
     }
+    core.set_shell_host(Arc::new(crate::orchestrator_shell_host::PtyShellHost::new(
+        app.clone(),
+    )));
 }
 
 pub fn handle_mcp_body(
@@ -157,6 +160,41 @@ pub fn orchestrator_set_agent_fitness(
     state.core.set_agent_fitness(&agent, snapshot);
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuleSetInput {
+    pub id: String,
+    pub name: String,
+    pub text: String,
+}
+
+/// The person's sets, pushed from the frontend whenever they change. An empty list is a real
+/// choice ("I removed them all") and is stored as such.
+#[tauri::command]
+pub fn orchestrator_set_rule_sets(
+    state: tauri::State<'_, OrchestratorState>,
+    sets: Vec<RuleSetInput>,
+) {
+    state.core.set_rule_sets(
+        sets.into_iter()
+            .map(|set| crate::orchestrator_core::RuleSet {
+                id: set.id,
+                name: set.name,
+                text: set.text,
+            })
+            .collect(),
+    );
+}
+
+/// What ships with Alethe, so the editor can show ours and restore one.
+#[tauri::command]
+pub fn orchestrator_default_rule_sets() -> Value {
+    json!(crate::orchestrator_core::default_rule_sets()
+        .into_iter()
+        .map(|set| json!({ "id": set.id, "name": set.name, "text": set.text }))
+        .collect::<Vec<_>>())
+}
+
 /// The pane answers a blocked worker directly: the person is already looking at the question.
 #[tauri::command]
 pub fn orchestrator_answer(
@@ -173,6 +211,12 @@ pub fn orchestrator_job_diff(
     job_id: String,
 ) -> Result<String, String> {
     state.core.job_diff(&job_id)
+}
+
+/// Interrupts a running worker and settles it as cancelled — the same path `alethe_cancel` takes.
+#[tauri::command]
+pub fn orchestrator_cancel_job(state: tauri::State<'_, OrchestratorState>, job_id: String) -> Value {
+    json!({ "cancelled": state.core.cancel_jobs(&[job_id]) })
 }
 
 /// The label of the detached board window for one orchestration pane. The frontend reads the pane
@@ -225,15 +269,43 @@ pub fn orchestrator_message(
     crate::orchestrator_core::call_tool(&state.core, tool, &arguments, None)
 }
 
-/// The board's Stop: the same teardown the lead gets from `alethe_cancel`.
+/// The board's shell controls. Stopping waits up to five seconds for Ctrl+C to land, so the work
+/// runs off the thread that received the command.
+async fn on_shells<F>(app: AppHandle, work: F) -> Result<Value, String>
+where
+    F: FnOnce(&Core) -> Result<Value, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<OrchestratorState>();
+        prepare(&app, &state);
+        work(state.core())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[tauri::command]
-pub fn orchestrator_cancel(
-    state: tauri::State<'_, OrchestratorState>,
-    job_id: String,
+pub async fn orchestrator_shell_output(
+    app: AppHandle,
+    shell_id: String,
+    lines: usize,
 ) -> Result<Value, String> {
-    let mut arguments = serde_json::Map::new();
-    arguments.insert("jobIds".into(), Value::Array(vec![Value::String(job_id)]));
-    crate::orchestrator_core::call_tool(&state.core, "alethe_cancel", &arguments, None)
+    on_shells(app, move |core| core.shell_output(&shell_id, lines)).await
+}
+
+#[tauri::command]
+pub async fn orchestrator_shell_stop(app: AppHandle, shell_id: String) -> Result<Value, String> {
+    on_shells(app, move |core| core.stop_shell(&shell_id)).await
+}
+
+#[tauri::command]
+pub async fn orchestrator_shell_restart(app: AppHandle, shell_id: String) -> Result<Value, String> {
+    on_shells(app, move |core| core.restart_shell(&shell_id)).await
+}
+
+#[tauri::command]
+pub async fn orchestrator_shell_remove(app: AppHandle, shell_id: String) -> Result<Value, String> {
+    on_shells(app, move |core| core.remove_shell(&shell_id)).await
 }
 
 /// The board's Restart: the same request again as a new worker under the same planner.

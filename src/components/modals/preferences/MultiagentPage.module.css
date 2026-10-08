@@ -239,3 +239,123 @@
   cursor: pointer;
   user-select: none;
 }
+
+.shortcutsEmpty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.shortcutList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.shortcut {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.shortcutText {
+  grid-column: 1 / -1;
+  min-height: 64px;
+  padding: 8px 10px;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+}
+
+.shortcutText:focus {
+  border-color: var(--accent);
+}
+
+.shortcutActions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.shortcutHint {
+  margin: 4px 0 12px;
+  color: var(--fg-muted);
+  font-size: 10px;
+}
+
+.ruleList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ruleSet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+}
+
+.ruleText {
+  min-height: 160px;
+  padding: 8px 10px;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+}
+
+.ruleText:focus {
+  border-color: var(--accent);
+}
+
+.ruleFoot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ruleCount {
+  margin-right: auto;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.ruleWarn {
+  color: var(--status-offline);
+  font-size: 11px;
+}
+
+.ruleActions {
+  display: flex;
+  gap: 6px;
+}
+
+.ruleUnavailable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 12px;
+}

@@ -1,7 +1,7 @@
 import { type MessageKey, useT } from '../../../lib/i18n'
 import styles from './PluginsPage.module.css'
 
-const CAPABILITY_KEYS: Record<string, MessageKey> = {
+export const CAPABILITY_KEYS: Record<string, MessageKey> = {
   'ui.theme': 'prefs.pluginsCapabilityTheme',
   'ui.pane': 'prefs.pluginsCapabilityPane',
   'ui.sidebarTab': 'prefs.pluginsCapabilitySidebarTab',

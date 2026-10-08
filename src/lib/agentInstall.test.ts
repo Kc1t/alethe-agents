@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   AGENT_INSTALL_CATALOG,
   installArgv,
+  installCommandLine,
   installMethodsFor,
   installShellLine,
   type InstallToolchain,
@@ -179,6 +180,26 @@ describe('non-interactive installers', () => {
     expect(uninstalls.find((method) => method.id === 'choco')?.command).toBe(
       'choco uninstall opencode -y',
     )
+  })
+})
+
+describe('installCommandLine', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('forwards the installer’s own exit status on Windows', () => {
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })
+    // Without this, PowerShell reports success for an installer that failed, and the run is
+    // recorded as a working install that is not there.
+    expect(installCommandLine('npm install -g opencode-ai')).toBe(
+      'npm install -g opencode-ai; exit $LASTEXITCODE',
+    )
+  })
+
+  it('hands a POSIX shell the bare command, whose status is already the shell’s', () => {
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' })
+    expect(installCommandLine('npm install -g opencode-ai')).toBe('npm install -g opencode-ai')
   })
 })
 

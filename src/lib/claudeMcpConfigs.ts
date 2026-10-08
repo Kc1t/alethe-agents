@@ -1,4 +1,5 @@
 import { useProjectsStore } from '../stores/projectsStore'
+import { agentLabel } from './agentProviders'
 import {
   agentHooksSettingsPath,
   aiMemoryDetect,
@@ -8,21 +9,22 @@ import {
   orchestratorMcpConfigPath,
   playwrightMcpConfigPath,
 } from './tauri'
-import type { Project } from './types'
+import type { AgentType, Project } from './types'
 import { toWslGuestPath, wslTargetFor } from './wsl'
 
 /**
  * The terminal a pty belongs to, which is how the orchestration board names its planner. The label
  * is taken before the first spawn, when the tab has no ptyId yet and the pane spawns under its tab
- * id, so a tab is matched by the same `ptyId ?? id` the pane uses.
+ * id, so a tab is matched by the same `ptyId ?? id` the pane uses. When none matches, the agent's
+ * name is still more readable than the raw id.
  */
-export function plannerLabelFor(ptyId: string): string {
+export function plannerLabelFor(ptyId: string, agent?: AgentType): string {
   for (const project of useProjectsStore.getState().projects) {
     for (const terminal of project.terminals) {
       if (terminal.tabs.some((tab) => (tab.ptyId ?? tab.id) === ptyId)) return terminal.name
     }
   }
-  return ptyId
+  return agent ? agentLabel(agent) : ptyId
 }
 
 /** The repository Graphify serves a terminal from, or null when the project has it off. */
@@ -89,7 +91,7 @@ export async function claudeLaunchExtras({
   }
 
   const orchestratorPath = enabledFeatures.orchestrator
-    ? await orchestratorMcpConfigPath(ptyId, plannerLabelFor(ptyId), 'claude').catch(
+    ? await orchestratorMcpConfigPath(ptyId, plannerLabelFor(ptyId, 'claude'), 'claude').catch(
         () => undefined,
       )
     : undefined

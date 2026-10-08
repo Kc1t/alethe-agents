@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import type { AgentFitness } from '../agentFitness'
-import type { OrchestrationRole, OrchestrationSettings } from '../types'
+import type { OrchestrationRole, OrchestrationSettings, RuleSet } from '../types'
 
 export type OrchestratorJobStatus =
   | 'queued'
@@ -83,6 +83,8 @@ export type OrchestratorJob = {
   /** One delegation call is one run; workers from different rounds group by this. */
   runId: string
   runLabel: string | null
+  /** Which rule set this worker was briefed with, by name; null when none applied. */
+  rules: string | null
   spec: string
   cwd: string
   status: OrchestratorJobStatus
@@ -122,12 +124,39 @@ export type OrchestratorPlanner = {
   agent: string
 }
 
+export type OrchestratorShellStatus = 'running' | 'exited' | 'stopped'
+
+/** Who opened a shell. Only planners do today; a worker-owned shell needs no type change. */
+export type OrchestratorShellOwner = { kind: 'planner' | 'worker'; id: string }
+
+/** A long-running command a planner started, owned by Alethe rather than by the planner. */
+export type OrchestratorShell = {
+  id: string
+  name: string
+  command: string
+  cwd: string
+  owner: OrchestratorShellOwner | null
+  status: OrchestratorShellStatus
+  exitCode: number | null
+  startedAtMs: number
+  /** The PTY a terminal view attaches to. */
+  ptyId: string
+}
+
+export type OrchestratorShellOutput = {
+  shellId: string
+  status: OrchestratorShellStatus
+  exitCode: number | null
+  output: string
+}
+
 export type OrchestratorSnapshot = {
   jobs: OrchestratorJob[]
   planners: OrchestratorPlanner[]
   running: number
   queued: number
   concurrencyLimit: number
+  shells: OrchestratorShell[]
   /** The roles from the Orchestration settings, as the orchestrator will apply them. */
   roles: OrchestrationRole[]
 }
@@ -180,6 +209,15 @@ export async function setAgentFitness(agent: string, snapshot: AgentFitness | nu
   return invoke<void>('orchestrator_set_agent_fitness', { agent, snapshot })
 }
 
+/** Pushed whenever the person's sets change; an empty list means they removed them all. */
+export async function orchestratorSetRuleSets(sets: RuleSet[]): Promise<void> {
+  return invoke<void>('orchestrator_set_rule_sets', { sets })
+}
+
+export async function orchestratorDefaultRuleSets(): Promise<RuleSet[]> {
+  return invoke<RuleSet[]>('orchestrator_default_rule_sets')
+}
+
 /** The unified diff a worker has produced so far — the same text `alethe_diff` hands the planner. */
 export async function orchestratorJobDiff(jobId: string): Promise<string> {
   return invoke<string>('orchestrator_job_diff', { jobId })
@@ -202,9 +240,30 @@ export async function orchestratorMessage(
   return invoke<unknown>('orchestrator_message', { jobId, message, steer })
 }
 
-/** Stops a worker the way the lead's `alethe_cancel` does. */
-export async function orchestratorCancel(jobId: string): Promise<unknown> {
-  return invoke<unknown>('orchestrator_cancel', { jobId })
+/** Interrupts a running worker and settles it as cancelled — the same path `alethe_cancel` takes. */
+export async function orchestratorCancelJob(jobId: string): Promise<unknown> {
+  return invoke<unknown>('orchestrator_cancel_job', { jobId })
+}
+
+export async function orchestratorShellOutput(
+  shellId: string,
+  lines: number,
+): Promise<OrchestratorShellOutput> {
+  return invoke<OrchestratorShellOutput>('orchestrator_shell_output', { shellId, lines })
+}
+
+/** Ctrl+C first, the whole process tree after five seconds. */
+export async function orchestratorShellStop(shellId: string): Promise<unknown> {
+  return invoke<unknown>('orchestrator_shell_stop', { shellId })
+}
+
+/** Restarts a running shell, or runs one that exited or was stopped again. */
+export async function orchestratorShellRestart(shellId: string): Promise<unknown> {
+  return invoke<unknown>('orchestrator_shell_restart', { shellId })
+}
+
+export async function orchestratorShellRemove(shellId: string): Promise<unknown> {
+  return invoke<unknown>('orchestrator_shell_remove', { shellId })
 }
 
 /** Runs a worker's request again as a new worker under the same planner. */

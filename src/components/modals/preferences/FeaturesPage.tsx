@@ -10,7 +10,7 @@ export function FeaturesPage() {
 
   return (
     <div id="optional-features">
-      <FeaturesStep expandSecondaryByDefault showPlaywrightAdvanced />
+      <FeaturesStep expandSecondaryByDefault showPlaywrightAdvanced showAiMemoryPanel />
       {preferences.enabledFeatures.mcp ? (
         <button
           type="button"

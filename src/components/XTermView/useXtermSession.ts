@@ -21,6 +21,7 @@ import {
 } from '../../lib/claudeMcpConfigs'
 import { claudeSessionFromHook } from '../../lib/claudeSessionTracking'
 import { getLocale, translate } from '../../lib/i18n'
+import { isOrchestratorShellPty } from '../../lib/orchestratorShells'
 import { isWindows } from '../../lib/platform'
 import { ptyLaunchTarget } from '../../lib/ptyLaunchTarget'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
@@ -1003,6 +1004,14 @@ export function useXtermSession(params: {
           return
         }
 
+        // Only the board starts an orchestrator shell. A view that outlived it, such as one left
+        // open across an app restart, must not spawn an empty shell under its id.
+        if (isOrchestratorShellPty(ptyId)) {
+          terminal.write(`\r\n${translate(getLocale(), 'orchestrator.shell.viewGone')}\r\n`)
+          setBootPhase('ready')
+          return
+        }
+
         let launcherOverride: string | undefined
         const wslTarget = wslTargetFor(
           cwd,
@@ -1233,7 +1242,7 @@ export function useXtermSession(params: {
           if (disposed) return
 
           // Registers this Codex terminal as a planner too, so it can call alethe_delegate.
-          await codexMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId), command).catch(
+          await codexMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId, command), command).catch(
             () => undefined,
           )
           if (disposed) return

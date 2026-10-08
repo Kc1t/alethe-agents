@@ -88,8 +88,11 @@ pub fn agent_canvas_mirror() -> Option<String> {
 
 #[tauri::command]
 pub fn agent_hooks_settings_path(
+    app: AppHandle,
     planner_id: String,
     orchestrator: Option<bool>,
+    ai_memory_enabled: Option<bool>,
+    ai_memory_port: Option<u16>,
 ) -> Result<String, String> {
     let orchestrator = orchestrator.unwrap_or(true);
     let port = wait_for_listener_port()
@@ -143,6 +146,16 @@ pub fn agent_hooks_settings_path(
             hooks.insert(event.to_string(), hook.clone());
         }
     }
+    // Capture rides in the same file, so one writer owns it and the scope is this terminal.
+    // `merge_hooks` refuses an unfamiliar shape rather than writing a broken file.
+    let ai_port = ai_memory_port.unwrap_or(crate::ai_memory::DEFAULT_PORT);
+    let ai_on = ai_memory_enabled.unwrap_or(false);
+    if let Some(theirs) = crate::ai_memory::claude_hooks(&app, ai_on, ai_port) {
+        if let Err(error) = crate::ai_memory_hooks::merge_hooks(&mut hooks, &theirs) {
+            eprintln!("[ai_memory] hooks not merged: {error}");
+        }
+    }
+
     settings.insert("hooks".to_string(), serde_json::Value::Object(hooks));
 
     let body = serde_json::to_string_pretty(&serde_json::Value::Object(settings))

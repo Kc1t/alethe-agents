@@ -3,6 +3,7 @@ mod agent_cost;
 mod agent_events;
 mod agent_library;
 mod ai_memory;
+mod ai_memory_hooks;
 mod antigravity_sessions;
 mod antigravity_usage;
 mod backup;
@@ -50,6 +51,7 @@ mod opencode_gsd_plugin;
 mod opencode_sessions;
 pub mod orchestrator;
 pub mod orchestrator_core;
+mod orchestrator_shell_host;
 mod paths;
 mod planning;
 mod planning_gate;
@@ -216,6 +218,7 @@ pub fn run() {
         .manage(cli_launch::PendingOpen::default())
         .manage(orchestrator::OrchestratorState::default())
         .manage(router9::Router9Process::default())
+        .manage(ai_memory::AiMemoryProcess::default())
         .manage(speech::SpeechState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -316,12 +319,18 @@ pub fn run() {
             orchestrator::orchestrator_apply_settings,
             orchestrator::orchestrator_codex_models,
             orchestrator::orchestrator_set_agent_fitness,
+            orchestrator::orchestrator_set_rule_sets,
+            orchestrator::orchestrator_default_rule_sets,
             orchestrator::orchestrator_message,
-            orchestrator::orchestrator_cancel,
             orchestrator::orchestrator_restart,
             orchestrator::open_orchestration_window,
             orchestrator::orchestrator_answer,
             orchestrator::orchestrator_job_diff,
+            orchestrator::orchestrator_cancel_job,
+            orchestrator::orchestrator_shell_output,
+            orchestrator::orchestrator_shell_stop,
+            orchestrator::orchestrator_shell_restart,
+            orchestrator::orchestrator_shell_remove,
             browser_session::browser_session_start,
             browser_session::browser_session_stop,
             browser_session::browser_session_status,
@@ -579,6 +588,10 @@ pub fn run() {
             ai_memory::ai_memory_mcp_config_path,
             ai_memory::ai_memory_opencode_config_write,
             ai_memory::ai_memory_codex_config_write,
+            ai_memory::ai_memory_install,
+            ai_memory::ai_memory_start,
+            ai_memory::ai_memory_stop,
+            ai_memory::ai_memory_counts,
             router9::router9_status,
             router9::router9_install_command,
             router9::router9_uninstall_command,
@@ -624,6 +637,7 @@ pub fn run() {
                     &_app_handle.state::<browser_session::BrowserSessionState>(),
                 );
                 router9::stop_managed(&_app_handle.state::<router9::Router9Process>());
+                ai_memory::stop_managed(&_app_handle.state::<ai_memory::AiMemoryProcess>());
             }
 
             if let tauri::RunEvent::Exit = event {

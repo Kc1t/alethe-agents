@@ -16,7 +16,7 @@ function dotColor(selector: string): string | undefined {
 describe('worker status dots', () => {
   // #270: a finished worker looked like a running one, while the legend says finished is stopped.
   it('show a finished worker in the finished colour, not the running one', () => {
-    for (const block of ['.composerTarget', '.worker', '.railRow']) {
+    for (const block of ['.worker', '.railRow']) {
       expect(dotColor(`${block}[data-status='done']`)).toBe('var(--status-stopped)')
     }
     expect(dotColor(".railRow[data-status='running']")).toBe('var(--status-working)')

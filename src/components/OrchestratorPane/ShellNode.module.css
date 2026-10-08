@@ -1,0 +1,138 @@
+.node {
+  position: absolute;
+  overflow: visible;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+}
+
+.node[data-selected='true'] .card {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 1px var(--accent-ring);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-stopped);
+}
+
+.node[data-status='running'] .dot {
+  background: var(--status-working);
+}
+
+.node[data-status='exited'] .dot {
+  background: var(--status-offline);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  flex: none;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.command {
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.output {
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.controls {
+  position: absolute;
+  top: -30px;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--anim-fast);
+}
+
+.node:hover .controls,
+.node:focus-within .controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition:
+    background var(--anim-fast),
+    color var(--anim-fast);
+}
+
+.control:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.control[data-control='stop']:hover:not(:disabled),
+.control[data-control='remove']:hover:not(:disabled) {
+  color: var(--status-offline);
+}
+
+.control:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
