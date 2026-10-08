@@ -1088,6 +1088,30 @@ pub async fn write_pty(
     .map_err(|error| format!("write_pty: falha na task bloqueante: {error}"))?
 }
 
+/// Gives the pty `cols`x`rows` unless it already has that size, and says whether it resized.
+///
+/// ConPTY repaints the whole viewport on every resize, the same size included, while the program
+/// in it hears nothing. The panes force a resize on many events (tab switch, inspector, resume),
+/// and each repaint of a tall Claude Code reply wrote its earlier lines over the newer ones (#303).
+/// The pty's own size is compared, not the pane's last one, so a size another viewer set (remote
+/// control) is still corrected.
+fn apply_pty_size(master: &dyn MasterPty, cols: u16, rows: u16) -> Result<bool, String> {
+    let wanted = PtySize {
+        rows: rows.max(1),
+        cols: cols.max(1),
+        pixel_width: 0,
+        pixel_height: 0,
+    };
+    if master
+        .get_size()
+        .is_ok_and(|current| current.rows == wanted.rows && current.cols == wanted.cols)
+    {
+        return Ok(false);
+    }
+    master.resize(wanted).map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
 #[tauri::command]
 pub async fn resize_pty(
     app: AppHandle,
@@ -1118,18 +1142,15 @@ pub async fn resize_pty(
             )
         };
 
-        {
+        let resized = {
             let master = master
                 .lock()
                 .map_err(|_| "PTY master lock poisoned".to_string())?;
-            master
-                .resize(PtySize {
-                    rows: rows.max(1),
-                    cols: cols.max(1),
-                    pixel_width: 0,
-                    pixel_height: 0,
-                })
-                .map_err(|error| error.to_string())?;
+            apply_pty_size(&**master, cols, rows)?
+        };
+        // Nothing changed: no repaint, so neither remote viewers nor OpenCode's nudge need to hear.
+        if !resized {
+            return Ok(());
         }
 
         remote_hub.publish(&id, || {
@@ -1858,6 +1879,29 @@ pub fn install_kill_on_close_guard() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // A forced resize to the size the pty already has must not reach it: on ConPTY every resize
+    // repaints the viewport (#303). A real size change, or one undoing another viewer's, still does.
+    #[test]
+    fn a_same_size_resize_never_reaches_the_pty() {
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("a pty");
+        let master = &*pair.master;
+        assert!(!apply_pty_size(master, 80, 24).unwrap());
+        assert!(apply_pty_size(master, 100, 30).unwrap());
+        assert!(!apply_pty_size(master, 100, 30).unwrap());
+        let size = master.get_size().unwrap();
+        assert_eq!((size.cols, size.rows), (100, 30));
+        // A zero dimension is clamped the way the resize always was.
+        assert!(apply_pty_size(master, 0, 0).unwrap());
+        assert!(!apply_pty_size(master, 1, 1).unwrap());
+    }
 
     #[cfg(not(windows))]
     #[test]

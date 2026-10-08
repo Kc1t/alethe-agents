@@ -286,6 +286,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Long Claude Code replies no longer get their earlier lines written over the newer ones on
+  Windows** ([#303](https://github.com/Kc1t/alethe-agents/issues/303)). Panes force a terminal
+  resize on many events (switching tabs, the inspector, resuming), and ConPTY repaints the whole
+  visible screen on every resize, even to the size it already has. A resize to the pty's current
+  size is now skipped, so only a real size change repaints.
 - **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
   server or watcher it already has running on the board (for example after reopening the app, or
   from a new planner terminal) now reuses that running shell and adopts it under the new planner,
