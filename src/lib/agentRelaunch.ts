@@ -1,3 +1,4 @@
+import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
 import { claudeLaunchExtras, recordClaudeLaunch } from './claudeMcpConfigs'
@@ -28,7 +29,9 @@ export async function relaunchAgentPty({
   cwd?: string
   graphifyRepo?: string | null
 }): Promise<AgentLaunch> {
-  const prepared = preparePtyRuntimeLaunch(agent, runtimeProfile, extraArgs ?? [])
+  const prepared = preparePtyRuntimeLaunch(agent, runtimeProfile, extraArgs ?? [], undefined, {
+    claudeFullscreen: useProjectsStore.getState().preferences.claudeFullscreen,
+  })
   const extras =
     agent === 'claude' ? await claudeLaunchExtras({ ptyId, cwd, graphifyRepo }) : undefined
   const launch = buildAgentLaunch(

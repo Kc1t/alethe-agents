@@ -1098,6 +1098,10 @@ export const en = {
   'prefs.terminalFontDesc':
     'Font stack used by the terminal panes. Prompts such as oh-my-posh and Starship need a Nerd Font installed on the system — for example "CaskaydiaCove Nerd Font".',
   'prefs.terminalFontFamily': 'Font family',
+  'prefs.claudeFullscreen': 'Claude Code fullscreen rendering',
+  'prefs.claudeFullscreenDesc':
+    "Claude Code's fullscreen renderer draws the conversation on the alternate screen and takes the mouse, like vim. Alethe launches the classic renderer instead, so the wheel, the scrollback and the search stay with the pane — the same ground Codex gets.",
+  'prefs.claudeFullscreenEnable': "Let Claude Code's fullscreen renderer take over (vim-style)",
   'prefs.cliPaths': 'Agent CLI paths',
   'prefs.cliPathsDesc':
     'Alethe finds each agent CLI on its own. Override it only when the CLI lives somewhere unusual — and point it at the command-line tool, not at a desktop app. These are Windows paths: terminals whose folder is inside WSL ignore them and resolve the CLI inside the distro.',

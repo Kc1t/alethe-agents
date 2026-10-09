@@ -801,6 +801,13 @@ export type Preferences = {
   /** Font stack for the terminal. A Nerd Font is required for prompts such as oh-my-posh. */
   terminalFontFamily: string
   /**
+   * Claude Code's fullscreen renderer draws on the alternate screen and takes the mouse, so the
+   * wheel and the scrollback stay inside the agent. Off — the default — launches the classic
+   * renderer instead, the same ground Codex gets with `--no-alt-screen`, which leaves scrolling
+   * and searching with the pane.
+   */
+  claudeFullscreen?: boolean
+  /**
    * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
@@ -987,6 +994,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   workerRuleSets: null,
   shellPath: null,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
+  claudeFullscreen: false,
   pomodoroWorkMinutes: 25,
   pomodoroShortBreakMinutes: 5,
   pomodoroLongBreakMinutes: 15,

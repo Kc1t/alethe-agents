@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Claude Code's fullscreen renderer is now a choice, and it starts off.** In fullscreen rendering
+  Claude Code draws on the terminal's alternate screen and takes the mouse, so scrolling, selecting
+  and searching belong to the agent instead of the pane — on a slow terminal, that is also where a
+  fast scroll tears. Alethe launches Claude Code in the classic renderer, the same ground Codex gets,
+  and Preferences → Terminal has a *Claude Code fullscreen rendering* switch for anyone who wants the
+  fullscreen view back. Existing profiles keep working: the switch starts off, and turning it on
+  applies to terminals opened afterwards.
+
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with
