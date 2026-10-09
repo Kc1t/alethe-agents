@@ -918,6 +918,10 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.terminalFontDesc':
     '终端窗格使用的字体栈。oh-my-posh 和 Starship 等提示符需要系统中已安装 Nerd Font，例如 "CaskaydiaCove Nerd Font"。',
   'prefs.terminalFontFamily': '字体',
+  'prefs.claudeFullscreen': 'Claude Code 全屏渲染',
+  'prefs.claudeFullscreenDesc':
+    'Claude Code 的全屏渲染把对话画在备用屏幕上并接管鼠标（类似 vim）。Alethe 改用经典渲染器，滚轮、回滚和搜索都留给面板——与 Codex 一致。',
+  'prefs.claudeFullscreenEnable': '允许 Claude Code 的全屏渲染接管（vim 风格）',
   'prefs.cliPaths': '代理 CLI 路径',
   'prefs.cliPathsDesc':
     'Alethe 会自行找到每个代理的 CLI。只有在 CLI 位于不寻常的位置时才覆盖它——并且应指向命令行工具，而不是桌面应用程序。这些是 Windows 路径：文件夹位于 WSL 中的终端会忽略它们，并在发行版内解析 CLI。',

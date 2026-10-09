@@ -50,6 +50,14 @@ describe('preference normalization', () => {
     expect(preferences.terminalFontFamily).toBe(DEFAULT_TERMINAL_FONT_FAMILY)
   })
 
+  it('launches Claude in the classic renderer unless the profile asked for fullscreen', () => {
+    expect(DEFAULT_PREFERENCES.claudeFullscreen).toBe(false)
+    expect(normalizePreferences({}).claudeFullscreen).toBe(false)
+    expect(
+      normalizePreferences({ ...DEFAULT_PREFERENCES, claudeFullscreen: true }).claudeFullscreen,
+    ).toBe(true)
+  })
+
   it('keeps a configured shell and trims it', () => {
     const preferences = normalizePreferences({
       ...DEFAULT_PREFERENCES,

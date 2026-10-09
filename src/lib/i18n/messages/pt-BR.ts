@@ -1118,6 +1118,11 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.terminalFontDesc':
     'Fontes usadas nos painéis de terminal. Prompts como oh-my-posh e Starship precisam de uma Nerd Font instalada no sistema — por exemplo "CaskaydiaCove Nerd Font".',
   'prefs.terminalFontFamily': 'Família da fonte',
+  'prefs.claudeFullscreen': 'Renderização em tela cheia do Claude Code',
+  'prefs.claudeFullscreenDesc':
+    'O renderer de tela cheia do Claude Code desenha a conversa na tela alternativa e toma o mouse, como o vim. O Alethe usa o renderer clássico, então o wheel, o scrollback e a busca ficam com a pane — o mesmo terreno que o Codex recebe.',
+  'prefs.claudeFullscreenEnable':
+    'Deixar o renderer de tela cheia do Claude Code assumir (estilo vim)',
   'prefs.cliPaths': 'Caminhos dos CLIs',
   'prefs.cliPathsDesc':
     'O Alethe encontra o CLI de cada agente sozinho. Só defina um caminho se o CLI estiver num lugar fora do comum — e aponte para a ferramenta de linha de comando, não para o aplicativo gráfico. Esses caminhos são do Windows: terminais cuja pasta está dentro do WSL os ignoram e resolvem o CLI dentro da distro.',

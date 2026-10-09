@@ -17,12 +17,21 @@ export function getTerminalScrollbackRows(options?: {
   return options.agent ? 10_000 : 6_000
 }
 
-export function shouldScrollHostScrollback(
-  bufferType: 'normal' | 'alternate',
-  shiftKey: boolean,
-): boolean {
-  if (shiftKey) return true
-  return bufferType !== 'alternate'
+export type WheelTarget = 'scrollback' | 'app' | 'recover'
+
+/**
+ * Who a wheel event belongs to. `scrollback` scrolls the pane's own history, `app` leaves the event
+ * to the alternate-screen TUI that owns the screen, and `recover` means the pane is stuck showing a
+ * screen no live process owns: the modes have to be undone before the scrollback is reachable.
+ */
+export function resolveWheelTarget(options: {
+  bufferType: 'normal' | 'alternate'
+  shiftKey: boolean
+  sessionAlive: boolean
+}): WheelTarget {
+  if (options.shiftKey || options.bufferType !== 'alternate') return 'scrollback'
+  // A live fullscreen TUI scrolls itself (mouse where it tracks the mouse, keyboard otherwise).
+  return options.sessionAlive ? 'app' : 'recover'
 }
 
 export function normalizePastedText(text: string): string {

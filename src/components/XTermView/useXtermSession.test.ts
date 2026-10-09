@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
+import type { Mock } from 'vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { plannerLabelFor } from '../../lib/claudeMcpConfigs'
@@ -23,12 +24,33 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('@tauri-apps/api/webview', () => ({
   getCurrentWebview: () => ({ onDragDropEvent: async () => () => {} }),
 }))
+const exits = vi.hoisted(() => new Map<string, (payload: { code?: number }) => void>())
+const terminals = vi.hoisted(
+  () => [] as Array<{ writes: string[]; modes: Record<string, unknown> }>,
+)
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80
     rows = 24
     unicode = { activeVersion: '11' }
     options = { fontSize: 14 }
+    buffer = { active: { type: 'normal' as 'normal' | 'alternate', baseY: 0, viewportY: 0 } }
+    modes = {
+      mouseTrackingMode: 'none',
+      bracketedPasteMode: false,
+      sendFocusMode: false,
+    }
+    writes: string[] = []
+    scrollLines = vi.fn()
+    scrollToLine = vi.fn()
+    scrollToBottom() {}
+    constructor() {
+      terminals.push(this)
+    }
+    write(data: string, callback?: () => void) {
+      this.writes.push(data)
+      if (callback) queueMicrotask(callback)
+    }
     loadAddon() {}
     open() {}
     focus() {}
@@ -58,7 +80,12 @@ vi.mock('../../lib/tauri', async (importOriginal) => ({
   setPtyVisible: vi.fn(async () => true),
   listenPtyData: vi.fn(async () => () => {}),
   listenPtyActivity: vi.fn(async () => () => {}),
-  listenPtyExit: vi.fn(async () => () => {}),
+  listenPtyExit: vi.fn(async (id: string, handler: (payload: { code?: number }) => void) => {
+    exits.set(id, handler)
+    return () => {
+      exits.delete(id)
+    }
+  }),
   findCliLauncher: vi.fn(async () => 'claude'),
   snapshotClaudeSessions: vi.fn(async () => [
     { id: 'bananas', modified_at_ms: 1 },
@@ -115,6 +142,18 @@ function params(): Parameters<typeof useXtermSession>[0] {
     recordPromptInput: () => false,
     navigateHistory: vi.fn(),
   }
+}
+
+type MockTerminal = {
+  writes: string[]
+  buffer: { active: { type: 'normal' | 'alternate' } }
+  modes: { mouseTrackingMode: string; bracketedPasteMode: boolean; sendFocusMode: boolean }
+  scrollLines: Mock
+}
+
+/** The terminal the hook built, with the pieces these tests read and drive. */
+function paneTerminal(input: Parameters<typeof useXtermSession>[0]): MockTerminal {
+  return input.terminalRef.current as unknown as MockTerminal
 }
 
 beforeEach(() => {
@@ -222,5 +261,64 @@ describe('Claude terminal session lifecycle', () => {
     expect(original).toHaveBeenLastCalledWith('new-chat')
     expect(input.onSessionIdRef.current).not.toHaveBeenCalled()
     expect(peekSession('tab-0')?.claudeSessionId).toBe('new-chat')
+  })
+
+  it('frees a pane when a fullscreen session exits without undoing its modes', async () => {
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(exits.has('pty-0')).toBe(true))
+
+    // What Claude Code in fullscreen rendering leaves on the pane when it is killed.
+    const terminal = paneTerminal(input)
+    terminal.modes.mouseTrackingMode = 'vt200'
+    // Past the early-exit window, so this is a real exit and not the start-up retry.
+    input.spawnedAtRef.current = Date.now() - 30_000
+
+    act(() => exits.get('pty-0')?.({ code: 0 }))
+
+    expect(terminal.writes.join('')).toContain('\x1b[?1049l\x1b[?1000l')
+  })
+
+  it('gives a dead pane its scrollback back on the wheel', async () => {
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(exits.has('pty-0')).toBe(true))
+    input.spawnedAtRef.current = Date.now() - 30_000
+    act(() => exits.get('pty-0')?.({ code: 0 }))
+
+    const terminal = paneTerminal(input)
+    terminal.buffer.active.type = 'alternate'
+    terminal.modes.mouseTrackingMode = 'vt200'
+    terminal.writes.length = 0
+
+    act(() => {
+      input.containerRef.current.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 40, bubbles: true, cancelable: true }),
+      )
+    })
+
+    // The pane is stuck on a screen nobody owns: the modes come off, then the scroll happens.
+    expect(terminal.writes.join('')).toContain('\x1b[?1049l')
+    await waitFor(() => expect(terminal.scrollLines).toHaveBeenCalled())
+  })
+
+  it('leaves the wheel to a live fullscreen session', async () => {
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+
+    const terminal = paneTerminal(input)
+    terminal.buffer.active.type = 'alternate'
+    terminal.modes.mouseTrackingMode = 'vt200'
+    terminal.writes.length = 0
+
+    act(() => {
+      input.containerRef.current.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 40, bubbles: true, cancelable: true }),
+      )
+    })
+
+    expect(terminal.scrollLines).not.toHaveBeenCalled()
+    expect(terminal.writes.join('')).not.toContain('\x1b[?1049l')
   })
 })
