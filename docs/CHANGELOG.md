@@ -286,6 +286,18 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Returning to a pane no longer throws away where you were reading.** A pane that produced output
+  while it was hidden rebuilds its screen when you come back to it, and that rebuild left the view at
+  the newest line: scrolling up through an agent's answer and switching tabs dropped you back at the
+  end of the conversation. Alethe now restores the same distance from the end it had before the
+  rebuild, so a reader stays where they were, and a pane that was following the output keeps following.
+
+- **The wheel no longer goes dead in a pane an agent took over and left.** Claude Code in fullscreen
+  rendering draws on the terminal's alternate screen and takes the mouse; when a session ended
+  without undoing those modes, the pane kept sending wheel events to a process that was gone, so
+  nothing scrolled — not the app, not the history. Alethe now restores the pane when such a session
+  exits, and a wheel over a pane stuck that way brings the scrollback back instead of doing nothing.
+
 - **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
   server or watcher it already has running on the board (for example after reopening the app, or
   from a new planner terminal) now reuses that running shell and adopts it under the new planner,
