@@ -12,6 +12,7 @@ import {
 import { useEffect, useState } from 'react'
 
 import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
+import { posixKey } from '../../lib/platform'
 import {
   type CrashReport,
   getJobGuardStatus,
@@ -104,8 +105,8 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
   const diagnostics: string[] = []
 
   const health = memoryHealth(latest)
-  if (health === 'critical') diagnostics.push(t('mod.diagSystemCritical'))
-  else if (health === 'warning') diagnostics.push(t('mod.diagSystemWarning'))
+  if (health === 'critical') diagnostics.push(t(posixKey('mod.diagSystemCritical')))
+  else if (health === 'warning') diagnostics.push(t(posixKey('mod.diagSystemWarning')))
 
   if (totalGrowth >= 512) {
     diagnostics.push(t('mod.diagHighGrowth', { value: formatMb(totalGrowth) }))
@@ -370,10 +371,14 @@ export function MemoryAnalyticsModal() {
         <section className={`${styles.panel} ${styles.healthPanel}`} data-level={health}>
           <div className={styles.panelHeader}>
             <div>
-              <h3>{t(`mod.health.${health}.title`)}</h3>
+              <h3>
+                {health === 'critical'
+                  ? t(posixKey('mod.health.critical.title'))
+                  : t(`mod.health.${health}.title`)}
+              </h3>
               <p>
                 {latest
-                  ? t(`mod.health.${health}.body`, {
+                  ? t(posixKey(`mod.health.${health}.body`), {
                       available: formatMb(latest.system_available_mb),
                       total: formatMb(latest.system_total_mb),
                     })

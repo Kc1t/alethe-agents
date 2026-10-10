@@ -91,6 +91,8 @@ export const en = {
 
   /* ---- agents ---- */
   'agent.shell.desc': 'PowerShell · cmd',
+  'agent.shell.descMac': 'zsh · bash',
+  'agent.shell.descLinux': 'bash · zsh',
   'agent.wsl.desc': 'Windows Subsystem for Linux',
   'agent.claude.desc': 'Anthropic CLI',
   'agent.codex.desc': 'OpenAI CLI',
@@ -806,6 +808,8 @@ export const en = {
   'prefs.resourcePolicy': 'Memory monitoring',
   'prefs.resourcePolicyDesc':
     'Inspect real app and Windows memory without automatically closing or parking runtimes.',
+  'prefs.resourcePolicyDescPosix':
+    'Inspect real app and system memory without automatically closing or parking runtimes.',
   'prefs.resourcePolicySmart': 'Smart LRU',
   'prefs.resourcePolicyManual': 'Monitor only',
   'prefs.resourceBudget': 'Hard budget (MB)',
@@ -1093,6 +1097,8 @@ export const en = {
   'prefs.shell': 'Shell',
   'prefs.shellDesc':
     'Alethe picks the shell on its own (PowerShell 7 when available, then Windows PowerShell; $SHELL elsewhere). Point it at another binary to override that — it applies to Shell tabs, not to agent tabs.',
+  'prefs.shellDescPosix':
+    'Alethe picks the shell on its own ($SHELL). Point it at another binary to override that — it applies to Shell tabs, not to agent tabs.',
   'prefs.shellPathPick': 'Select the shell executable',
   'prefs.terminalFont': 'Terminal font',
   'prefs.terminalFontDesc':
@@ -1101,6 +1107,8 @@ export const en = {
   'prefs.cliPaths': 'Agent CLI paths',
   'prefs.cliPathsDesc':
     'Alethe finds each agent CLI on its own. Override it only when the CLI lives somewhere unusual — and point it at the command-line tool, not at a desktop app. These are Windows paths: terminals whose folder is inside WSL ignore them and resolve the CLI inside the distro.',
+  'prefs.cliPathsDescPosix':
+    'Alethe finds each agent CLI on its own. Override it only when the CLI lives somewhere unusual — and point it at the command-line tool, not at a desktop app.',
   'prefs.cliPathAuto': 'Detected automatically',
   'prefs.cliPathSet': 'Set path',
   'prefs.cliPathReset': 'Reset',
@@ -1186,9 +1194,9 @@ export const en = {
   'prefs.discordPresenceHint': 'Shows that you are using Alethe without exposing project names.',
   'prefs.namePlaceholder': 'Name',
   'prefs.photoPlaceholder': 'Photo link',
-  'prefs.zoomDecrease': 'Decrease zoom (Ctrl+-)',
-  'prefs.zoomIncrease': 'Increase zoom (Ctrl+=)',
-  'prefs.zoomReset': 'Reset zoom (Ctrl+0)',
+  'prefs.zoomDecrease': 'Decrease zoom ({shortcut})',
+  'prefs.zoomIncrease': 'Increase zoom ({shortcut})',
+  'prefs.zoomReset': 'Reset zoom ({shortcut})',
   'prefs.spotifyHint':
     'Register {redirect} as a Redirect URI in the Spotify Developer Dashboard. In dev, {idEnv} and {secretEnv} still work as a fallback.',
   'prefs.checkUpdates': 'Software updates',
@@ -1800,6 +1808,8 @@ export const en = {
   'mod.noDataYet': 'Not enough data yet.',
   'mod.diagSystemCritical': 'Windows available memory is critically low.',
   'mod.diagSystemWarning': 'Windows available memory is getting low.',
+  'mod.diagSystemCriticalPosix': 'Available system memory is critically low.',
+  'mod.diagSystemWarningPosix': 'Available system memory is getting low.',
   'mod.diagOver2gb':
     'Total usage above 2 GB. Consider suspending idle groups or restarting old panes.',
   'mod.diagOver1gb': 'Total usage above 1 GB. Track growth before opening more terminals.',
@@ -1816,12 +1826,19 @@ export const en = {
   'mod.health.normal.title': 'Memory is healthy',
   'mod.health.normal.body':
     'Windows has {available} available out of {total}. Alethe will not close tabs automatically.',
+  'mod.health.normal.bodyPosix':
+    'The system has {available} available out of {total}. Alethe will not close tabs automatically.',
   'mod.health.warning.title': 'Available memory is getting low',
   'mod.health.warning.body':
     'Windows has {available} available out of {total}. Review the largest runtime below before opening many more.',
+  'mod.health.warning.bodyPosix':
+    'The system has {available} available out of {total}. Review the largest runtime below before opening many more.',
   'mod.health.critical.title': 'Windows memory is critically low',
   'mod.health.critical.body':
     'Windows has only {available} available out of {total}. Alethe will warn, but any session closure remains your decision.',
+  'mod.health.critical.titlePosix': 'System memory is critically low',
+  'mod.health.critical.bodyPosix':
+    'The system has only {available} available out of {total}. Alethe will warn, but any session closure remains your decision.',
   'mod.clearHistory': 'Clear history',
   'mod.now': 'Now',
   'mod.peak': 'Peak',
@@ -1976,6 +1993,11 @@ export const en = {
   'ui.terminal.openInExplorerCwd': 'Open in Explorer · {cwd}',
   'ui.terminal.openLiveCwdInExplorer': 'Open live cwd in Explorer',
   'ui.terminal.openInExplorer': 'Open in Explorer',
+  'ui.terminal.openInExplorerMac': 'Open in Finder',
+  'ui.terminal.openInExplorerLinux': 'Open in file manager',
+  'ui.terminal.fileManager': 'Explorer',
+  'ui.terminal.fileManagerMac': 'Finder',
+  'ui.terminal.fileManagerLinux': 'file manager',
   'ui.terminal.openInVscodeCwd': 'Open in VS Code · {cwd}',
   'ui.terminal.openLiveCwdInVscode': 'Open live cwd in VS Code',
   'ui.terminal.openInVscode': 'Open in VS Code',
@@ -2026,6 +2048,10 @@ export const en = {
   'files.readError': 'Could not read this folder.',
   'files.reveal': 'Reveal in File Explorer',
   'files.revealFolder': 'Open folder in File Explorer',
+  'files.revealMac': 'Reveal in Finder',
+  'files.revealLinux': 'Show in file manager',
+  'files.revealFolderMac': 'Open folder in Finder',
+  'files.revealFolderLinux': 'Open folder in file manager',
   'files.addToGrid': 'Add to grid',
   'files.openMarkdownSidebar': 'Open in right Markdown viewer',
   'files.preview': 'Preview',
@@ -2057,7 +2083,7 @@ export const en = {
   'git.detached': 'detached',
   'git.ahead': '{count} commit(s) ahead',
   'git.behind': '{count} commit(s) behind',
-  'git.commit.placeholder': 'Message (Ctrl+Enter to commit)',
+  'git.commit.placeholder': 'Message ({shortcut} to commit)',
   'git.commit.action': 'Commit',
   'git.commit.busy': 'Working...',
   'git.commit.done': 'Commit created',
@@ -2447,7 +2473,7 @@ export const en = {
   'orchestrator.runEyebrow': 'run',
   'orchestrator.runDone': '{done}/{total} done',
   'orchestrator.attentionLabel': 'needs you elsewhere',
-  'orchestrator.canvasHint': 'Drag the canvas to pan · Ctrl + scroll to zoom',
+  'orchestrator.canvasHint': 'Drag the canvas to pan · {modifier} + scroll to zoom',
   'orchestrator.forestHint':
     'One tree per delegation call · the workers under a run do not depend on each other.',
   'orchestrator.runNodeTitle': 'The delegation that started these workers',
@@ -3382,7 +3408,8 @@ export const en = {
   'voice.history.tabTitle': 'Jev history',
   'voice.history.clear': 'Clear history',
   'voice.history.emptyTitle': 'No commands yet',
-  'voice.history.emptyBody': 'Press Ctrl+Shift+Space, say what you want, and it shows up here.',
+  'voice.history.emptyBody': 'Press {shortcut}, say what you want, and it shows up here.',
+  'voice.history.spaceKey': 'Space',
   'voice.history.silence': '(silence)',
   'voice.history.status.deciding': 'deciding',
   'voice.history.status.ran': 'ran',

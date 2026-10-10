@@ -18,6 +18,7 @@ import { readableError } from '../../lib/errors'
 import { writeFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
+import { platformKey } from '../../lib/platform'
 import {
   deleteFilesystemEntry,
   type DirectoryEntry,
@@ -216,8 +217,8 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
           type="button"
           className={styles.iconButton}
           onClick={() => void openInFileExplorer(liveCwd)}
-          title={t('files.revealFolder')}
-          aria-label={t('files.revealFolder')}
+          title={t(platformKey('files.revealFolder'))}
+          aria-label={t(platformKey('files.revealFolder'))}
         >
           <FolderSearch size={13} />
         </button>
@@ -279,7 +280,7 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
           ) : null}
           <MenuAction
             icon={<FolderSearch size={13} />}
-            label={t('files.reveal')}
+            label={t(platformKey('files.reveal'))}
             onClick={() => {
               setMenu(null)
               void openInFileExplorer(menu.entry.path)

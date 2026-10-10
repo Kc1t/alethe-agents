@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   AGENT_INSTALL_CATALOG,
@@ -23,7 +23,19 @@ const BARE: InstallToolchain = {
   pnpm: false,
 }
 
+const WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+const LINUX_UA = 'Mozilla/5.0 (X11; Linux x86_64)'
+
+// The catalog is written Windows-first; these suites pin that platform explicitly.
+function onWindows() {
+  beforeEach(() => vi.stubGlobal('navigator', { userAgent: WINDOWS_UA }))
+  afterEach(() => vi.unstubAllGlobals())
+}
+
 describe('installMethodsFor', () => {
+  onWindows()
+
   it('offers the native installer first even when npm is available', () => {
     const methods = installMethodsFor('claude', { ...BARE, node: 'v22.3.0', npm: true })
     expect(methods.map((method) => method.id)).toEqual(['native', 'npm'])
@@ -96,6 +108,8 @@ describe('installMethodsFor', () => {
 })
 
 describe('needsNodeToolchain', () => {
+  onWindows()
+
   it('flags npm-only agents when npm is missing', () => {
     expect(needsNodeToolchain('freebuff', BARE)).toBe(true)
     expect(needsNodeToolchain('freebuff', { ...BARE, npm: true })).toBe(false)
@@ -117,6 +131,8 @@ describe('needsNodeToolchain', () => {
 })
 
 describe('uninstallMethodsFor', () => {
+  onWindows()
+
   it('derives the uninstall command from the install command', () => {
     const [method] = uninstallMethodsFor('opencode', { ...BARE, npm: true })
     expect(method.command).toBe('npm uninstall -g opencode-ai')
@@ -154,11 +170,13 @@ describe('non-interactive installers', () => {
     choco: true,
   }
   const agents = Object.keys(AGENT_INSTALL_CATALOG) as Array<keyof typeof AGENT_INSTALL_CATALOG>
+  vi.stubGlobal('navigator', { userAgent: WINDOWS_UA })
   const installs = [
     ...agents.flatMap((agent) => installMethodsFor(agent, FULL)),
     ...nodeInstallMethods(FULL),
   ]
   const uninstalls = agents.flatMap((agent) => uninstallMethodsFor(agent, FULL))
+  vi.unstubAllGlobals()
 
   // The install log is read-only: a prompt there can never be answered (#235).
   it('never leaves winget or choco waiting on a confirmation prompt', () => {
@@ -207,6 +225,67 @@ describe('installShellLine', () => {
   it('closes the shell so the runner can detect completion', () => {
     expect(installShellLine('npm install -g opencode-ai')).toBe(
       'npm install -g opencode-ai; exit\r',
+    )
+  })
+})
+
+describe('installMethodsFor outside Windows', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const FULL: InstallToolchain = {
+    ...BARE,
+    node: 'v22.3.0',
+    npm: true,
+    winget: true,
+    scoop: true,
+    choco: true,
+  }
+  const agents = Object.keys(AGENT_INSTALL_CATALOG) as Array<keyof typeof AGENT_INSTALL_CATALOG>
+
+  for (const [platform, userAgent] of [
+    ['macOS', MAC_UA],
+    ['Linux', LINUX_UA],
+  ] as const) {
+    it(`never offers PowerShell or Windows package managers on ${platform}`, () => {
+      vi.stubGlobal('navigator', { userAgent })
+      for (const agent of agents) {
+        for (const method of installMethodsFor(agent, FULL)) {
+          expect(['winget', 'scoop', 'choco']).not.toContain(method.id)
+          expect(method.command).not.toMatch(/\b(irm|iex)\b|install\.ps1|win32=true/)
+        }
+      }
+    })
+
+    it(`offers the vendor's shell installer first on ${platform}`, () => {
+      vi.stubGlobal('navigator', { userAgent })
+      const claude = installMethodsFor('claude', FULL)
+      expect(claude.map((method) => method.id)).toEqual(['native', 'npm'])
+      expect(claude[0].command).toBe('curl -fsSL https://claude.ai/install.sh | bash')
+      expect(installMethodsFor('cursor', BARE)[0].command).toBe(
+        'curl https://cursor.com/install -fsS | bash',
+      )
+    })
+  }
+
+  it('falls back to npm when the vendor documents no macOS/Linux script', () => {
+    vi.stubGlobal('navigator', { userAgent: MAC_UA })
+    expect(installMethodsFor('copilot', FULL).map((method) => method.id)).toEqual(['npm'])
+    expect(installMethodsFor('copilot', BARE)).toEqual([])
+    expect(needsNodeToolchain('copilot', BARE)).toBe(true)
+  })
+
+  it('keeps the shell installers off Windows', () => {
+    vi.stubGlobal('navigator', { userAgent: WINDOWS_UA })
+    for (const agent of agents) {
+      for (const method of installMethodsFor(agent, FULL)) expect(method.posix).toBeFalsy()
+    }
+  })
+
+  it('has no uninstall for a shell installer, as for the PowerShell one', () => {
+    vi.stubGlobal('navigator', { userAgent: MAC_UA })
+    expect(uninstallMethodsFor('claude', BARE)).toEqual([])
+    expect(uninstallMethodsFor('claude', { ...BARE, npm: true })[0].command).toBe(
+      'npm uninstall -g @anthropic-ai/claude-code',
     )
   })
 })

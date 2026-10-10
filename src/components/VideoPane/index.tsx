@@ -3,6 +3,7 @@ import { memo, useRef } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 
 import { useT } from '../../lib/i18n'
+import { platformKey } from '../../lib/platform'
 import { openInFileExplorer } from '../../lib/tauri'
 import { pathSegments } from '../../lib/paths'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -92,8 +93,8 @@ export const VideoPane = memo(function VideoPane({
               type="button"
               className={styles.action}
               onClick={() => void openInFileExplorer(parentDir(filePath))}
-              title={t('ui.terminal.openInExplorer')}
-              aria-label={t('ui.terminal.openInExplorer')}
+              title={t(platformKey('ui.terminal.openInExplorer'))}
+              aria-label={t(platformKey('ui.terminal.openInExplorer'))}
             >
               <FolderOpen size={12} />
             </button>

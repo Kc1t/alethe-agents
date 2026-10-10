@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { readableError } from '../../lib/errors'
 import { type MessageKey, useT } from '../../lib/i18n'
+import { formatShortcut, platformKey } from '../../lib/platform'
 import {
   getPtyCwd,
   gitCommit,
@@ -250,8 +251,8 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
           type="button"
           className={styles.iconButton}
           onClick={() => void openInFileExplorer(status.repoRoot)}
-          title={t('files.revealFolder')}
-          aria-label={t('files.revealFolder')}
+          title={t(platformKey('files.revealFolder'))}
+          aria-label={t(platformKey('files.revealFolder'))}
         >
           <FolderSearch size={13} />
         </button>
@@ -300,8 +301,8 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
           onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') void commit()
           }}
-          placeholder={t('git.commit.placeholder')}
-          aria-label={t('git.commit.placeholder')}
+          placeholder={t('git.commit.placeholder', { shortcut: formatShortcut('Ctrl+Enter') })}
+          aria-label={t('git.commit.placeholder', { shortcut: formatShortcut('Ctrl+Enter') })}
           rows={2}
         />
         <div className={styles.commitRow}>
@@ -528,8 +529,8 @@ function TreeNodeView({
         <div className={styles.fileActions}>
           <button
             type="button"
-            title={t('files.reveal')}
-            aria-label={t('files.reveal')}
+            title={t(platformKey('files.reveal'))}
+            aria-label={t(platformKey('files.reveal'))}
             onClick={() => void openInFileExplorer(absoluteRepoPath(repoRoot, change.path))}
           >
             <FolderSearch size={12} />

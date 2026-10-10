@@ -33,6 +33,7 @@ import { startAgentCanvasMirror } from '../../lib/agentCanvasMirror'
 import { formatReset } from '../../lib/agentCanvasUtils'
 import { fmtUsd } from '../../lib/costFormat'
 import { type MessageKey, type TFunction, useT } from '../../lib/i18n'
+import { formatShortcut } from '../../lib/platform'
 import {
   DOT_SPACING,
   fitView,
@@ -1661,7 +1662,11 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                 )}
 
                 <div className={styles.hint}>
-                  <span>{t('orchestrator.canvasHint')}</span>
+                  <span>
+                    {t('orchestrator.canvasHint', {
+                      modifier: formatShortcut('Ctrl+').replace(/\+$/, ''),
+                    })}
+                  </span>
                   <span>{t('orchestrator.forestHint')}</span>
                 </div>
 

@@ -4,6 +4,7 @@ import { memo, useRef } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { pathSegments } from '../../lib/paths'
+import { platformKey } from '../../lib/platform'
 import { openInFileExplorer } from '../../lib/tauri'
 import type { Terminal as TerminalEntry } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -92,8 +93,8 @@ export const ImagePane = memo(function ImagePane({
               type="button"
               className={styles.action}
               onClick={() => void openInFileExplorer(parentDir(filePath))}
-              title={t('ui.terminal.openInExplorer')}
-              aria-label={t('ui.terminal.openInExplorer')}
+              title={t(platformKey('ui.terminal.openInExplorer'))}
+              aria-label={t(platformKey('ui.terminal.openInExplorer'))}
             >
               <FolderOpen size={12} />
             </button>

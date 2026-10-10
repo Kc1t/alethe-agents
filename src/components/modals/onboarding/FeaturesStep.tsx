@@ -1,7 +1,7 @@
 import { AppWindow, ChevronDown, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { type FeatureDefinition, FEATURES } from '../../../lib/features'
+import { availableFeatures, type FeatureDefinition } from '../../../lib/features'
 import { type TFunction, useT } from '../../../lib/i18n'
 import { enableOrchestratorFeature } from '../../../lib/orchestratorUsageAccess'
 import type { FeatureId } from '../../../lib/types'
@@ -79,10 +79,10 @@ export function FeaturesStep({
   const searching = needle.length > 0
 
   const visible = useMemo(
-    () => FEATURES.filter((feature) => matches(feature, needle, t)),
+    () => availableFeatures().filter((feature) => matches(feature, needle, t)),
     [needle, t],
   )
-  const secondaryCount = FEATURES.filter((feature) => feature.secondary).length
+  const secondaryCount = availableFeatures().filter((feature) => feature.secondary).length
 
   const toggle = (feature: FeatureDefinition) => {
     const active = enabledFeatures[feature.id]

@@ -2,10 +2,14 @@ import { Activity, Minus, Plus, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 
 import { cliPathMatchesAgent } from '../../../lib/agentCliPath'
-import { agentLabel, resolveAgentCliCommand } from '../../../lib/agentProviders'
+import {
+  agentLabel,
+  isAgentAvailableOnPlatform,
+  resolveAgentCliCommand,
+} from '../../../lib/agentProviders'
 import { pickFile } from '../../../lib/dialog'
 import { useT, useTDynamic } from '../../../lib/i18n'
-import { isMacOS, isWindows } from '../../../lib/platform'
+import { isMacOS, isWindows, platformKey, posixKey } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
 import {
   agentCliCommand,
@@ -63,7 +67,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
     const picked = await pickFile({
       title: t('prefs.cliPathPick', { agent }),
       filters: [
-        { name: 'Executable', extensions: ['cmd', 'exe', 'bat', 'ps1'] },
+        ...(isWindows() ? [{ name: 'Executable', extensions: ['cmd', 'exe', 'bat', 'ps1'] }] : []),
         { name: 'All files', extensions: ['*'] },
       ],
     })
@@ -136,7 +140,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       <SettingsSection
         id="resource-policy"
         title={t('prefs.resourcePolicy')}
-        description={t('prefs.resourcePolicyDesc')}
+        description={t(posixKey('prefs.resourcePolicyDesc'))}
       >
         <div className={styles.resourceControls}>
           <p className={styles.resourceHint}>{t('prefs.resourcePolicyManualHint')}</p>
@@ -191,7 +195,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
         description={t('prefs.agentsDesc')}
       >
         <div className={styles.agentList}>
-          {AGENTS.map((agent) => {
+          {AGENTS.filter((agent) => isAgentAvailableOnPlatform(agent.id)).map((agent) => {
             const checked = preferences.enabledAgents[agent.id]
             const disabled = checked && enabledCount === 1
             return (
@@ -205,7 +209,11 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
                 </span>
                 <span className={styles.agentCopy}>
                   <strong>{agent.label}</strong>
-                  <span>{tDynamic(`agent.${agent.id}.desc`)}</span>
+                  <span>
+                    {agent.id === 'shell'
+                      ? t(platformKey('agent.shell.desc'))
+                      : tDynamic(`agent.${agent.id}.desc`)}
+                  </span>
                 </span>
                 <input
                   type="checkbox"
@@ -219,7 +227,11 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
         </div>
       </SettingsSection>
 
-      <SettingsSection id="shell-path" title={t('prefs.shell')} description={t('prefs.shellDesc')}>
+      <SettingsSection
+        id="shell-path"
+        title={t('prefs.shell')}
+        description={t(posixKey('prefs.shellDesc'))}
+      >
         <div className={styles.shellPathRow}>
           <span className={styles.cliPathValue} title={preferences.shellPath ?? undefined}>
             {preferences.shellPath ?? t('prefs.cliPathAuto')}
@@ -272,7 +284,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       <SettingsSection
         id="cli-paths"
         title={t('prefs.cliPaths')}
-        description={t('prefs.cliPathsDesc')}
+        description={t(posixKey('prefs.cliPathsDesc'))}
       >
         <div className={styles.agentList}>
           {[

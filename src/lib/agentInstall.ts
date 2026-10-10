@@ -24,6 +24,8 @@ export type InstallMethod = {
   verifyCommand?: string
   /** Inverts the check: the run succeeded when the CLI is gone, not when it is found. */
   verifyAbsent?: boolean
+  /** Vendor's macOS/Linux installer: offered only outside Windows, where its PowerShell twin is not. */
+  posix?: boolean
 }
 
 export const NODE_DOWNLOAD_URL = 'https://nodejs.org/en/download'
@@ -45,6 +47,7 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
     docsUrl: 'https://code.claude.com/docs/en/setup',
     methods: [
       { id: 'native', command: 'irm https://claude.ai/install.ps1 | iex' },
+      { id: 'native', command: 'curl -fsSL https://claude.ai/install.sh | bash', posix: true },
       {
         id: 'winget',
         command:
@@ -58,6 +61,11 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
     docsUrl: 'https://github.com/openai/codex',
     methods: [
       { id: 'native', command: 'irm https://chatgpt.com/codex/install.ps1 | iex' },
+      {
+        id: 'native',
+        command: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh',
+        posix: true,
+      },
       { id: 'npm', command: 'npm install -g @openai/codex', requires: 'npm' },
     ],
   },
@@ -75,16 +83,27 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
   },
   cursor: {
     docsUrl: 'https://cursor.com/docs/cli/installation',
-    methods: [{ id: 'native', command: "irm 'https://cursor.com/install?win32=true' | iex" }],
+    methods: [
+      { id: 'native', command: "irm 'https://cursor.com/install?win32=true' | iex" },
+      { id: 'native', command: 'curl https://cursor.com/install -fsS | bash', posix: true },
+    ],
   },
   antigravity: {
     docsUrl: 'https://antigravity.google/docs/cli/install',
-    methods: [{ id: 'native', command: 'irm https://antigravity.google/cli/install.ps1 | iex' }],
+    methods: [
+      { id: 'native', command: 'irm https://antigravity.google/cli/install.ps1 | iex' },
+      {
+        id: 'native',
+        command: 'curl -fsSL https://antigravity.google/cli/install.sh | bash',
+        posix: true,
+      },
+    ],
   },
   mimo: {
     docsUrl: 'https://github.com/XiaomiMiMo/MiMo-Code',
     methods: [
       { id: 'native', command: 'irm https://mimo.xiaomi.com/install.ps1 | iex' },
+      { id: 'native', command: 'curl -fsSL https://mimo.xiaomi.com/install | bash', posix: true },
       { id: 'npm', command: 'npm install -g @mimo-ai/cli', requires: 'npm' },
     ],
   },
@@ -95,6 +114,7 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
   opencode: {
     docsUrl: 'https://opencode.ai/docs/',
     methods: [
+      { id: 'native', command: 'curl -fsSL https://opencode.ai/install | bash', posix: true },
       { id: 'npm', command: 'npm install -g opencode-ai', requires: 'npm' },
       { id: 'scoop', command: 'scoop install opencode', requires: 'scoop' },
       { id: 'choco', command: 'choco install -y opencode', requires: 'choco' },
@@ -102,7 +122,10 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
   },
   kiro: {
     docsUrl: 'https://kiro.dev/cli/',
-    methods: [{ id: 'native', command: "irm 'https://cli.kiro.dev/install.ps1' | iex" }],
+    methods: [
+      { id: 'native', command: "irm 'https://cli.kiro.dev/install.ps1' | iex" },
+      { id: 'native', command: 'curl -fsSL https://cli.kiro.dev/install | bash', posix: true },
+    ],
   },
   kimi: {
     docsUrl: 'https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started.html',
@@ -112,6 +135,7 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
     docsUrl: 'https://docs.x.ai/build/overview',
     methods: [
       { id: 'native', command: 'irm https://x.ai/cli/install.ps1 | iex' },
+      { id: 'native', command: 'curl -fsSL https://x.ai/cli/install.sh | bash', posix: true },
       { id: 'npm', command: 'npm install -g @xai-official/grok', requires: 'npm' },
     ],
   },
@@ -127,16 +151,19 @@ export function installDocsUrl(agent: AgentType): string | undefined {
 
 /**
  * Methods that will actually work on this machine, best first. A method without
- * `requires` needs nothing beyond a shell, so it always qualifies.
+ * `requires` needs nothing beyond a shell, so it qualifies on the platform it was written for:
+ * PowerShell and Windows package managers only on Windows, `posix` installers everywhere else.
  */
 export function installMethodsFor(
   agent: AgentType,
   toolchain: InstallToolchain | null,
+  windows: boolean = isWindows(),
 ): InstallMethod[] {
   const entry = AGENT_INSTALL_CATALOG[agent]
   if (!entry) return []
   return entry.methods
     .filter((method) => {
+      if (windows ? method.posix : isWindowsOnlyMethod(method)) return false
       if (!method.requires) return true
       if (!toolchain) return false
       return Boolean(toolchain[method.requires])
@@ -183,12 +210,14 @@ const POWERSHELL_INSTALLER =
 
 const WINDOWS_ONLY_METHODS: InstallMethodId[] = ['winget', 'scoop', 'choco']
 
+function isWindowsOnlyMethod(method: InstallMethod): boolean {
+  if (WINDOWS_ONLY_METHODS.includes(method.id)) return true
+  return POWERSHELL_INSTALLER.test(method.command)
+}
+
 export function wslInstallMethodsFor(agent: AgentType): InstallMethod[] {
   const methods = AGENT_INSTALL_CATALOG[agent]?.methods ?? []
-  return methods.filter((method) => {
-    if (WINDOWS_ONLY_METHODS.includes(method.id)) return false
-    return !POWERSHELL_INSTALLER.test(method.command)
-  })
+  return methods.filter((method) => !method.posix && !isWindowsOnlyMethod(method))
 }
 
 // Every documented install command ends in the package or package id, so the uninstall counterpart

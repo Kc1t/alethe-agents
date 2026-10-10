@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 
 import { splitCustomCliCommand } from './customAgents'
+import { isWindows } from './platform'
 import { ContributionList, useContributions } from './plugins/registry'
 import {
   AGENT_TYPE_LABELS,
@@ -91,11 +92,17 @@ export function agentAccentVar(id: AgentType): string {
   return `var(${agentAccentToken(id)}, var(${DEFAULT_ACCENT_TOKEN}))`
 }
 
+/** WSL only exists on Windows; everywhere else it is hidden, whatever the stored preference says. */
+export function isAgentAvailableOnPlatform(id: AgentType, windows: boolean = isWindows()): boolean {
+  return id !== 'wsl' || windows
+}
+
 /** Contributed providers are on unless the user turned them off. */
 export function isAgentEnabled(
   enabled: Partial<Record<AgentType, boolean>>,
   id: AgentType,
 ): boolean {
+  if (!isAgentAvailableOnPlatform(id)) return false
   return enabled[id] ?? !isBuiltinAgentType(id)
 }
 

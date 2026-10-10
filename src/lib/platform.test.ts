@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { formatShortcut, isMacOS, normalizeCwd, shouldUseNativeBackend } from './platform'
+import {
+  formatShortcut,
+  isMacOS,
+  normalizeCwd,
+  platformKey,
+  posixKey,
+  shouldUseNativeBackend,
+} from './platform'
 
 function setUserAgent(ua: string) {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua)
@@ -75,5 +82,27 @@ describe('formatShortcut', () => {
     expect(formatShortcut('Ctrl+T', true)).toBe('⌘T')
     expect(formatShortcut('Ctrl+Shift+P', true)).toBe('⌘⇧P')
     expect(formatShortcut('Ctrl+Shift+G', true)).toBe('⌘⇧G')
+  })
+})
+
+describe('platformKey / posixKey', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('keeps the Windows key on Windows', () => {
+    setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    expect(platformKey('files.reveal')).toBe('files.reveal')
+    expect(posixKey('prefs.shellDesc')).toBe('prefs.shellDesc')
+  })
+
+  it('picks the Mac variant on macOS', () => {
+    setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15')
+    expect(platformKey('files.reveal')).toBe('files.revealMac')
+    expect(posixKey('prefs.shellDesc')).toBe('prefs.shellDescPosix')
+  })
+
+  it('picks the Linux variant on Linux', () => {
+    setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
+    expect(platformKey('files.reveal')).toBe('files.revealLinux')
+    expect(posixKey('prefs.shellDesc')).toBe('prefs.shellDescPosix')
   })
 })

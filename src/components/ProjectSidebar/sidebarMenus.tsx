@@ -23,6 +23,7 @@ import { relaunchAgentPty } from '../../lib/agentRelaunch'
 import { graphifyRepoOf } from '../../lib/claudeMcpConfigs'
 import { pickFile, saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
+import { platformKey } from '../../lib/platform'
 import {
   getPtyCwd,
   openInFileExplorer,
@@ -542,9 +543,14 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         ? [
             {
               kind: 'item' as const,
-              label: t('ui.terminal.openInExplorer'),
+              label: t(platformKey('ui.terminal.openInExplorer')),
               icon: <FolderOpen size={14} />,
-              onClick: () => void openTerminalPath(term, openInFileExplorer, 'Explorer'),
+              onClick: () =>
+                void openTerminalPath(
+                  term,
+                  openInFileExplorer,
+                  t(platformKey('ui.terminal.fileManager')),
+                ),
             },
             {
               kind: 'item' as const,

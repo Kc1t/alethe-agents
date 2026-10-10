@@ -1,6 +1,7 @@
 import { Check, Minus, Pause, Plus, RotateCcw, Waves } from 'lucide-react'
 
 import { useT } from '../../../lib/i18n'
+import { formatShortcut } from '../../../lib/platform'
 import { sidebarTabContributions, sidebarTabLabel, useContributions } from '../../../lib/plugins'
 import { APP_ICON_OPTIONS, getThemeIcon } from '../../../lib/themeIcons'
 import { themeDescription, themeLabel, useThemeOptions } from '../../../lib/themes'
@@ -217,7 +218,7 @@ export function AppearancePage() {
             type="button"
             onClick={() => setUiZoom(preferences.uiZoom - UI_ZOOM_LIMITS.step)}
             disabled={preferences.uiZoom <= UI_ZOOM_LIMITS.min}
-            aria-label={t('prefs.zoomDecrease')}
+            aria-label={t('prefs.zoomDecrease', { shortcut: formatShortcut('Ctrl+-') })}
           >
             <Minus size={15} />
           </button>
@@ -226,7 +227,7 @@ export function AppearancePage() {
             type="button"
             onClick={() => setUiZoom(preferences.uiZoom + UI_ZOOM_LIMITS.step)}
             disabled={preferences.uiZoom >= UI_ZOOM_LIMITS.max}
-            aria-label={t('prefs.zoomIncrease')}
+            aria-label={t('prefs.zoomIncrease', { shortcut: formatShortcut('Ctrl+=') })}
           >
             <Plus size={15} />
           </button>
@@ -234,7 +235,7 @@ export function AppearancePage() {
             type="button"
             onClick={() => setUiZoom(1)}
             disabled={preferences.uiZoom === 1}
-            aria-label={t('prefs.zoomReset')}
+            aria-label={t('prefs.zoomReset', { shortcut: formatShortcut('Ctrl+0') })}
           >
             <RotateCcw size={15} />
           </button>
