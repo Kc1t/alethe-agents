@@ -13,8 +13,11 @@
 html {
   min-height: 100%;
   background: var(--bg);
+  /* No double-tap zoom: this is an app surface, the terminal has its own pinch. */
+  touch-action: manipulation;
 }
 body {
+  overflow-x: hidden;
   min-width: 320px;
   min-height: 100vh;
   min-height: 100dvh;
@@ -614,6 +617,12 @@ svg {
   background: var(--bg-sunken);
   overscroll-behavior: contain;
 }
+/* Fitted to the screen width: only vertical scrolling, no sideways pan. Manual
+   font sizes (+/- or pinch) keep horizontal scrolling for wide output. */
+.terminal-viewport.is-fitted {
+  overflow-x: hidden;
+  touch-action: pan-y;
+}
 .terminal-host {
   display: inline-block;
   min-width: 100%;
@@ -1155,7 +1164,8 @@ svg {
     font-size: 0.66rem;
   }
   .terminal-viewport {
-    padding: 0.45rem 0.5rem;
+    padding: 0.35rem max(0.25rem, env(safe-area-inset-right)) 0.35rem
+      max(0.25rem, env(safe-area-inset-left));
   }
   .composer-wrap {
     margin: 0;

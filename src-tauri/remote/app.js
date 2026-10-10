@@ -12,6 +12,10 @@ const TRANSCRIPT_POLL_MS = 1500
 const APPEARANCE_SYNC_MS = 10_000
 const WORKSPACE_SYNC_MS = 5_000
 const FONT_SIZE_MIN = 7
+// Auto-fit may go below the manual minimum: a desktop PTY is often 120+
+// columns, and on a ~380px phone that only fits around 5px. Overflowing
+// instead is what made the terminal pan sideways.
+const AUTO_FIT_FONT_MIN = 4
 const FONT_SIZE_MAX = 22
 const DEFAULT_PTY_SIZE = { cols: 80, rows: 24 }
 const MAX_SAVED_DRAFTS = 20
@@ -590,9 +594,12 @@ function applyTerminalFit() {
   const widthRatio = metrics ? metrics.width / terminal.options.fontSize : 0.6
   const heightRatio = metrics ? metrics.height / terminal.options.fontSize : 1.2
   if (autoFitFont) {
-    const target = Math.floor(available / (ptySize.cols * widthRatio))
-    fontSize = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, target))
+    // Quarter-pixel steps: whole pixels left up to a column's worth of empty
+    // space on the right edge.
+    const target = Math.floor((available / (ptySize.cols * widthRatio)) * 4) / 4
+    fontSize = Math.min(FONT_SIZE_MAX, Math.max(AUTO_FIT_FONT_MIN, target))
   }
+  viewport.classList.toggle('is-fitted', autoFitFont)
   if (!fontSize) fontSize = 12
   if (terminal.options.fontSize !== fontSize) terminal.options.fontSize = fontSize
   const visibleRows = Math.floor(availableHeight / (fontSize * heightRatio))
