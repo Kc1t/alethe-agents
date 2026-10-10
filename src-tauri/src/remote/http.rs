@@ -183,25 +183,25 @@ fn handle_http(
     }
 
     match path {
-        "/" | "/index.html" => respond(
+        "/" | "/index.html" => respond_large(
             stream,
             200,
             "text/html; charset=utf-8",
             include_str!("../../remote/index.html"),
         ),
-        "/app.js" => respond(
+        "/app.js" => respond_large(
             stream,
             200,
             "text/javascript; charset=utf-8",
             include_str!("../../remote/app.js"),
         ),
-        "/locales.js" => respond(
+        "/locales.js" => respond_large(
             stream,
             200,
             "application/javascript; charset=utf-8",
             include_str!("../../remote/locales.js"),
         ),
-        "/app.css" => respond(
+        "/app.css" => respond_large(
             stream,
             200,
             "text/css; charset=utf-8",
