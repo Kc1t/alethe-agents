@@ -598,22 +598,15 @@ fn handle_api(
                 r#"{"error":"Only JPEG, PNG and WebP photos are supported"}"#,
             );
         };
-        let dir = std::env::temp_dir().join("alethe-remote-uploads");
+        // Only stored here: the photo reaches the agent together with the
+        // text, in one send, so the phone can show it in the box until then.
+        let dir = attachment_dir();
         std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-        let file = dir.join(format!("{}.{extension}", nanoid::nanoid!(16)));
-        std::fs::write(&file, body).map_err(|error| error.to_string())?;
-        let file = file.to_string_lossy().to_string();
-        // Bracketed paste is what makes both agents attach the image (checked
-        // live: `[Image #1]`); typed as plain text it stays a path.
-        let written = hub.with_active_session(generation, session_id, || {
-            write_remote(sessions, &pty_id, &format!("\x1b[200~{file}\x1b[201~"))
-        })?;
-        if !written {
-            return respond_session_inactive(stream);
-        }
+        let id = format!("{}.{extension}", nanoid::nanoid!(16));
+        std::fs::write(dir.join(&id), body).map_err(|error| error.to_string())?;
         let device_name = hub.device_name(session_id);
-        eprintln!("[remote] {device_name} (device {session_id}) attached a photo to {pty_id}");
-        return respond(stream, 204, "text/plain", "");
+        eprintln!("[remote] {device_name} (device {session_id}) uploaded a photo for {pty_id}");
+        return respond(stream, 200, "application/json", &json!({ "id": id }).to_string());
     }
     if path == "/api/message" && method == "POST" {
         if hub.is_read_only() {
@@ -635,7 +628,15 @@ fn handle_api(
         let payload: RemoteMessage = serde_json::from_slice(body).map_err(|e| e.to_string())?;
         let text = sanitize_remote_message(&payload.text);
         let text = text.trim();
-        if text.is_empty() || text.len() > MAX_MESSAGE {
+        let Some(photos) = resolve_attachments(&payload.attachments) else {
+            return respond(
+                stream,
+                400,
+                "application/json",
+                r#"{"error":"Photo not found, attach it again"}"#,
+            );
+        };
+        if (text.is_empty() && photos.is_empty()) || text.len() > MAX_MESSAGE {
             return respond(
                 stream,
                 400,
@@ -660,16 +661,39 @@ fn handle_api(
                 r#"{"error":"Sending commands to shell terminals is disabled"}"#,
             );
         }
+        if !photos.is_empty() && !matches!(agent.as_str(), "claude" | "codex") {
+            return respond(
+                stream,
+                409,
+                "application/json",
+                r#"{"error":"Photos can only be sent to Codex and Claude Code"}"#,
+            );
+        }
+        for photo in &photos {
+            // Bracketed paste is what makes both agents attach the image
+            // (checked live: `[Image #1]`); typed as plain text it stays a path.
+            let written = hub.with_active_session(generation, session_id, || {
+                write_remote(sessions, &payload.pty_id, &format!("\x1b[200~{photo}\x1b[201~"))
+            })?;
+            if !written {
+                return respond_session_inactive(stream);
+            }
+            // The agent reads the file on paste; Enter before that sends the
+            // text without the image.
+            thread::sleep(ATTACHMENT_SETTLE);
+        }
+        let line = if photos.is_empty() { format!("{text}\r") } else { format!(" {text}\r") };
         let written = hub.with_active_session(generation, session_id, || {
-            write_remote(sessions, &payload.pty_id, &format!("{text}\r"))
+            write_remote(sessions, &payload.pty_id, &line)
         })?;
         if !written {
             return respond_session_inactive(stream);
         }
         let device_name = hub.device_name(session_id);
         eprintln!(
-            "[remote] {device_name} (device {session_id}) sent {} chars to {}",
+            "[remote] {device_name} (device {session_id}) sent {} chars and {} photo(s) to {}",
             text.len(),
+            photos.len(),
             payload.pty_id
         );
         let _ = app.emit(
@@ -708,7 +732,38 @@ struct PairRequest {
 struct RemoteMessage {
     #[serde(rename = "ptyId")]
     pty_id: String,
+    #[serde(default)]
     text: String,
+    #[serde(default)]
+    attachments: Vec<String>,
+}
+
+const MAX_ATTACHMENTS_PER_MESSAGE: usize = 6;
+const ATTACHMENT_SETTLE: Duration = Duration::from_millis(250);
+
+fn attachment_dir() -> std::path::PathBuf {
+    std::env::temp_dir().join("alethe-remote-uploads")
+}
+
+/// Turns the ids `/api/attachment` handed out back into file paths. Only ids
+/// of that exact shape are accepted, so a phone cannot name any other file.
+fn resolve_attachments(ids: &[String]) -> Option<Vec<String>> {
+    if ids.len() > MAX_ATTACHMENTS_PER_MESSAGE {
+        return None;
+    }
+    let dir = attachment_dir();
+    ids.iter()
+        .map(|id| {
+            let (stem, extension) = id.split_once('.')?;
+            let valid = stem.len() == 16
+                && stem
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+                && matches!(extension, "jpg" | "png" | "webp");
+            let file = dir.join(id);
+            (valid && file.is_file()).then(|| file.to_string_lossy().to_string())
+        })
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -981,10 +1036,26 @@ fn respond_bytes_with_limit(
 #[cfg(test)]
 mod tests {
     use super::{
-        attachment_extension, bearer_token, body_limit, find_headers_end, header_value,
-        question_answer_input,
+        attachment_dir, attachment_extension, bearer_token, body_limit, find_headers_end,
+        header_value, question_answer_input, resolve_attachments,
     };
     use crate::remote::{MAX_ATTACHMENT, MAX_BODY};
+
+    #[test]
+    fn attachments_resolve_only_uploaded_ids() {
+        let dir = attachment_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let id = "testAttachment01.jpg";
+        std::fs::write(dir.join(id), b"\xFF\xD8\xFF").unwrap();
+        let resolved = resolve_attachments(&[id.to_string()]).unwrap();
+        assert_eq!(resolved, vec![dir.join(id).to_string_lossy().to_string()]);
+        for bad in ["../../etc/passwd", "testAttachment01.sh", "short.jpg", "missingAttach001.jpg", "/tmp/x/../aaaaaaaaaaaaaaaa.jpg"] {
+            assert!(resolve_attachments(&[bad.to_string()]).is_none(), "{bad}");
+        }
+        assert!(resolve_attachments(&vec![id.to_string(); 7]).is_none());
+        assert_eq!(resolve_attachments(&[]), Some(vec![]));
+        std::fs::remove_file(dir.join(id)).unwrap();
+    }
 
     #[test]
     fn only_the_photo_route_gets_the_larger_body_cap() {

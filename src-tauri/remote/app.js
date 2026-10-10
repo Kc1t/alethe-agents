@@ -40,6 +40,8 @@ const icons = {
   search:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
   send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
+  close:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
   stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
   terminal:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3m6 0h4"/></svg>',
@@ -122,6 +124,7 @@ function chatSession(ptyId = selected) {
         : '',
       sending: false,
       error: '',
+      photos: [],
       pending: [],
       waitingSince: 0,
       waitingForAssistantAfter: null,
@@ -882,7 +885,7 @@ function pendingMarkup() {
     .pending.filter((item) => !item.confirmed)
     .map(
       (item) =>
-        `<article class="msg msg-pending" data-role="user"><span class="msg-role">${t('role.user')} · ${t(item.sending ? 'chat.sending' : 'chat.sent')}</span><div class="msg-body">${renderMarkdown(item.text)}</div></article>`,
+        `<article class="msg msg-pending" data-role="user"><span class="msg-role">${t('role.user')} · ${t(item.sending ? 'chat.sending' : 'chat.sent')}</span>${item.photos?.length ? `<div class="msg-photos">${item.photos.map((url) => `<img src="${escapeHtml(url)}" alt="">`).join('')}</div>` : ''}${item.text ? `<div class="msg-body">${renderMarkdown(item.text)}</div>` : ''}</article>`,
     )
     .join('')
 }
@@ -971,7 +974,7 @@ async function loadTranscript(ptyId) {
     for (const pending of session.pending) {
       const matches = (data.messages || [])
         .map((message, index) => ({ ...message, index }))
-        .filter((message) => message.role === 'user' && message.text.trim() === pending.text)
+        .filter((message) => message.role === 'user' && withoutImageTags(message.text) === pending.text)
       const match = matches[pending.occurrence]
       if (match) {
         pending.confirmed = true
@@ -1209,11 +1212,29 @@ function composerMarkup() {
     ? t('chat.agentPlaceholder', { agent: agentName(findChat(selected)?.agent) })
     : t('chat.sendPlaceholder')
   return `<div class="composer-wrap"><form class="composer" id="composer">
-    <button class="attach-button" type="button" aria-label="${t('chat.attachPhoto')}"${canAttachPhoto() ? '' : ' hidden'}>${icons.fontLarger}</button><input class="sr-only" id="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
-    <label class="sr-only" for="message">${escapeHtml(placeholder)}</label><textarea id="message" rows="1" autocomplete="off" aria-describedby="composer-error" placeholder="${escapeHtml(placeholder)}">${escapeHtml(chatSession().draft)}</textarea>
+    <button class="attach-button" type="button" aria-label="${t('chat.attachPhoto')}"${canAttachPhoto() ? '' : ' hidden'}>${icons.fontLarger}</button><input class="sr-only" id="photo-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
+    <div class="composer-field"><div class="composer-photos" id="composer-photos">${composerPhotosMarkup()}</div><label class="sr-only" for="message">${escapeHtml(placeholder)}</label><textarea id="message" rows="1" autocomplete="off" aria-describedby="composer-error" placeholder="${escapeHtml(placeholder)}">${escapeHtml(chatSession().draft)}</textarea></div>
     <button class="send-button" type="submit" aria-label="${t('chat.send')}"><span class="send-icon">${icons.send}</span><span class="send-loader" aria-hidden="true"></span></button>
     <p class="composer-error" id="composer-error" role="alert"></p>
   </form></div>`
+}
+
+function composerPhotosMarkup(session = chatSession()) {
+  return session.photos
+    .map(
+      (photo, index) =>
+        `<figure class="composer-photo${photo.uploading ? ' is-uploading' : ''}"><img src="${escapeHtml(photo.url)}" alt=""><button type="button" data-remove-photo="${index}" aria-label="${t('chat.removePhoto')}">${icons.close}</button>${photo.uploading ? '<span class="send-loader" aria-hidden="true"></span>' : ''}</figure>`,
+    )
+    .join('')
+}
+
+/** Claude Code and Codex put `[Image #N]` in the stored prompt, which the
+ *  phone never typed; drop it so a sent message still finds its echo. */
+function withoutImageTags(text) {
+  return String(text || '')
+    .replace(/\[image[^\]]*\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function viewSwitchMarkup() {
@@ -1340,17 +1361,30 @@ function updateComposer() {
   input.readOnly = session.sending || session.ended
   // With an empty box the button doubles as "send now" for a message Claude
   // Code queued while busy (its ctrl+x ctrl+s, which a phone cannot type).
-  const sendNow = !input.value.trim() && canSendNow()
+  const hasPhotos = session.photos.length > 0
+  const sendNow = !input.value.trim() && !hasPhotos && canSendNow()
   button.disabled =
     session.sending ||
     session.ended ||
     connectionState !== 'live' ||
-    (!input.value.trim() && !sendNow) ||
+    session.photos.some((photo) => photo.uploading) ||
+    (!input.value.trim() && !hasPhotos && !sendNow) ||
     (chatView === 'messages' && supportsMessages() && !transcript && !sendNow)
   button.classList.toggle('is-loading', session.sending)
   button.setAttribute('aria-label', t(session.sending ? 'chat.sending' : 'chat.send'))
   const attach = form.querySelector('.attach-button')
-  if (attach) attach.disabled = session.sending || session.ended || connectionState !== 'live'
+  if (attach)
+    attach.disabled =
+      session.sending ||
+      session.ended ||
+      connectionState !== 'live' ||
+      session.photos.length >= MAX_PHOTOS
+  const photos = form.querySelector('#composer-photos')
+  const photosKey = session.photos.map((photo) => `${photo.url}:${photo.uploading}`).join('|')
+  if (photos && photos.dataset.key !== photosKey) {
+    photos.dataset.key = photosKey
+    photos.innerHTML = composerPhotosMarkup(session)
+  }
   form.setAttribute('aria-busy', String(session.sending))
   form.querySelector('#composer-error').textContent = session.error
 }
@@ -1359,6 +1393,7 @@ const SEND_NOW_DOUBLE_TAP_MS = 2_000
 const PHOTO_MAX_EDGE = 1600
 const PHOTO_QUALITY = 0.85
 const PHOTO_MAX_BYTES = 4 * 1024 * 1024
+const MAX_PHOTOS = 6
 
 function canAttachPhoto(ptyId = selected) {
   return !readOnly && ['claude', 'codex'].includes(findChat(ptyId)?.agent)
@@ -1384,32 +1419,38 @@ async function preparePhoto(file) {
   return file
 }
 
+/** Uploads the photo right away (so sending is quick) but keeps it in the box:
+ *  it only reaches the agent together with the message. */
 async function attachPhoto(ptyId, session, file) {
-  session.sending = true
+  const photo = { id: '', url: URL.createObjectURL(file), uploading: true }
+  session.photos.push(photo)
   session.error = ''
   updateComposer()
   try {
-    const photo = await preparePhoto(file)
-    if (photo.size > PHOTO_MAX_BYTES) throw new Error(t('chat.photoTooLarge'))
-    await api(`/api/attachment?ptyId=${encodeURIComponent(ptyId)}`, {
+    const prepared = await preparePhoto(file)
+    if (prepared.size > PHOTO_MAX_BYTES) throw new Error(t('chat.photoTooLarge'))
+    const uploaded = await api(`/api/attachment?ptyId=${encodeURIComponent(ptyId)}`, {
       method: 'POST',
-      headers: { 'Content-Type': photo.type || 'application/octet-stream' },
-      body: photo,
+      headers: { 'Content-Type': prepared.type || 'application/octet-stream' },
+      body: prepared,
     })
-    session.controlNotice = 'chat.photoAttached'
+    photo.id = uploaded.id
+    photo.uploading = false
   } catch (error) {
+    removePhoto(session, photo)
     if (error instanceof SessionError) {
       renderSessionLost(error.message)
       return
     }
     session.error = t('chat.photoError', { message: error.message || error })
   } finally {
-    session.sending = false
-    if (selected === ptyId) {
-      updateComposer()
-      updateChatFeedback()
-    }
+    if (selected === ptyId) updateComposer()
   }
+}
+
+function removePhoto(session, photo) {
+  session.photos = session.photos.filter((item) => item !== photo)
+  URL.revokeObjectURL(photo.url)
 }
 
 function canSendNow(ptyId = selected) {
@@ -1463,6 +1504,12 @@ function bindComposer() {
   const session = chatSession(ptyId)
   const autoGrow = () => {
     input.style.height = 'auto'
+    if (!input.value) {
+      // A long placeholder would wrap and grow the box past the buttons.
+      input.style.height = ''
+      input.style.overflowY = 'hidden'
+      return
+    }
     // border-box: scrollHeight leaves out the borders, which would add a scrollbar.
     const height = input.scrollHeight + input.offsetHeight - input.clientHeight
     input.style.height = `${Math.min(height, 128)}px`
@@ -1489,9 +1536,16 @@ function bindComposer() {
     photoInput.click()
   })
   photoInput?.addEventListener('change', () => {
-    const file = photoInput.files?.[0]
+    const files = [...(photoInput.files || [])].slice(0, MAX_PHOTOS - session.photos.length)
     photoInput.value = ''
-    if (file) void attachPhoto(ptyId, session, file)
+    for (const file of files) void attachPhoto(ptyId, session, file)
+  })
+  form.querySelector('#composer-photos')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-remove-photo]')
+    if (!button || session.sending) return
+    const photo = session.photos[Number(button.dataset.removePhoto)]
+    if (photo) removePhoto(session, photo)
+    updateComposer()
   })
   input.addEventListener('keydown', (event) => {
     if (
@@ -1507,12 +1561,14 @@ function bindComposer() {
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
     const text = input.value.trim()
-    if (!text && canSendNow(ptyId) && !session.sending && connectionState === 'live') {
+    const photos = session.photos.slice()
+    if (!text && !photos.length && canSendNow(ptyId) && !session.sending && connectionState === 'live') {
       await sendQueuedNow(ptyId, session)
       return
     }
     if (
-      !text ||
+      (!text && !photos.length) ||
+      photos.some((photo) => photo.uploading) ||
       session.sending ||
       session.ended ||
       connectionState !== 'live' ||
@@ -1523,10 +1579,11 @@ function bindComposer() {
     session.error = ''
     const pending = {
       text,
+      photos: photos.map((photo) => photo.url),
       sending: true,
       occurrence:
         (transcript?.messages || []).filter(
-          (message) => message.role === 'user' && message.text.trim() === text,
+          (message) => message.role === 'user' && withoutImageTags(message.text) === text,
         ).length + session.pending.filter((item) => item.text === text && !item.confirmed).length,
     }
     if (supportsMessages(ptyId)) session.pending.push(pending)
@@ -1538,7 +1595,7 @@ function bindComposer() {
       await api('/api/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ptyId, text }),
+        body: JSON.stringify({ ptyId, text, attachments: photos.map((photo) => photo.id) }),
         signal: request.signal,
       })
       pending.sending = false
@@ -1546,11 +1603,13 @@ function bindComposer() {
       session.waitingSince = session.pending.length ? Date.now() : 0
       session.draft = ''
       persistDraft(ptyId, '')
+      // Their object URLs stay alive: the pending bubble still shows them.
+      session.photos = session.photos.filter((photo) => !photos.includes(photo))
       if (selected === ptyId) {
         const currentInput = document.querySelector('#message')
         if (currentInput) {
           currentInput.value = ''
-          currentInput.style.height = 'auto'
+          currentInput.style.height = ''
         }
         void loadTranscript(ptyId)
       }

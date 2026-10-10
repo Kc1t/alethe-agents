@@ -887,38 +887,115 @@ svg {
   width: 1.15rem;
   height: 1.15rem;
 }
-.composer textarea {
+.composer .composer-field {
   grid-area: input;
 }
 .composer .send-button {
   grid-area: send;
 }
+.composer-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-elevated);
+}
+.composer-field:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.composer-photos {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.45rem 0.45rem 0;
+}
+.composer-photos:empty {
+  display: none;
+}
+.composer-photo {
+  position: relative;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.composer-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.composer-photo.is-uploading img {
+  opacity: 0.45;
+}
+.composer-photo .send-loader {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: auto;
+  color: var(--fg);
+}
+.composer-photo button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+}
+.composer-photo button svg {
+  width: 13px;
+  height: 13px;
+}
 .composer textarea {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 46px;
+  /* The field's 2px of border plus this is the 46px of the buttons. */
+  height: 44px;
+  min-height: 44px;
   max-height: 128px;
-  overflow-y: auto;
+  overflow-y: hidden;
   resize: none;
-  /* One line lands exactly on the 46px of the buttons beside it. */
-  padding: calc((46px - 2px - 1.45em) / 2) 0.78rem;
-  border: 1px solid var(--border);
+  padding: calc((44px - 1.45em) / 2) 0.78rem;
+  border: 0;
   border-radius: 11px;
   outline: 0;
-  background: var(--bg-elevated);
+  background: transparent;
   color: var(--fg);
   font-size: 1rem;
   line-height: 1.45;
   caret-color: var(--accent);
 }
-.composer textarea:focus {
-  border-color: var(--accent-border);
-  box-shadow: 0 0 0 3px var(--accent-ring);
-}
 .composer textarea::placeholder {
+  overflow: hidden;
   color: var(--fg-faint);
   opacity: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+.msg-photos img {
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  object-fit: cover;
 }
 .send-button {
   display: grid;
