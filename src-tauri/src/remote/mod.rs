@@ -38,6 +38,8 @@ pub use state::{RemoteDeviceInfo, RemoteHub, RemoteInfo, TailscaleStatus};
 const HTTP_START: u16 = 9340;
 const HTTP_END: u16 = 9360;
 const MAX_BODY: usize = 64 * 1024;
+/// Photos from the phone are downscaled to JPEG before upload; this is only a ceiling.
+const MAX_ATTACHMENT: usize = 4 * 1024 * 1024;
 const MAX_STATIC_ASSET: usize = 4 * 1024 * 1024;
 const MAX_REQUEST: usize = 96 * 1024;
 const MAX_MESSAGE: usize = 4 * 1024;

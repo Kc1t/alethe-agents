@@ -18,8 +18,8 @@ use super::pty_bridge::{read_pty_size, read_scrollback, write_remote};
 use super::util::{query_value, sanitize_remote_message};
 use super::workspace::{pty_agent, pty_is_shared, shared_tab, workspace_snapshot};
 use super::{
-    ConnectionGuard, RemoteHub, IDLE_DISABLE_SECS, MAX_BODY, MAX_MESSAGE, MAX_REQUEST,
-    MAX_SCROLLBACK, MAX_STATIC_ASSET, SOCKET_TIMEOUT,
+    ConnectionGuard, RemoteHub, IDLE_DISABLE_SECS, MAX_ATTACHMENT, MAX_BODY, MAX_MESSAGE,
+    MAX_REQUEST, MAX_SCROLLBACK, MAX_STATIC_ASSET, SOCKET_TIMEOUT,
 };
 
 const MAX_TRANSCRIPT_EVENTS: usize = 160;
@@ -562,6 +562,59 @@ fn handle_api(
         );
         return respond(stream, 204, "text/plain", "");
     }
+    if path == "/api/attachment" && method == "POST" {
+        if hub.is_read_only() {
+            return respond(
+                stream,
+                403,
+                "application/json",
+                r#"{"error":"Remote control is in read-only mode"}"#,
+            );
+        }
+        if !hub.allow_message(session_id) {
+            return respond(
+                stream,
+                429,
+                "application/json",
+                r#"{"error":"Too many messages, slow down"}"#,
+            );
+        }
+        let pty_id = query_value(target, "ptyId").unwrap_or_default();
+        // Claude Code and Codex turn a pasted image path into an attachment;
+        // a shell would just receive a path, so it is not offered there.
+        if !matches!(pty_agent(app, &pty_id).as_deref(), Some("claude" | "codex")) {
+            return respond(
+                stream,
+                409,
+                "application/json",
+                r#"{"error":"Photos can only be sent to Codex and Claude Code"}"#,
+            );
+        }
+        let Some(extension) = attachment_extension(body) else {
+            return respond(
+                stream,
+                415,
+                "application/json",
+                r#"{"error":"Only JPEG, PNG and WebP photos are supported"}"#,
+            );
+        };
+        let dir = std::env::temp_dir().join("alethe-remote-uploads");
+        std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+        let file = dir.join(format!("{}.{extension}", nanoid::nanoid!(16)));
+        std::fs::write(&file, body).map_err(|error| error.to_string())?;
+        let file = file.to_string_lossy().to_string();
+        // Bracketed paste is what makes both agents attach the image (checked
+        // live: `[Image #1]`); typed as plain text it stays a path.
+        let written = hub.with_active_session(generation, session_id, || {
+            write_remote(sessions, &pty_id, &format!("\x1b[200~{file}\x1b[201~"))
+        })?;
+        if !written {
+            return respond_session_inactive(stream);
+        }
+        let device_name = hub.device_name(session_id);
+        eprintln!("[remote] {device_name} (device {session_id}) attached a photo to {pty_id}");
+        return respond(stream, 204, "text/plain", "");
+    }
     if path == "/api/message" && method == "POST" {
         if hub.is_read_only() {
             return respond(
@@ -729,6 +782,35 @@ fn question_answer_input(
     Ok(input)
 }
 
+/// Only the photo upload route may carry a body past the usual JSON cap.
+fn body_limit(head: &str) -> usize {
+    let first = head.split("\r\n").next().unwrap_or("");
+    let mut parts = first.split_whitespace();
+    let is_attachment = parts.next() == Some("POST")
+        && parts
+            .next()
+            .is_some_and(|target| target.split('?').next() == Some("/api/attachment"));
+    if is_attachment {
+        MAX_ATTACHMENT
+    } else {
+        MAX_BODY
+    }
+}
+
+/// Image formats the phone may upload, recognised by their leading bytes rather
+/// than by anything the client claims.
+fn attachment_extension(body: &[u8]) -> Option<&'static str> {
+    if body.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if body.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("png")
+    } else if body.len() > 12 && &body[..4] == b"RIFF" && &body[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
 fn read_request(stream: &mut TcpStream) -> Result<(String, Vec<u8>), String> {
     let mut raw: Vec<u8> = Vec::with_capacity(8 * 1024);
     let mut chunk = [0_u8; 8 * 1024];
@@ -749,7 +831,8 @@ fn read_request(stream: &mut TcpStream) -> Result<(String, Vec<u8>), String> {
     let content_length = header_value(&head, "content-length")
         .and_then(|value| value.trim().parse::<usize>().ok())
         .unwrap_or(0);
-    if content_length > MAX_BODY {
+    let max_body = body_limit(&head);
+    if content_length > max_body {
         return Err("Request body too large".into());
     }
     let mut body = raw[headers_end + 4..].to_vec();
@@ -759,7 +842,7 @@ fn read_request(stream: &mut TcpStream) -> Result<(String, Vec<u8>), String> {
             return Err("Connection closed before the body completed".into());
         }
         body.extend_from_slice(&chunk[..count]);
-        if body.len() > MAX_BODY {
+        if body.len() > max_body {
             return Err("Request body too large".into());
         }
     }
@@ -897,7 +980,31 @@ fn respond_bytes_with_limit(
 
 #[cfg(test)]
 mod tests {
-    use super::{bearer_token, find_headers_end, header_value, question_answer_input};
+    use super::{
+        attachment_extension, bearer_token, body_limit, find_headers_end, header_value,
+        question_answer_input,
+    };
+    use crate::remote::{MAX_ATTACHMENT, MAX_BODY};
+
+    #[test]
+    fn only_the_photo_route_gets_the_larger_body_cap() {
+        assert_eq!(
+            body_limit("POST /api/attachment?ptyId=a HTTP/1.1\r\nContent-Length: 9"),
+            MAX_ATTACHMENT
+        );
+        assert_eq!(body_limit("POST /api/message HTTP/1.1"), MAX_BODY);
+        assert_eq!(body_limit("GET /api/attachment HTTP/1.1"), MAX_BODY);
+        assert_eq!(body_limit("POST /api/attachmentx HTTP/1.1"), MAX_BODY);
+    }
+
+    #[test]
+    fn photos_are_recognised_by_their_bytes() {
+        assert_eq!(attachment_extension(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("jpg"));
+        assert_eq!(attachment_extension(b"\x89PNG\r\n\x1a\nrest"), Some("png"));
+        assert_eq!(attachment_extension(b"RIFF\0\0\0\0WEBPVP8 "), Some("webp"));
+        assert_eq!(attachment_extension(b"<svg onload=alert(1)>"), None);
+        assert_eq!(attachment_extension(b""), None);
+    }
     use crate::handoff::{RemoteQuestion, RemoteQuestionOption};
 
     #[test]

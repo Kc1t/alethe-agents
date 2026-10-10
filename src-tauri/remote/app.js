@@ -8,6 +8,7 @@ const SESSION_KEY = 'alethe.remote.session'
 const FONT_SIZE_KEY = 'alethe.remote.fontSize'
 const CHAT_VIEW_KEY = 'alethe.remote.chatView'
 const DRAFTS_KEY = 'alethe.remote.drafts.v1'
+const ONBOARDING_KEY = 'alethe.remote.onboarding.v1'
 const TRANSCRIPT_POLL_MS = 1500
 const APPEARANCE_SYNC_MS = 10_000
 const WORKSPACE_SYNC_MS = 5_000
@@ -1208,9 +1209,10 @@ function composerMarkup() {
     ? t('chat.agentPlaceholder', { agent: agentName(findChat(selected)?.agent) })
     : t('chat.sendPlaceholder')
   return `<div class="composer-wrap"><form class="composer" id="composer">
-    <label class="sr-only" for="message">${escapeHtml(placeholder)}</label><textarea id="message" rows="1" autocomplete="off" aria-describedby="composer-error composer-hint" placeholder="${escapeHtml(placeholder)}">${escapeHtml(chatSession().draft)}</textarea>
+    <button class="attach-button" type="button" aria-label="${t('chat.attachPhoto')}"${canAttachPhoto() ? '' : ' hidden'}>${icons.fontLarger}</button><input class="sr-only" id="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
+    <label class="sr-only" for="message">${escapeHtml(placeholder)}</label><textarea id="message" rows="1" autocomplete="off" aria-describedby="composer-error" placeholder="${escapeHtml(placeholder)}">${escapeHtml(chatSession().draft)}</textarea>
     <button class="send-button" type="submit" aria-label="${t('chat.send')}"><span class="send-icon">${icons.send}</span><span class="send-loader" aria-hidden="true"></span></button>
-    <p class="composer-error" id="composer-error" role="alert"></p><p class="composer-hint" id="composer-hint">${t('chat.mobileHint')}</p>
+    <p class="composer-error" id="composer-error" role="alert"></p>
   </form></div>`
 }
 
@@ -1347,11 +1349,68 @@ function updateComposer() {
     (chatView === 'messages' && supportsMessages() && !transcript && !sendNow)
   button.classList.toggle('is-loading', session.sending)
   button.setAttribute('aria-label', t(session.sending ? 'chat.sending' : 'chat.send'))
+  const attach = form.querySelector('.attach-button')
+  if (attach) attach.disabled = session.sending || session.ended || connectionState !== 'live'
   form.setAttribute('aria-busy', String(session.sending))
   form.querySelector('#composer-error').textContent = session.error
 }
 
 const SEND_NOW_DOUBLE_TAP_MS = 2_000
+const PHOTO_MAX_EDGE = 1600
+const PHOTO_QUALITY = 0.85
+const PHOTO_MAX_BYTES = 4 * 1024 * 1024
+
+function canAttachPhoto(ptyId = selected) {
+  return !readOnly && ['claude', 'codex'].includes(findChat(ptyId)?.agent)
+}
+
+/** Re-encodes a phone photo as a JPEG no wider than PHOTO_MAX_EDGE, so a 12 MP
+ *  camera shot uploads in a few hundred KB. Falls back to the original file
+ *  when the browser cannot decode it. */
+async function preparePhoto(file) {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+    const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', PHOTO_QUALITY))
+    if (blob) return blob
+  } catch {
+    // Unsupported format for createImageBitmap: send the file as is.
+  }
+  return file
+}
+
+async function attachPhoto(ptyId, session, file) {
+  session.sending = true
+  session.error = ''
+  updateComposer()
+  try {
+    const photo = await preparePhoto(file)
+    if (photo.size > PHOTO_MAX_BYTES) throw new Error(t('chat.photoTooLarge'))
+    await api(`/api/attachment?ptyId=${encodeURIComponent(ptyId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': photo.type || 'application/octet-stream' },
+      body: photo,
+    })
+    session.controlNotice = 'chat.photoAttached'
+  } catch (error) {
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
+    session.error = t('chat.photoError', { message: error.message || error })
+  } finally {
+    session.sending = false
+    if (selected === ptyId) {
+      updateComposer()
+      updateChatFeedback()
+    }
+  }
+}
 
 function canSendNow(ptyId = selected) {
   return !readOnly && findChat(ptyId)?.agent === 'claude'
@@ -1404,7 +1463,12 @@ function bindComposer() {
   const session = chatSession(ptyId)
   const autoGrow = () => {
     input.style.height = 'auto'
-    input.style.height = `${Math.min(input.scrollHeight, 128)}px`
+    // border-box: scrollHeight leaves out the borders, which would add a scrollbar.
+    const height = input.scrollHeight + input.offsetHeight - input.clientHeight
+    input.style.height = `${Math.min(height, 128)}px`
+    // Only scrollable once it hits the cap; a sub-pixel overflow otherwise
+    // reserves a scrollbar on a box that has nothing to scroll.
+    input.style.overflowY = height > 128 ? 'auto' : 'hidden'
   }
   input.addEventListener('input', () => {
     session.draft = input.value
@@ -1419,6 +1483,16 @@ function bindComposer() {
   })
   autoGrow()
   updateComposer()
+  const photoInput = form.querySelector('#photo-input')
+  form.querySelector('.attach-button')?.addEventListener('click', () => {
+    if (session.sending || connectionState !== 'live') return
+    photoInput.click()
+  })
+  photoInput?.addEventListener('change', () => {
+    const file = photoInput.files?.[0]
+    photoInput.value = ''
+    if (file) void attachPhoto(ptyId, session, file)
+  })
   input.addEventListener('keydown', (event) => {
     if (
       event.key === 'Enter' &&
@@ -1511,6 +1585,36 @@ function openChat(ptyId) {
       ? 'messages'
       : 'terminal'
   renderChat()
+  showOnboardingOnce()
+}
+
+/** First visit on this device: how sending works from a phone, once. */
+function showOnboardingOnce() {
+  if (readOnly || document.querySelector('.onboarding')) return
+  try {
+    if (localStorage.getItem(ONBOARDING_KEY)) return
+  } catch {
+    return
+  }
+  const tips = ['onboarding.enter', 'onboarding.send', 'onboarding.sendNow', 'onboarding.photo']
+  const overlay = document.createElement('div')
+  overlay.className = 'onboarding'
+  overlay.innerHTML = `<section class="onboarding-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <h2 id="onboarding-title">${escapeHtml(t('onboarding.title'))}</h2>
+    <ul>${tips.map((key) => `<li>${escapeHtml(t(key))}</li>`).join('')}</ul>
+    <button type="button" class="onboarding-done">${escapeHtml(t('onboarding.done'))}</button>
+  </section>`
+  const close = () => {
+    try {
+      localStorage.setItem(ONBOARDING_KEY, '1')
+    } catch {
+      // Storage blocked: the tip simply shows again next time.
+    }
+    overlay.remove()
+  }
+  overlay.querySelector('.onboarding-done').addEventListener('click', close)
+  document.body.append(overlay)
+  overlay.querySelector('.onboarding-done').focus()
 }
 function connectSocket() {
   if (!wsBase || !sessionToken) return
