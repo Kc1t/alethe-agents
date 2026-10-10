@@ -515,24 +515,41 @@ fn handle_api(
                 r#"{"error":"Only Codex and Claude Code can be controlled remotely"}"#,
             );
         }
-        if payload.action != "interrupt" {
-            return respond(
-                stream,
-                400,
-                "application/json",
-                r#"{"error":"Unknown agent control action"}"#,
-            );
+        // Claude Code queues a message typed while a turn is running and only
+        // offers `ctrl+x ctrl+s` to send it now — a chord a phone keyboard
+        // cannot type.
+        let (keys, preview): (&[&str], &str) = match payload.action.as_str() {
+            "interrupt" => (&["\x03"], "Interrupted the active agent turn"),
+            "send_now" if agent == "claude" => (&["\x18", "\x13"], "Sent the queued message now"),
+            _ => {
+                return respond(
+                    stream,
+                    400,
+                    "application/json",
+                    r#"{"error":"Unknown agent control action"}"#,
+                );
+            }
+        };
+        let mut written = true;
+        for (index, key) in keys.iter().enumerate() {
+            if index > 0 {
+                // Each half of the chord must arrive as its own keypress.
+                thread::sleep(Duration::from_millis(60));
+            }
+            written = hub.with_active_session(generation, session_id, || {
+                write_remote(sessions, &payload.pty_id, key)
+            })?;
+            if !written {
+                break;
+            }
         }
-        let written = hub.with_active_session(generation, session_id, || {
-            write_remote(sessions, &payload.pty_id, "\x03")
-        })?;
         if !written {
             return respond_session_inactive(stream);
         }
         let device_name = hub.device_name(session_id);
         eprintln!(
-            "[remote] {device_name} (device {session_id}) interrupted {}",
-            payload.pty_id
+            "[remote] {device_name} (device {session_id}) {} {}",
+            payload.action, payload.pty_id
         );
         let _ = app.emit(
             "remote://message",
@@ -540,7 +557,7 @@ fn handle_api(
                 "ptyId": payload.pty_id,
                 "deviceId": session_id,
                 "deviceName": device_name,
-                "preview": "Interrupted the active agent turn",
+                "preview": preview,
             }),
         );
         return respond(stream, 204, "text/plain", "");
