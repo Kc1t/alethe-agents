@@ -1835,8 +1835,13 @@ async function boot() {
     try {
       await pair()
     } catch (error) {
-      renderPairingRequired(error.message)
-      return
+      // A browser that reopens the tab reloads the QR link, whose token was
+      // spent on the first pairing; a saved session still gets this device in.
+      if (!sessionToken) {
+        renderPairingRequired(error.message)
+        return
+      }
+      history.replaceState(null, '', location.pathname)
     }
   }
   if (!sessionToken) {
