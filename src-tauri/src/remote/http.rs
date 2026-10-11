@@ -518,9 +518,14 @@ fn handle_api(
         // Claude Code queues a message typed while a turn is running and only
         // offers `ctrl+x ctrl+s` to send it now — a chord a phone keyboard
         // cannot type.
-        let (keys, preview): (&[&str], &str) = match payload.action.as_str() {
-            "interrupt" => (&["\x03"], "Interrupted the active agent turn"),
-            "send_now" if agent == "claude" => (&["\x18", "\x13"], "Sent the queued message now"),
+        let (keys, preview): (Vec<String>, &str) = match payload.action.as_str() {
+            "interrupt" => (vec!["\x03".into()], "Interrupted the active agent turn"),
+            "send_now" if agent == "claude" => {
+                (vec!["\x18".into(), "\x13".into()], "Sent the queued message now")
+            }
+            "edit_queued" if agent == "claude" => {
+                (edit_queued_keys(payload.lines), "Took the queued message back to edit")
+            }
             _ => {
                 return respond(
                     stream,
@@ -532,9 +537,12 @@ fn handle_api(
         };
         let mut written = true;
         for (index, key) in keys.iter().enumerate() {
+            let key = key.as_str();
             if index > 0 {
-                // Each half of the chord must arrive as its own keypress.
-                thread::sleep(Duration::from_millis(60));
+                // Each half of the chord must arrive as its own keypress; the
+                // up arrow also needs the queue moved into the box first.
+                let settle = index == 1 && payload.action == "edit_queued";
+                thread::sleep(Duration::from_millis(if settle { 250 } else { 60 }));
             }
             written = hub.with_active_session(generation, session_id, || {
                 write_remote(sessions, &payload.pty_id, key)
@@ -782,6 +790,23 @@ struct RemoteAgentControl {
     #[serde(rename = "ptyId")]
     pty_id: String,
     action: String,
+    /// Lines of the queued text, for `edit_queued`.
+    #[serde(default)]
+    lines: usize,
+}
+
+/// Claude Code's up arrow moves the queued messages into its input box (they
+/// then no longer send by themselves); ctrl+u clears a line and backspace
+/// joins it to the one above, so the box ends up empty for the phone to
+/// take the text back. Checked live against Claude Code.
+fn edit_queued_keys(lines: usize) -> Vec<String> {
+    let mut keys = vec!["\x1b[A".to_string()];
+    for _ in 1..lines.clamp(1, 40) {
+        keys.push("\x15".into());
+        keys.push("\x7f".into());
+    }
+    keys.push("\x15".into());
+    keys
 }
 
 fn question_answer_input(
@@ -1026,7 +1051,7 @@ fn respond_bytes_with_limit(
         429 => "Too Many Requests",
         _ => "Error",
     };
-    let response = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: {cache_control}\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'; connect-src 'self' ws:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\n\r\n", body.len());
+    let response = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: {cache_control}\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'; connect-src 'self' ws:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\n\r\n", body.len());
     stream
         .write_all(response.as_bytes())
         .and_then(|_| stream.write_all(body))
@@ -1036,10 +1061,18 @@ fn respond_bytes_with_limit(
 #[cfg(test)]
 mod tests {
     use super::{
-        attachment_dir, attachment_extension, bearer_token, body_limit, find_headers_end,
-        header_value, question_answer_input, resolve_attachments,
+        attachment_dir, attachment_extension, bearer_token, body_limit, edit_queued_keys,
+        find_headers_end, header_value, question_answer_input, resolve_attachments,
     };
     use crate::remote::{MAX_ATTACHMENT, MAX_BODY};
+
+    #[test]
+    fn edit_queued_clears_every_line_after_the_up_arrow() {
+        assert_eq!(edit_queued_keys(1), vec!["\x1b[A", "\x15"]);
+        assert_eq!(edit_queued_keys(3), vec!["\x1b[A", "\x15", "\x7f", "\x15", "\x7f", "\x15"]);
+        assert_eq!(edit_queued_keys(0).len(), 2);
+        assert_eq!(edit_queued_keys(1_000).len(), 1 + 39 * 2 + 1);
+    }
 
     #[test]
     fn attachments_resolve_only_uploaded_ids() {

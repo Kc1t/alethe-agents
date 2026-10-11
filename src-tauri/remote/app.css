@@ -14,7 +14,8 @@ html {
   min-height: 100%;
   background: var(--bg);
   /* No double-tap zoom: this is an app surface, the terminal has its own pinch. */
-  touch-action: manipulation;
+  /* No page zoom (pinch or double tap): it breaks the layout. Text size has its own buttons and the terminal its own pinch. */
+  touch-action: pan-x pan-y;
 }
 body {
   overflow-x: hidden;
@@ -984,6 +985,9 @@ svg {
   opacity: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.msg-pending.is-queued {
+  cursor: pointer;
 }
 .msg-photos {
   display: flex;
