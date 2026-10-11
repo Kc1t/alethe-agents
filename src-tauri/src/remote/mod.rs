@@ -38,6 +38,8 @@ pub use state::{RemoteDeviceInfo, RemoteHub, RemoteInfo, TailscaleStatus};
 const HTTP_START: u16 = 9340;
 const HTTP_END: u16 = 9360;
 const MAX_BODY: usize = 64 * 1024;
+/// Photos from the phone are downscaled to JPEG before upload; this is only a ceiling.
+const MAX_ATTACHMENT: usize = 4 * 1024 * 1024;
 const MAX_STATIC_ASSET: usize = 4 * 1024 * 1024;
 const MAX_REQUEST: usize = 96 * 1024;
 const MAX_MESSAGE: usize = 4 * 1024;
@@ -46,7 +48,8 @@ const MAX_REMOTE_DEVICES: usize = 4;
 const MAX_CONNECTIONS: usize = 24;
 const DEFAULT_SESSION_EXPIRY_SECS: u64 = 60 * 60;
 const MIN_SESSION_EXPIRY_SECS: u64 = 5 * 60;
-const MAX_SESSION_EXPIRY_SECS: u64 = 24 * 60 * 60;
+/// "Permanent" in the settings: ten years, until revoked.
+const MAX_SESSION_EXPIRY_SECS: u64 = 10 * 365 * 24 * 60 * 60;
 const PAIRING_WINDOW_SECS: u64 = 120;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(20);
 const WS_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
@@ -57,6 +60,8 @@ const AUTH_LOCKOUT: Duration = Duration::from_secs(300);
 /// compromised session token, not normal use.
 const MESSAGE_RATE_LIMIT: u32 = 20;
 const MESSAGE_RATE_WINDOW: Duration = Duration::from_secs(60);
+/// Photos per minute per device, apart from messages.
+const ATTACHMENT_RATE_LIMIT: u32 = 40;
 /// Auto-disables the listeners after this long with zero paired devices, so
 /// remote control can never be left silently exposed indefinitely.
 const IDLE_DISABLE_SECS: u64 = 4 * 60 * 60;

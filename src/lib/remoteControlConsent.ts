@@ -18,6 +18,7 @@ function sessionExpiryLabel(t: TFunction, seconds: number): string {
   if (seconds === 900) return t('remote.session900')
   if (seconds === 3_600) return t('remote.session3600')
   if (seconds === 86_400) return t('remote.session86400')
+  if (seconds === 315_360_000) return t('remote.sessionPermanent')
   return t('remote.sessionSeconds', { seconds })
 }
 
