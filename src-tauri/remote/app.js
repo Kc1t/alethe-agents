@@ -751,17 +751,10 @@ function isQueuedLine(line, session) {
   if (!terminalShowsQueue()) return false
   const text = withoutImageTags(line).toLowerCase()
   if (QUEUE_MARKERS.some((marker) => text.includes(marker))) return true
-  if (/\[image #\d+\]/i.test(line)) return true
-  if (text.length < 4) return false
-  return session.queued.some((item) =>
-    item.text
-      .toLowerCase()
-      .split('\n')
-      .map((part) => withoutImageTags(part))
-      .some(
-        (part) => part.length >= 4 && (text.includes(part.slice(0, 24)) || part.includes(text)),
-      ),
-  )
+  if (text.length < 8) return false
+  // The queued text as Claude Code draws it, possibly wrapped: a tapped row
+  // is a slice of it.
+  return session.queued.some((item) => withoutImageTags(item.text).toLowerCase().includes(text))
 }
 
 function terminalShowsQueue() {
@@ -791,7 +784,9 @@ function forgetConsumedQueue(session) {
 async function editQueued(ptyId, session) {
   if (session.sending || connectionState !== 'live' || !session.queued.length) return
   const items = session.queued.slice()
-  const lines = items.reduce((total, item) => total + item.text.split('\n').length, 0)
+  // ctrl+u clears one wrapped row at a time: count rows generously, extra
+  // rounds on an empty box do nothing.
+  const lines = items.reduce((total, item) => total + Math.ceil(item.text.length / 20) + 1, 0)
   session.sending = true
   session.error = ''
   updateComposer()
@@ -799,7 +794,7 @@ async function editQueued(ptyId, session) {
     await api('/api/agent-control', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ptyId, action: 'edit_queued', lines: lines + items.length + 1 }),
+      body: JSON.stringify({ ptyId, action: 'edit_queued', lines: lines + 2 }),
     })
     session.queued = session.queued.filter((item) => !items.includes(item))
     session.pending = session.pending.filter(
@@ -1109,7 +1104,9 @@ async function loadTranscript(ptyId) {
       const matches = (data.messages || [])
         .map((message, index) => ({ ...message, index }))
         .filter(
-          (message) => message.role === 'user' && withoutImageTags(message.text) === pending.text,
+          (message) =>
+            message.role === 'user' &&
+            withoutImageTags(message.text) === withoutImageTags(pending.text),
         )
       const match = matches[pending.occurrence]
       if (match) {
@@ -1448,7 +1445,7 @@ function renderChat() {
     .addEventListener('scroll', updateMessagesJump, { passive: true })
   document.querySelector('#messages').addEventListener('click', (event) => {
     const bubble = event.target.closest('.msg-pending.is-queued')
-    if (bubble) void editQueued(selected, chatSession())
+    if (bubble && chatSession().waitingSince) void editQueued(selected, chatSession())
   })
   document.querySelector('#messages-latest').addEventListener('click', () => {
     const list = document.querySelector('#messages')
@@ -1724,14 +1721,19 @@ function bindComposer() {
       return
     session.sending = true
     session.error = ''
+    const key = withoutImageTags(text)
+    // A message sent while a turn runs is the one Claude Code queues.
+    const busy = !!session.waitingSince
     const pending = {
       text,
       photos: photos.map((photo) => photo.url),
       sending: true,
       occurrence:
         (transcript?.messages || []).filter(
-          (message) => message.role === 'user' && withoutImageTags(message.text) === text,
-        ).length + session.pending.filter((item) => item.text === text && !item.confirmed).length,
+          (message) => message.role === 'user' && withoutImageTags(message.text) === key,
+        ).length +
+        session.pending.filter((item) => withoutImageTags(item.text) === key && !item.confirmed)
+          .length,
     }
     if (supportsMessages(ptyId)) session.pending.push(pending)
     updateComposer()
@@ -1752,7 +1754,8 @@ function bindComposer() {
       persistDraft(ptyId, '')
       // Their object URLs stay alive: the pending bubble still shows them.
       session.photos = session.photos.filter((photo) => !photos.includes(photo))
-      if (canSendNow(ptyId)) session.queued.push({ text, photos, pending, sentAt: Date.now() })
+      if (canSendNow(ptyId) && (busy || chatView === 'terminal'))
+        session.queued.push({ text, photos, pending, sentAt: Date.now() })
       if (selected === ptyId) {
         const currentInput = document.querySelector('#message')
         if (currentInput) {

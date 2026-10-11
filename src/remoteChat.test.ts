@@ -631,6 +631,8 @@ describe('remote mobile conversations', () => {
     it('takes a queued message back into the box, photo included', async () => {
       ui.openChat('claude')
       await settle()
+      // A turn is running, so Claude Code queues what the phone sends now.
+      ui.chatSession().waitingSince = Date.now()
       await pickPhoto()
       type('first line\nsecond line')
       send()
@@ -640,7 +642,7 @@ describe('remote mobile conversations', () => {
       bubble.click()
       await settle()
       expect(calls('/api/agent-control')).toEqual([
-        { ptyId: 'claude', action: 'edit_queued', lines: 4 },
+        { ptyId: 'claude', action: 'edit_queued', lines: 5 },
       ])
       expect(document.querySelector<HTMLTextAreaElement>('#message')!.value).toBe(
         'first line\nsecond line',
@@ -654,6 +656,38 @@ describe('remote mobile conversations', () => {
         text: 'first line\nsecond line',
         attachments: [PHOTO_ID],
       })
+    })
+
+    it('does not offer to take back a message sent while Claude Code was idle', async () => {
+      ui.openChat('claude')
+      await settle()
+      type('hello')
+      send()
+      await settle()
+      expect(ui.chatSession().queued).toHaveLength(0)
+      expect(document.querySelector('.msg-pending.is-queued')).toBeNull()
+    })
+
+    it('confirms a multi-line message the server flattened to one line', async () => {
+      ui.openChat('claude')
+      await settle()
+      ui.chatSession().waitingSince = Date.now()
+      type('first line\nsecond line')
+      send()
+      await settle()
+      expect(ui.chatSession().queued).toHaveLength(1)
+      fetchMock.mockResolvedValueOnce(
+        response(
+          snapshot([
+            { role: 'user', text: 'first line second line' },
+            { role: 'assistant', text: 'Done.' },
+          ]),
+        ),
+      )
+      await ui.loadTranscript('claude')
+      await settle()
+      expect(ui.chatSession().pending).toHaveLength(0)
+      expect(ui.chatSession().queued).toHaveLength(0)
     })
 
     it('does not offer to take back a Codex message', async () => {

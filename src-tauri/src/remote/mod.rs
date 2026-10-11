@@ -59,6 +59,8 @@ const AUTH_LOCKOUT: Duration = Duration::from_secs(300);
 /// compromised session token, not normal use.
 const MESSAGE_RATE_LIMIT: u32 = 20;
 const MESSAGE_RATE_WINDOW: Duration = Duration::from_secs(60);
+/// Photos per minute per device, apart from messages.
+const ATTACHMENT_RATE_LIMIT: u32 = 40;
 /// Auto-disables the listeners after this long with zero paired devices, so
 /// remote control can never be left silently exposed indefinitely.
 const IDLE_DISABLE_SECS: u64 = 4 * 60 * 60;

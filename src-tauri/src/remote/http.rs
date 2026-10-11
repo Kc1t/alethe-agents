@@ -110,7 +110,9 @@ fn handle_http(
             r#"{"error":"Remote control is disabled"}"#,
         );
     }
-    let (head, body) = read_request(stream)?;
+    let (head, body) = read_request(stream, |head| {
+        hub.session_id_for(&bearer_token(head)).is_some()
+    })?;
     let first = head.split("\r\n").next().unwrap_or("");
     let mut parts = first.split_whitespace();
     let method = parts.next().unwrap_or("");
@@ -520,12 +522,14 @@ fn handle_api(
         // cannot type.
         let (keys, preview): (Vec<String>, &str) = match payload.action.as_str() {
             "interrupt" => (vec!["\x03".into()], "Interrupted the active agent turn"),
-            "send_now" if agent == "claude" => {
-                (vec!["\x18".into(), "\x13".into()], "Sent the queued message now")
-            }
-            "edit_queued" if agent == "claude" => {
-                (edit_queued_keys(payload.lines), "Took the queued message back to edit")
-            }
+            "send_now" if agent == "claude" => (
+                vec!["\x18".into(), "\x13".into()],
+                "Sent the queued message now",
+            ),
+            "edit_queued" if agent == "claude" => (
+                edit_queued_keys(payload.lines),
+                "Took the queued message back to edit",
+            ),
             _ => {
                 return respond(
                     stream,
@@ -579,12 +583,12 @@ fn handle_api(
                 r#"{"error":"Remote control is in read-only mode"}"#,
             );
         }
-        if !hub.allow_message(session_id) {
+        if !hub.allow_attachment(session_id) {
             return respond(
                 stream,
                 429,
                 "application/json",
-                r#"{"error":"Too many messages, slow down"}"#,
+                r#"{"error":"Too many photos, slow down"}"#,
             );
         }
         let pty_id = query_value(target, "ptyId").unwrap_or_default();
@@ -609,12 +613,17 @@ fn handle_api(
         // Only stored here: the photo reaches the agent together with the
         // text, in one send, so the phone can show it in the box until then.
         let dir = attachment_dir();
-        std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+        prepare_attachment_dir(&dir)?;
         let id = format!("{}.{extension}", nanoid::nanoid!(16));
         std::fs::write(dir.join(&id), body).map_err(|error| error.to_string())?;
         let device_name = hub.device_name(session_id);
         eprintln!("[remote] {device_name} (device {session_id}) uploaded a photo for {pty_id}");
-        return respond(stream, 200, "application/json", &json!({ "id": id }).to_string());
+        return respond(
+            stream,
+            200,
+            "application/json",
+            &json!({ "id": id }).to_string(),
+        );
     }
     if path == "/api/message" && method == "POST" {
         if hub.is_read_only() {
@@ -681,7 +690,11 @@ fn handle_api(
             // Bracketed paste is what makes both agents attach the image
             // (checked live: `[Image #1]`); typed as plain text it stays a path.
             let written = hub.with_active_session(generation, session_id, || {
-                write_remote(sessions, &payload.pty_id, &format!("\x1b[200~{photo}\x1b[201~"))
+                write_remote(
+                    sessions,
+                    &payload.pty_id,
+                    &format!("\x1b[200~{photo}\x1b[201~"),
+                )
             })?;
             if !written {
                 return respond_session_inactive(stream);
@@ -690,7 +703,11 @@ fn handle_api(
             // text without the image.
             thread::sleep(ATTACHMENT_SETTLE);
         }
-        let line = if photos.is_empty() { format!("{text}\r") } else { format!(" {text}\r") };
+        let line = if photos.is_empty() {
+            format!("{text}\r")
+        } else {
+            format!(" {text}\r")
+        };
         let written = hub.with_active_session(generation, session_id, || {
             write_remote(sessions, &payload.pty_id, &line)
         })?;
@@ -749,8 +766,42 @@ struct RemoteMessage {
 const MAX_ATTACHMENTS_PER_MESSAGE: usize = 6;
 const ATTACHMENT_SETTLE: Duration = Duration::from_millis(250);
 
+const ATTACHMENT_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// The user's own cache folder, not the shared temp dir: on Linux `/tmp` is
+/// open to every local user, who could read or swap a photo before it is
+/// pasted into the agent.
 fn attachment_dir() -> std::path::PathBuf {
-    std::env::temp_dir().join("alethe-remote-uploads")
+    dirs_next::cache_dir()
+        .map(|dir| dir.join("com.kc1t.alethe"))
+        .unwrap_or_else(std::env::temp_dir)
+        .join("remote-uploads")
+}
+
+/// Creates the folder owner-only and drops photos older than a day, which
+/// the agent has long since read.
+fn prepare_attachment_dir(dir: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| error.to_string())?;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let old = entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|modified| modified.elapsed().ok())
+                .is_some_and(|age| age > ATTACHMENT_MAX_AGE);
+            if old {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Turns the ids `/api/attachment` handed out back into file paths. Only ids
@@ -800,13 +851,13 @@ struct RemoteAgentControl {
 /// joins it to the one above, so the box ends up empty for the phone to
 /// take the text back. Checked live against Claude Code.
 fn edit_queued_keys(lines: usize) -> Vec<String> {
-    let mut keys = vec!["\x1b[A".to_string()];
-    for _ in 1..lines.clamp(1, 40) {
-        keys.push("\x15".into());
-        keys.push("\x7f".into());
-    }
-    keys.push("\x15".into());
-    keys
+    // One burst: ctrl+u clears a wrapped row at a time, so a long message
+    // needs many rounds (checked live: 689 chars cleared, not sent later).
+    let rounds = lines.clamp(1, 200);
+    vec![
+        "\x1b[A".into(),
+        format!("{}\x15", "\x15\x7f".repeat(rounds - 1)),
+    ]
 }
 
 fn question_answer_input(
@@ -863,14 +914,17 @@ fn question_answer_input(
 }
 
 /// Only the photo upload route may carry a body past the usual JSON cap.
-fn body_limit(head: &str) -> usize {
+/// Only a photo upload from a paired device may send the larger body; the
+/// token is checked before reading it, so an unpaired client cannot make the
+/// server buffer megabytes.
+fn body_limit(head: &str, paired: impl FnOnce() -> bool) -> usize {
     let first = head.split("\r\n").next().unwrap_or("");
     let mut parts = first.split_whitespace();
     let is_attachment = parts.next() == Some("POST")
         && parts
             .next()
             .is_some_and(|target| target.split('?').next() == Some("/api/attachment"));
-    if is_attachment {
+    if is_attachment && paired() {
         MAX_ATTACHMENT
     } else {
         MAX_BODY
@@ -891,7 +945,10 @@ fn attachment_extension(body: &[u8]) -> Option<&'static str> {
     }
 }
 
-fn read_request(stream: &mut TcpStream) -> Result<(String, Vec<u8>), String> {
+fn read_request(
+    stream: &mut TcpStream,
+    paired: impl Fn(&str) -> bool,
+) -> Result<(String, Vec<u8>), String> {
     let mut raw: Vec<u8> = Vec::with_capacity(8 * 1024);
     let mut chunk = [0_u8; 8 * 1024];
     let headers_end = loop {
@@ -911,7 +968,7 @@ fn read_request(stream: &mut TcpStream) -> Result<(String, Vec<u8>), String> {
     let content_length = header_value(&head, "content-length")
         .and_then(|value| value.trim().parse::<usize>().ok())
         .unwrap_or(0);
-    let max_body = body_limit(&head);
+    let max_body = body_limit(&head, || paired(&head));
     if content_length > max_body {
         return Err("Request body too large".into());
     }
@@ -1069,9 +1126,9 @@ mod tests {
     #[test]
     fn edit_queued_clears_every_line_after_the_up_arrow() {
         assert_eq!(edit_queued_keys(1), vec!["\x1b[A", "\x15"]);
-        assert_eq!(edit_queued_keys(3), vec!["\x1b[A", "\x15", "\x7f", "\x15", "\x7f", "\x15"]);
-        assert_eq!(edit_queued_keys(0).len(), 2);
-        assert_eq!(edit_queued_keys(1_000).len(), 1 + 39 * 2 + 1);
+        assert_eq!(edit_queued_keys(3), vec!["\x1b[A", "\x15\x7f\x15\x7f\x15"]);
+        assert_eq!(edit_queued_keys(0), edit_queued_keys(1));
+        assert_eq!(edit_queued_keys(1_000)[1].len(), 199 * 2 + 1);
     }
 
     #[test]
@@ -1082,7 +1139,13 @@ mod tests {
         std::fs::write(dir.join(id), b"\xFF\xD8\xFF").unwrap();
         let resolved = resolve_attachments(&[id.to_string()]).unwrap();
         assert_eq!(resolved, vec![dir.join(id).to_string_lossy().to_string()]);
-        for bad in ["../../etc/passwd", "testAttachment01.sh", "short.jpg", "missingAttach001.jpg", "/tmp/x/../aaaaaaaaaaaaaaaa.jpg"] {
+        for bad in [
+            "../../etc/passwd",
+            "testAttachment01.sh",
+            "short.jpg",
+            "missingAttach001.jpg",
+            "/tmp/x/../aaaaaaaaaaaaaaaa.jpg",
+        ] {
             assert!(resolve_attachments(&[bad.to_string()]).is_none(), "{bad}");
         }
         assert!(resolve_attachments(&vec![id.to_string(); 7]).is_none());
@@ -1092,13 +1155,18 @@ mod tests {
 
     #[test]
     fn only_the_photo_route_gets_the_larger_body_cap() {
+        let photo = "POST /api/attachment?ptyId=a HTTP/1.1\r\nContent-Length: 9";
+        assert_eq!(body_limit(photo, || true), MAX_ATTACHMENT);
+        assert_eq!(body_limit(photo, || false), MAX_BODY);
+        assert_eq!(body_limit("POST /api/message HTTP/1.1", || true), MAX_BODY);
         assert_eq!(
-            body_limit("POST /api/attachment?ptyId=a HTTP/1.1\r\nContent-Length: 9"),
-            MAX_ATTACHMENT
+            body_limit("GET /api/attachment HTTP/1.1", || true),
+            MAX_BODY
         );
-        assert_eq!(body_limit("POST /api/message HTTP/1.1"), MAX_BODY);
-        assert_eq!(body_limit("GET /api/attachment HTTP/1.1"), MAX_BODY);
-        assert_eq!(body_limit("POST /api/attachmentx HTTP/1.1"), MAX_BODY);
+        assert_eq!(
+            body_limit("POST /api/attachmentx HTTP/1.1", || true),
+            MAX_BODY
+        );
     }
 
     #[test]
