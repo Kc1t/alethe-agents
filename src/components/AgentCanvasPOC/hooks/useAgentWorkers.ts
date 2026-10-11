@@ -2,6 +2,7 @@ import { listen } from '@tauri-apps/api/event'
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 import { MAX_LIVE_WORKERS } from '../../../lib/agentCanvasConfig'
+import { paneLaunchEnv } from '../../../lib/agentRuntimeAdapter'
 import { type CodexWorker, tailSummary } from '../../../lib/agentCanvasUtils'
 import { interactivePermissionArgs, oneShotArgs } from '../../../lib/experimentalAgentPolicy'
 import { useT } from '../../../lib/i18n'
@@ -68,6 +69,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
         command: resolveAgentCliCommand(agent),
         cwd: folder,
         extraArgs: args,
+        env: paneLaunchEnv(agent, useProjectsStore.getState().preferences.claudeFullscreen),
       })
         .then(() => {
           let unlistenExit: (() => void) | null = null

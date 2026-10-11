@@ -1,3 +1,4 @@
+import { paneLaunchEnv } from './agentRuntimeAdapter'
 import { claudeLaunchExtras, graphifyRepoOf, recordClaudeLaunch } from './claudeMcpConfigs'
 import { claudeLaunchFlags } from './sessionLaunch'
 import { conversationFields, getActiveSessions, saveSession } from './sessionResume'
@@ -199,6 +200,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
         command: target.agent,
         cwd: cwd || undefined,
         extraArgs,
+        env: paneLaunchEnv(target.agent, useProjectsStore.getState().preferences.claudeFullscreen),
       })
       if (claudeExtras) recordClaudeLaunch(target.ptyId, claudeExtras.orchestrator)
       window.dispatchEvent(

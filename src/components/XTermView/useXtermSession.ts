@@ -99,7 +99,12 @@ import {
   makeXtermLink,
 } from './terminalLinks'
 import { resetTerminalModes } from './terminalModes'
-import { restoreViewport, viewportDistanceFromBottom } from './terminalViewport'
+import {
+  captureViewportAnchor,
+  restoreViewport,
+  restoreViewportAnchor,
+  viewportDistanceFromBottom,
+} from './terminalViewport'
 import {
   TERMINAL_WRITE_FALLBACK_MS,
   TERMINAL_WRITE_FRAME_BUDGET,
@@ -460,6 +465,21 @@ export function useXtermSession(params: {
       pendingWriteLength += chunk.length
       pendingWriteLength = trimPendingWrites(pendingWrites, pendingWriteLength).length
       scheduleFlush()
+    }
+
+    // Runs `then` once everything queued for the pane has been parsed, so a check of the terminal's
+    // modes sees what the process wrote last, not output still waiting for its frame.
+    const afterQueuedWrites = (then: () => void) => {
+      const parsed = () => {
+        if (disposed) return
+        try {
+          terminal.write('', then)
+        } catch {
+          /* The terminal may have been disposed meanwhile. */
+        }
+      }
+      if (pendingWriteLength === 0) parsed()
+      else pendingWriteDrainResolvers.push(parsed)
     }
 
     const queueTerminalWriteAndWait = (chunk: string): Promise<void> => {
@@ -832,8 +852,8 @@ export function useXtermSession(params: {
       if (!id || disposed) return
       try {
         // The reader may be pages above the output; rebuilding the buffer is what makes the pane
-        // jump back to the end, so remember the distance and put them there once it is replayed.
-        const distanceFromBottom = viewportDistanceFromBottom(terminal)
+        // jump back to the end, so remember what they were reading and go back to it after.
+        const anchor = captureViewportAnchor(terminal)
         const arrivedDuringFetch: string[] = []
         resyncCaptureRef = arrivedDuringFetch
         const replay = await attachPty(id)
@@ -844,7 +864,17 @@ export function useXtermSession(params: {
         pendingWriteLength = 0
         cancelScheduledFlush()
         if (replay) {
-          void writeReplayAtOnce(replay, () => restoreViewport(terminal, distanceFromBottom))
+          void writeReplayAtOnce(replay, () => {
+            const restore = () => restoreViewportAnchor(terminal, anchor)
+            // A dead session's scrollback ends in the modes it died with, so replaying it puts the
+            // pane back on a screen nobody owns; this also covers a reset that was still waiting
+            // for writes the replay dropped.
+            if (useTerminalsStore.getState().byPtyId[id]?.alive === false) {
+              resetTerminalModes(terminal, restore)
+            } else {
+              restore()
+            }
+          })
         }
         for (const chunk of arrivedDuringFetch) queueTerminalWrite(chunk)
       } catch {
@@ -936,9 +966,12 @@ export function useXtermSession(params: {
           return
         }
         useTerminalsStore.getState().markExited(existingId)
-        if (useTerminalsStore.getState().byPtyId[existingId]?.alive === false) {
-          resetTerminalModes(terminal)
-        }
+        afterQueuedWrites(() => {
+          // Checked once the output is in: a restart may have revived the pane meanwhile.
+          if (useTerminalsStore.getState().byPtyId[existingId]?.alive === false) {
+            resetTerminalModes(terminal)
+          }
+        })
         completionMonitor?.dispose()
         completionMonitor = null
         removeSession(sessionPersistenceKey)
@@ -1551,9 +1584,12 @@ export function useXtermSession(params: {
             )
           }
           useTerminalsStore.getState().markExited(response.id)
-          if (useTerminalsStore.getState().byPtyId[response.id]?.alive === false) {
-            resetTerminalModes(terminal)
-          }
+          afterQueuedWrites(() => {
+            // Checked once the output is in: a restart may have revived the pane meanwhile.
+            if (useTerminalsStore.getState().byPtyId[response.id]?.alive === false) {
+              resetTerminalModes(terminal)
+            }
+          })
           completionMonitor?.dispose()
           completionMonitor = null
 

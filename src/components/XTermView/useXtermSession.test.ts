@@ -34,7 +34,14 @@ vi.mock('@xterm/xterm', () => ({
     rows = 24
     unicode = { activeVersion: '11' }
     options = { fontSize: 14 }
-    buffer = { active: { type: 'normal' as 'normal' | 'alternate', baseY: 0, viewportY: 0 } }
+    buffer = {
+      active: {
+        type: 'normal' as 'normal' | 'alternate',
+        baseY: 0,
+        viewportY: 0,
+        getLine: () => undefined,
+      },
+    }
     modes = {
       mouseTrackingMode: 'none',
       bracketedPasteMode: false,
@@ -64,6 +71,11 @@ vi.mock('@xterm/xterm', () => ({
     onData() {}
     dispose() {}
     writeln() {}
+    // A full reset (RIS) leaves the alternate screen and turns the modes off.
+    reset() {
+      this.buffer.active.type = 'normal'
+      this.modes = { mouseTrackingMode: 'none', bracketedPasteMode: false, sendFocusMode: false }
+    }
   },
 }))
 vi.mock('@xterm/addon-fit', () => ({
@@ -73,10 +85,12 @@ vi.mock('@xterm/addon-fit', () => ({
 }))
 vi.mock('@xterm/addon-search', () => ({ SearchAddon: class {} }))
 vi.mock('@xterm/addon-unicode11', () => ({ Unicode11Addon: class {} }))
-vi.mock('../../lib/ptyVisibility', () => ({ usePtyPanelVisible: () => false }))
+const panel = vi.hoisted(() => ({ visible: false }))
+vi.mock('../../lib/ptyVisibility', () => ({ usePtyPanelVisible: () => panel.visible }))
 vi.mock('../../lib/tauri', async (importOriginal) => ({
   ...(await importOriginal<typeof tauri>()),
   ptyExists: vi.fn(async () => false),
+  attachPty: vi.fn(async () => ''),
   setPtyVisible: vi.fn(async () => true),
   listenPtyData: vi.fn(async () => () => {}),
   listenPtyActivity: vi.fn(async () => () => {}),
@@ -158,6 +172,7 @@ function paneTerminal(input: Parameters<typeof useXtermSession>[0]): MockTermina
 
 beforeEach(() => {
   vi.clearAllMocks()
+  panel.visible = false
   hooks.clear()
   localStorage.clear()
   resetSessionClaimsForTests()
@@ -276,7 +291,72 @@ describe('Claude terminal session lifecycle', () => {
 
     act(() => exits.get('pty-0')?.({ code: 0 }))
 
-    expect(terminal.writes.join('')).toContain('\x1b[?1049l\x1b[?1000l')
+    await waitFor(() => expect(terminal.writes.join('')).toContain('\x1b[?1049l\x1b[?1000l'))
+  })
+
+  it('frees a pane whose fullscreen modes were still queued when the session exited', async () => {
+    const data = new Map<string, (chunk: string) => void>()
+    vi.mocked(tauri.listenPtyData).mockImplementation(async (id, handler) => {
+      data.set(id, handler as (chunk: string) => void)
+      return () => {}
+    })
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(exits.has('pty-0') && data.has('pty-0')).toBe(true))
+    const terminal = paneTerminal(input) as MockTerminal & {
+      write: (chunk: string, callback?: () => void) => void
+    }
+    // The mock parses only what this needs: entering the alternate screen with the mouse on.
+    const write = terminal.write.bind(terminal)
+    terminal.write = (chunk, callback) => {
+      if (chunk.includes('\x1b[?1049h')) {
+        terminal.buffer.active.type = 'alternate'
+        terminal.modes.mouseTrackingMode = 'vt200'
+      }
+      write(chunk, callback)
+    }
+    input.spawnedAtRef.current = Date.now() - 30_000
+
+    // The renderer's last output is still in the pane's write queue when the exit arrives.
+    act(() => {
+      data.get('pty-0')?.('\x1b[?1049h\x1b[?1000h')
+      exits.get('pty-0')?.({ code: 0 })
+    })
+
+    await waitFor(() => expect(terminal.writes.join('')).toContain('\x1b[?1049l\x1b[?1000l'))
+  })
+
+  it('frees a dead pane again when a resync replays the fullscreen it died in', async () => {
+    const input = params()
+    const view = renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(exits.has('pty-0')).toBe(true))
+    const terminal = paneTerminal(input) as MockTerminal & {
+      write: (chunk: string, callback?: () => void) => void
+    }
+    const write = terminal.write.bind(terminal)
+    terminal.write = (chunk, callback) => {
+      if (chunk.includes('\x1b[?1049h')) {
+        terminal.buffer.active.type = 'alternate'
+        terminal.modes.mouseTrackingMode = 'vt200'
+      }
+      write(chunk, callback)
+    }
+    input.spawnedAtRef.current = Date.now() - 30_000
+
+    // Killed in fullscreen while the pane was hidden: its output never reached the screen.
+    act(() => {
+      useTerminalsStore.getState().recordIo('pty-0')
+      exits.get('pty-0')?.({ code: 0 })
+    })
+    vi.mocked(tauri.attachPty).mockResolvedValue('\x1b[?1049h\x1b[?1000hthe fullscreen UI')
+    terminal.writes.length = 0
+
+    // Shown again, the pane rebuilds itself from the scrollback, fullscreen bytes included.
+    panel.visible = true
+    view.rerender()
+
+    await waitFor(() => expect(terminal.writes.join('')).toContain('the fullscreen UI'))
+    await waitFor(() => expect(terminal.writes.join('')).toContain('\x1b[?1049l\x1b[?1000l'))
   })
 
   it('gives a dead pane its scrollback back on the wheel', async () => {
