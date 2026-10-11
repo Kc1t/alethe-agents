@@ -1,4 +1,5 @@
 import type { MessageKey } from './i18n'
+import { isWindows } from './platform'
 import type { FeatureId } from './types'
 
 export type FeatureDefinition = {
@@ -70,6 +71,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     keywordsKey: 'features.prs.keywords',
   },
 ]
+
+/** Features this platform can use. WSL integration is Windows-only, so it is hidden elsewhere. */
+export function availableFeatures(windows: boolean = isWindows()): readonly FeatureDefinition[] {
+  return windows ? FEATURES : FEATURES.filter((feature) => feature.id !== 'wsl')
+}
 
 type StoredFeaturePreferences = {
   enabledFeatures?: Partial<Record<FeatureId, boolean>> & LegacyFeatureFlags

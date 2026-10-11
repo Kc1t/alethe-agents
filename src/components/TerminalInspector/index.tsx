@@ -18,6 +18,7 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { relaunchAgentPty } from '../../lib/agentRelaunch'
 import { graphifyRepoOf } from '../../lib/claudeMcpConfigs'
 import { useT } from '../../lib/i18n'
+import { platformKey } from '../../lib/platform'
 import type { SubTab, Terminal } from '../../lib/types'
 import { getPtyCwd, openInBrowser, openInFileExplorer, openInVscode } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -192,8 +193,10 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
           <>
             <InspectorAction
               icon={<FolderOpen size={14} />}
-              label={t('ui.terminal.openInExplorer')}
-              onClick={() => void openWithCwd(openInFileExplorer, 'Explorer')}
+              label={t(platformKey('ui.terminal.openInExplorer'))}
+              onClick={() =>
+                void openWithCwd(openInFileExplorer, t(platformKey('ui.terminal.fileManager')))
+              }
             />
             <InspectorAction
               icon={<VSCodeIcon size={14} />}
@@ -242,7 +245,7 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
           <>
             <InspectorAction
               icon={<FolderOpen size={14} />}
-              label={t('ui.terminal.openInExplorer')}
+              label={t(platformKey('ui.terminal.openInExplorer'))}
               onClick={() => void openInFileExplorer(parentDir(terminal.filePath ?? ''))}
               disabled={!terminal.filePath}
             />

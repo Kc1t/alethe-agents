@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   agentAccentToken,
@@ -7,6 +7,7 @@ import {
   agentProviderContributions,
   allAgentTypes,
   findAgentProvider,
+  isAgentAvailableOnPlatform,
   isAgentEnabled,
   isBuiltinAgentType,
   isKnownAgentType,
@@ -150,5 +151,32 @@ describe('isAgentEnabled', () => {
     expect(isAgentEnabled({}, 'claude')).toBe(false)
     expect(isAgentEnabled({}, 'aider-plus')).toBe(true)
     expect(isAgentEnabled({ 'aider-plus': false }, 'aider-plus')).toBe(false)
+  })
+})
+
+describe('WSL outside Windows', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('is only available on Windows', () => {
+    expect(isAgentAvailableOnPlatform('wsl', true)).toBe(true)
+    expect(isAgentAvailableOnPlatform('wsl', false)).toBe(false)
+    expect(isAgentAvailableOnPlatform('shell', false)).toBe(true)
+  })
+
+  it('stays disabled on macOS and Linux even when the stored flag is on', () => {
+    for (const userAgent of [
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      'Mozilla/5.0 (X11; Linux x86_64)',
+    ]) {
+      vi.stubGlobal('navigator', { userAgent })
+      expect(isAgentEnabled({ wsl: true, shell: true }, 'wsl')).toBe(false)
+      expect(isAgentEnabled({ wsl: true, shell: true }, 'shell')).toBe(true)
+    }
+  })
+
+  it('keeps honouring the stored flag on Windows', () => {
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' })
+    expect(isAgentEnabled({ wsl: true }, 'wsl')).toBe(true)
+    expect(isAgentEnabled({ wsl: false }, 'wsl')).toBe(false)
   })
 })

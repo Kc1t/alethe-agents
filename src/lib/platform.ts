@@ -31,3 +31,17 @@ export function formatShortcut(shortcut: string, mac: boolean = isMacOS()): stri
     .replace(/Shift\+/gi, '⇧')
     .replace(/Alt\+/gi, '⌥')
 }
+
+/**
+ * `key` on Windows, `${key}Mac` on macOS and `${key}Linux` elsewhere: for copy that names a tool
+ * each OS ships under its own name, such as the file manager.
+ */
+export function platformKey<K extends string>(key: K): K | `${K}Mac` | `${K}Linux` {
+  if (isWindows()) return key
+  return isMacOS() ? `${key}Mac` : `${key}Linux`
+}
+
+/** `key` on Windows, `${key}Posix` on macOS and Linux: for copy that only holds on Windows. */
+export function posixKey<K extends string>(key: K): K | `${K}Posix` {
+  return isWindows() ? key : `${key}Posix`
+}

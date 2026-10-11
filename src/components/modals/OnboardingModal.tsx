@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { latestVersionFor } from '../../lib/agentVersions'
 import { applyCloudPayload, buildCloudPayload } from '../../lib/cloudSync'
-import { FEATURES } from '../../lib/features'
+import { availableFeatures } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
 import {
@@ -98,7 +98,8 @@ export function OnboardingModal() {
   const contentRef = useRef<HTMLDivElement | null>(null)
   const agentDetectionStartedRef = useRef(false)
 
-  const enabledFeatureCount = FEATURES.filter(
+  const features = availableFeatures()
+  const enabledFeatureCount = features.filter(
     (feature) => preferences.enabledFeatures[feature.id],
   ).length
   const trimmedName = name.trim()
@@ -489,7 +490,7 @@ export function OnboardingModal() {
               {step === LAST_STEP
                 ? t('onboarding.featuresEnabledOf', {
                     enabled: enabledFeatureCount,
-                    total: FEATURES.length,
+                    total: features.length,
                   })
                 : step === USAGE_STEP
                   ? t('onboarding.usageFooter')

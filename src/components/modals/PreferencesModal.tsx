@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { isAgentAvailableOnPlatform } from '../../lib/agentProviders'
 import { useT } from '../../lib/i18n'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { setSectionCollapsed } from '../../lib/settingsSections'
@@ -389,7 +390,9 @@ export function PreferencesModal() {
   const avatarUrl = getProfileImageUrl(preferences)
   const displayName = preferences.displayName || t('profile.fallbackName')
   const initial = getProfileInitial(displayName)
-  const enabledCount = Object.values(preferences.enabledAgents).filter(Boolean).length
+  const enabledCount = Object.entries(preferences.enabledAgents).filter(
+    ([agent, enabled]) => enabled && isAgentAvailableOnPlatform(agent),
+  ).length
 
   useEffect(() => {
     if (!open) return

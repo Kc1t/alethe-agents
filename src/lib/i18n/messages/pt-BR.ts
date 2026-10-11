@@ -95,6 +95,8 @@ export const ptBR: Record<MessageKey, string> = {
 
   /* ---- agents ---- */
   'agent.shell.desc': 'PowerShell · cmd',
+  'agent.shell.descMac': 'zsh · bash',
+  'agent.shell.descLinux': 'bash · zsh',
   'agent.wsl.desc': 'Windows Subsystem for Linux',
   'agent.claude.desc': 'Anthropic CLI',
   'agent.codex.desc': 'OpenAI CLI',
@@ -821,6 +823,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.resourcePolicy': 'Monitoramento de memória',
   'prefs.resourcePolicyDesc':
     'Mostra o consumo real do app e do Windows sem fechar nem estacionar runtimes automaticamente.',
+  'prefs.resourcePolicyDescPosix':
+    'Mostra o consumo real do app e do sistema sem fechar nem estacionar runtimes automaticamente.',
   'prefs.resourcePolicySmart': 'LRU inteligente',
   'prefs.resourcePolicyManual': 'Só monitorar',
   'prefs.resourceBudget': 'Limite rígido (MB)',
@@ -1113,6 +1117,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.shell': 'Shell',
   'prefs.shellDesc':
     'O Alethe escolhe o shell sozinho (PowerShell 7 quando disponível, senão o Windows PowerShell; $SHELL nos demais sistemas). Aponte outro binário para sobrescrever — vale para abas Shell, não para abas de agente.',
+  'prefs.shellDescPosix':
+    'O Alethe escolhe o shell sozinho ($SHELL). Aponte outro binário para sobrescrever — vale para abas Shell, não para abas de agente.',
   'prefs.shellPathPick': 'Selecione o executável do shell',
   'prefs.terminalFont': 'Fonte do terminal',
   'prefs.terminalFontDesc':
@@ -1121,6 +1127,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.cliPaths': 'Caminhos dos CLIs',
   'prefs.cliPathsDesc':
     'O Alethe encontra o CLI de cada agente sozinho. Só defina um caminho se o CLI estiver num lugar fora do comum — e aponte para a ferramenta de linha de comando, não para o aplicativo gráfico. Esses caminhos são do Windows: terminais cuja pasta está dentro do WSL os ignoram e resolvem o CLI dentro da distro.',
+  'prefs.cliPathsDescPosix':
+    'O Alethe encontra o CLI de cada agente sozinho. Só defina um caminho se o CLI estiver num lugar fora do comum — e aponte para a ferramenta de linha de comando, não para o aplicativo gráfico.',
   'prefs.cliPathAuto': 'Detectado automaticamente',
   'prefs.cliPathSet': 'Definir caminho',
   'prefs.cliPathReset': 'Limpar',
@@ -1207,9 +1215,9 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.discordPresenceHint': 'Mostra que você está usando o Alethe sem expor nomes de projetos.',
   'prefs.namePlaceholder': 'Nome',
   'prefs.photoPlaceholder': 'Link da foto',
-  'prefs.zoomDecrease': 'Diminuir zoom (Ctrl+-)',
-  'prefs.zoomIncrease': 'Aumentar zoom (Ctrl+=)',
-  'prefs.zoomReset': 'Resetar zoom (Ctrl+0)',
+  'prefs.zoomDecrease': 'Diminuir zoom ({shortcut})',
+  'prefs.zoomIncrease': 'Aumentar zoom ({shortcut})',
+  'prefs.zoomReset': 'Resetar zoom ({shortcut})',
   'prefs.spotifyHint':
     'Cadastre {redirect} como Redirect URI no Spotify Developer Dashboard. Em dev, {idEnv} e {secretEnv} ainda funcionam como fallback.',
   'prefs.checkUpdates': 'Atualizações do software',
@@ -1828,6 +1836,8 @@ export const ptBR: Record<MessageKey, string> = {
   'mod.noDataYet': 'Sem dados suficientes ainda.',
   'mod.diagSystemCritical': 'A memória disponível do Windows está criticamente baixa.',
   'mod.diagSystemWarning': 'A memória disponível do Windows está ficando baixa.',
+  'mod.diagSystemCriticalPosix': 'A memória disponível do sistema está criticamente baixa.',
+  'mod.diagSystemWarningPosix': 'A memória disponível do sistema está ficando baixa.',
   'mod.diagOver2gb':
     'Uso total acima de 2 GB. Vale suspender grupos ociosos ou reiniciar panes antigos.',
   'mod.diagOver1gb':
@@ -1845,12 +1855,19 @@ export const ptBR: Record<MessageKey, string> = {
   'mod.health.normal.title': 'A memória está saudável',
   'mod.health.normal.body':
     'O Windows tem {available} disponíveis de {total}. O Alethe não fechará abas automaticamente.',
+  'mod.health.normal.bodyPosix':
+    'O sistema tem {available} disponíveis de {total}. O Alethe não fechará abas automaticamente.',
   'mod.health.warning.title': 'A memória disponível está ficando baixa',
   'mod.health.warning.body':
     'O Windows tem {available} disponíveis de {total}. Confira abaixo o runtime mais pesado antes de abrir muitos outros.',
+  'mod.health.warning.bodyPosix':
+    'O sistema tem {available} disponíveis de {total}. Confira abaixo o runtime mais pesado antes de abrir muitos outros.',
   'mod.health.critical.title': 'A memória do Windows está criticamente baixa',
   'mod.health.critical.body':
     'O Windows tem apenas {available} disponíveis de {total}. O Alethe avisará, mas qualquer encerramento de sessão continuará sendo sua decisão.',
+  'mod.health.critical.titlePosix': 'A memória do sistema está criticamente baixa',
+  'mod.health.critical.bodyPosix':
+    'O sistema tem apenas {available} disponíveis de {total}. O Alethe avisará, mas qualquer encerramento de sessão continuará sendo sua decisão.',
   'mod.clearHistory': 'Limpar histórico',
   'mod.now': 'Agora',
   'mod.peak': 'Pico',
@@ -2007,6 +2024,11 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.terminal.openInExplorerCwd': 'Abrir no Explorer · {cwd}',
   'ui.terminal.openLiveCwdInExplorer': 'Abrir cwd vivo no Explorer',
   'ui.terminal.openInExplorer': 'Abrir no Explorer',
+  'ui.terminal.openInExplorerMac': 'Abrir no Finder',
+  'ui.terminal.openInExplorerLinux': 'Abrir no gerenciador de arquivos',
+  'ui.terminal.fileManager': 'Explorer',
+  'ui.terminal.fileManagerMac': 'Finder',
+  'ui.terminal.fileManagerLinux': 'gerenciador de arquivos',
   'ui.terminal.openInVscodeCwd': 'Abrir no VS Code · {cwd}',
   'ui.terminal.openLiveCwdInVscode': 'Abrir cwd vivo no VS Code',
   'ui.terminal.openInVscode': 'Abrir no VS Code',
@@ -2057,6 +2079,10 @@ export const ptBR: Record<MessageKey, string> = {
   'files.readError': 'Não foi possível ler esta pasta.',
   'files.reveal': 'Mostrar no Explorador de Arquivos',
   'files.revealFolder': 'Abrir pasta no Explorador de Arquivos',
+  'files.revealMac': 'Mostrar no Finder',
+  'files.revealLinux': 'Mostrar no gerenciador de arquivos',
+  'files.revealFolderMac': 'Abrir pasta no Finder',
+  'files.revealFolderLinux': 'Abrir pasta no gerenciador de arquivos',
   'files.addToGrid': 'Adicionar ao grid',
   'files.openMarkdownSidebar': 'Abrir no visualizador Markdown à direita',
   'files.preview': 'Visualizar',
@@ -2088,7 +2114,7 @@ export const ptBR: Record<MessageKey, string> = {
   'git.detached': 'desanexado',
   'git.ahead': '{count} commit(s) à frente',
   'git.behind': '{count} commit(s) atrás',
-  'git.commit.placeholder': 'Mensagem (Ctrl+Enter para commit)',
+  'git.commit.placeholder': 'Mensagem ({shortcut} para commit)',
   'git.commit.action': 'Commit',
   'git.commit.busy': 'Processando...',
   'git.commit.done': 'Commit criado',
@@ -2478,7 +2504,7 @@ export const ptBR: Record<MessageKey, string> = {
   'orchestrator.runEyebrow': 'execução',
   'orchestrator.runDone': '{done}/{total} prontos',
   'orchestrator.attentionLabel': 'precisa de você em outra',
-  'orchestrator.canvasHint': 'Arraste o canvas para mover · Ctrl + scroll para dar zoom',
+  'orchestrator.canvasHint': 'Arraste o canvas para mover · {modifier} + scroll para dar zoom',
   'orchestrator.forestHint':
     'Uma árvore por chamada de delegação · os workers de uma execução não dependem uns dos outros.',
   'orchestrator.runNodeTitle': 'A delegação que iniciou estes workers',
@@ -3416,7 +3442,8 @@ export const ptBR: Record<MessageKey, string> = {
   'voice.history.tabTitle': 'Histórico do Jev',
   'voice.history.clear': 'Limpar histórico',
   'voice.history.emptyTitle': 'Nenhum comando ainda',
-  'voice.history.emptyBody': 'Aperte Ctrl+Shift+Espaço, diga o que você quer, e isso aparece aqui.',
+  'voice.history.emptyBody': 'Aperte {shortcut}, diga o que você quer, e isso aparece aqui.',
+  'voice.history.spaceKey': 'Espaço',
   'voice.history.silence': '(silêncio)',
   'voice.history.status.deciding': 'decidindo',
   'voice.history.status.ran': 'executado',

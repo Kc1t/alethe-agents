@@ -18,6 +18,7 @@ import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { pickFile } from '../../lib/dialog'
 import { getLocale, translate, useT } from '../../lib/i18n'
+import { isWindows } from '../../lib/platform'
 import { writeScopedStorage } from '../../lib/storageNamespace'
 import {
   findRelativePath,
@@ -419,7 +420,9 @@ export function XTermView({
       const picked = await pickFile({
         title: `Select the ${agent} executable`,
         filters: [
-          { name: 'Executable', extensions: ['cmd', 'exe', 'bat', 'ps1'] },
+          ...(isWindows()
+            ? [{ name: 'Executable', extensions: ['cmd', 'exe', 'bat', 'ps1'] }]
+            : []),
           { name: 'All files', extensions: ['*'] },
         ],
       })

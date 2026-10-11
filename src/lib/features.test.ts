@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { legacyGitFeatureFlag, legacyTodosFeatureFlag, normalizeEnabledFeatures } from './features'
+import {
+  availableFeatures,
+  FEATURES,
+  legacyGitFeatureFlag,
+  legacyTodosFeatureFlag,
+  normalizeEnabledFeatures,
+} from './features'
 
 describe('normalizeEnabledFeatures', () => {
   it('enables the initial modules for a fresh profile', () => {
@@ -135,5 +141,17 @@ describe('the WSL integration preference', () => {
 
   it('stays off once explicitly disabled', () => {
     expect(normalizeEnabledFeatures({ enabledFeatures: { wsl: false } }).wsl).toBe(false)
+  })
+})
+
+describe('availableFeatures', () => {
+  it('lists every feature on Windows', () => {
+    expect(availableFeatures(true)).toEqual(FEATURES)
+  })
+
+  it('hides the WSL integration on macOS and Linux', () => {
+    const ids = availableFeatures(false).map((feature) => feature.id)
+    expect(ids).not.toContain('wsl')
+    expect(ids).toHaveLength(FEATURES.length - 1)
   })
 })

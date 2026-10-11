@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 import { useShallow } from 'zustand/react/shallow'
 
+import { isAgentAvailableOnPlatform } from '../../lib/agentProviders'
 import { pickDirectory } from '../../lib/dialog'
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import {
@@ -908,7 +909,7 @@ function NoWorkspace({
     () =>
       (
         ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'shell', 'wsl'] as AgentType[]
-      ).filter((agent) => enabledAgents[agent]),
+      ).filter((agent) => enabledAgents[agent] && isAgentAvailableOnPlatform(agent)),
     [enabledAgents],
   )
   const [quickAgent, setQuickAgent] = useState<AgentType>('claude')

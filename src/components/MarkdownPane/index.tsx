@@ -17,6 +17,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
 import { pathSegments } from '../../lib/paths'
 import { useT } from '../../lib/i18n'
+import { platformKey } from '../../lib/platform'
 import {
   listenFileChanged,
   openInFileExplorer,
@@ -290,8 +291,8 @@ export const MarkdownPane = memo(function MarkdownPane({
                 className={styles.action}
                 onClick={() => void openInFileExplorer(parentDir(filePath))}
                 disabled={!filePath}
-                title={t('ui.terminal.openInExplorer')}
-                aria-label={t('ui.terminal.openInExplorer')}
+                title={t(platformKey('ui.terminal.openInExplorer'))}
+                aria-label={t(platformKey('ui.terminal.openInExplorer'))}
               >
                 <FolderOpen size={12} />
               </button>
