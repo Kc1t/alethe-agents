@@ -88,7 +88,9 @@ describe('remote mobile conversations', () => {
       expect(document.querySelector('.chat-skeleton')).not.toBeNull()
       await settle()
       expect(document.querySelector('.messages-empty')).toHaveTextContent('Start a conversation')
-      expect(document.querySelector('.send-button')).toBeDisabled()
+      // An empty box still sends Claude Code's queued message now; Codex has no queue.
+      if (agent === 'claude') expect(document.querySelector('.send-button')).toBeEnabled()
+      else expect(document.querySelector('.send-button')).toBeDisabled()
       expect(document.querySelector('#messages')).toHaveAttribute('aria-busy', 'false')
     },
   )
@@ -524,7 +526,6 @@ describe('remote mobile conversations', () => {
       'chat.emptyTitle',
       'chat.emptyHint',
       'chat.agentPlaceholder',
-      'chat.mobileHint',
       'chat.viewLabel',
       'chat.sendUncertain',
       'chat.interrupt',
@@ -551,5 +552,152 @@ describe('remote mobile conversations', () => {
       expect(ui.messages['pt-BR'][key]).toBe(ptBR[key])
       expect(ui.messages['zh-CN'][key]).toBe(zhCN[key])
     }
+  })
+
+  describe('photos and the queue', () => {
+    const PHOTO_ID = 'abcdefghij012345.jpg'
+    const routeFetch = () =>
+      fetchMock.mockImplementation(async (path: string) => {
+        if (path.includes('/api/attachment')) return response({ id: PHOTO_ID })
+        if (path.endsWith('/api/message') || path.endsWith('/api/agent-control'))
+          return response(null, 204)
+        return response(snapshot())
+      })
+    const calls = (route: string) =>
+      fetchMock.mock.calls
+        .filter(([path]) => String(path).includes(route))
+        .map(([, init]) =>
+          init?.body && typeof init.body === 'string' ? JSON.parse(init.body) : init,
+        )
+    const pickPhoto = async () => {
+      const input = document.querySelector<HTMLInputElement>('#photo-input')!
+      const file = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'shot.jpg', {
+        type: 'image/jpeg',
+      })
+      Object.defineProperty(input, 'files', { configurable: true, value: [file] })
+      input.dispatchEvent(new Event('change'))
+      await settle()
+    }
+
+    beforeEach(() => {
+      vi.stubGlobal(
+        'URL',
+        Object.assign(URL, { createObjectURL: () => 'blob:photo', revokeObjectURL: () => {} }),
+      )
+      routeFetch()
+    })
+
+    it('keeps a photo in the box and sends it with the text in one tap', async () => {
+      ui.openChat('claude')
+      await settle()
+      await pickPhoto()
+      expect(document.querySelectorAll('.composer-photo img')).toHaveLength(1)
+      expect(calls('/api/message')).toHaveLength(0)
+      expect(document.querySelector('.send-button')).toBeEnabled()
+      type('what is this')
+      send()
+      await settle()
+      expect(calls('/api/message')).toEqual([
+        { ptyId: 'claude', text: 'what is this', attachments: [PHOTO_ID] },
+      ])
+      expect(calls('/api/agent-control')).toHaveLength(0)
+      expect(document.querySelectorAll('.composer-photo')).toHaveLength(0)
+    })
+
+    it("sends a photo on its own and confirms it against the agent's image tag", async () => {
+      ui.openChat('claude')
+      await settle()
+      await pickPhoto()
+      send()
+      await settle()
+      expect(calls('/api/message')).toEqual([
+        { ptyId: 'claude', text: '', attachments: [PHOTO_ID] },
+      ])
+      expect(ui.chatSession().pending).toHaveLength(1)
+      fetchMock.mockResolvedValueOnce(
+        response(
+          snapshot([
+            { role: 'user', text: '[Image #3]' },
+            { role: 'assistant', text: 'A keyboard.' },
+          ]),
+        ),
+      )
+      await ui.loadTranscript('claude')
+      await settle()
+      expect(ui.chatSession().pending).toHaveLength(0)
+      expect(ui.chatSession().queued).toHaveLength(0)
+    })
+
+    it('takes a queued message back into the box, photo included', async () => {
+      ui.openChat('claude')
+      await settle()
+      // A turn is running, so Claude Code queues what the phone sends now.
+      ui.chatSession().waitingSince = Date.now()
+      await pickPhoto()
+      type('first line\nsecond line')
+      send()
+      await settle()
+      const bubble = document.querySelector<HTMLElement>('.msg-pending.is-queued')!
+      expect(bubble).not.toBeNull()
+      bubble.click()
+      await settle()
+      expect(calls('/api/agent-control')).toEqual([
+        { ptyId: 'claude', action: 'edit_queued', lines: 5 },
+      ])
+      expect(document.querySelector<HTMLTextAreaElement>('#message')!.value).toBe(
+        'first line\nsecond line',
+      )
+      expect(document.querySelectorAll('.composer-photo')).toHaveLength(1)
+      expect(ui.chatSession().queued).toHaveLength(0)
+      send()
+      await settle()
+      expect(calls('/api/message').at(-1)).toEqual({
+        ptyId: 'claude',
+        text: 'first line\nsecond line',
+        attachments: [PHOTO_ID],
+      })
+    })
+
+    it('does not offer to take back a message sent while Claude Code was idle', async () => {
+      ui.openChat('claude')
+      await settle()
+      type('hello')
+      send()
+      await settle()
+      expect(ui.chatSession().queued).toHaveLength(0)
+      expect(document.querySelector('.msg-pending.is-queued')).toBeNull()
+    })
+
+    it('confirms a multi-line message the server flattened to one line', async () => {
+      ui.openChat('claude')
+      await settle()
+      ui.chatSession().waitingSince = Date.now()
+      type('first line\nsecond line')
+      send()
+      await settle()
+      expect(ui.chatSession().queued).toHaveLength(1)
+      fetchMock.mockResolvedValueOnce(
+        response(
+          snapshot([
+            { role: 'user', text: 'first line second line' },
+            { role: 'assistant', text: 'Done.' },
+          ]),
+        ),
+      )
+      await ui.loadTranscript('claude')
+      await settle()
+      expect(ui.chatSession().pending).toHaveLength(0)
+      expect(ui.chatSession().queued).toHaveLength(0)
+    })
+
+    it('does not offer to take back a Codex message', async () => {
+      ui.openChat('codex')
+      await settle()
+      type('hello')
+      send()
+      await settle()
+      expect(document.querySelector('.msg-pending.is-queued')).toBeNull()
+      expect(ui.chatSession('codex').queued).toHaveLength(0)
+    })
   })
 })
