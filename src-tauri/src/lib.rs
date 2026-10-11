@@ -389,6 +389,7 @@ pub fn run() {
             remote::remote_control_revoke_device,
             remote::remote_control_set_max_devices,
             remote::remote_control_set_session_expiry,
+            remote::remote_control_set_pin,
             remote::remote_control_set_read_only,
             remote::remote_control_set_shell_input,
             remote::remote_control_set_enabled,

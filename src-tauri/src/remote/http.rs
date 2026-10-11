@@ -3,6 +3,8 @@
 
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+use super::state::PinOutcome;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
@@ -179,6 +181,38 @@ fn handle_http(
             );
         };
         hub.clear_auth_failures(&address);
+        if path == "/api/unlock" && method == "POST" {
+            let pin = serde_json::from_slice::<Value>(&body)
+                .ok()
+                .and_then(|value| value.get("pin").and_then(Value::as_str).map(str::to_owned))
+                .unwrap_or_default();
+            return match hub.unlock(session_id, &pin) {
+                PinOutcome::Unlocked => respond(stream, 204, "text/plain", ""),
+                PinOutcome::Wrong { remaining } => respond(
+                    stream,
+                    403,
+                    "application/json",
+                    &json!({ "error": "pin_wrong", "remaining": remaining }).to_string(),
+                ),
+                PinOutcome::LockedOut => respond(
+                    stream,
+                    401,
+                    "application/json",
+                    r#"{"error":"Too many wrong PINs. Pair this device again."}"#,
+                ),
+            };
+        }
+        // A remembered device restored after a restart proves itself with the
+        // PIN before it can read or send anything.
+        if hub.session_locked(session_id) {
+            return respond(
+                stream,
+                423,
+                "application/json",
+                r#"{"error":"pin_required"}"#,
+            );
+        }
+        hub.refresh_trust(session_id);
         return handle_api(
             stream, app, hub, sessions, generation, session_id, method, target, &body,
         );

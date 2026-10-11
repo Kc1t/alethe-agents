@@ -1,17 +1,25 @@
 import { Check, Copy } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 
-import { writeClipboardText, type RemoteControlInfo, type TailscaleStatus } from '../../lib/tauri'
+import {
+  setRemoteControlPin,
+  writeClipboardText,
+  type RemoteControlInfo,
+  type TailscaleStatus,
+} from '../../lib/tauri'
 import type { useT } from '../../lib/i18n'
 import type { Preferences } from '../../lib/types'
 import { Dropdown } from '../ui/Dropdown'
+import { RemotePinModal } from './RemotePinModal'
 import styles from './RemoteControlSettingsFields.module.css'
 
-export const SESSION_OPTIONS = [900, 3600, 86400]
+export const SESSION_PERMANENT = 315_360_000
+export const SESSION_OPTIONS = [900, 3600, 86400, SESSION_PERMANENT]
 
 export function sessionLabel(t: ReturnType<typeof useT>, value: number) {
   if (value === 900) return t('remote.session900')
   if (value === 86400) return t('remote.session86400')
+  if (value === SESSION_PERMANENT) return t('remote.sessionPermanent')
   return t('remote.session3600')
 }
 
@@ -41,6 +49,20 @@ export function RemoteControlSettingsFields({
   const showReach = parts.includes('reach')
   const showSecurity = parts.includes('security')
   const [linkCopied, setLinkCopied] = useState(false)
+  const [pinOpen, setPinOpen] = useState(false)
+
+  const changeExpiry = async (next: number) => {
+    const current = preferences.remoteSessionExpirySecs
+    if (next === SESSION_PERMANENT && current !== SESSION_PERMANENT) {
+      setPinOpen(true)
+      return
+    }
+    // Leaving "Permanent" drops the PIN, and with it every remembered device.
+    if (current === SESSION_PERMANENT && next !== SESSION_PERMANENT) {
+      await setRemoteControlPin(null).catch(() => {})
+    }
+    setPreferences({ remoteSessionExpirySecs: next })
+  }
 
   const copyDownloadLink = async () => {
     try {
@@ -125,9 +147,7 @@ export function RemoteControlSettingsFields({
               </span>
               <Dropdown
                 value={String(preferences.remoteSessionExpirySecs)}
-                onChange={(rawValue) =>
-                  setPreferences({ remoteSessionExpirySecs: Number(rawValue) })
-                }
+                onChange={(rawValue) => void changeExpiry(Number(rawValue))}
                 disabled={busy}
                 ariaLabel={t('remote.sessionExpiry')}
                 options={SESSION_OPTIONS.map((value) => ({
@@ -181,6 +201,15 @@ export function RemoteControlSettingsFields({
           </p>
         </>
       ) : null}
+      <RemotePinModal
+        open={pinOpen}
+        onClose={() => setPinOpen(false)}
+        onConfirm={async (pin) => {
+          await setRemoteControlPin(pin)
+          setPreferences({ remoteSessionExpirySecs: SESSION_PERMANENT })
+          setPinOpen(false)
+        }}
+      />
     </div>
   )
 }

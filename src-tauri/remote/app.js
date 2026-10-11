@@ -76,7 +76,25 @@ const agentIconAssets = {
 }
 const knownAgents = new Set(Object.keys(agentLetters))
 
-let sessionToken = sessionStorage.getItem(SESSION_KEY) || ''
+// Kept in localStorage (not sessionStorage) so closing the tab does not drop
+// a remembered device; the desktop decides how long the token stays valid.
+const readSavedSession = () => {
+  try {
+    return localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+const writeSavedSession = (value) => {
+  try {
+    if (value) localStorage.setItem(SESSION_KEY, value)
+    else localStorage.removeItem(SESSION_KEY)
+    sessionStorage.removeItem(SESSION_KEY)
+  } catch {
+    // Storage blocked: the session lives only as long as this page.
+  }
+}
+let sessionToken = readSavedSession()
 let wsBase = null
 let readOnly = false
 let state = { groups: [], projects: [] }
@@ -189,6 +207,8 @@ function agentName(agent) {
 }
 
 class SessionError extends Error {}
+/** A remembered device came back after a restart and must enter the PIN. */
+class PinRequiredError extends Error {}
 
 async function readError(response) {
   try {
@@ -204,6 +224,7 @@ async function api(path, options = {}) {
     headers: { ...(options.headers || {}), Authorization: `Bearer ${sessionToken}` },
   })
   if (response.status === 401) throw new SessionError(await readError(response))
+  if (response.status === 423) throw new PinRequiredError()
   if (!response.ok) throw new Error(await readError(response))
   return response.status === 204 ? null : response.json()
 }
@@ -220,13 +241,13 @@ async function pair() {
   if (!response.ok) throw new SessionError(await readError(response))
   const paired = await response.json()
   sessionToken = paired.sessionToken
-  sessionStorage.setItem(SESSION_KEY, sessionToken)
+  writeSavedSession(sessionToken)
   history.replaceState(null, '', location.pathname)
 }
 
 function dropSession() {
   sessionToken = ''
-  sessionStorage.removeItem(SESSION_KEY)
+  writeSavedSession('')
   if (reconnectTimer) window.clearTimeout(reconnectTimer)
   reconnectTimer = null
   if (socket) {
@@ -1862,6 +1883,10 @@ function connectSocket() {
       return
     }
     if (message.type === 'error') {
+      if (message.reason === 'pin_required') {
+        renderPinPrompt()
+        return
+      }
       if (message.reason === 'expired' || message.reason === 'unauthorized') {
         renderSessionLost(message.message)
         return
@@ -2024,12 +2049,54 @@ async function boot() {
     renderHome()
     connectSocket()
   } catch (error) {
+    if (error instanceof PinRequiredError) {
+      renderPinPrompt()
+      return
+    }
     if (error instanceof SessionError) {
       renderSessionLost(error.message)
       return
     }
     renderConnectionUnavailable(error.message || error)
   }
+}
+
+function renderPinPrompt(notice = '') {
+  stateView = null
+  disposeTerminal()
+  stopTranscriptPolling()
+  app.innerHTML = `<div class="state-page"><form class="state-content pin-form" id="pin-form"><img class="state-logo" src="/brand-icon.png?v=${encodeURIComponent(appearance.appIconTheme)}" alt="" data-brand-icon><span class="state-brand">${t('brand.remote')}</span><h1>${t('pin.title')}</h1><p>${t('pin.description')}</p><label class="sr-only" for="pin-input">${t('pin.label')}</label><input class="pin-input" id="pin-input" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••"><p class="pin-notice" role="alert">${escapeHtml(notice)}</p><button class="primary-button" type="submit"><span>${t('pin.submit')}</span></button></form></div>`
+  rendered = true
+  const form = document.querySelector('#pin-form')
+  const input = document.querySelector('#pin-input')
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/\D/g, '').slice(0, 8)
+  })
+  input.focus()
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const button = form.querySelector('button')
+    button.disabled = true
+    try {
+      const response = await fetch(`${httpBase}/api/unlock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ pin: input.value }),
+      })
+      if (response.status === 204) {
+        location.reload()
+        return
+      }
+      if (response.status === 403) {
+        const { remaining } = await response.json()
+        renderPinPrompt(t('pin.wrong', { remaining }))
+        return
+      }
+      renderSessionLost(await readError(response))
+    } catch (error) {
+      renderPinPrompt(t('pin.error', { message: error.message || error }))
+    }
+  })
 }
 
 void boot()

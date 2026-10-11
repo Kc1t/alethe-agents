@@ -32,6 +32,7 @@ pub struct RemoteInfo {
     pub online_devices: usize,
     pub max_devices: usize,
     pub session_expiry_secs: u64,
+    pub has_pin: bool,
     pub read_only: bool,
     pub allow_shell_input: bool,
     pub reach_mode: String,
@@ -55,7 +56,14 @@ pub struct TailscaleStatus {
 
 struct RemoteSession {
     id: usize,
-    token: String,
+    /// SHA-256 of the bearer token: what is kept in memory and on disk.
+    token_hash: String,
+    /// A device restored from disk must enter the PIN before anything else.
+    locked: bool,
+    /// Unix time until which a restored device skips the PIN. Slides forward
+    /// while the device is used, so only a long absence asks for it again.
+    trusted_until: u64,
+    pin_failures: u32,
     name: String,
     address: String,
     connected_at: SystemTime,
@@ -101,6 +109,8 @@ pub struct RemoteHub {
     attachment_rate: Mutex<HashMap<usize, MessageRate>>,
     qr_cache: Mutex<Option<(String, String)>>,
     last_active_unix: AtomicU64,
+    /// `(salt, sha256(salt:pin))` guarding remembered devices.
+    pin: Mutex<Option<(String, String)>>,
 }
 
 impl RemoteHub {
@@ -128,6 +138,7 @@ impl RemoteHub {
             attachment_rate: Mutex::new(HashMap::new()),
             qr_cache: Mutex::new(None),
             last_active_unix: AtomicU64::new(unix_now()),
+            pin: Mutex::new(load_pin()),
         }
     }
 
@@ -161,6 +172,7 @@ impl RemoteHub {
         self.http_port.store(http_port, Ordering::SeqCst);
         self.ws_port.store(ws_port, Ordering::SeqCst);
         self.touch_activity();
+        self.restore_sessions();
         self.running.store(true, Ordering::SeqCst);
         generation
     }
@@ -171,7 +183,7 @@ impl RemoteHub {
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.http_port.store(0, Ordering::SeqCst);
         self.ws_port.store(0, Ordering::SeqCst);
-        self.revoke_all();
+        self.drop_live_sessions();
         self.close_pairing_window();
     }
 
@@ -194,7 +206,7 @@ impl RemoteHub {
         let was_running = self.running.swap(false, Ordering::SeqCst);
         self.http_port.store(0, Ordering::SeqCst);
         self.ws_port.store(0, Ordering::SeqCst);
-        self.revoke_all();
+        self.drop_live_sessions();
         self.close_pairing_window();
         was_running
     }
@@ -378,6 +390,7 @@ impl RemoteHub {
             online_devices: devices.iter().filter(|device| device.online).count(),
             max_devices: self.max_devices.load(Ordering::Relaxed),
             session_expiry_secs: self.session_expiry_secs.load(Ordering::Relaxed),
+            has_pin: self.has_pin(),
             read_only: self.read_only.load(Ordering::Relaxed),
             allow_shell_input: self.allow_shell_input.load(Ordering::Relaxed),
             reach_mode: if self.use_tailscale() {
@@ -424,8 +437,16 @@ impl RemoteHub {
 
     fn prune_expired(&self) {
         let now = Instant::now();
-        if let Ok(mut sessions) = self.sessions.lock() {
-            sessions.retain(|session| session.expires_at > now);
+        let pruned = match self.sessions.lock() {
+            Ok(mut sessions) => {
+                let before = sessions.len();
+                sessions.retain(|session| session.expires_at > now);
+                sessions.len() != before
+            }
+            Err(_) => false,
+        };
+        if pruned {
+            self.save_sessions();
         }
     }
 
@@ -457,7 +478,10 @@ impl RemoteHub {
         let now = SystemTime::now();
         sessions.push(RemoteSession {
             id,
-            token: token.clone(),
+            token_hash: hash_token(&token),
+            locked: false,
+            trusted_until: unix_now() + PIN_TRUST_SECS,
+            pin_failures: 0,
             name,
             address,
             connected_at: now,
@@ -468,6 +492,7 @@ impl RemoteHub {
             sender: None,
         });
         drop(sessions);
+        self.save_sessions();
         self.close_pairing_window();
         self.touch_activity();
         Ok((id, token))
@@ -513,7 +538,7 @@ impl RemoteHub {
         let sessions = self.sessions.lock().ok()?;
         sessions
             .iter()
-            .find(|session| tokens_equal(token, &session.token))
+            .find(|session| tokens_equal(&hash_token(token), &session.token_hash))
             .map(|session| session.id)
     }
 
@@ -607,15 +632,228 @@ impl RemoteHub {
         }
     }
 
+    /// Revoking is permanent: it also forgets remembered devices on disk.
     pub(crate) fn revoke_all(&self) {
-        if let Ok(mut sessions) = self.sessions.lock() {
-            sessions.clear();
-        }
+        self.drop_live_sessions();
+        self.save_sessions();
     }
 
     pub(crate) fn revoke_device(&self, id: usize) {
         if let Ok(mut sessions) = self.sessions.lock() {
             sessions.retain(|session| session.id != id);
+        }
+        self.save_sessions();
+    }
+
+    pub(crate) fn has_pin(&self) -> bool {
+        self.pin.lock().map(|pin| pin.is_some()).unwrap_or(false)
+    }
+
+    /// Sets (or with `None` clears) the PIN that guards remembered devices.
+    /// Clearing it also forgets every remembered device on disk.
+    pub(crate) fn set_pin(&self, pin: Option<&str>) -> Result<(), String> {
+        let record = match pin {
+            Some(pin) => {
+                if !valid_pin(pin) {
+                    return Err("The PIN must be 4 to 8 digits".into());
+                }
+                let salt = nanoid::nanoid!(16);
+                let hash = hash_token(&format!("{salt}:{pin}"));
+                Some((salt, hash))
+            }
+            None => None,
+        };
+        if let Some(path) = pin_file() {
+            match &record {
+                Some((salt, hash)) => {
+                    if let Some(parent) = path.parent() {
+                        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+                    }
+                    std::fs::write(&path, format!("{salt}:{hash}"))
+                        .map_err(|error| error.to_string())?;
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        let _ =
+                            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+                    }
+                }
+                None => {
+                    let _ = std::fs::remove_file(&path);
+                }
+            }
+        }
+        *self.pin.lock().map_err(|_| "PIN unavailable".to_string())? = record;
+        self.save_sessions();
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn lock_session_for_test(&self, id: usize) {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            if let Some(session) = sessions.iter_mut().find(|session| session.id == id) {
+                session.locked = true;
+            }
+        }
+    }
+
+    pub(crate) fn session_locked(&self, id: usize) -> bool {
+        self.sessions
+            .lock()
+            .map(|sessions| {
+                sessions
+                    .iter()
+                    .any(|session| session.id == id && session.locked)
+            })
+            .unwrap_or(true)
+    }
+
+    /// Checks the PIN for a remembered device. After `PIN_MAX_ATTEMPTS` wrong
+    /// tries the device is forgotten for good and has to pair again.
+    pub(crate) fn unlock(&self, id: usize, pin: &str) -> PinOutcome {
+        let correct = self
+            .pin
+            .lock()
+            .ok()
+            .and_then(|stored| stored.clone())
+            .is_some_and(|(salt, hash)| tokens_equal(&hash_token(&format!("{salt}:{pin}")), &hash));
+        let outcome = {
+            let Ok(mut sessions) = self.sessions.lock() else {
+                return PinOutcome::LockedOut;
+            };
+            let Some(session) = sessions.iter_mut().find(|session| session.id == id) else {
+                return PinOutcome::LockedOut;
+            };
+            if correct {
+                session.locked = false;
+                session.trusted_until = unix_now() + PIN_TRUST_SECS;
+                session.pin_failures = 0;
+                PinOutcome::Unlocked
+            } else {
+                session.pin_failures += 1;
+                if session.pin_failures >= PIN_MAX_ATTEMPTS {
+                    PinOutcome::LockedOut
+                } else {
+                    PinOutcome::Wrong {
+                        remaining: PIN_MAX_ATTEMPTS - session.pin_failures,
+                    }
+                }
+            }
+        };
+        if outcome == PinOutcome::LockedOut {
+            self.revoke_device(id);
+        } else if outcome == PinOutcome::Unlocked {
+            self.save_sessions();
+        }
+        outcome
+    }
+
+    /// Pushes the PIN-free window of an unlocked device forward as it is
+    /// used; written to disk at most once an hour per device.
+    pub(crate) fn refresh_trust(&self, id: usize) {
+        let now = unix_now();
+        let changed = self
+            .sessions
+            .lock()
+            .map(|mut sessions| {
+                sessions
+                    .iter_mut()
+                    .find(|session| session.id == id && !session.locked)
+                    .filter(|session| session.trusted_until + 3600 < now + PIN_TRUST_SECS)
+                    .map(|session| session.trusted_until = now + PIN_TRUST_SECS)
+                    .is_some()
+            })
+            .unwrap_or(false);
+        if changed {
+            self.save_sessions();
+        }
+    }
+
+    /// Turning remote control off (or quitting) only clears memory; the
+    /// devices on disk come back the next time it is turned on.
+    fn drop_live_sessions(&self) {
+        if let Ok(mut sessions) = self.sessions.lock() {
+            sessions.clear();
+        }
+    }
+
+    fn save_sessions(&self) {
+        let Some(path) = sessions_file() else {
+            return;
+        };
+        // Remembering devices across restarts is only allowed behind a PIN.
+        if !self.has_pin() {
+            let _ = std::fs::remove_file(&path);
+            return;
+        }
+        let now = unix_now();
+        let saved: Vec<SavedSession> = match self.sessions.lock() {
+            Ok(sessions) => sessions
+                .iter()
+                .filter(|session| session.expires_at_unix > now)
+                .map(|session| SavedSession {
+                    token_hash: session.token_hash.clone(),
+                    name: session.name.clone(),
+                    expires_at: session.expires_at_unix,
+                    trusted_until: session.trusted_until,
+                })
+                .collect(),
+            Err(_) => return,
+        };
+        let Ok(json) = serde_json::to_vec(&saved) else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if std::fs::write(&path, json).is_ok() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
+
+    fn restore_sessions(&self) {
+        let Some(path) = sessions_file() else {
+            return;
+        };
+        if !self.has_pin() {
+            return;
+        }
+        let Ok(raw) = std::fs::read(&path) else {
+            return;
+        };
+        let Ok(saved) = serde_json::from_slice::<Vec<SavedSession>>(&raw) else {
+            return;
+        };
+        let now = unix_now();
+        let Ok(mut sessions) = self.sessions.lock() else {
+            return;
+        };
+        for entry in saved.into_iter().filter(|entry| entry.expires_at > now) {
+            if sessions
+                .iter()
+                .any(|session| session.token_hash == entry.token_hash)
+            {
+                continue;
+            }
+            let remaining = Duration::from_secs(entry.expires_at - now);
+            sessions.push(RemoteSession {
+                id: self.next_session_id.fetch_add(1, Ordering::Relaxed),
+                token_hash: entry.token_hash,
+                locked: entry.trusted_until <= now,
+                trusted_until: entry.trusted_until,
+                pin_failures: 0,
+                name: entry.name,
+                address: "remembered".into(),
+                connected_at: SystemTime::now(),
+                expires_at: Instant::now() + remaining,
+                expires_at_unix: entry.expires_at,
+                subscription: None,
+                sender: None,
+            });
         }
     }
 
@@ -687,6 +925,62 @@ fn allow_rate(rates: &Mutex<HashMap<usize, MessageRate>>, session_id: usize, lim
     entry.count <= limit
 }
 
+pub(crate) const PIN_MAX_ATTEMPTS: u32 = 5;
+/// A remembered device asks for the PIN again only after a week unused.
+const PIN_TRUST_SECS: u64 = 7 * 24 * 60 * 60;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum PinOutcome {
+    Unlocked,
+    Wrong { remaining: u32 },
+    LockedOut,
+}
+
+fn valid_pin(pin: &str) -> bool {
+    (4..=8).contains(&pin.len()) && pin.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn pin_file() -> Option<std::path::PathBuf> {
+    sessions_file().map(|path| path.with_file_name("remote-pin"))
+}
+
+/// `(salt, sha256(salt:pin))`, or `None` when no PIN is set.
+fn load_pin() -> Option<(String, String)> {
+    let raw = std::fs::read_to_string(pin_file()?).ok()?;
+    let (salt, hash) = raw.trim().split_once(':')?;
+    Some((salt.to_string(), hash.to_string()))
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SavedSession {
+    token_hash: String,
+    name: String,
+    expires_at: u64,
+    #[serde(default)]
+    trusted_until: u64,
+}
+
+fn hash_token(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(token.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Remembered devices (token hashes only) next to the app's other state.
+/// Tests never touch the real file.
+fn sessions_file() -> Option<std::path::PathBuf> {
+    if cfg!(test) {
+        return None;
+    }
+    Some(
+        dirs_next::data_dir()?
+            .join("com.kc1t.alethe")
+            .join("remote-sessions.json"),
+    )
+}
+
 fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -700,7 +994,7 @@ fn idle_expired(now_secs: u64, last_active_secs: u64, threshold_secs: u64) -> bo
 
 #[cfg(test)]
 mod tests {
-    use super::{idle_expired, RemoteHub};
+    use super::{idle_expired, unix_now, PinOutcome, RemoteHub, PIN_MAX_ATTEMPTS, PIN_TRUST_SECS};
     use std::cell::Cell;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{mpsc, Arc};
@@ -1012,5 +1306,85 @@ mod tests {
 
         assert!(!hub.is_idle(0));
         assert!(!hub.is_idle(3600));
+    }
+
+    fn paired_hub() -> (RemoteHub, usize) {
+        let hub = RemoteHub::new();
+        hub.activate(9340, 9341);
+        hub.open_pairing_window();
+        let token = hub.pairing_token.lock().unwrap().clone();
+        let (id, _) = hub
+            .pair(&token, "Phone".into(), "100.64.0.2".into())
+            .expect("pair");
+        (hub, id)
+    }
+
+    #[test]
+    fn a_pin_must_be_four_to_eight_digits() {
+        let hub = RemoteHub::new();
+        assert!(hub.set_pin(Some("123")).is_err());
+        assert!(hub.set_pin(Some("12a4")).is_err());
+        assert!(hub.set_pin(Some("123456789")).is_err());
+        assert!(hub.set_pin(Some("4821")).is_ok());
+        assert!(hub.has_pin());
+        hub.set_pin(None).unwrap();
+        assert!(!hub.has_pin());
+    }
+
+    #[test]
+    fn a_freshly_paired_device_is_not_locked() {
+        let (hub, id) = paired_hub();
+        assert!(!hub.session_locked(id));
+    }
+
+    #[test]
+    fn the_right_pin_unlocks_a_remembered_device() {
+        let (hub, id) = paired_hub();
+        hub.set_pin(Some("4821")).unwrap();
+        hub.lock_session_for_test(id);
+        assert!(hub.session_locked(id));
+        assert_eq!(hub.unlock(id, "1111"), PinOutcome::Wrong { remaining: 4 });
+        assert_eq!(hub.unlock(id, "4821"), PinOutcome::Unlocked);
+        assert!(!hub.session_locked(id));
+    }
+
+    #[test]
+    fn five_wrong_pins_forget_the_device() {
+        let (hub, id) = paired_hub();
+        hub.set_pin(Some("4821")).unwrap();
+        hub.lock_session_for_test(id);
+        for remaining in (1..PIN_MAX_ATTEMPTS).rev() {
+            assert_eq!(hub.unlock(id, "0000"), PinOutcome::Wrong { remaining });
+        }
+        assert_eq!(hub.unlock(id, "0000"), PinOutcome::LockedOut);
+        assert!(!hub.session_alive(id));
+        assert_eq!(hub.unlock(id, "4821"), PinOutcome::LockedOut);
+    }
+
+    fn trusted_until(hub: &RemoteHub, id: usize) -> u64 {
+        hub.sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|session| session.id == id)
+            .unwrap()
+            .trusted_until
+    }
+
+    #[test]
+    fn an_unlocked_device_skips_the_pin_for_a_week_while_in_use() {
+        let (hub, id) = paired_hub();
+        hub.set_pin(Some("4821")).unwrap();
+        assert!(trusted_until(&hub, id) + 5 >= unix_now() + PIN_TRUST_SECS);
+        hub.lock_session_for_test(id);
+        hub.sessions.lock().unwrap()[0].trusted_until = 0;
+        // A locked device earns nothing by knocking.
+        hub.refresh_trust(id);
+        assert_eq!(trusted_until(&hub, id), 0);
+        assert_eq!(hub.unlock(id, "4821"), PinOutcome::Unlocked);
+        assert!(trusted_until(&hub, id) + 5 >= unix_now() + PIN_TRUST_SECS);
+        hub.sessions.lock().unwrap()[0].trusted_until = unix_now() + 60;
+        hub.refresh_trust(id);
+        assert!(trusted_until(&hub, id) + 5 >= unix_now() + PIN_TRUST_SECS);
     }
 }

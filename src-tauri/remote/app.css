@@ -1633,3 +1633,29 @@ svg {
   background: var(--accent);
   color: var(--accent-on);
 }
+.pin-form {
+  gap: 0.6rem;
+}
+.pin-input {
+  box-sizing: border-box;
+  width: min(100%, 220px);
+  min-height: 48px;
+  padding: 0 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  outline: 0;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-size: 1.4rem;
+  letter-spacing: 0.4em;
+  text-align: center;
+}
+.pin-input:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.pin-notice {
+  min-height: 1.2em;
+  color: var(--status-offline);
+  font-size: 0.8rem;
+}

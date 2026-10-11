@@ -48,7 +48,8 @@ const MAX_REMOTE_DEVICES: usize = 4;
 const MAX_CONNECTIONS: usize = 24;
 const DEFAULT_SESSION_EXPIRY_SECS: u64 = 60 * 60;
 const MIN_SESSION_EXPIRY_SECS: u64 = 5 * 60;
-const MAX_SESSION_EXPIRY_SECS: u64 = 24 * 60 * 60;
+/// "Permanent" in the settings: ten years, until revoked.
+const MAX_SESSION_EXPIRY_SECS: u64 = 10 * 365 * 24 * 60 * 60;
 const PAIRING_WINDOW_SECS: u64 = 120;
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(20);
 const WS_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
