@@ -591,7 +591,42 @@ export function useXtermSession(params: {
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
+      // xterm.js sends a bare \r for Shift+Enter, so it submitted instead of
+      // adding a line. ESC+CR is what Claude Code's /terminal-setup binds: both
+      // Claude Code and Codex read it as a newline, and line editors ignore it.
+      if (
+        event.key === 'Enter' &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.isComposing
+      ) {
+        event.preventDefault()
+        const id = ptyIdRef.current
+        if (!readOnly && id) queueInput(id, '\x1b\r')
+        return false
+      }
       const ctrl = event.ctrlKey || event.metaKey
+      // Ctrl/Cmd+Enter sends right away, like Warp: in Claude Code that is its
+      // ctrl+x ctrl+s "send now", which submits the typed text whether the
+      // agent is idle or mid-turn (where a plain Enter only queues it).
+      if (
+        ctrl &&
+        event.key === 'Enter' &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.isComposing &&
+        command === 'claude'
+      ) {
+        event.preventDefault()
+        const id = ptyIdRef.current
+        if (!readOnly && id) {
+          queueInput(id, '\x18')
+          window.setTimeout(() => queueInput(id, '\x13'), 60)
+        }
+        return false
+      }
       if (!ctrl || event.altKey) return true
 
       const key = event.key.toLowerCase()
