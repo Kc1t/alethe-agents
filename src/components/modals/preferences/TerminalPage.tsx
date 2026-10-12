@@ -262,6 +262,21 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       </SettingsSection>
 
       <SettingsSection
+        id="claude-fullscreen"
+        title={t('prefs.claudeFullscreen')}
+        description={t('prefs.claudeFullscreenDesc')}
+      >
+        <label className={styles.checkboxCard}>
+          <input
+            type="checkbox"
+            checked={preferences.claudeFullscreen ?? false}
+            onChange={(e) => setPreferences({ claudeFullscreen: e.target.checked })}
+          />
+          <span>{t('prefs.claudeFullscreenEnable')}</span>
+        </label>
+      </SettingsSection>
+
+      <SettingsSection
         id="custom-agents"
         title={t('prefs.customAgents')}
         description={t('prefs.customAgentsDesc')}

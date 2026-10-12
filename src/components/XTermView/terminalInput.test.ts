@@ -5,7 +5,7 @@ import {
   getTerminalScrollbackRows,
   getWheelScrollLines,
   normalizePastedText,
-  shouldScrollHostScrollback,
+  resolveWheelTarget,
 } from './terminalInput'
 
 describe('normalizePastedText', () => {
@@ -39,19 +39,27 @@ describe('getTerminalScrollbackRows', () => {
   })
 })
 
-describe('shouldScrollHostScrollback', () => {
-  it('scrolls the host buffer in a plain shell', () => {
-    expect(shouldScrollHostScrollback('normal', false)).toBe(true)
+describe('resolveWheelTarget', () => {
+  const wheel = (overrides: Partial<Parameters<typeof resolveWheelTarget>[0]> = {}) =>
+    resolveWheelTarget({ bufferType: 'normal', shiftKey: false, sessionAlive: true, ...overrides })
+
+  it('scrolls the pane history in a plain shell', () => {
+    expect(wheel()).toBe('scrollback')
+    expect(wheel({ sessionAlive: false })).toBe('scrollback')
   })
 
-  it('forwards the wheel to TUIs in the alternate buffer', () => {
-    // claude/codex run in the alternate screen (no host scrollback) — let the app scroll itself.
-    expect(shouldScrollHostScrollback('alternate', false)).toBe(false)
+  it('lets Shift+wheel force the pane history anywhere', () => {
+    expect(wheel({ bufferType: 'alternate', shiftKey: true })).toBe('scrollback')
   })
 
-  it('lets Shift+wheel force host scrollback even in the alternate buffer', () => {
-    expect(shouldScrollHostScrollback('alternate', true)).toBe(true)
-    expect(shouldScrollHostScrollback('normal', true)).toBe(true)
+  it('leaves the wheel to the live alternate-screen TUI', () => {
+    // claude in fullscreen rendering owns the screen and scrolls its own transcript.
+    expect(wheel({ bufferType: 'alternate' })).toBe('app')
+  })
+
+  it('recovers a screen whose session died owning it', () => {
+    // A fullscreen agent killed before undoing its modes leaves the wheel with nobody.
+    expect(wheel({ bufferType: 'alternate', sessionAlive: false })).toBe('recover')
   })
 })
 

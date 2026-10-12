@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import { paneLaunchEnv } from '../lib/agentRuntimeAdapter'
 import {
   codexApprovalAnswer,
   codexThreadStartParams,
@@ -304,7 +305,11 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
                 ]),
                 ...(payload.agent === 'claude' ? ['--settings', settingsPath] : []),
               ],
-              env: { ALETHE_AGENT_HOOKS_ENDPOINT: endpoint, ALETHE_AGENT_HOOKS_TOKEN: token },
+              env: paneLaunchEnv(
+                node.command,
+                useProjectsStore.getState().preferences.claudeFullscreen,
+                { ALETHE_AGENT_HOOKS_ENDPOINT: endpoint, ALETHE_AGENT_HOOKS_TOKEN: token },
+              ),
             })
           }
           if (generation !== sandboxGeneration) {
@@ -583,7 +588,11 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
           cwd,
           command: node.command === 'shell' ? undefined : node.command,
           extraArgs: [...(node.extraArgs ?? []), '--settings', settingsPath],
-          env: { ALETHE_AGENT_HOOKS_ENDPOINT: endpoint, ALETHE_AGENT_HOOKS_TOKEN: token },
+          env: paneLaunchEnv(
+            node.command,
+            useProjectsStore.getState().preferences.claudeFullscreen,
+            { ALETHE_AGENT_HOOKS_ENDPOINT: endpoint, ALETHE_AGENT_HOOKS_TOKEN: token },
+          ),
         })
         if (generation !== sandboxGeneration) {
           await killPty(ptyId).catch(() => {})

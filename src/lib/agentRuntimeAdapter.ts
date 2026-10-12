@@ -52,6 +52,28 @@ export type PreparedRuntimeLaunch = {
   env: Record<string, string> | undefined
 }
 
+export type AgentLaunchOptions = {
+  /**
+   * Claude Code's fullscreen renderer takes the alternate screen and the mouse, which keeps the
+   * wheel and the scrollback inside the agent. Off — the default — launches the classic renderer,
+   * the ground Codex gets with `--no-alt-screen`, so the pane keeps scrolling and searching.
+   */
+  claudeFullscreen?: boolean
+}
+
+/**
+ * The pty env for a pane launch that does not go through `preparePtyRuntimeLaunch` (a session
+ * reset, the canvas, the sandbox), so Claude Code's renderer choice reaches those panes too.
+ */
+export function paneLaunchEnv(
+  agent: string,
+  claudeFullscreen: boolean | undefined,
+  baseEnv?: Record<string, string>,
+): Record<string, string> | undefined {
+  if (agent !== 'claude' || claudeFullscreen) return baseEnv
+  return { ...baseEnv, CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: '1' }
+}
+
 function addArg(args: string[], value: string): void {
   if (!args.includes(value)) args.push(value)
 }
@@ -61,9 +83,13 @@ export function preparePtyRuntimeLaunch(
   profile: AgentRuntimeProfile = 'full',
   baseArgs: readonly string[] = [],
   baseEnv?: Record<string, string>,
+  options: AgentLaunchOptions = {},
 ): PreparedRuntimeLaunch {
   const args = [...baseArgs]
   const env = { ...(baseEnv ?? {}) }
+
+  // Renderer choice is not a runtime-profile concern, so it applies to every Claude launch.
+  Object.assign(env, paneLaunchEnv(agent, Boolean(options.claudeFullscreen)))
 
   if (profile === 'full' || isShellAgentType(agent)) {
     return { args, env: Object.keys(env).length > 0 ? env : undefined }

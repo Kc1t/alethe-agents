@@ -249,6 +249,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     shellPath: normalizeNonEmptyString(raw?.shellPath),
     terminalFontFamily:
       normalizeNonEmptyString(raw?.terminalFontFamily) ?? DEFAULT_TERMINAL_FONT_FAMILY,
+    claudeFullscreen: Boolean(raw?.claudeFullscreen),
   }
 }
 
