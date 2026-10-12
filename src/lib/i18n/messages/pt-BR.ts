@@ -108,6 +108,8 @@ export const ptBR: Record<MessageKey, string> = {
   'agent.kimi.desc': 'CLI de coding da Moonshot AI',
   'agent.grok.desc': 'xAI Grok Build coding agent',
   'agent.codewhale.desc': 'Open-source coding agent (any model)',
+  'agent.pi.desc': 'Agente de coding Pi',
+  'agent.oh-my-pi.desc': 'CLI Pi configurada como oh-my-pi',
 
   /* ---- image input ---- */
   'image.placeholder': 'https://exemplo.com/icone.png',

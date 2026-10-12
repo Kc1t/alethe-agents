@@ -189,6 +189,39 @@ export function CodewhaleIcon({ size = 16 }: { size?: number }) {
   )
 }
 
+// Pi family marks use the vendors' geometric logos; they stay inline so they scale cleanly in
+// pickers, tabs and notification markers without adding image assets.
+export function PiIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 200 200" fill="none" aria-hidden="true">
+      <path fill="var(--agent-pi-logo-top)" d="M12 17h130v43H55V60H12zM99 60h43v43H99z" />
+      <path fill="var(--agent-pi-logo-side)" d="M12 60h43v43h44v44H55v43H12z" />
+      <path fill="var(--agent-pi-logo-end)" d="M142 103h43v85h-43z" />
+    </svg>
+  )
+}
+
+export function OhMyPiIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 200 200" aria-hidden="true">
+      <defs>
+        <linearGradient
+          id="oh-my-pi-logo"
+          x1="15"
+          y1="17"
+          x2="185"
+          y2="185"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="var(--agent-oh-my-pi-logo-start)" />
+          <stop offset="1" stopColor="var(--agent-oh-my-pi-logo-end)" />
+        </linearGradient>
+      </defs>
+      <path fill="url(#oh-my-pi-logo)" d="M15 17h175v36h-43v134h-37V53H76v89H39V53H15z" />
+    </svg>
+  )
+}
+
 export function AgentIcon({
   type,
   size = 16,
@@ -210,6 +243,8 @@ export function AgentIcon({
   if (type === 'kimi') return <KimiIcon size={size} />
   if (type === 'grok') return <GrokIcon size={size} />
   if (type === 'codewhale') return <CodewhaleIcon size={size} />
+  if (type === 'pi') return <PiIcon size={size} />
+  if (type === 'oh-my-pi') return <OhMyPiIcon size={size} />
   if (type === 'antigravity') return <AntigravityIcon size={size} />
   if (type === 'opencode') return <OpenCodeIcon size={size} theme={theme} />
   const ProviderIcon = findAgentProvider(type)?.icon

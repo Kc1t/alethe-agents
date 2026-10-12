@@ -16,6 +16,7 @@ import {
   type AgentProviderContribution,
 } from './agentProviders'
 import type { Disposable } from './plugins/types'
+import { agentFamily } from './types'
 
 const AIDER: AgentProviderContribution = {
   id: 'aider-plus',
@@ -55,6 +56,19 @@ describe('builtin agent types', () => {
     expect(resolveAgentCliCommand('codewhale')).toBe('codewhale')
     expect(agentLabel('codewhale')).toBe('Codewhale')
     expect(resolveUnrestrictedFlag('codewhale')).toBeNull()
+
+    // Pi family: two runtimes, two binaries, one family.
+    expect(resolveAgentCliCommand('pi')).toBe('pi')
+    expect(resolveAgentCliCommand('oh-my-pi')).toBe('omp')
+    expect(agentLabel('pi')).toBe('Pi')
+    expect(agentLabel('oh-my-pi')).toBe('oh-my-pi')
+    expect(resolveUnrestrictedFlag('pi')).toBeNull()
+    expect(resolveUnrestrictedFlag('oh-my-pi')).toBeNull()
+    expect(agentFamily('pi')).toBe('pi')
+    expect(agentFamily('oh-my-pi')).toBe('pi')
+    expect(agentFamily('aider-plus')).toBeUndefined()
+    expect(allAgentTypes()).toContain('pi')
+    expect(allAgentTypes()).toContain('oh-my-pi')
     expect(resolveAgentCliCommand('shell')).toBeUndefined()
     expect(resolveUnrestrictedFlag('shell')).toBeNull()
     expect(agentAccentToken('claude')).toBe('--agent-claude')

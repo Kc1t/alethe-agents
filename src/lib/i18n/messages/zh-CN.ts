@@ -98,6 +98,8 @@ export const zhCN: Record<MessageKey, string> = {
   'agent.kimi.desc': 'Moonshot AI 编码命令行工具',
   'agent.grok.desc': 'xAI Grok Build 编码智能体',
   'agent.codewhale.desc': '开源编码智能体（支持任意模型）',
+  'agent.pi.desc': 'Pi 编码智能体',
+  'agent.oh-my-pi.desc': '配置为 oh-my-pi 的 Pi CLI',
   /* ---- image input ---- */
   'image.placeholder': 'https://example.com/icon.png',
   'image.urlOrUpload': '使用 URL 或上传本地图片。',

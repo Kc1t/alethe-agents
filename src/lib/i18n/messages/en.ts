@@ -104,6 +104,8 @@ export const en = {
   'agent.kimi.desc': 'Moonshot AI coding CLI',
   'agent.grok.desc': 'xAI Grok Build coding agent',
   'agent.codewhale.desc': 'Open-source coding agent (any model)',
+  'agent.pi.desc': 'Pi coding agent',
+  'agent.oh-my-pi.desc': 'Pi CLI configured as oh-my-pi',
 
   /* ---- image input ---- */
   'image.placeholder': 'https://example.com/icon.png',
