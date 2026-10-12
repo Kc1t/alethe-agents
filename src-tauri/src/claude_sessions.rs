@@ -35,10 +35,10 @@ fn encode_cwd_for_claude(cwd: &str) -> String {
     let trimmed = cwd.trim_end_matches(|c: char| c == '\\' || c == '/');
     trimmed
         .chars()
-        .map(|c| match c {
-            ':' | '\\' | '/' | '.' => '-',
-            _ => c,
-        })
+        // Claude Code replaces every non [A-Za-z0-9] char (spaces, accents, `_`...) with `-`.
+        // Only folding `:` `\` `/` `.` meant a cwd like `Projeto Demanda Review` never matched,
+        // so every saved conversation was treated as orphaned and a fresh one was started.
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
         .collect()
 }
 
@@ -712,5 +712,10 @@ mod encode_cwd_tests {
     #[test]
     fn trailing_separator_is_dropped() {
         assert_eq!(encode_cwd_for_claude("/tmp/x/"), "-tmp-x");
+        assert_eq!(
+            encode_cwd_for_claude(r"C:\Users\dev\Projeto Demanda Review"),
+            "C--Users-dev-Projeto-Demanda-Review"
+        );
+        assert_eq!(encode_cwd_for_claude("/home/dev/my_app ção"), "-home-dev-my-app---o");
     }
 }
