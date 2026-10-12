@@ -297,8 +297,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Returning to a pane no longer throws away where you were reading.** A pane that produced output
   while it was hidden rebuilds its screen when you come back to it, and that rebuild left the view at
   the newest line: scrolling up through an agent's answer and switching tabs dropped you back at the
-  end of the conversation. Alethe now restores the same distance from the end it had before the
-  rebuild, so a reader stays where they were, and a pane that was following the output keeps following.
+  end of the conversation. Alethe now looks for the text that was on screen again in the rebuilt
+  buffer and puts the reader back on it — falling back to the distance from the end when the replay no
+  longer has those lines — and a pane that was following the output keeps following it.
 
 - **The wheel no longer goes dead in a pane an agent took over and left.** Claude Code in fullscreen
   rendering draws on the terminal's alternate screen and takes the mouse; when a session ended
