@@ -12,6 +12,46 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Voice providers.** Preferences has a new **Voice** page. Dictation, voice conversation and
+  narration each pick their own provider: models on this device (Parakeet, Zipformer, Whisper,
+  Moonshine, Piper voices, Apple Speech, the system voice) or a cloud API with your own key (OpenAI,
+  ElevenLabs, Google Gemini, OpenRouter). Keys are kept in the system keychain per profile. A
+  provider grid shows what is connected, a provider page saves, tests and removes keys and manages
+  downloaded models, and **Test voice** previews narration. Each use tab shows the same provider
+  cards, with the one in use marked; OpenRouter lists all of its live speech models and their
+  voices, and narration voices are grouped by language, app language first. If a cloud provider
+  fails, Alethe uses a local engine for that turn and says why. Local stays the default; audio or
+  text only leaves the device for a use you set to a cloud provider.
+
+- **Voice conversation from any app, with a floating HUD.** The voice shortcut now works even when
+  Alethe is not in front. In that case a small floating HUD shows the conversation (waveform,
+  transcript, narration and permission card) at the bottom center of the screen under the mouse, and
+  hides 4 seconds after the turn; its close button hides it until the next press. When Alethe is
+  focused, the panel is used instead. On macOS the HUD never steals focus: answering a permission on
+  it keeps your other app in front, and it shows over full-screen apps. Preferences offers six
+  positions, you can drag the HUD anywhere (it remembers the spot, and falls back if the monitor goes
+  away), and a reset button. The shortcut is now recorded by pressing it: Esc cancels, it needs ⌘ or
+  Ctrl (Shift alone works only with F1–F24), one the OS or another app already uses is refused, and
+  Alethe's own shortcuts are paused while recording.
+  Narration speed goes from 1x to 2x, adjustable from the panel and the HUD.
+
+- **Apple's own speech recognition on the Mac.** Preferences → Voice now has
+  a model picker: on a Mac, *Apple (native)* is offered next to Parakeet and Zipformer, needs no
+  download, and runs on the device (macOS 26 uses Apple's newest recognizer; macOS 12 to 15 use the
+  on-device dictation engine; it is not offered before macOS 12). Pick its language once; a language that needs it can be installed
+  right there. Dictation, the Jev voice bar and voice conversation all use the chosen model. Audio
+  never goes to Apple's servers — languages without on-device support are simply not offered.
+- **Talk to Claude and hear it work.** Turn on *Voice conversation* in Preferences → Integrations (it
+  uses the dictation model and microphone), then hold Ctrl+Shift+Space (⌘⇧Space on macOS) in Alethe and
+  speak, or press it once to start and again to stop. What you say, transcribed on your machine, goes to
+  the active Claude pane. A panel at the bottom of the window shows the waveform, transcript and
+  narration. Final answer only speaks Claude's reply; Normal and Detailed also speak its text as it works and
+  say what it is doing after a silence; Silent speaks none of it. Permission requests appear on the panel
+  and can be answered by voice in English or Portuguese ("no, use pnpm" sends the reason back) or with a
+  click; destructive commands such as `rm -rf` need the click. Start with "stop" to interrupt Claude
+  first, or with "Alethe, …" (or add Alt) to send the request to Jev. It applies to Claude panes opened
+  after you turn it on.
+
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with
@@ -268,6 +308,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   ([#208](https://github.com/Kc1t/alethe-agents/issues/208)).
 
 ### Changed
+
+- Voice dictation and voice conversation settings moved from Preferences → Integrations to
+  Preferences → Voice. Existing model, language, voice and speed choices carry over.
+
+- **The speech model download shows what it is doing.** Preferences → Voice now draws a progress bar with the megabytes received, the current file, the
+  download
+  speed and the time left, and says when it is checking the downloaded file instead of sitting at
+  100%. An interrupted download continues where it stopped instead of starting over, and progress
+  updates no longer flood the app while the ~670 MB Parakeet model comes down.
 
 - **Preferences sections fold away.** Every section on a Preferences page now has a clickable
   heading, so a long page reads as a list of subjects instead of one wall of settings. Alethe

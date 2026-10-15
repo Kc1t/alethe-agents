@@ -152,6 +152,70 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 - Protect against zip-slip during import.
 - Use atomic project-file writes to reduce corruption risk.
 
+## Speech models
+
+- Preferences → Voice picks the speech-to-text model per use: Dictation, and Conversation (also
+  used by the Jev voice bar). A local model is the default; a cloud provider is used only when
+  chosen for that use (see Voice providers).
+- **Apple (native)** appears on Mac only: on-device recognition, no download, one language chosen
+  once. On macOS 26 a language that is not installed can be installed from the picker.
+- **Parakeet** is multilingual (about 670 MB download); **Zipformer** is English.
+- A Mac that never picked a model moves to Apple (native) once, unless Parakeet is already downloaded.
+
+## Voice Conversation
+
+- Opt-in under Preferences → Voice; it transcribes with the provider chosen in the Conversation tab
+  (a local model by default) and uses the dictation microphone. It applies to Claude panes opened
+  after it is turned on.
+- Capture: the in-window shortcut Ctrl+Shift+Space (⌘⇧Space on macOS) works as push-to-talk (hold)
+  or toggle (press, press). Adding Alt sends the request to Jev.
+- Target: the active Claude pane by default, changeable from the picker on the panel.
+- Panel: docked at the bottom of the main window with a live waveform, transcript, narration text and
+  a permission card (Allow / Deny / Answer in the terminal).
+- Narration: Silent speaks none of Claude's text; Final answer only speaks just the reply; Normal and Detailed also
+  speak Claude's text as it works and add a status line after a silence. The narration provider, voice
+  and speed are selectable, and "Speaking while Claude works" chooses whether your message queues for
+  Claude's next turn or interrupts it first. Permission questions are spoken at every verbosity unless
+  the approval channel is Panel only.
+- Permissions: answer by voice in English or Portuguese; "no, <reason>" sends the reason to Claude.
+  Destructive commands (`rm -rf`, `git push --force`, `git reset --hard`, SQL `DROP`, writes outside
+  the project, ...) need a click by default. Voice holds back its Enter while Claude's own numbered
+  permission menu is showing (best-effort screen check before the paste and again before Enter).
+- Interrupt: starting with "stop", "espera" or "cancela" interrupts Claude before the rest is sent.
+- Jev: starting with "Alethe, ..." routes the request to Jev.
+- Anywhere on the system: the shortcut is global. With Alethe in the background a floating HUD shows
+  the same waveform, transcript, narration and permission card (bottom center of the screen under the
+  mouse by default, six positions in Preferences, draggable, resettable) and hides 4 seconds after the
+  turn; its close button hides it until the next press. On macOS it is a non-activating panel, so
+  answering a permission there keeps your app focused, and it appears over full-screen apps. The
+  shortcut is recorded by pressing it (Esc cancels; combinations taken by the OS or another app are
+  refused). Narration speed is 1x to 2x, from the panel or the HUD.
+- Platform notes: Linux builds need `libspeechd-dev`; the macOS bundle declares microphone usage.
+
+### Voice providers
+
+- Preferences → Voice has one tab per use: Dictation, Conversation and Narration. Each use picks its
+  own provider, so dictation can stay on this device while narration uses a cloud voice. The tabs
+  show the same provider cards as the providers grid (local and cloud groups); the card a use runs on
+  is marked **In use**, and each card picks its model from a searchable list.
+- Local (default, nothing leaves the device): Parakeet, Zipformer, Whisper base and small, Moonshine
+  base (English), Apple Speech (macOS) for recognition; Piper voices "Faber (pt-BR)" and "Amy
+  (en-US)" and the system voice for narration.
+- Cloud (your own key): OpenAI, ElevenLabs, Google Gemini and OpenRouter. OpenRouter lists every
+  live transcription and speech model, with each model's own voices; the list is public, so it shows
+  before a key is saved, locked until one is. Audio or text leaves the device only for a use set to a
+  cloud provider.
+- Narration voices are grouped by language: voices in the app language come first, then
+  multilingual voices (they speak the language of the text), then the rest. Picking a narration
+  model whose voices do not include the current one selects a voice in the app language.
+- Keys are stored in the system keychain per profile and are never shown again after saving; a
+  provider page can save, test and remove a key. Narration verbosity and filler delay live in the
+  Narration tab, and **Test voice** previews the chosen voice.
+- Fallback: if a cloud provider fails, dictation and conversation use Apple Speech (when ready with
+  a language set), otherwise the first downloaded local model; narration uses the system voice. A
+  toast names the provider that failed and why. A local failure never falls back to the cloud.
+- Downloaded models live in `<app data>/speech-models/<id>` and are managed from the provider page.
+
 ## Spotify
 
 - OAuth Authorization Code flow with local callback.
