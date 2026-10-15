@@ -12,6 +12,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Dynamic terminal and sidebar chat titles.** Terminal tabs and sidebar entries now dynamically
+  update to reflect conversation titles and CLI titles emitted by running agents and OSC sequences.
+
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with

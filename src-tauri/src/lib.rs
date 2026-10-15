@@ -506,6 +506,7 @@ pub fn run() {
             handoff::materialize_agent_handoff,
             handoff::complete_agent_handoff,
             antigravity_sessions::snapshot_antigravity_sessions,
+            antigravity_sessions::get_antigravity_session_title,
             cursor_sessions::create_cursor_chat,
             claude_usage::get_claude_usage,
             codex_usage::get_codex_usage,

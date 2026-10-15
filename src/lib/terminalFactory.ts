@@ -203,7 +203,7 @@ export function touchTerminalUsage(terminal: Terminal, tabId = terminal.activeTa
 export function sidebarTerminalDisplayName(terminal: Terminal, chatTitle: string | null): string {
   if (terminal.customName) return terminal.name
   const activeTab = terminal.tabs.find((tab) => tab.id === terminal.activeTabId) ?? terminal.tabs[0]
-  return chatTitle ?? activeTab?.name ?? terminal.name
+  return chatTitle ?? activeTab?.autoTitle ?? activeTab?.name ?? terminal.name
 }
 
 export function pickMostRecentTab(terminal: Terminal, excludeTabId?: string): SubTab | null {

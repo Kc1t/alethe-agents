@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 
 export type AntigravitySessionSnapshot = {
   id: string
+  title?: string
   preview: string
   modified_at_ms: number
 }
@@ -10,6 +11,13 @@ export async function snapshotAntigravitySessions(
   cwd: string,
 ): Promise<AntigravitySessionSnapshot[]> {
   return invoke<AntigravitySessionSnapshot[]>('snapshot_antigravity_sessions', { cwd })
+}
+
+export async function getAntigravitySessionTitle(
+  cwd: string | undefined,
+  sessionId: string,
+): Promise<string | null> {
+  return invoke<string | null>('get_antigravity_session_title', { cwd, sessionId })
 }
 
 /**

@@ -340,15 +340,16 @@ function InspectorAction({
 }
 
 function TabRow({ tab, active, onClick }: { tab: SubTab; active: boolean; onClick: () => void }) {
+  const tabTitle = tab.autoTitle || tab.name
   return (
     <button
       type="button"
       className={`${styles.tabRow} ${active ? styles.tabRowActive : ''}`}
       onClick={onClick}
-      title={tab.cwd || tab.name}
+      title={tab.cwd || tabTitle}
     >
       <span className={styles.tabType}>{tab.type}</span>
-      <span className={styles.tabName}>{tab.name}</span>
+      <span className={styles.tabName}>{tabTitle}</span>
       {tab.completionUnread ? <span className={styles.unread} /> : null}
     </button>
   )

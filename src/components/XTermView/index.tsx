@@ -73,6 +73,7 @@ export type XTermViewProps = {
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
   onSessionId?: (id: string | undefined) => void
+  onTitleChange?: (title: string) => void
   onInitialInputSent?: () => void
   onExit?: (code: number | null) => void
   onLaunchError?: (error: unknown) => void
@@ -104,6 +105,7 @@ export function XTermView({
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
+  onTitleChange,
   onInitialInputSent,
   onExit,
   onLaunchError,
@@ -126,6 +128,7 @@ export function XTermView({
 
   const onSpawnedRef = useRef(onSpawned)
   const onSessionIdRef = useRef(onSessionId)
+  const onTitleChangeRef = useRef(onTitleChange)
   const onInitialInputSentRef = useRef(onInitialInputSent)
   const onExitRef = useRef(onExit)
   const onLaunchErrorRef = useRef(onLaunchError)
@@ -133,6 +136,7 @@ export function XTermView({
   useEffect(() => {
     onSpawnedRef.current = onSpawned
     onSessionIdRef.current = onSessionId
+    onTitleChangeRef.current = onTitleChange
     onInitialInputSentRef.current = onInitialInputSent
     onExitRef.current = onExit
     onLaunchErrorRef.current = onLaunchError
@@ -391,6 +395,7 @@ export function XTermView({
     forceFreshRef,
     onSpawnedRef,
     onSessionIdRef,
+    onTitleChangeRef,
     onInitialInputSentRef,
     onExitRef,
     onLaunchErrorRef,

@@ -31,10 +31,13 @@ import {
 } from '../../lib/sessionResume'
 import {
   completeAgentHandoff,
+  getAntigravitySessionTitle,
   getClaudeSessionTitle,
   getCodexSessionTitle,
   getPtyCwd,
   openInVscode,
+  opencodeExportSession,
+  snapshotAntigravitySessions,
   snapshotCodexSessions,
 } from '../../lib/tauri'
 import {
@@ -128,6 +131,7 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
   const setSubTabHandoff = useProjectsStore((s) => s.setSubTabHandoff)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
+  const setSubTabAutoTitle = useProjectsStore((s) => s.setSubTabAutoTitle)
   const deleteTerminalWithWorktreeCleanup = useProjectsStore(
     (s) => s.deleteTerminalWithWorktreeCleanup,
   )
@@ -347,44 +351,93 @@ export const TerminalPane = memo(function TerminalPane({
   const cwd = activeTab?.cwd?.trim() || terminal.cwd?.trim() || ''
 
   const sessionTitleAgentType =
-    activeTab?.type === 'claude' || activeTab?.type === 'codex' ? activeTab.type : null
+    activeTab?.type === 'claude' ||
+    activeTab?.type === 'codex' ||
+    activeTab?.type === 'antigravity' ||
+    activeTab?.type === 'opencode'
+      ? activeTab.type
+      : null
   const sessionTitleId = sessionTitleAgentType ? activeTab?.sessionId : undefined
+
+  useEffect(() => {
+    if (activeTab?.type !== 'antigravity' || activeTab.sessionId || !cwd) return
+    let cancelled = false
+    void snapshotAntigravitySessions(cwd).then((sessions) => {
+      if (cancelled || !sessions.length || activeTab.sessionId) return
+      const mostRecent = sessions[0]
+      if (mostRecent) {
+        setSubTabSessionId(projectId, terminal.id, activeTab.id, mostRecent.id)
+        if (mostRecent.title) {
+          setSubTabAutoTitle(projectId, terminal.id, activeTab.id, mostRecent.title)
+        }
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activeTab?.type,
+    activeTab?.sessionId,
+    activeTab?.id,
+    cwd,
+    projectId,
+    terminal.id,
+    setSubTabSessionId,
+    setSubTabAutoTitle,
+  ])
 
   const [sessionTitle, setSessionTitle] = useState<string | null>(null)
   useEffect(() => {
     setSessionTitle(null)
     if (!sessionTitleAgentType || !sessionTitleId) return
-    if (sessionTitleAgentType === 'claude' && !cwd) return
+    if ((sessionTitleAgentType === 'claude' || sessionTitleAgentType === 'antigravity') && !cwd) return
     const agentType = sessionTitleAgentType
     const sessionId = sessionTitleId
     let cancelled = false
     const fetchTitle = () => {
-      const request =
+      const request: Promise<string | null> =
         agentType === 'claude'
           ? getClaudeSessionTitle(cwd, sessionId)
-          : getCodexSessionTitle(sessionId)
+          : agentType === 'antigravity'
+            ? getAntigravitySessionTitle(cwd, sessionId)
+            : agentType === 'codex'
+              ? getCodexSessionTitle(sessionId)
+              : opencodeExportSession(cwd, sessionId)
+                  .then((res) => res?.info?.title || res?.info?.slug || null)
+                  .catch(() => null)
+
       request
         .then((title) => {
           if (cancelled || !title) return
           setSessionTitle(title)
-          // Promise callbacks run after the interval below is assigned.
-          window.clearInterval(intervalId)
+          if (activeTab?.id) {
+            setSubTabAutoTitle(projectId, terminal.id, activeTab.id, title)
+          }
         })
         .catch(() => {})
     }
     fetchTitle()
-    const intervalId = window.setInterval(fetchTitle, 6000)
+    const intervalId = window.setInterval(fetchTitle, 5000)
     return () => {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [sessionTitleAgentType, sessionTitleId, cwd])
+  }, [
+    sessionTitleAgentType,
+    sessionTitleId,
+    cwd,
+    projectId,
+    terminal.id,
+    activeTab?.id,
+    setSubTabAutoTitle,
+  ])
 
   const hasCustomTabName = Boolean(activeTab && activeTab.name !== activeTab.type)
+  const resolvedAutoTitle = activeTab?.autoTitle ?? sessionTitle
   const displayName = activeTab
     ? hasCustomTabName
       ? activeTab.name
-      : (sessionTitle ?? activeTab.name)
+      : (resolvedAutoTitle ?? activeTab.name)
     : terminal.name
 
   const setSubTabName = useProjectsStore((s) => s.setSubTabName)
@@ -732,6 +785,11 @@ export const TerminalPane = memo(function TerminalPane({
                   onSessionId={(sessionId) => {
                     if (activeTab.sessionId !== sessionId) {
                       setSubTabSessionId(projectId, terminal.id, activeTab.id, sessionId)
+                    }
+                  }}
+                  onTitleChange={(title) => {
+                    if (activeTab?.id) {
+                      setSubTabAutoTitle(projectId, terminal.id, activeTab.id, title)
                     }
                   }}
                   onInitialInputSent={() =>
