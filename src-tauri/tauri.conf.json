@@ -76,6 +76,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper"

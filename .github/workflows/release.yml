@@ -83,6 +83,18 @@ jobs:
           echo "${LINUXDEPLOY_SHA256}  $HOME/.cache/tauri/linuxdeploy-x86_64.AppImage" | sha256sum -c -
           chmod +x ~/.cache/tauri/linuxdeploy-x86_64.AppImage
 
+      - name: Select Xcode 26 (Apple speech recognition)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
+          xcodebuild -version || true
+          swift --version
+          SWIFT_VERSION=$(swift --version 2>&1 | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)
+          if [ "$(printf '6.2\n%s\n' "$SWIFT_VERSION" | sort -V | head -1)" != "6.2" ]; then
+            echo "::warning::Swift < 6.2 on this runner: the macOS build ships without SpeechAnalyzer (macOS 26 engine)"
+          fi
+
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@v0
         env:

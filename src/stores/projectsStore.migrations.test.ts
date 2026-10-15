@@ -9,6 +9,10 @@ import {
 import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
+  it('backfills the native speech preferences', () => {
+    expect(normalizePreferences({}).speechEngineMigrated).toBe(false)
+  })
+
   it('backfills the HUD position and drops a malformed custom one', () => {
     expect(normalizePreferences({}).voiceHudPosition).toBe('bottom-center')
     expect(normalizePreferences({}).voiceHudCustomPosition).toBeNull()

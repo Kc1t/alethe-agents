@@ -874,6 +874,8 @@ export type Preferences = {
   dictationMicrophoneId: string | null
   /** Cached microphone label when the preferred device is unplugged. */
   dictationMicrophoneLabel: string | null
+  /** The one-time switch of a Mac profile to the Apple engine has run. */
+  speechEngineMigrated: boolean
   /** Decisions API key for voice commands. Empty disables the command bar. */
   voiceCommandApiKey: string
   /** Talk to the active Claude pane and hear it narrate. Uses the dictation model and mic. */
@@ -1092,6 +1094,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   dictationModelId: 'parakeet-tdt-0.6b-v3-int8',
   dictationMicrophoneId: null,
   dictationMicrophoneLabel: null,
+  speechEngineMigrated: false,
   voiceCommandApiKey: '',
   voiceConversationEnabled: false,
   voiceShortcut: 'CmdOrCtrl+Shift+Space',

@@ -77,6 +77,7 @@ mod session_watcher;
 mod single_instance_probe;
 mod skills;
 mod speech;
+mod speech_apple;
 mod speech_capture;
 mod spotify;
 mod stats;
@@ -563,6 +564,7 @@ pub fn run() {
             speech::speech_prepare,
             speech::speech_stop_and_transcribe,
             speech::speech_transcribe,
+            speech::speech_native_locales,
             tts::tts_speak,
             tts::tts_stop,
             tts::tts_voices,

@@ -794,6 +794,19 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.dictationModelRecommended': 'Recomendado',
   'prefs.dictationModelReady': 'Baixado e pronto.',
   'prefs.dictationModelMissing': 'Ainda não baixado (~640 MB).',
+  'prefs.dictationNativeLocale': 'Idioma',
+  'prefs.dictationNativeNeedsLocale': 'O motor nativo precisa de um idioma antes de ouvir.',
+  'prefs.dictationNativeReady': 'Pronto para usar.',
+  'prefs.dictationNativeDenied':
+    'O reconhecimento de fala não está permitido. Ative em Ajustes do Sistema → Privacidade e Segurança → Reconhecimento de Fala.',
+  'prefs.dictationNativeNoLocales':
+    'Este Mac não tem idioma com reconhecimento local. Use o Parakeet.',
+  'prefs.dictationNativeUnavailable':
+    'Esse idioma não tem reconhecimento local neste Mac. Escolha outro ou use o Parakeet.',
+  'prefs.dictationNativeLocaleChoose': 'Escolha um idioma',
+  'prefs.dictationNativeLocaleInstalled': '{name} · instalado',
+  'prefs.dictationNativeLocaleNeedsInstall': '{name} · precisa instalar',
+  'prefs.dictationNativeInstall': 'Instalar idioma',
   'prefs.dictationModelProgress': 'Baixando… {percent}%',
   'prefs.dictationModelDownload': 'Baixar',
   'prefs.dictationModelDelete': 'Remover',
@@ -3631,6 +3644,9 @@ export const ptBR: Record<MessageKey, string> = {
     'Esse painel do Claude estava fora de vista. Ele está aparecendo agora — diga de novo.',
   'voice.conv.unknownTool': 'uma ferramenta',
   'voice.conv.modelMissing': 'Baixe antes o modelo de fala em Preferências → Voz.',
+  'speech.nativeLocaleRequired': 'Escolha o idioma do reconhecimento nativo em Preferências → Voz.',
+  'speech.nativeNotReady':
+    'O reconhecimento de fala da Apple não está pronto: permita em Ajustes do Sistema → Privacidade e Segurança → Reconhecimento de Fala e instale o idioma nas Preferências.',
   'voice.conv.heardNothing': 'Não ouvi nada.',
   'voice.conv.jevNotConfigured':
     'O Jev precisa de uma chave de API. Abra a barra de comandos de voz para adicionar.',

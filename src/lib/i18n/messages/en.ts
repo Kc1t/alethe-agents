@@ -780,6 +780,19 @@ export const en = {
   'prefs.dictationModelRecommended': 'Recommended',
   'prefs.dictationModelReady': 'Downloaded and ready.',
   'prefs.dictationModelMissing': 'Not downloaded yet (~640 MB).',
+  'prefs.dictationNativeLocale': 'Language',
+  'prefs.dictationNativeNeedsLocale': 'The native engine needs a language before it can listen.',
+  'prefs.dictationNativeReady': 'Ready to use.',
+  'prefs.dictationNativeDenied':
+    'Speech recognition is not allowed. Turn it on in System Settings → Privacy & Security → Speech Recognition.',
+  'prefs.dictationNativeNoLocales':
+    'This Mac has no language with on-device recognition. Use Parakeet instead.',
+  'prefs.dictationNativeUnavailable':
+    'That language has no on-device recognition on this Mac. Pick another or use Parakeet.',
+  'prefs.dictationNativeLocaleChoose': 'Choose a language',
+  'prefs.dictationNativeLocaleInstalled': '{name} · installed',
+  'prefs.dictationNativeLocaleNeedsInstall': '{name} · needs install',
+  'prefs.dictationNativeInstall': 'Install language',
   'prefs.dictationModelProgress': 'Downloading… {percent}%',
   'prefs.dictationModelDownload': 'Download',
   'prefs.dictationModelDelete': 'Remove',
@@ -3592,6 +3605,9 @@ export const en = {
   'voice.conv.targetHidden': 'That Claude pane was out of view. It is showing now — say it again.',
   'voice.conv.unknownTool': 'a tool',
   'voice.conv.modelMissing': 'Download the speech model in Preferences → Voice first.',
+  'speech.nativeLocaleRequired': 'Choose the native recognition language in Preferences → Voice.',
+  'speech.nativeNotReady':
+    'Apple speech recognition is not ready: allow it in System Settings → Privacy & Security → Speech Recognition, and install the language in Preferences.',
   'voice.conv.heardNothing': 'Heard nothing.',
   'voice.conv.jevNotConfigured': 'Jev needs an API key. Open the voice command bar to add one.',
   'voice.conv.ttsUnavailable':

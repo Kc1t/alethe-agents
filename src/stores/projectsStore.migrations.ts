@@ -262,6 +262,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       preferences.dictationMicrophoneLabel.trim()
         ? preferences.dictationMicrophoneLabel.trim()
         : null,
+    speechEngineMigrated: preferences.speechEngineMigrated === true,
     voiceConversationEnabled: Boolean(preferences.voiceConversationEnabled),
     voiceShortcut: trimmedOr(preferences.voiceShortcut, DEFAULT_PREFERENCES.voiceShortcut),
     voiceCaptureMode: preferences.voiceCaptureMode === 'toggle' ? 'toggle' : 'push-to-talk',

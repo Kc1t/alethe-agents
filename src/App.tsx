@@ -64,6 +64,7 @@ import { useOrchestrationSettingsSync } from './hooks/useOrchestrationSettingsSy
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { useRouter9AutoStart } from './hooks/useRouter9AutoStart'
+import { useSpeechEngineDefault } from './hooks/useSpeechEngineDefault'
 import { startActivityTracker } from './lib/activityTracker'
 import { resumeAgentCanvasMirror } from './lib/agentCanvasMirror'
 import { APP_SHELL_ID } from './lib/appShell'
@@ -213,6 +214,7 @@ export default function App() {
   useResourceSupervisor(hydrated)
   useAgentBrowserOffers(playwrightEnabled)
   useAgentHookBridge()
+  useSpeechEngineDefault(hydrated, activeProfileId)
   useAgentsSidebarAutoOpen()
   useCliOpenRequests(hydrated)
 
