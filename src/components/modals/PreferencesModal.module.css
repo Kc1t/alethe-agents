@@ -149,6 +149,10 @@
   font-size: 12px;
   text-align: left;
 }
+/* A long description must not squeeze the icon: it would shrink with the text. */
+.nav button > svg {
+  flex: none;
+}
 .nav button:hover {
   color: var(--fg);
   background: var(--panel-hover);

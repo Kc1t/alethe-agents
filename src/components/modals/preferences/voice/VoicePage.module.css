@@ -1,0 +1,32 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header h1 {
+  margin: 0;
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.header p {
+  max-width: 560px;
+  margin: 4px 0 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tabBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.intro {
+  margin: 0 0 12px;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

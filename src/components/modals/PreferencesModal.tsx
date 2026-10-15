@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Info,
   type LucideIcon,
+  Mic,
   Palette,
   Plug,
   Puzzle,
@@ -36,6 +37,7 @@ import { PluginsPage } from './preferences/PluginsPage'
 import { Avatar } from './preferences/primitives'
 import { RemoteControlPage } from './preferences/RemoteControlPage'
 import { TerminalPage } from './preferences/TerminalPage'
+import { VoicePage } from './preferences/voice/VoicePage'
 import styles from './PreferencesModal.module.css'
 
 type CategoryId =
@@ -45,6 +47,7 @@ type CategoryId =
   | 'plugins'
   | 'terminal'
   | 'integrations'
+  | 'voice'
   | 'multiagent'
   | 'orchestration'
   | 'organization'
@@ -129,6 +132,12 @@ export function PreferencesModal() {
         label: t('prefs.categoryIntegrations'),
         description: t('prefs.categoryIntegrationsDesc'),
         Icon: Plug,
+      },
+      {
+        id: 'voice',
+        label: t('prefs.categoryVoice'),
+        description: t('prefs.categoryVoiceDesc'),
+        Icon: Mic,
       },
       {
         id: 'orchestration',
@@ -361,11 +370,43 @@ export function PreferencesModal() {
         keywords: 'discord rich presence status integração',
       },
       {
-        category: 'integrations',
+        category: 'voice',
+        target: 'voice-providers',
+        label: t('prefs.voiceProvidersTitle'),
+        description: t('prefs.voiceProvidersDesc'),
+        keywords:
+          'provider api key openai elevenlabs gemini openrouter cloud local whisper piper provedor chave nuvem 提供方 密钥 云端',
+      },
+      {
+        category: 'voice',
         target: 'dictation',
         label: t('prefs.dictation'),
         description: t('prefs.dictationDesc'),
-        keywords: 'dictation voice mic microphone ditado voz microfone speech parakeet stt',
+        keywords:
+          'dictation voice mic microphone ditado voz microfone speech parakeet stt apple native siri nativo modelo model',
+      },
+      {
+        category: 'voice',
+        target: 'voice-conversation',
+        label: t('prefs.voiceConv'),
+        description: t('prefs.voiceConvDesc', { shortcut: '' }),
+        keywords:
+          'voice conversation talk speak narration tts permission approve conversa voz falar narração permissão 语音 对话',
+      },
+      {
+        category: 'voice',
+        target: 'voice-conversation-hud',
+        label: t('prefs.voiceHudPosition'),
+        description: t('prefs.voiceHudPositionDesc'),
+        keywords:
+          'hud floating overlay position corner monitor screen flutuante posição canto tela 悬浮窗 位置',
+      },
+      {
+        category: 'voice',
+        target: 'voice-conversation-voice',
+        label: t('prefs.voiceConvVoice'),
+        description: t('prefs.voiceConvVoiceDesc'),
+        keywords: 'narration tts voice speed rate narração voz velocidade 旁白 语音 语速',
       },
       {
         category: 'about',
@@ -585,6 +626,7 @@ export function PreferencesModal() {
                   {category === 'plugins' ? <PluginsPage /> : null}
                   {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                   {category === 'integrations' ? <IntegrationsPage /> : null}
+                  {category === 'voice' ? <VoicePage target={pendingTarget} /> : null}
                   {category === 'multiagent' ? <MultiagentPage /> : null}
                   {category === 'orchestration' ? <OrchestrationPage /> : null}
                   {category === 'organization' ? <OrganizationPage /> : null}

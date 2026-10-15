@@ -48,12 +48,15 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 which = "6"
 zip = "0.6"
 tar = "0.4"
+bzip2 = "0.4"
 flate2 = "1"
 sha2 = "0.10"
 sysinfo = "0.31"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 hex = "0.4"
 cpal = "0.15"
+# Decodes OpenRouter speech replies (MP3: its PCM rate is model-dependent and undocumented).
+symphonia = { version = "0.5", default-features = false, features = ["mp3"] }
 # On-device STT (Parakeet / Whisper / …). Build script downloads prebuilt libs when unset.
 sherpa-onnx = "1.13.6"
 # Narration for voice conversation: AVSpeechSynthesizer (macOS), WinRT (Windows),

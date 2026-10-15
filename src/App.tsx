@@ -65,6 +65,8 @@ import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { useRouter9AutoStart } from './hooks/useRouter9AutoStart'
 import { useSpeechEngineDefault } from './hooks/useSpeechEngineDefault'
+import { useVoiceFallbackToasts } from './hooks/useVoiceFallbackToasts'
+import { useVoiceProviderStatus } from './hooks/useVoiceProviderStatus'
 import { startActivityTracker } from './lib/activityTracker'
 import { resumeAgentCanvasMirror } from './lib/agentCanvasMirror'
 import { APP_SHELL_ID } from './lib/appShell'
@@ -215,6 +217,8 @@ export default function App() {
   useAgentBrowserOffers(playwrightEnabled)
   useAgentHookBridge()
   useSpeechEngineDefault(hydrated, activeProfileId)
+  useVoiceProviderStatus(hydrated, activeProfileId)
+  useVoiceFallbackToasts()
   useAgentsSidebarAutoOpen()
   useCliOpenRequests(hydrated)
 

@@ -6,6 +6,7 @@ mod ai_memory;
 mod ai_memory_hooks;
 mod antigravity_sessions;
 mod antigravity_usage;
+mod audio_out;
 mod backup;
 mod browser_pane;
 mod browser_session;
@@ -84,6 +85,8 @@ mod stats;
 mod supervisor;
 mod telemetry;
 mod tts;
+mod tts_local;
+mod voice_providers;
 mod validation;
 mod voice_hud;
 mod webview_media;
@@ -568,6 +571,12 @@ pub fn run() {
             tts::tts_speak,
             tts::tts_stop,
             tts::tts_voices,
+            voice_providers::keys::voice_provider_set_key,
+            voice_providers::keys::voice_provider_delete_key,
+            voice_providers::keys::voice_providers_status,
+            voice_providers::keys::voice_provider_test,
+            voice_providers::catalog::voice_provider_catalog,
+            voice_providers::openrouter::voice_openrouter_models,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,

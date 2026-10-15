@@ -13,6 +13,28 @@ describe('preference normalization', () => {
     expect(normalizePreferences({}).speechEngineMigrated).toBe(false)
   })
 
+  it('migrates legacy voice fields and drops them', () => {
+    const preferences = normalizePreferences({
+      dictationModelId: 'apple-speech',
+      dictationNativeLocale: 'pt-BR',
+      voiceTtsVoice: 'v1',
+      voiceTtsRate: 1.5,
+    } as never) as unknown as Record<string, unknown>
+    expect(preferences.voiceStt).toEqual({
+      dictation: { provider: 'apple', model: 'apple-speech', locale: 'pt-BR' },
+      conversation: { provider: 'apple', model: 'apple-speech', locale: 'pt-BR' },
+    })
+    expect(preferences.voiceTts).toEqual({ provider: 'system', model: '', voice: 'v1', rate: 1.5 })
+    for (const legacy of [
+      'dictationModelId',
+      'dictationNativeLocale',
+      'voiceTtsVoice',
+      'voiceTtsRate',
+    ]) {
+      expect(preferences).not.toHaveProperty(legacy)
+    }
+  })
+
   it('backfills the HUD position and drops a malformed custom one', () => {
     expect(normalizePreferences({}).voiceHudPosition).toBe('bottom-center')
     expect(normalizePreferences({}).voiceHudCustomPosition).toBeNull()

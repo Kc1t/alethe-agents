@@ -1,13 +1,13 @@
 import { Loader2, Mic, Play, Square } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { agentLabel } from '../../lib/agentProviders'
 import { type TFunction, useT } from '../../lib/i18n'
-import { DEFAULT_SPEECH_MODEL_ID } from '../../lib/speech/audio'
+import { isMacOS } from '../../lib/platform'
+import { sttChoiceFor } from '../../lib/speech/engine'
 import {
   jevDecide,
   type JevDecision,
-  speechCaptureLevel,
   type SpeechInputDevice,
   speechListInputDevices,
   speechPrepare,
@@ -17,6 +17,9 @@ import {
   writePty,
 } from '../../lib/tauri'
 import { type AgentType, isShellAgentType } from '../../lib/types'
+import { cloudFailureMessage } from '../../lib/voice/cloudErrors'
+import { isCloudProvider } from '../../lib/voice/providers'
+import { matchesAccelerator, parseAccelerator } from '../../lib/voice/shortcut'
 import {
   BLOCK_REASONS,
   needsConfirmation,
@@ -35,15 +38,12 @@ import {
 } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { isRecordingShortcut } from '../../stores/voiceConversationStore'
 import { useVoiceHistoryStore } from '../../stores/voiceHistoryStore'
 import { Dropdown } from '../ui/Dropdown'
+import { VoiceSpectrum } from '../VoiceSpectrum'
 import styles from './VoiceCommand.module.css'
 
-const LEVEL_POLL_MS = 60
-const SPECTRUM_BARS = 40
-const SILENT_LEVEL = 0.005
-const SILENT_POLLS_BEFORE_WARNING = 12
-const SILENCE: number[] = Array.from({ length: SPECTRUM_BARS }, () => 0)
 const DECIDE_TIMEOUT_MS = 20000
 
 function withTimeout<T>(work: Promise<T>, timeoutMessage: string): Promise<T> {
@@ -195,8 +195,13 @@ export function VoiceCommand() {
   const apiKey = useProjectsStore((s) => s.preferences.voiceCommandApiKey)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const dictationEnabled = useProjectsStore((s) => s.preferences.dictationEnabled)
-  const modelId = useProjectsStore((s) => s.preferences.dictationModelId || DEFAULT_SPEECH_MODEL_ID)
+  const voiceStt = useProjectsStore((s) => s.preferences.voiceStt)
+  const engine = useMemo(() => sttChoiceFor({ voiceStt }, 'conversation'), [voiceStt])
   const micId = useProjectsStore((s) => s.preferences.dictationMicrophoneId)
+  const conversationEnabled = useProjectsStore((s) => s.preferences.voiceConversationEnabled)
+  const conversationShortcut = useProjectsStore((s) => s.preferences.voiceShortcut)
+  const voiceCommandRequest = useUiStore((s) => s.voiceCommandRequest)
+  const handledNonce = useRef<number | null>(null)
 
   const [open, setOpen] = useState(false)
   const [text, setText] = useState('')
@@ -207,12 +212,15 @@ export function VoiceCommand() {
   const [warnings, setWarnings] = useState<VoiceWarning[]>([])
   const [pendingEntryId, setPendingEntryId] = useState<string | null>(null)
   const [mics, setMics] = useState<SpeechInputDevice[]>([])
-  const [levels, setLevels] = useState<number[]>(SILENCE)
   const [micSilent, setMicSilent] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
   const recordingRef = useRef(false)
   const busyRef = useRef(false)
+  // Covers prepare + mic open; a stop during it must transcribe once the capture starts.
+  const startingRef = useRef(false)
+  const stopAfterStartRef = useRef(false)
+  const transcribeRef = useRef<() => void>(() => undefined)
 
   const recording = phase === 'listening'
   const busy = phase === 'transcribing' || phase === 'deciding'
@@ -226,7 +234,6 @@ export function VoiceCommand() {
     setPlan(null)
     setWarnings([])
     setPendingEntryId(null)
-    setLevels(SILENCE)
     setMicSilent(false)
     setPhase('idle')
     if (recordingRef.current) {
@@ -323,24 +330,57 @@ export function VoiceCommand() {
     [route, t],
   )
 
+  // Voice conversation hands Jev requests over here (trigger word or modifier).
+  useEffect(() => {
+    if (!voiceCommandRequest || handledNonce.current === voiceCommandRequest.nonce) return
+    handledNonce.current = voiceCommandRequest.nonce
+    setOpen(true)
+    setText(voiceCommandRequest.text)
+    if (voiceCommandRequest.text) void decide(voiceCommandRequest.text)
+  }, [voiceCommandRequest, decide])
+
   const listen = useCallback(async () => {
-    if (recordingRef.current || busyRef.current) return
+    if (recordingRef.current || busyRef.current || startingRef.current) return
+    if (engine.needsLocale) {
+      setMessage(t('speech.nativeLocaleRequired'))
+      return
+    }
+    startingRef.current = true
+    stopAfterStartRef.current = false
+    let stopNow = false
     try {
+      // On Apple this also requests the speech-recognition permission before the mic opens.
+      if (engine.provider === 'apple' || isCloudProvider(engine.provider)) {
+        const ready = await speechPrepare(engine.modelId, engine.locale, engine.provider).catch(
+          () => false,
+        )
+        if (!ready) {
+          setMessage(t(engine.provider === 'apple' ? 'speech.nativeNotReady' : 'voice.cloud.noKey'))
+          return
+        }
+      }
       await speechStartCapture(micId)
       recordingRef.current = true
       setMicSilent(false)
-      setLevels(SILENCE)
       setMessage(null)
       setPhase('listening')
+      stopNow = stopAfterStartRef.current
     } catch (cause) {
       recordingRef.current = false
       setPhase('idle')
       setMessage(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      startingRef.current = false
+      stopAfterStartRef.current = false
     }
-  }, [micId])
+    if (stopNow) transcribeRef.current()
+  }, [engine, micId, t])
 
   const transcribe = useCallback(() => {
-    if (!recordingRef.current) return
+    if (!recordingRef.current) {
+      if (startingRef.current) stopAfterStartRef.current = true
+      return
+    }
     recordingRef.current = false
     const history = useVoiceHistoryStore.getState()
     const entryId = history.start('', 'voice', t('voice.lifecycle.transcribing'))
@@ -351,7 +391,13 @@ export function VoiceCommand() {
     void (async () => {
       try {
         const startedAt = performance.now()
-        const transcript = (await speechStopAndTranscribe(modelId)).trim()
+        const transcript = (
+          await speechStopAndTranscribe(engine.modelId, engine.locale, {
+            provider: engine.provider,
+            fallbackLocale: engine.fallbackLocale,
+            usage: 'conversation',
+          })
+        ).trim()
         const transcribeMs = Math.round(performance.now() - startedAt)
         if (!transcript) {
           history.settle(entryId, {
@@ -376,7 +422,9 @@ export function VoiceCommand() {
         setOpen(true)
       } catch (cause) {
         await speechStopCapture().catch(() => undefined)
-        const reason = cause instanceof Error ? cause.message : String(cause)
+        const reason =
+          cloudFailureMessage(cause, engine.provider, t) ??
+          (cause instanceof Error ? cause.message : String(cause))
         history.settle(entryId, {
           status: 'failed',
           summary: t('voice.lifecycle.failed'),
@@ -385,10 +433,14 @@ export function VoiceCommand() {
         useUiStore.getState().pushToast({ title: t('voice.failedToast'), body: reason })
       }
     })()
-  }, [close, modelId, route, t])
+  }, [close, engine, route, t])
+
+  useEffect(() => {
+    transcribeRef.current = transcribe
+  }, [transcribe])
 
   const toggleRecording = useCallback(() => {
-    if (recordingRef.current) transcribe()
+    if (recordingRef.current || startingRef.current) transcribe()
     else void listen()
   }, [listen, transcribe])
 
@@ -406,42 +458,29 @@ export function VoiceCommand() {
         if (!cancelled) setMics(devices)
       })
       .catch(() => undefined)
-    void speechPrepare(modelId).catch(() => undefined)
+    // Apple's prepare asks for the speech permission, which a typed request never needs; listen()
+    // prepares it right before capture instead.
+    if (engine.provider === 'local')
+      void speechPrepare(engine.modelId, engine.locale, engine.provider).catch(() => undefined)
     return () => {
       cancelled = true
     }
-  }, [open, dictationEnabled, modelId])
-
-  useEffect(() => {
-    if (phase !== 'listening') return
-    let silentPolls = 0
-    const id = window.setInterval(() => {
-      void speechCaptureLevel()
-        .then((next) => {
-          setLevels((previous) => [...previous.slice(1), next])
-          if (next > SILENT_LEVEL) {
-            silentPolls = 0
-            setMicSilent(false)
-            return
-          }
-          silentPolls += 1
-          if (silentPolls > SILENT_POLLS_BEFORE_WARNING) setMicSilent(true)
-        })
-        .catch(() => undefined)
-    }, LEVEL_POLL_MS)
-    return () => window.clearInterval(id)
-  }, [phase])
+  }, [open, dictationEnabled, engine])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!isOpenChord(e) || e.repeat) return
+      if (!isOpenChord(e) || e.repeat || isRecordingShortcut()) return
+      if (conversationEnabled) {
+        const accelerator = parseAccelerator(conversationShortcut)
+        if (accelerator && matchesAccelerator(e, accelerator, isMacOS()).matched) return
+      }
       e.preventDefault()
       e.stopPropagation()
       setOpen((current) => !current)
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [])
+  }, [conversationEnabled, conversationShortcut])
 
   useEffect(() => {
     if (!open) return
@@ -452,7 +491,7 @@ export function VoiceCommand() {
   useEffect(() => {
     if (!open || !dictationEnabled || !apiKey) return
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'F9' || e.repeat) return
+      if (e.key !== 'F9' || e.repeat || isRecordingShortcut()) return
       e.preventDefault()
       void listen()
     }
@@ -564,15 +603,7 @@ export function VoiceCommand() {
 
         {apiKey && dictationEnabled ? (
           <div className={styles.spectrumRow}>
-            <div className={styles.spectrum} data-live={recording} role="presentation">
-              {levels.map((value, index) => (
-                <span
-                  key={index}
-                  className={styles.spectrumBar}
-                  style={{ transform: `scaleY(${1 + Math.min(1, value * 4) * 11})` }}
-                />
-              ))}
-            </div>
+            <VoiceSpectrum live={recording} onSilent={setMicSilent} />
             {mics.length > 1 ? (
               <Dropdown
                 rootClassName={styles.micSelect}

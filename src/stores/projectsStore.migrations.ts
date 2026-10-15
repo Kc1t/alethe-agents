@@ -31,6 +31,7 @@ import {
   type WorkspaceRecentTab,
   type WorkspaceTab,
 } from '../lib/types'
+import { type LegacyVoiceFields, normalizeVoicePreferences } from '../lib/voice/voicePreferences'
 import {
   captureWorkspaceSnapshot,
   cloneWorkspaceSnapshot,
@@ -43,6 +44,7 @@ import {
   MAX_RECENT_PROJECT_TABS,
 } from './projectsStore.constants'
 
+type LegacyPreferences = Partial<Preferences> & { showGitControl?: boolean } & LegacyVoiceFields
 
 function normalizeStoredAccent(value: unknown, fallback?: string): string | undefined {
   if (typeof value !== 'string') return fallback
@@ -181,6 +183,15 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     ...(raw ?? {}),
   } as Preferences & { showGitControl?: boolean }
   delete preferences.showGitControl
+  // Pre-provider voice fields; their values move into voiceStt / voiceTts below.
+  for (const legacy of [
+    'dictationModelId',
+    'dictationNativeLocale',
+    'voiceTtsVoice',
+    'voiceTtsRate',
+  ]) {
+    delete (preferences as Record<string, unknown>)[legacy]
+  }
   const rawResourcePolicy = raw?.resourcePolicy
   const resourcePolicy = {
     ...DEFAULT_PREFERENCES.resourcePolicy,
@@ -248,10 +259,6 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
     dictationEnabled: Boolean(preferences.dictationEnabled),
     dictationMode: preferences.dictationMode === 'hold' ? 'hold' : 'toggle',
-    dictationModelId:
-      typeof preferences.dictationModelId === 'string' && preferences.dictationModelId.trim()
-        ? preferences.dictationModelId.trim()
-        : DEFAULT_PREFERENCES.dictationModelId,
     dictationMicrophoneId:
       typeof preferences.dictationMicrophoneId === 'string' &&
       preferences.dictationMicrophoneId.trim()
@@ -263,6 +270,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
         ? preferences.dictationMicrophoneLabel.trim()
         : null,
     speechEngineMigrated: preferences.speechEngineMigrated === true,
+    ...normalizeVoicePreferences(raw),
     voiceConversationEnabled: Boolean(preferences.voiceConversationEnabled),
     voiceShortcut: trimmedOr(preferences.voiceShortcut, DEFAULT_PREFERENCES.voiceShortcut),
     voiceCaptureMode: preferences.voiceCaptureMode === 'toggle' ? 'toggle' : 'push-to-talk',

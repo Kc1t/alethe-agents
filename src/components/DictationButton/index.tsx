@@ -1,17 +1,21 @@
 import { Loader2, Mic, MicOff } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
-import { DEFAULT_SPEECH_MODEL_ID } from '../../lib/speech/audio'
+import { sttChoiceFor } from '../../lib/speech/engine'
 import {
+  speechPrepare,
   speechStartCapture,
   speechStopAndTranscribe,
   speechStopCapture,
   writePty,
 } from '../../lib/tauri'
+import { cloudFailureMessage } from '../../lib/voice/cloudErrors'
+import { isCloudProvider } from '../../lib/voice/providers'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { isRecordingShortcut } from '../../stores/voiceConversationStore'
 import styles from './DictationButton.module.css'
 
 /** How long error feedback stays visible before the mic indicator hides again. */
@@ -42,7 +46,8 @@ export function DictationButton() {
   const t = useT()
   const enabled = useProjectsStore((s) => s.preferences.dictationEnabled)
   const mode = useProjectsStore((s) => s.preferences.dictationMode)
-  const modelId = useProjectsStore((s) => s.preferences.dictationModelId || DEFAULT_SPEECH_MODEL_ID)
+  const voiceStt = useProjectsStore((s) => s.preferences.voiceStt)
+  const engine = useMemo(() => sttChoiceFor({ voiceStt }, 'dictation'), [voiceStt])
   const micId = useProjectsStore((s) => s.preferences.dictationMicrophoneId)
   const [listening, setListening] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -50,6 +55,9 @@ export function DictationButton() {
   const recordingRef = useRef(false)
   const holdActiveRef = useRef(false)
   const busyRef = useRef(false)
+  // Covers prepare + mic open; a release during it must stop the capture once it starts.
+  const startingRef = useRef(false)
+  const stopAfterStartRef = useRef(false)
 
   const insertTranscript = useCallback(
     async (text: string) => {
@@ -65,14 +73,21 @@ export function DictationButton() {
   )
 
   const stopCapture = useCallback(async () => {
-    if (!recordingRef.current) return
+    if (!recordingRef.current) {
+      if (startingRef.current) stopAfterStartRef.current = true
+      return
+    }
     recordingRef.current = false
     setListening(false)
     busyRef.current = true
     setBusy(true)
     setError(null)
     try {
-      const text = await speechStopAndTranscribe(modelId)
+      const text = await speechStopAndTranscribe(engine.modelId, engine.locale, {
+        provider: engine.provider,
+        fallbackLocale: engine.fallbackLocale,
+        usage: 'dictation',
+      })
       if (!text.trim()) {
         setError(t('dictation.emptyTranscript'))
         return
@@ -85,29 +100,54 @@ export function DictationButton() {
       } catch {
         /* already stopped */
       }
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(
+        cloudFailureMessage(cause, engine.provider, t) ??
+          (cause instanceof Error ? cause.message : String(cause)),
+      )
     } finally {
       busyRef.current = false
       setBusy(false)
     }
-  }, [insertTranscript, modelId, t])
+  }, [insertTranscript, engine, t])
 
   const startCapture = useCallback(async () => {
-    if (recordingRef.current || busyRef.current) return
+    if (recordingRef.current || busyRef.current || startingRef.current) return
     setError(null)
+    if (engine.needsLocale) {
+      setError(t('speech.nativeLocaleRequired'))
+      return
+    }
+    startingRef.current = true
+    stopAfterStartRef.current = false
+    let stopNow = false
     try {
+      // On Apple this also requests the speech-recognition permission before the mic opens.
+      if (engine.provider === 'apple' || isCloudProvider(engine.provider)) {
+        const ready = await speechPrepare(engine.modelId, engine.locale, engine.provider).catch(
+          () => false,
+        )
+        if (!ready) {
+          setError(t(engine.provider === 'apple' ? 'speech.nativeNotReady' : 'voice.cloud.noKey'))
+          return
+        }
+      }
       await speechStartCapture(micId)
       recordingRef.current = true
       setListening(true)
+      stopNow = stopAfterStartRef.current
     } catch (cause) {
       recordingRef.current = false
       setError(cause instanceof Error ? cause.message : String(cause))
       setListening(false)
+    } finally {
+      startingRef.current = false
+      stopAfterStartRef.current = false
     }
-  }, [micId])
+    if (stopNow) await stopCapture()
+  }, [engine, micId, stopCapture, t])
 
   const toggle = useCallback(() => {
-    if (recordingRef.current) void stopCapture()
+    if (recordingRef.current || startingRef.current) void stopCapture()
     else void startCapture()
   }, [startCapture, stopCapture])
 
@@ -115,7 +155,7 @@ export function DictationButton() {
     if (!enabled) return
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!isDictationChord(e) || e.repeat) return
+      if (!isDictationChord(e) || e.repeat || isRecordingShortcut()) return
       e.preventDefault()
       e.stopPropagation()
       if (mode === 'hold') {

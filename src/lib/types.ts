@@ -748,6 +748,24 @@ export type VoiceHudCustomPosition = {
 export type VoiceApprovalChannel = 'both' | 'voice' | 'hud'
 export type VoiceMidTaskDefault = 'queue' | 'interrupt'
 
+export type CloudVoiceProviderId = 'openai' | 'elevenlabs' | 'gemini' | 'openrouter'
+export type SttProviderId = 'local' | 'apple' | CloudVoiceProviderId
+export type TtsProviderId = 'system' | 'local' | CloudVoiceProviderId
+export type VoiceUse = 'dictation' | 'conversation'
+export interface SttChoice {
+  provider: SttProviderId
+  model: string
+  locale: string | null
+}
+export interface TtsChoice {
+  provider: TtsProviderId
+  model: string
+  voice: string | null
+  rate: number
+}
+export type VoiceProviderFlags = Partial<
+  Record<CloudVoiceProviderId, { configured: boolean; invalid: boolean }>
+>
 
 export type Preferences = {
   /** Idioma da UI. Default 'en'. */
@@ -868,8 +886,6 @@ export type Preferences = {
   dictationEnabled: boolean
   /** Toggle = press Ctrl+E to start/stop; Hold = dictate while Ctrl+E is held. */
   dictationMode: 'toggle' | 'hold'
-  /** Selected on-device STT model id (Parakeet TDT v3 by default). */
-  dictationModelId: string
   /** Preferred microphone deviceId, or null for the OS default. */
   dictationMicrophoneId: string | null
   /** Cached microphone label when the preferred device is unplugged. */
@@ -883,6 +899,12 @@ export type Preferences = {
   /** Accelerator for voice conversation, e.g. `CmdOrCtrl+Shift+Space`. */
   voiceShortcut: string
   voiceCaptureMode: VoiceCaptureMode
+  /** Speech-to-text provider per use. Device-specific; not synced. */
+  voiceStt: Record<VoiceUse, SttChoice>
+  /** Narration provider, voice and speed. Device-specific; not synced. */
+  voiceTts: TtsChoice
+  /** Mirror of which cloud keys exist in the keychain. Never holds a key. */
+  voiceProviders: VoiceProviderFlags
   voiceVerbosity: VoiceVerbosity
   /** Silence before a short status is spoken while a tool runs (3–60 s). */
   voiceFillAfterMs: number
@@ -1091,7 +1113,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notifyOnLimitReset: true,
   dictationEnabled: false,
   dictationMode: 'toggle',
-  dictationModelId: 'parakeet-tdt-0.6b-v3-int8',
   dictationMicrophoneId: null,
   dictationMicrophoneLabel: null,
   speechEngineMigrated: false,
@@ -1099,6 +1120,12 @@ export const DEFAULT_PREFERENCES: Preferences = {
   voiceConversationEnabled: false,
   voiceShortcut: 'CmdOrCtrl+Shift+Space',
   voiceCaptureMode: 'push-to-talk',
+  voiceStt: {
+    dictation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+    conversation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+  },
+  voiceTts: { provider: 'system', model: '', voice: null, rate: 1 },
+  voiceProviders: {},
   voiceVerbosity: 'normal',
   voiceFillAfterMs: 8000,
   voiceApprovalChannel: 'both',

@@ -1,0 +1,70 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+}
+
+.row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint,
+.privacy {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.privacy {
+  padding: 8px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  background: var(--accent-faint);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.iconButton {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* Destructive but secondary: kept apart from Save and Test, red only on hover. */
+.remove {
+  margin-left: auto;
+}
+
+.feedback {
+  margin: 0;
+  font-size: 12px;
+}
+
+.feedback[data-tone='ok'] {
+  color: var(--status-working);
+}
+
+.feedback[data-tone='error'] {
+  color: var(--status-waiting);
+}

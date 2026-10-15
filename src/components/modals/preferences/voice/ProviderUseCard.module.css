@@ -1,0 +1,146 @@
+/* Mirrors ProviderCard.module.css so usage tabs and the providers grid read as one system. */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card-default);
+  transition:
+    border-color var(--anim-fast) var(--ease-out-fluid),
+    box-shadow var(--anim-fast) var(--ease-out-fluid);
+}
+
+.card:has(.select:not(:disabled):hover) {
+  border-color: var(--border-strong);
+}
+
+.card:has(.select:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* The selected tint is translucent, so it is laid over the card surface instead of replacing it. */
+.card[data-selected],
+.card[data-selected]:has(.select:not(:disabled):hover) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 100vmax var(--surface-card-selected);
+}
+
+.top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  background: var(--bg-sunken);
+}
+
+.card[data-disabled] .icon {
+  color: var(--fg-muted);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge[data-status='inUse'] {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.badge[data-status='connected'] {
+  border-color: color-mix(in srgb, var(--status-working) 40%, transparent);
+  color: var(--status-working);
+  background: var(--status-working-soft);
+}
+
+.badge[data-status='invalid'] {
+  border-color: color-mix(in srgb, var(--status-waiting) 40%, transparent);
+  color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+
+.title {
+  margin: 0;
+  color: var(--fg);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.select {
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.select:focus-visible {
+  outline: none;
+}
+
+.select:disabled {
+  cursor: default;
+}
+
+/* Stretches the radio over the whole card; the footer sits above it. */
+.select::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+}
+
+.description {
+  flex: 1;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
