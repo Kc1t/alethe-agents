@@ -3,6 +3,7 @@ import {
   Activity,
   Archive,
   Blocks,
+  Brain,
   ChevronRight,
   Info,
   type LucideIcon,
@@ -26,6 +27,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { ErrorBoundary } from '../ErrorBoundary'
 import { AboutPage } from './preferences/AboutPage'
 import { AccountPage } from './preferences/AccountPage'
+import { AiMemoryPage } from './preferences/AiMemoryPage'
 import { AppearancePage } from './preferences/AppearancePage'
 import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
@@ -42,6 +44,7 @@ type CategoryId =
   | 'account'
   | 'appearance'
   | 'features'
+  | 'aiMemory'
   | 'plugins'
   | 'terminal'
   | 'integrations'
@@ -111,6 +114,12 @@ export function PreferencesModal() {
         label: t('prefs.features'),
         description: t('prefs.featuresDesc'),
         Icon: Blocks,
+      },
+      {
+        id: 'aiMemory',
+        label: t('prefs.categoryAiMemory'),
+        description: t('prefs.categoryAiMemoryDesc'),
+        Icon: Brain,
       },
       {
         id: 'plugins',
@@ -231,6 +240,13 @@ export function PreferencesModal() {
         description: t('prefs.featuresDesc'),
         keywords:
           'features recursos modules módulos todo task tarefa git source control sidebar 功能 模块 待办',
+      },
+      {
+        category: 'aiMemory',
+        target: 'ai-memory-service',
+        label: t('prefs.categoryAiMemory'),
+        description: t('prefs.categoryAiMemoryDesc'),
+        keywords: 'ai memory recall context service endpoint port start stop',
       },
       {
         category: 'plugins',
@@ -582,6 +598,7 @@ export function PreferencesModal() {
                   ) : null}
                   {category === 'appearance' ? <AppearancePage /> : null}
                   {category === 'features' ? <FeaturesPage /> : null}
+                  {category === 'aiMemory' ? <AiMemoryPage /> : null}
                   {category === 'plugins' ? <PluginsPage /> : null}
                   {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                   {category === 'integrations' ? <IntegrationsPage /> : null}
