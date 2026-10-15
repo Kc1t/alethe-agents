@@ -40,3 +40,31 @@ export function materializeAgentHandoff(content: string): Promise<HandoffArtifac
 export function completeAgentHandoff(handoffId: string): Promise<void> {
   return invoke('complete_agent_handoff', { handoffId })
 }
+
+export type TranscriptEvent = {
+  role: 'user' | 'assistant' | 'tool' | 'tool-result' | 'question'
+  text: string
+}
+
+export type TranscriptSnapshot = {
+  sessionId: string | null
+  revision: number
+  unchanged: boolean
+  /** Absolute index of `messages[0]` among every event of the transcript. */
+  firstIndex: number
+  messages: TranscriptEvent[]
+}
+
+export function agentTranscriptSnapshot(
+  provider: 'claude' | 'codex',
+  cwd: string,
+  sessionId: string | null,
+  since: number | null,
+): Promise<TranscriptSnapshot> {
+  return invoke<TranscriptSnapshot>('agent_transcript_snapshot', {
+    provider,
+    cwd,
+    sessionId,
+    since,
+  })
+}

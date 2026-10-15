@@ -59,7 +59,8 @@ type ModalKind =
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
 /** Open on purpose: plugins contribute right-sidebar tabs at runtime. */
-export type RightSidebarMode = 'markdown' | 'gsdSync' | 'mcp' | 'prs' | 'plugins' | 'agents' | (string & {})
+export type RightSidebarMode =
+  'markdown' | 'gsdSync' | 'mcp' | 'prs' | 'plugins' | 'agents' | (string & {})
 export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
@@ -114,6 +115,9 @@ type UiState = {
   /** Pulse that requests focus for a specific pane. */
   focusRequest: { terminalId: string; ts: number } | null
   activeTerminal: { projectId: string; terminalId: string } | null
+  /** Text voice conversation hands to the Jev command bar (trigger word or modifier). */
+  voiceCommandRequest: { text: string; nonce: number } | null
+  openVoiceCommand: (text: string) => void
   selectedPanes: { projectId: string; terminalId: string }[]
   /** View principal sendo exibida no main. */
   activeView: ActiveView
@@ -225,6 +229,7 @@ export const useUiStore = create<UiState>((set) => ({
   mountedPaneIds: [],
   focusRequest: null,
   activeTerminal: null,
+  voiceCommandRequest: null,
   selectedPanes: [],
   activeView: 'workspace',
   rightSidebarMode: TODOS_VIEW_ID,
@@ -277,6 +282,10 @@ export const useUiStore = create<UiState>((set) => ({
   setFocusedTerminal: (id) => set({ focusedTerminalId: id }),
   requestPaneFocus: (terminalId) => set({ focusRequest: { terminalId, ts: Date.now() } }),
   setActiveTerminal: (projectId, terminalId) => set({ activeTerminal: { projectId, terminalId } }),
+  openVoiceCommand: (text) =>
+    set((state) => ({
+      voiceCommandRequest: { text, nonce: (state.voiceCommandRequest?.nonce ?? 0) + 1 },
+    })),
   selectPane: (projectId, terminalId, extend) =>
     set((state) => {
       if (!extend) return { selectedPanes: [{ projectId, terminalId }] }

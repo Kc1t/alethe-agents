@@ -253,6 +253,8 @@ function AgentCanvasInner() {
 
   useEffect(() => {
     const unlistenPromise = listen<AgentHookPayload>('agent-hook', (event) => {
+      // Registered only for voice conversation; the canvas has no node for it.
+      if (event.payload.voiceOnly) return
       const cwd = (event.payload as { cwd?: string }).cwd
       if (session && cwd && normalizeCwd(cwd) !== normalizeCwd(session.folder)) {
         console.log('[AgentCanvasPOC] ignored an event from another session (cwd):', cwd)

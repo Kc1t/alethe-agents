@@ -78,8 +78,10 @@ with the *Desktop development with C++* workload (this gives you MSVC, which Rus
 
 ```sh
 sudo apt update
-sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libspeechd-dev
 ```
+
+`libspeechd-dev` provides speech-dispatcher, which voice conversation uses for narration on Linux.
 
 **macOS** — install Xcode Command Line Tools: `xcode-select --install`.
 

@@ -54,6 +54,9 @@ hex = "0.4"
 cpal = "0.15"
 # On-device STT (Parakeet / Whisper / …). Build script downloads prebuilt libs when unset.
 sherpa-onnx = "1.13.6"
+# Narration for voice conversation: AVSpeechSynthesizer (macOS), WinRT (Windows),
+# speech-dispatcher (Linux, needs libspeechd-dev at build time).
+tts = "0.26.3"
 tiny_http = "0.12"
 # keyring v3 enables NO platform backend by default: without an explicit
 # feature it uses a mock store and every get_password() fails. The native

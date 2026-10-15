@@ -4,7 +4,6 @@ import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Group as PanelGroup, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 
 import styles from './App.module.css'
-import { InAppNotifications } from './components/InAppNotifications'
 import homeBackground from './assets/home-bg-right.png'
 import { AgentSandbox } from './components/AgentSandbox'
 import { ContributedModals } from './components/ContributedModals'
@@ -12,6 +11,7 @@ import { DictationButton } from './components/DictationButton'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
 import { GsdSyncActivityView } from './components/GsdSyncActivityView'
+import { InAppNotifications } from './components/InAppNotifications'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
 import { MainMenu } from './components/MainMenu'
 import { AddBrowserModal } from './components/modals/AddBrowserModal'
@@ -50,11 +50,12 @@ import { TitleBar } from './components/TitleBar'
 import { TokenHud } from './components/TokenHud'
 import { AsciiEffect } from './components/ui/ascii-effect'
 import { VoiceCommand } from './components/VoiceCommand'
+import { VoiceConversation } from './components/VoiceConversation'
 import { WorkspaceView } from './components/WorkspaceView'
 import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useAgentHookBridge } from './hooks/useAgentHookBridge'
-import { useAiMemoryAutoStart } from './hooks/useAiMemoryAutoStart'
 import { useAgentsSidebarAutoOpen } from './hooks/useAgentsSidebarAutoOpen'
+import { useAiMemoryAutoStart } from './hooks/useAiMemoryAutoStart'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
@@ -66,6 +67,7 @@ import { useRouter9AutoStart } from './hooks/useRouter9AutoStart'
 import { startActivityTracker } from './lib/activityTracker'
 import { resumeAgentCanvasMirror } from './lib/agentCanvasMirror'
 import { APP_SHELL_ID } from './lib/appShell'
+import { rememberBootAppearance } from './lib/bootAppearance'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { applyLegacyPluginMigrations } from './lib/plugins'
@@ -77,7 +79,6 @@ import {
   orchestratorDefaultRuleSets,
   orchestratorSetRuleSets,
 } from './lib/tauri'
-import { rememberBootAppearance } from './lib/bootAppearance'
 import { loadThemeIconBytes } from './lib/themeIcons'
 import { useAppliedTheme } from './lib/themes'
 import { checkForUpdate } from './lib/updater'
@@ -673,6 +674,7 @@ export default function App() {
       <LinkViewerOverlay />
       <DictationButton />
       <VoiceCommand />
+      <VoiceConversation />
       <MainMenu />
       <ErrorBoundary label="modals">
         <NewProjectModal />

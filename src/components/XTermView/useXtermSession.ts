@@ -10,7 +10,15 @@ import { useEffect, useRef } from 'react'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
-import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
+import { registerAgentInput } from '../../lib/agentInputRegistry'
+import {
+  deliverOpenCodePrompt,
+  looksLikeChoicePrompt,
+  PaneHiddenError,
+  pasteAndSubmit,
+  readLiveScreen,
+  TerminalPromptOpenError,
+} from '../../lib/agentPromptDelivery'
 import { resolveAgentCliCommand, resolveCustomAgentArgs } from '../../lib/agentProviders'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import {
@@ -323,6 +331,45 @@ export function useXtermSession(params: {
     let lastRows = 0
     let forceNextResize = false
     let completionMonitor: AgentCompletionMonitor | null = null
+    let unregisterAgentInput: (() => void) | null = null
+    const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+    // Voice conversation submits through this, never through raw writes: it needs the paste mode
+    // and the completion monitor, and it must not send the extra Enters the first prompt uses.
+    const registerClaudeInput = (id: string) => {
+      // An attach that finished after unmount would register an input nothing ever removes.
+      if (disposed) return
+      unregisterAgentInput?.()
+      unregisterAgentInput = registerAgentInput(id, {
+        submit: async (text) => {
+          // The Enter would pick the highlighted option of Claude's own menu, so the screen is
+          // checked before the paste and again right before the Enter (a menu can open between).
+          // A hidden pane gets no output, so its screen cannot be checked at all.
+          // Esc stays unguarded: on that menu it cancels, never approves.
+          const refuseOnChoiceMenu = () => {
+            if (!isPanelVisibleRef.current) throw new PaneHiddenError()
+            if (looksLikeChoicePrompt(readLiveScreen(terminal.buffer.active, terminal.rows))) {
+              throw new TerminalPromptOpenError()
+            }
+          }
+          refuseOnChoiceMenu()
+          await pasteAndSubmit(text, {
+            writeChunked: (value) => writePtyChunked(id, value, terminal.modes.bracketedPasteMode),
+            write: (data) => writePty(id, data),
+            sleep,
+            beforeEnter: () => {
+              refuseOnChoiceMenu()
+              // Armed only once the Enter is certain, so a refused submit leaves the pane idle.
+              completionMonitor?.armForSubmit(text)
+            },
+          })
+        },
+        interrupt: () => writePty(id, '\x1b'),
+      })
+    }
+    const unregisterClaudeInput = () => {
+      unregisterAgentInput?.()
+      unregisterAgentInput = null
+    }
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
     let writeRecoveryPending = false
@@ -889,6 +936,7 @@ export function useXtermSession(params: {
           onStatusChange: (status) => useTerminalsStore.getState().setStatus(existingId, status),
           onComplete: () => onAgentCompleteRef.current?.(),
         })
+        if (command === 'claude') registerClaudeInput(existingId)
       }
 
       // Defer replay work until the pane is visible.
@@ -913,11 +961,13 @@ export function useXtermSession(params: {
         if (payload.reason === 'suspended') {
           useTerminalsStore.getState().markSuspended(existingId)
           completionMonitor?.dispose()
+          unregisterClaudeInput()
           completionMonitor = null
           return
         }
         useTerminalsStore.getState().markExited(existingId)
         completionMonitor?.dispose()
+        unregisterClaudeInput()
         completionMonitor = null
         removeSession(sessionPersistenceKey)
         onExitRef.current?.(payload.code)
@@ -1360,6 +1410,7 @@ export function useXtermSession(params: {
             onStatusChange: (status) => useTerminalsStore.getState().setStatus(response.id, status),
             onComplete: () => onAgentCompleteRef.current?.(),
           })
+          if (command === 'claude') registerClaudeInput(response.id)
         }
 
         // Preserve the latest identity, including hooks received during spawn.
@@ -1487,6 +1538,7 @@ export function useXtermSession(params: {
           if (payload.reason === 'suspended') {
             useTerminalsStore.getState().markSuspended(response.id)
             completionMonitor?.dispose()
+            unregisterClaudeInput()
             completionMonitor = null
             return
           }
@@ -1506,6 +1558,7 @@ export function useXtermSession(params: {
             )
             useTerminalsStore.getState().markExited(response.id)
             completionMonitor?.dispose()
+            unregisterClaudeInput()
             completionMonitor = null
             removeSession(sessionPersistenceKey)
             emitSessionId?.(undefined)
@@ -1527,6 +1580,7 @@ export function useXtermSession(params: {
           }
           useTerminalsStore.getState().markExited(response.id)
           completionMonitor?.dispose()
+          unregisterClaudeInput()
           completionMonitor = null
 
           removeSession(sessionPersistenceKey)
@@ -1618,9 +1672,12 @@ export function useXtermSession(params: {
                   return
                 }
               } else {
-                await writePtyChunked(response.id, prompt, terminal.modes.bracketedPasteMode)
-                await new Promise((resolve) => window.setTimeout(resolve, 150))
-                await writePty(response.id, '\r')
+                await pasteAndSubmit(prompt, {
+                  writeChunked: (value) =>
+                    writePtyChunked(response.id, value, terminal.modes.bracketedPasteMode),
+                  write: (data) => writePty(response.id, data),
+                  sleep,
+                })
                 // A CLI still drawing its first screen, or sitting on a trust prompt, swallows the
                 // first returns, so the text stays typed but unsent. Extra ones only submit empty.
                 for (const delay of [1_200, 3_000, 6_000]) {
@@ -1695,6 +1752,7 @@ export function useXtermSession(params: {
       linkProviderDisposable?.dispose()
       linkScrollDisposable?.dispose()
       completionMonitor?.dispose()
+      unregisterClaudeInput()
       completionMonitor = null
       setLinkActions(null)
       if (terminalRef.current === terminal) terminalRef.current = null

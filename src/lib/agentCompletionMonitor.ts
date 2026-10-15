@@ -47,6 +47,13 @@ export class AgentCompletionMonitor {
     }
   }
 
+  /** Arms for a prompt submitted programmatically (voice), which `handleInput` never sees. */
+  armForSubmit(prompt: string): void {
+    if (this.disposed) return
+    const trimmed = prompt.trim()
+    if (trimmed) this.arm(trimmed)
+  }
+
   handleOutput(chunk: string): void {
     if (this.disposed || this.state === 'idle') return
 

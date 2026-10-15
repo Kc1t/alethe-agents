@@ -4,10 +4,54 @@ import {
   DEFAULT_PREFERENCES,
   DEFAULT_TERMINAL_FONT_FAMILY,
   EMPTY_PROJECTS_FILE,
+  type Preferences,
 } from '../lib/types'
 import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
+  it('backfills voice conversation preferences with safe defaults', () => {
+    const preferences = normalizePreferences({})
+    expect(preferences).toMatchObject({
+      voiceConversationEnabled: false,
+      voiceShortcut: 'CmdOrCtrl+Shift+Space',
+      voiceCaptureMode: 'push-to-talk',
+      voiceVerbosity: 'normal',
+      voiceFillAfterMs: 8000,
+      voiceApprovalChannel: 'both',
+      voiceDestructiveNeedsHud: true,
+      voiceMidTaskDefault: 'queue',
+      voiceInterruptWords: ['stop', 'espera', 'cancela'],
+      voiceJevTrigger: 'alethe',
+    })
+  })
+
+  it('repairs voice conversation preferences that are out of range or the wrong shape', () => {
+    const preferences = normalizePreferences({
+      voiceCaptureMode: 'shout',
+      voiceVerbosity: 'loud',
+      voiceFillAfterMs: 10,
+      voiceApprovalChannel: 'telepathy',
+      voiceMidTaskDefault: 'explode',
+      voiceInterruptWords: [' STOP ', '', 42, 'Espera'],
+      voiceJevTrigger: '  ',
+      voiceShortcut: '',
+    } as unknown as Partial<Preferences>)
+    expect(preferences).toMatchObject({
+      voiceCaptureMode: 'push-to-talk',
+      voiceVerbosity: 'normal',
+      voiceFillAfterMs: 3000,
+      voiceApprovalChannel: 'both',
+      voiceMidTaskDefault: 'queue',
+      voiceInterruptWords: ['stop', 'espera'],
+      voiceJevTrigger: 'alethe',
+      voiceShortcut: 'CmdOrCtrl+Shift+Space',
+    })
+  })
+
+  it('keeps an explicitly empty interrupt word list', () => {
+    expect(normalizePreferences({ voiceInterruptWords: [] }).voiceInterruptWords).toEqual([])
+  })
+
   it('preserves persisted sidebar visibility and widths', () => {
     const preferences = normalizePreferences({
       ...DEFAULT_PREFERENCES,

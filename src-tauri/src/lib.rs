@@ -82,6 +82,7 @@ mod spotify;
 mod stats;
 mod supervisor;
 mod telemetry;
+mod tts;
 mod validation;
 mod webview_media;
 mod window_style;
@@ -313,6 +314,9 @@ pub fn run() {
             agent_events::agent_hooks_token,
             agent_events::set_agent_canvas_mirror,
             agent_events::agent_canvas_mirror,
+            agent_events::agent_permission_decide,
+            agent_events::voice_set_targets,
+            agent_events::agent_voice_hooked_ptys,
             orchestrator::orchestrator_mcp_config_path,
             orchestrator::orchestrator_jobs,
             orchestrator::orchestrator_set_concurrency,
@@ -505,6 +509,7 @@ pub fn run() {
             handoff::prepare_agent_handoff,
             handoff::materialize_agent_handoff,
             handoff::complete_agent_handoff,
+            handoff::agent_transcript_snapshot,
             antigravity_sessions::snapshot_antigravity_sessions,
             cursor_sessions::create_cursor_chat,
             claude_usage::get_claude_usage,
@@ -530,6 +535,9 @@ pub fn run() {
             speech::speech_prepare,
             speech::speech_stop_and_transcribe,
             speech::speech_transcribe,
+            tts::tts_speak,
+            tts::tts_stop,
+            tts::tts_voices,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,
@@ -635,6 +643,7 @@ pub fn run() {
             // waiting for it would leave shells and agents alive.
 
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                agent_events::release_all_permissions(_app_handle);
                 pty::kill_all_sessions_background(&sessions_for_exit);
                 browser_session::kill_running_session(
                     &_app_handle.state::<browser_session::BrowserSessionState>(),

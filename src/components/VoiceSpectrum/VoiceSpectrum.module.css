@@ -1,0 +1,27 @@
+.spectrum {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+}
+
+.spectrum[data-live='true'] {
+  opacity: 1;
+}
+
+.spectrumBar {
+  flex: 1;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--fg-faint);
+  transform-origin: center;
+  transition: transform 0.07s linear;
+}
+
+.spectrum[data-live='true'] .spectrumBar {
+  background: var(--status-offline);
+}

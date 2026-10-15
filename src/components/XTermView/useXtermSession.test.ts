@@ -1,6 +1,8 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { agentInputFor } from '../../lib/agentInputRegistry'
+import { PaneHiddenError } from '../../lib/agentPromptDelivery'
 import { plannerLabelFor } from '../../lib/claudeMcpConfigs'
 import { resetSessionClaimsForTests } from '../../lib/sessionDiscovery'
 import { peekSession, saveSession } from '../../lib/sessionResume'
@@ -66,6 +68,7 @@ vi.mock('../../lib/tauri', async (importOriginal) => ({
   ]),
   agentHooksSettingsPath: vi.fn(async () => 'hooks.json'),
   spawnPty: vi.fn(async () => ({ id: 'pty-0' })),
+  writePty: vi.fn(async () => undefined),
 }))
 
 function emit(sessionId: string, plannerId = 'pty-0') {
@@ -222,5 +225,36 @@ describe('Claude terminal session lifecycle', () => {
     expect(original).toHaveBeenLastCalledWith('new-chat')
     expect(input.onSessionIdRef.current).not.toHaveBeenCalled()
     expect(peekSession('tab-0')?.claudeSessionId).toBe('new-chat')
+  })
+})
+
+describe('voice input registration', () => {
+  // Hidden panes get no pty://data, so the screen guard would read a stale buffer.
+  it('refuses a submit while the pane is out of view, before pasting anything', async () => {
+    useTerminalsStore.getState().registerPty('pty-0')
+    const input = params()
+    const view = renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+    const agentInput = agentInputFor('pty-0')
+    expect(agentInput).not.toBeNull()
+    await expect(agentInput!.submit('fix the build')).rejects.toBeInstanceOf(PaneHiddenError)
+    expect(tauri.writePty).not.toHaveBeenCalled()
+    view.unmount()
+  })
+
+  it('does not register a pane whose attach finished after it unmounted', async () => {
+    let backendHasPty: (exists: boolean) => void = () => undefined
+    vi.mocked(tauri.ptyExists).mockImplementationOnce(
+      () => new Promise<boolean>((resolve) => (backendHasPty = resolve)),
+    )
+    const input = params()
+    const view = renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(tauri.ptyExists).toHaveBeenCalled())
+    view.unmount()
+    await act(async () => {
+      backendHasPty(true)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(agentInputFor('pty-0')).toBeNull()
   })
 })

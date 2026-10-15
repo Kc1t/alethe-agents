@@ -1,12 +1,12 @@
 import { nanoid } from 'nanoid'
 
 import { sanitizeCustomAgents } from '../lib/customAgents'
+import { normalizeExperimentalAgentPermissionMode } from '../lib/experimentalAgentPolicy'
 import {
   legacyGitFeatureFlag,
   legacyTodosFeatureFlag,
   normalizeEnabledFeatures,
 } from '../lib/features'
-import { normalizeExperimentalAgentPermissionMode } from '../lib/experimentalAgentPolicy'
 import { normalizeOrchestrationSettings } from '../lib/orchestrationSettings'
 import { recordLegacyGitFlag, recordLegacyTodosFlag } from '../lib/plugins/legacyMigration'
 import { normalizeProjectGrids, projectGridContainer } from '../lib/projectGrids'
@@ -41,7 +41,6 @@ import {
   MAX_RECENT_PROJECT_TABS,
 } from './projectsStore.constants'
 
-type LegacyPreferences = Partial<Preferences> & { showGitControl?: boolean }
 
 function normalizeStoredAccent(value: unknown, fallback?: string): string | undefined {
   if (typeof value !== 'string') return fallback
@@ -114,6 +113,33 @@ function usageAccessOfSavedFile(rawPreferences: unknown): Preferences['usageAcce
   return Object.fromEntries(
     USAGE_PROVIDER_IDS.map((id) => [id, true]),
   ) as Preferences['usageAccess']
+}
+
+const VOICE_VERBOSITIES = ['silent', 'final', 'normal', 'detailed'] as const
+const VOICE_APPROVAL_CHANNELS = ['both', 'voice', 'hud'] as const
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, value))
+}
+
+function normalizeVoiceWords(value: unknown): string[] {
+  if (!Array.isArray(value)) return [...DEFAULT_PREFERENCES.voiceInterruptWords]
+  const words = value
+    .filter((word): word is string => typeof word === 'string')
+    .map((word) => word.trim().toLowerCase())
+    .filter(Boolean)
+  return [...new Set(words)].slice(0, 10)
+}
+
+function trimmedOr(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
 
 export function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
@@ -206,6 +232,21 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       preferences.dictationMicrophoneLabel.trim()
         ? preferences.dictationMicrophoneLabel.trim()
         : null,
+    voiceConversationEnabled: Boolean(preferences.voiceConversationEnabled),
+    voiceShortcut: trimmedOr(preferences.voiceShortcut, DEFAULT_PREFERENCES.voiceShortcut),
+    voiceCaptureMode: preferences.voiceCaptureMode === 'toggle' ? 'toggle' : 'push-to-talk',
+    voiceVerbosity: oneOf(preferences.voiceVerbosity, VOICE_VERBOSITIES, 'normal'),
+    voiceFillAfterMs: Math.round(
+      clampNumber(preferences.voiceFillAfterMs, 3000, 60000, DEFAULT_PREFERENCES.voiceFillAfterMs),
+    ),
+    voiceApprovalChannel: oneOf(preferences.voiceApprovalChannel, VOICE_APPROVAL_CHANNELS, 'both'),
+    voiceDestructiveNeedsHud: preferences.voiceDestructiveNeedsHud !== false,
+    voiceMidTaskDefault: preferences.voiceMidTaskDefault === 'interrupt' ? 'interrupt' : 'queue',
+    voiceInterruptWords: normalizeVoiceWords(preferences.voiceInterruptWords),
+    voiceJevTrigger: trimmedOr(
+      preferences.voiceJevTrigger,
+      DEFAULT_PREFERENCES.voiceJevTrigger,
+    ).toLowerCase(),
     resourcePolicy: {
       // Automatic parking was removed. Keep the legacy shape for file
       // compatibility, but normalize every installation to monitoring only.

@@ -93,6 +93,8 @@ pub(crate) struct TranscriptSnapshot {
     pub session_id: Option<String>,
     pub revision: u64,
     pub unchanged: bool,
+    /// Absolute index of `messages[0]` among every event of the transcript.
+    pub first_index: usize,
     pub messages: Vec<HandoffEvent>,
 }
 
@@ -537,6 +539,7 @@ pub(crate) fn transcript_snapshot(
             session_id: None,
             revision: 0,
             unchanged: false,
+            first_index: 0,
             messages: Vec::new(),
         });
     };
@@ -551,22 +554,45 @@ pub(crate) fn transcript_snapshot(
             session_id: Some(id),
             revision,
             unchanged: true,
+            first_index: 0,
             messages: Vec::new(),
         });
     }
-    let mut messages = match provider {
+    let events = match provider {
         Provider::Claude => claude_events(&path)?,
         Provider::Codex => codex_events(&path)?,
     };
-    if messages.len() > limit {
-        messages.drain(..messages.len() - limit);
-    }
+    let (first_index, messages) = tail(events, limit);
     Ok(TranscriptSnapshot {
         session_id: Some(id),
         revision,
         unchanged: false,
+        first_index,
         messages,
     })
+}
+
+fn tail<T>(mut items: Vec<T>, limit: usize) -> (usize, Vec<T>) {
+    let dropped = items.len().saturating_sub(limit);
+    items.drain(..dropped);
+    (dropped, items)
+}
+
+const VOICE_TRANSCRIPT_EVENTS: usize = 160;
+
+/// The voice narrator's view of a session transcript. `since` makes an unchanged file cheap.
+#[tauri::command]
+pub async fn agent_transcript_snapshot(
+    provider: String,
+    cwd: String,
+    session_id: Option<String>,
+    since: Option<u64>,
+) -> Result<TranscriptSnapshot, String> {
+    tokio::task::spawn_blocking(move || {
+        transcript_snapshot(&provider, &cwd, session_id.as_deref(), since, VOICE_TRANSCRIPT_EVENTS)
+    })
+    .await
+    .map_err(|error| format!("agent_transcript_snapshot: {error}"))?
 }
 
 pub(crate) fn active_remote_questions(
@@ -1243,5 +1269,22 @@ mod session_scope_tests {
 
         assert!(session_matches_scope(&scope, "/home/dev/projects/app"));
         assert!(!session_matches_scope(&scope, "/home/dev/projects/App"));
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tail_tests {
+    use super::tail;
+
+    #[test]
+    fn a_short_list_starts_at_zero() {
+        assert_eq!(tail(vec![1, 2, 3], 5), (0, vec![1, 2, 3]));
+    }
+
+    // The voice narrator counts events by absolute position, so dropping the head must say how
+    // many were dropped.
+    #[test]
+    fn a_long_list_keeps_its_tail_and_reports_where_it_starts() {
+        assert_eq!(tail(vec![1, 2, 3, 4, 5], 2), (3, vec![4, 5]));
     }
 }

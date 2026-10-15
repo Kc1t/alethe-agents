@@ -727,6 +727,13 @@ export const DEFAULT_ROUTING_SETTINGS: RoutingSettings = {
   onBothCritical: 'ask',
 }
 
+export type VoiceCaptureMode = 'push-to-talk' | 'toggle'
+export type VoiceVerbosity = 'silent' | 'final' | 'normal' | 'detailed'
+
+export type VoiceApprovalChannel = 'both' | 'voice' | 'hud'
+export type VoiceMidTaskDefault = 'queue' | 'interrupt'
+
+
 export type Preferences = {
   /** Idioma da UI. Default 'en'. */
   language: Locale
@@ -854,6 +861,22 @@ export type Preferences = {
   dictationMicrophoneLabel: string | null
   /** Decisions API key for voice commands. Empty disables the command bar. */
   voiceCommandApiKey: string
+  /** Talk to the active Claude pane and hear it narrate. Uses the dictation model and mic. */
+  voiceConversationEnabled: boolean
+  /** Accelerator for voice conversation, e.g. `CmdOrCtrl+Shift+Space`. */
+  voiceShortcut: string
+  voiceCaptureMode: VoiceCaptureMode
+  voiceVerbosity: VoiceVerbosity
+  /** Silence before a short status is spoken while a tool runs (3–60 s). */
+  voiceFillAfterMs: number
+  voiceApprovalChannel: VoiceApprovalChannel
+  /** Destructive commands need a click on the panel even after a spoken yes. */
+  voiceDestructiveNeedsHud: boolean
+  voiceMidTaskDefault: VoiceMidTaskDefault
+  /** Leading words that interrupt Claude (Esc) before the rest is sent. */
+  voiceInterruptWords: string[]
+  /** Leading word that routes the rest of the transcript to Jev. */
+  voiceJevTrigger: string
   /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
@@ -1051,6 +1074,16 @@ export const DEFAULT_PREFERENCES: Preferences = {
   dictationMicrophoneId: null,
   dictationMicrophoneLabel: null,
   voiceCommandApiKey: '',
+  voiceConversationEnabled: false,
+  voiceShortcut: 'CmdOrCtrl+Shift+Space',
+  voiceCaptureMode: 'push-to-talk',
+  voiceVerbosity: 'normal',
+  voiceFillAfterMs: 8000,
+  voiceApprovalChannel: 'both',
+  voiceDestructiveNeedsHud: true,
+  voiceMidTaskDefault: 'queue',
+  voiceInterruptWords: ['stop', 'espera', 'cancela'],
+  voiceJevTrigger: 'alethe',
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',
