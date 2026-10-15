@@ -84,6 +84,7 @@ mod supervisor;
 mod telemetry;
 mod tts;
 mod validation;
+mod voice_hud;
 mod webview_media;
 mod window_style;
 #[cfg(windows)]
@@ -221,10 +222,18 @@ pub fn run() {
         .manage(router9::Router9Process::default())
         .manage(ai_memory::AiMemoryProcess::default())
         .manage(speech::SpeechState::default())
+        .manage(voice_hud::StateStore::default())
+        .manage(voice_hud::ShortcutState::default())
+        .manage(voice_hud::HudWindowState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(voice_hud::on_shortcut)
+                .build(),
+        )
         .register_uri_scheme_protocol("alethe-plugin", |ctx, request| {
             plugin_assets::serve(ctx.app_handle(), &request)
         });
@@ -234,6 +243,11 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             cli_launch::handle_second_instance(app, argv, cwd);
         }));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_nspanel::init());
     }
 
     builder
@@ -304,6 +318,13 @@ pub fn run() {
             // Resource Manager (memory pressure, policy engine, task scheduler)
             resource_manager::start(app.handle().clone());
 
+            let hud_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = voice_hud::create_hud(hud_handle).await {
+                    eprintln!("[voice_hud] HUD unavailable: {e}");
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -317,6 +338,13 @@ pub fn run() {
             agent_events::agent_permission_decide,
             agent_events::voice_set_targets,
             agent_events::agent_voice_hooked_ptys,
+            voice_hud::voice_hud_show,
+            voice_hud::voice_hud_hide,
+            voice_hud::voice_hud_publish,
+            voice_hud::voice_hud_snapshot,
+            voice_hud::voice_hud_action,
+            voice_hud::voice_hud_moved,
+            voice_hud::voice_shortcut_set,
             orchestrator::orchestrator_mcp_config_path,
             orchestrator::orchestrator_jobs,
             orchestrator::orchestrator_set_concurrency,
@@ -642,7 +670,18 @@ pub fn run() {
             // Teardown runs on `ExitRequested`: the runtime does not always emit `Exit`, and
             // waiting for it would leave shells and agents alive.
 
+            // The close fallback destroys only the main window; the hidden voice HUD (and any
+            // detached board) would keep the process alive without it.
+            if let tauri::RunEvent::WindowEvent { label, event: window_event, .. } = &event {
+                if exits_with_window(label, window_event)
+                    && !EXIT_REQUESTED.load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    _app_handle.exit(0);
+                }
+            }
+
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                EXIT_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
                 agent_events::release_all_permissions(_app_handle);
                 pty::kill_all_sessions_background(&sessions_for_exit);
                 browser_session::kill_running_session(
@@ -656,6 +695,14 @@ pub fn run() {
                 crash_watch::mark_clean_exit();
             }
         });
+}
+
+/// Set once the app is exiting, so a window destroyed during the exit does not ask again.
+static EXIT_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The app has no use without its main window.
+fn exits_with_window(label: &str, event: &tauri::WindowEvent) -> bool {
+    label == "main" && matches!(event, tauri::WindowEvent::Destroyed)
 }
 
 #[tauri::command]
@@ -688,6 +735,14 @@ fn ping() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_destroying_the_main_window_exits() {
+        assert!(exits_with_window("main", &tauri::WindowEvent::Destroyed));
+        assert!(!exits_with_window("voice-hud", &tauri::WindowEvent::Destroyed));
+        assert!(!exits_with_window("orchestration-x", &tauri::WindowEvent::Destroyed));
+        assert!(!exits_with_window("main", &tauri::WindowEvent::Focused(false)));
+    }
 
     #[test]
     fn rebuilt_path_is_non_empty_on_windows() {

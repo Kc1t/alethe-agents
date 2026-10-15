@@ -9,6 +9,48 @@ import {
 import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
+  it('backfills the HUD position and drops a malformed custom one', () => {
+    expect(normalizePreferences({}).voiceHudPosition).toBe('bottom-center')
+    expect(normalizePreferences({}).voiceHudCustomPosition).toBeNull()
+    expect(normalizePreferences({ voiceHudPosition: 'middle' as never }).voiceHudPosition).toBe(
+      'bottom-center',
+    )
+    expect(
+      normalizePreferences({ voiceHudCustomPosition: { monitor: 'DELL', x: 1.7, y: -2 } })
+        .voiceHudCustomPosition,
+    ).toEqual({ monitor: 'DELL', x: 1, y: 0 })
+    expect(
+      normalizePreferences({ voiceHudCustomPosition: { x: 0.1 } as never }).voiceHudCustomPosition,
+    ).toBeNull()
+  })
+
+  it('keeps the monitor bounds of a custom position, and old values without them', () => {
+    const bounds = { x: -1920, y: 0, width: 1920, height: 1080 }
+    expect(
+      normalizePreferences({ voiceHudCustomPosition: { monitor: 'M', x: 0.5, y: 0.5, bounds } })
+        .voiceHudCustomPosition,
+    ).toEqual({ monitor: 'M', x: 0.5, y: 0.5, bounds })
+    expect(
+      normalizePreferences({ voiceHudCustomPosition: { monitor: 'M', x: 0.5, y: 0.5 } })
+        .voiceHudCustomPosition,
+    ).toEqual({ monitor: 'M', x: 0.5, y: 0.5 })
+    // Malformed bounds are dropped; the position stays, matched by name only.
+    for (const bad of [{ x: 0, y: 0, width: 0, height: 10 }, { x: 'a' }, null, 7]) {
+      expect(
+        normalizePreferences({
+          voiceHudCustomPosition: { monitor: 'M', x: 0.5, y: 0.5, bounds: bad as never },
+        }).voiceHudCustomPosition,
+      ).toEqual({ monitor: 'M', x: 0.5, y: 0.5 })
+    }
+  })
+
+  it('keeps custom only when a custom position exists', () => {
+    expect(
+      normalizePreferences({ voiceHudPosition: 'custom', voiceHudCustomPosition: null })
+        .voiceHudPosition,
+    ).toBe('bottom-center')
+  })
+
   it('backfills voice conversation preferences with safe defaults', () => {
     const preferences = normalizePreferences({})
     expect(preferences).toMatchObject({

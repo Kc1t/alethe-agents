@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "voice-hud",
+  "description": "The floating voice-conversation HUD: core permissions to listen to state and be dragged. App commands are not gated here; the HUD and permission commands check the calling window label.",
+  "webviews": ["voice-hud"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-start-dragging"
+  ]
+}

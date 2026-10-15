@@ -33,8 +33,10 @@ serde = { version = "1", features = ["derive"] }
 # preserve_order keeps a round-tripped Value in file order. Without it, rewriting one
 # key of ~/.claude.json would alphabetise its other 80+ top-level keys.
 serde_json = { version = "1", features = ["preserve_order"] }
-tauri = { version = "2", features = ["image-png", "unstable"] }
+tauri = { version = "2", features = ["image-png", "macos-private-api", "unstable"] }
 tauri-plugin-dialog = "2"
+# ~2.3: 2.4 needs Tauri 2.12 and rustc 1.90.
+tauri-plugin-global-shortcut = "~2.3"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
@@ -90,6 +92,8 @@ tauri-plugin-single-instance = "2"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+# Turns the voice HUD into a non-activating NSPanel (enables Tauri's macos-private-api).
+tauri-nspanel = "2.1"
 # Keychain backend (where Claude Code stores its OAuth token on macOS).
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
 

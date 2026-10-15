@@ -729,6 +729,21 @@ export const DEFAULT_ROUTING_SETTINGS: RoutingSettings = {
 
 export type VoiceCaptureMode = 'push-to-talk' | 'toggle'
 export type VoiceVerbosity = 'silent' | 'final' | 'normal' | 'detailed'
+export type HudPreset =
+  'bottom-center' | 'bottom-left' | 'bottom-right' | 'top-center' | 'top-left' | 'top-right'
+export type VoiceHudPosition = HudPreset | 'custom'
+/** A monitor's full position and size in physical pixels. */
+export type MonitorBounds = { x: number; y: number; width: number; height: number }
+/**
+ * Top-left of the HUD as fractions (0-1) of the monitor work area. `bounds` tells identical monitors
+ * (same name) apart; positions saved before it was added have none and match by name.
+ */
+export type VoiceHudCustomPosition = {
+  monitor: string
+  x: number
+  y: number
+  bounds?: MonitorBounds
+}
 
 export type VoiceApprovalChannel = 'both' | 'voice' | 'hud'
 export type VoiceMidTaskDefault = 'queue' | 'interrupt'
@@ -877,6 +892,10 @@ export type Preferences = {
   voiceInterruptWords: string[]
   /** Leading word that routes the rest of the transcript to Jev. */
   voiceJevTrigger: string
+  /** Where the voice HUD appears. Device-specific; not synced. */
+  voiceHudPosition: VoiceHudPosition
+  /** Dragged HUD position; null until the user moves it. */
+  voiceHudCustomPosition: VoiceHudCustomPosition | null
   /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
@@ -1084,6 +1103,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   voiceMidTaskDefault: 'queue',
   voiceInterruptWords: ['stop', 'espera', 'cancela'],
   voiceJevTrigger: 'alethe',
+  voiceHudPosition: 'bottom-center',
+  voiceHudCustomPosition: null,
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',

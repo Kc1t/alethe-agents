@@ -797,6 +797,24 @@ export const en = {
   'prefs.voiceConvShortcut': 'Shortcut',
   'prefs.voiceConvShortcutDesc':
     'Hold it to talk, or press it to start and stop in toggle mode. Works system-wide; hold Alt with it to send to Jev.',
+  'prefs.voiceShortcutChange': 'Change',
+  'prefs.voiceShortcutRecording': 'Press the new shortcut… (Esc cancels)',
+  'prefs.voiceShortcutNeedsModifier': 'Add ⌘ or Ctrl (Shift alone works only with F1–F24).',
+  'prefs.voiceShortcutAltReserved': 'Alt is used to send to Jev; pick a shortcut without it.',
+  'prefs.voiceShortcutUnsupported': 'Use a letter, a number, Space or F1–F24.',
+  'prefs.voiceShortcutTaken': 'That shortcut is taken by another app or by the system.',
+  'prefs.voiceShortcutReset': 'Reset to default',
+  'prefs.voiceHudPosition': 'HUD position',
+  'prefs.voiceHudPositionDesc':
+    'Where the floating HUD appears when Alethe is not in front. Drag the HUD to put it anywhere.',
+  'prefs.voiceHudBottomCenter': 'Bottom center',
+  'prefs.voiceHudBottomLeft': 'Bottom left',
+  'prefs.voiceHudBottomRight': 'Bottom right',
+  'prefs.voiceHudTopCenter': 'Top center',
+  'prefs.voiceHudTopLeft': 'Top left',
+  'prefs.voiceHudTopRight': 'Top right',
+  'prefs.voiceHudCustom': 'Custom (where you dragged it)',
+  'prefs.voiceHudReset': 'Reset to default position',
   'prefs.voiceConvNarration': 'Narration',
   'prefs.voiceConvNarrationDesc': 'How much Alethe says while Claude works.',
   'prefs.voiceConvNarrationSilent': 'Silent',
@@ -3588,10 +3606,16 @@ export const en = {
   'voice.conv.permissionReleased': 'The request went back to the terminal.',
   'voice.conv.failed': 'Voice conversation failed: {reason}',
   'voice.conv.close': 'Close',
+  'voice.conv.rate': 'Speech speed',
+  'voice.conv.rateValue': '{rate}×',
+  'voice.hud.drag': 'Drag to move',
   'voice.conv.stopSpeaking': 'Stop speaking',
   'voice.conv.hintPushToTalk': 'Hold {shortcut} and speak',
   'voice.conv.hintToggle': 'Press {shortcut} to speak, again to send',
   'voice.conv.terminalPromptOpen': 'Claude is asking in the terminal. Answer there first.',
+  'voice.conv.shortcutTakenTitle': 'Voice shortcut not available system-wide',
+  'voice.conv.shortcutTakenBody':
+    '{shortcut} is used by another app or by the system. It works inside Alethe only; pick another in Preferences → Voice.',
 } as const
 
 export type MessageKey = keyof typeof en

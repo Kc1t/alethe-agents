@@ -20,11 +20,13 @@ import {
   EMPTY_PROJECTS_FILE,
   type Group,
   GROUP_COLORS,
+  type MonitorBounds,
   type Preferences,
   type Project,
   type ProjectsFile,
   type TodoItem,
   type UsageProviderId,
+  type VoiceHudCustomPosition,
   type WorkspaceContainer,
   type WorkspaceRecentTab,
   type WorkspaceTab,
@@ -117,6 +119,34 @@ function usageAccessOfSavedFile(rawPreferences: unknown): Preferences['usageAcce
 
 const VOICE_VERBOSITIES = ['silent', 'final', 'normal', 'detailed'] as const
 const VOICE_APPROVAL_CHANNELS = ['both', 'voice', 'hud'] as const
+const HUD_POSITIONS = [
+  'bottom-center',
+  'bottom-left',
+  'bottom-right',
+  'top-center',
+  'top-left',
+  'top-right',
+  'custom',
+] as const
+
+function normalizeMonitorBounds(value: unknown): MonitorBounds | null {
+  if (!value || typeof value !== 'object') return null
+  const { x, y, width, height } = value as Record<string, unknown>
+  const numbers = [x, y, width, height]
+  if (!numbers.every((n) => typeof n === 'number' && Number.isFinite(n))) return null
+  const bounds = { x, y, width, height } as MonitorBounds
+  return bounds.width > 0 && bounds.height > 0 ? bounds : null
+}
+
+function normalizeHudCustom(value: unknown): VoiceHudCustomPosition | null {
+  if (!value || typeof value !== 'object') return null
+  const { monitor, x, y, bounds } = value as Record<string, unknown>
+  if (typeof monitor !== 'string' || typeof x !== 'number' || typeof y !== 'number') return null
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  const position = { monitor, x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+  const validBounds = normalizeMonitorBounds(bounds)
+  return validBounds ? { ...position, bounds: validBounds } : position
+}
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === 'string' && (allowed as readonly string[]).includes(value)
@@ -247,6 +277,13 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       preferences.voiceJevTrigger,
       DEFAULT_PREFERENCES.voiceJevTrigger,
     ).toLowerCase(),
+    voiceHudCustomPosition: normalizeHudCustom(preferences.voiceHudCustomPosition),
+    voiceHudPosition: (() => {
+      const position = oneOf(preferences.voiceHudPosition, HUD_POSITIONS, 'bottom-center')
+      return position === 'custom' && !normalizeHudCustom(preferences.voiceHudCustomPosition)
+        ? 'bottom-center'
+        : position
+    })(),
     resourcePolicy: {
       // Automatic parking was removed. Keep the legacy shape for file
       // compatibility, but normalize every installation to monitoring only.
