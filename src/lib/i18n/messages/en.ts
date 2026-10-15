@@ -283,7 +283,8 @@ export const en = {
   'home.chatCount': '{count} chat',
   'home.chatCountPlural': '{count} chats',
   'home.description': 'Choose a shared terminal and continue your work from this device.',
-  'home.emptyDescription': 'Open a terminal in Alethe or allow remote access to an existing one.',
+  'home.emptyDescription':
+    'Open Claude Code or Codex in a terminal in Alethe, select Show on remote devices for that tab, then pair this device from Remote Control.',
   'home.emptyTitle': 'No shared chats yet',
   'home.noMatchesDescription': 'Try a project, group, agent, or terminal name.',
   'home.noMatchesTitle': 'No matching chats',
@@ -310,6 +311,12 @@ export const en = {
   'chat.emptyTitle': 'Start a conversation with {agent}',
   'chat.emptyHint':
     'Describe a task or ask a question below. Replies will appear here automatically.',
+  'chat.noSessionTitle': 'No agent session found',
+  'chat.noSessionDescription':
+    'No Claude Code or Codex session was found in this terminal yet. Start a session in this terminal in Alethe.',
+  'chat.sessionId': 'Session {id}',
+  'chat.sessionModel': 'Model: {model}',
+  'chat.sessionTokens': '{tokens} tokens',
   'chat.agentPlaceholder': 'Message {agent}…',
   'chat.mobileHint': 'Use the send button to send · Enter adds a line on mobile',
   'chat.viewLabel': 'Conversation view',

@@ -361,7 +361,24 @@ fn get_transcript_cost_inner(path: String, agent: Option<String>) -> Result<Sess
     Ok(aggregate(agent, path, by_model))
 }
 
-/// modelo dominante por output). Compartilhado por get_session_cost e
+pub(crate) fn transcript_metadata(
+    path: &std::path::Path,
+    agent: &str,
+) -> (Option<String>, Option<u64>) {
+    let Ok(cost) =
+        get_transcript_cost_inner(path.to_string_lossy().into_owned(), Some(agent.into()))
+    else {
+        return (None, None);
+    };
+    let model = cost
+        .model
+        .filter(|model| model != "unknown" && model != "codex");
+    let total_tokens = (cost.total_tokens > 0).then_some(cost.total_tokens);
+    (model, total_tokens)
+}
+
+/// Computes the session cost by pricing each model's usage and aggregating token totals,
+/// cost, and the model with the highest output-token count.
 
 fn aggregate(agent: String, session_id: String, mut by_model: Vec<ModelCost>) -> SessionCost {
     for mc in &mut by_model {

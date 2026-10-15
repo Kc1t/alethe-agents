@@ -894,10 +894,20 @@ function renderTranscript() {
   }
   list.setAttribute('aria-busy', 'false')
   if (transcript.supported === false) {
+    updateSessionMetadata(null)
     list.innerHTML = transcriptNotice(t('chat.messagesUnsupported'))
     return
   }
   const messages = transcript.messages || []
+  updateSessionMetadata(transcript)
+  if (transcript.sessionId == null && messages.length === 0) {
+    const guidance = `<div class="messages-empty"><strong>${t('chat.noSessionTitle')}</strong><p>${t('chat.noSessionDescription')}</p></div>`
+    if (list.dataset.content !== guidance) {
+      list.innerHTML = guidance
+      list.dataset.content = guidance
+    }
+    return
+  }
   const markup = messages.map(messageMarkup).join('') + pendingMarkup()
   const content =
     markup ||
@@ -917,6 +927,22 @@ function renderTranscript() {
   if (nearEnd) list.scrollTop = list.scrollHeight
   else list.scrollTop = scrollTop
   updateMessagesJump()
+}
+
+function updateSessionMetadata(snapshot) {
+  const target = document.querySelector('#session-metadata')
+  if (!target) return
+  const details = []
+  if (snapshot?.sessionId) details.push(t('chat.sessionId', { id: snapshot.sessionId.slice(0, 8) }))
+  if (snapshot?.model) details.push(t('chat.sessionModel', { model: snapshot.model }))
+  if (snapshot?.totalTokens != null)
+    details.push(
+      t('chat.sessionTokens', {
+        tokens: snapshot.totalTokens.toLocaleString(appearance.language),
+      }),
+    )
+  target.hidden = details.length === 0
+  target.textContent = details.join(' · ')
 }
 
 async function loadTranscript(ptyId) {
@@ -1243,7 +1269,7 @@ function renderChat() {
   stopTranscriptPolling()
   const showTerminal = chatView === 'terminal'
   app.innerHTML = `<div class="app-frame chat-frame">
-    <header class="topbar chat-topbar"><button class="icon-button back-button" id="back" type="button" aria-label="${t('common.back')}">${icons.arrowLeft}</button><div class="chat-title"><strong>${escapeHtml(chat.name)}</strong><span>${escapeHtml(t('chat.context', { project: chat.projectName || t('home.workspace'), agent: agentName(chat.agent) }))}</span></div>${connectionPill()}</header>
+    <header class="topbar chat-topbar"><button class="icon-button back-button" id="back" type="button" aria-label="${t('common.back')}">${icons.arrowLeft}</button><div class="chat-title"><strong>${escapeHtml(chat.name)}</strong><span>${escapeHtml(t('chat.context', { project: chat.projectName || t('home.workspace'), agent: agentName(chat.agent) }))}</span><span id="session-metadata"></span></div>${connectionPill()}</header>
     <main class="page chat-page"><section class="terminal-shell" data-view="${showTerminal ? 'terminal' : 'messages'}">
       <header class="terminal-heading">${viewSwitchMarkup()}
       ${showTerminal ? terminalPaneMarkup() : messagesPaneMarkup()}

@@ -292,7 +292,7 @@ export const ptBR: Record<MessageKey, string> = {
   'home.description':
     'Escolha um terminal compartilhado e continue seu trabalho neste dispositivo.',
   'home.emptyDescription':
-    'Abra um terminal no Alethe ou permita o acesso remoto a um terminal existente.',
+    'Abra o Claude Code ou o Codex em um terminal no Alethe, selecione Mostrar em dispositivos remotos para essa aba e pareie este dispositivo em Controle remoto.',
   'home.emptyTitle': 'Nenhuma conversa compartilhada',
   'home.noMatchesDescription': 'Busque pelo nome de um projeto, grupo, agente ou terminal.',
   'home.noMatchesTitle': 'Nenhuma conversa encontrada',
@@ -319,6 +319,12 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.emptyTitle': 'Comece uma conversa com {agent}',
   'chat.emptyHint':
     'Descreva uma tarefa ou faça uma pergunta abaixo. As respostas aparecerão aqui automaticamente.',
+  'chat.noSessionTitle': 'Nenhuma sessão do agente encontrada',
+  'chat.noSessionDescription':
+    'Nenhuma sessão do Claude Code ou Codex foi encontrada neste terminal ainda. Inicie uma sessão neste terminal no Alethe.',
+  'chat.sessionId': 'Sessão {id}',
+  'chat.sessionModel': 'Modelo: {model}',
+  'chat.sessionTokens': '{tokens} tokens',
   'chat.agentPlaceholder': 'Mensagem para {agent}…',
   'chat.mobileHint': 'Toque no botão para enviar · Enter pula uma linha no celular',
   'chat.viewLabel': 'Visualização da conversa',
