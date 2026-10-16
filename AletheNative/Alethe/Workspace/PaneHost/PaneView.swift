@@ -115,7 +115,7 @@ final class PaneView: NSView {
 
         if pane.isDisabled || TerminalOverlay.isNeeded(for: environment.terminals.states[tab.id]) {
             let root = pane.isDisabled
-                ? context.hosted(DisabledPaneOverlay(onEnable: { context.setDisabled(pane.id, false) }))
+                ? context.hosted(DisabledPaneOverlay(agent: tab.agent, onEnable: { context.setDisabled(pane.id, false) }))
                 : context.hosted(TerminalOverlay(tab: tab, project: project))
             if let overlay {
                 overlay.rootView = root

@@ -210,6 +210,8 @@ struct PaneHeader: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
+    @State private var webHeaderWidth: CGFloat = 0
+
     var body: some View {
         Group {
             if metrics.isWebInterface { webHeader } else { nativeHeader }
@@ -222,9 +224,8 @@ struct PaneHeader: View {
                 Image(systemName: "line.3.horizontal")
                     .font(metrics.font(size: 12))
                     .foregroundStyle(theme[.fgFaint])
-                Image(systemName: tab.agent == "shell" ? "terminal" : "sparkles")
-                    .font(metrics.font(size: 16))
-                    .foregroundStyle(theme[AgentTokens.accent(for: tab.agent)])
+                AgentLogo(agent: tab.agent, size: 16,
+                          templateColor: theme[AgentTokens.accent(for: tab.agent)])
                 Text(verbatim: environment.terminals.displayName(of: tab))
                     .font(metrics.font(size: 12, weight: .medium))
                     .foregroundStyle(theme[.fg]).lineLimit(1)
@@ -242,27 +243,35 @@ struct PaneHeader: View {
                 if isRemoteShared { RemoteSharedGlyph() }
             }
             .padding(.horizontal, metrics.size(6))
+            .frame(maxWidth: min(metrics.size(320), max(0, webHeaderWidth * 0.5)), alignment: .leading)
             .frame(height: metrics.size(26))
+            .clipped()
             .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
             .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
             Spacer(minLength: 0)
-            HStack(spacing: metrics.size(2)) {
-                webAction("plus", "subtabs.newEllipsis", action: onNewSubTab)
-                webAction("sidebar.left", isLaneVisible ? "subtabs.hideLane" : "subtabs.showLane", action: onToggleLane)
-                    .disabled(isLaneVisible && !canHideLane)
-                webAction("arrow.up.left.and.arrow.down.right", isIsolated ? "pane.showAll" : "pane.showAlone", action: onToggleIsolation)
-                webAction("viewfinder", isInFocusMode ? "focusMode.exit" : "focusMode.enter", action: onToggleFocus)
-                if let onFillFreeSpace { webAction("arrow.up.left.and.arrow.down.right", "pane.fillFreeSpace", action: onFillFreeSpace) }
-                if let onSessionCost { webAction("dollarsign", "menu.terminal.sessionCost", action: onSessionCost) }
-                if let onHandoff { webAction("arrow.left.arrow.right", "menu.terminal.handoff", action: onHandoff) }
-                webAction("pause", "pane.disable", action: onDisable)
-                webAction("xmark", "pane.close", action: onClose).accessibilityIdentifier("pane.close")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: metrics.size(4)) {
+                    webAction("plus", "subtabs.newEllipsis", action: onNewSubTab)
+                    webAction("sidebar.left", isLaneVisible ? "subtabs.hideLane" : "subtabs.showLane", action: onToggleLane)
+                        .disabled(isLaneVisible && !canHideLane)
+                    webAction("arrow.up.left.and.arrow.down.right", isIsolated ? "pane.showAll" : "pane.showAlone", action: onToggleIsolation)
+                    webAction("viewfinder", isInFocusMode ? "focusMode.exit" : "focusMode.enter", action: onToggleFocus)
+                    if let onFillFreeSpace { webAction("arrow.up.left.and.arrow.down.right", "pane.fillFreeSpace", action: onFillFreeSpace) }
+                    if let onSessionCost { webAction("dollarsign", "menu.terminal.sessionCost", action: onSessionCost) }
+                    if let onHandoff { webAction("arrow.left.arrow.right", "menu.terminal.handoff", action: onHandoff) }
+                    webAction("pause", "pane.disable", action: onDisable)
+                    webAction("xmark", "pane.close", action: onClose).accessibilityIdentifier("pane.close")
+                }
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, metrics.size(3))
             }
-            .padding(.horizontal, metrics.size(3))
+            .frame(maxWidth: metrics.size(CGFloat(6 + (onFillFreeSpace == nil ? 0 : 1)
+                + (onSessionCost == nil ? 0 : 1) + (onHandoff == nil ? 0 : 1)) * 24 + 2))
             .frame(height: metrics.size(26))
             .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
             .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { webHeaderWidth = $0 }
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: onToggleFocus)
         .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
@@ -277,7 +286,9 @@ struct PaneHeader: View {
                     }
                 }
             }
-            Toggle("remote.share", isOn: Binding(get: { isRemoteShared }, set: { _ in onToggleRemoteShared() }))
+            Toggle(isOn: Binding(get: { isRemoteShared }, set: { _ in onToggleRemoteShared() })) {
+                Label("remote.share", systemImage: "antenna.radiowaves.left.and.right")
+            }
                 .accessibilityIdentifier("remote.share")
         }
         .accessibilityElement(children: .contain)

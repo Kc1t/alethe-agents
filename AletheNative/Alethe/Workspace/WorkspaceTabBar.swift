@@ -62,10 +62,17 @@ struct WorkspaceTabBar: View {
                     .rotationEffect(.degrees(45))
                     .foregroundStyle(theme[.accent])
             }
-            Circle()
-                .fill(document.color(of: tab).map { theme[$0.token] } ?? theme[.fgFaint])
-                .frame(width: metrics.size(8), height: metrics.size(8))
-                .padding(.trailing, metrics.isWebInterface ? metrics.size(5) : 0)
+            if metrics.isWebInterface, tab.kind == .composition {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(metrics.font(size: 14))
+                    .foregroundStyle(theme[.fgMuted])
+                    .fixedSize()
+            } else {
+                Circle()
+                    .fill(document.color(of: tab).map { theme[$0.token] } ?? theme[.fgFaint])
+                    .frame(width: metrics.size(8), height: metrics.size(8))
+                    .padding(.trailing, metrics.isWebInterface ? metrics.size(5) : 0)
+            }
             Text(verbatim: name)
                 .font(metrics.font(size: 11, weight: .semibold))
                 .foregroundStyle(theme[isActive || isHovered ? .fg : .fgMuted])
@@ -118,11 +125,22 @@ struct WorkspaceTabBar: View {
         }
         .onDrop(of: [.text], delegate: TabDropDelegate(target: tab.id, dragging: $dragging, workspace: workspace))
         .contextMenu {
-            Button(tab.pinned ? LocalizedStringKey("workspaceTabs.unpin") : "workspaceTabs.pin") {
-                workspace.update { $0.togglePinned(tab.id) }
+            if metrics.isWebInterface {
+                Button { workspace.update { $0.togglePinned(tab.id) } } label: {
+                    Label(tab.pinned ? LocalizedStringKey("workspaceTabs.unpin") : "workspaceTabs.pin",
+                          systemImage: tab.pinned ? "pin.slash" : "pin")
+                }
+                Divider()
+                Button { workspace.update { $0.closeWorkspaceTab(tab.id) } } label: {
+                    Label("workspaceTabs.close", systemImage: "xmark")
+                }
+            } else {
+                Button(tab.pinned ? LocalizedStringKey("workspaceTabs.unpin") : "workspaceTabs.pin") {
+                    workspace.update { $0.togglePinned(tab.id) }
+                }
+                Divider()
+                Button("workspaceTabs.close") { workspace.update { $0.closeWorkspaceTab(tab.id) } }
             }
-            Divider()
-            Button("workspaceTabs.close") { workspace.update { $0.closeWorkspaceTab(tab.id) } }
         }
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(isActive ? [.isSelected, .isButton] : .isButton)

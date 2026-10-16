@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- Alethe interface agents use the original web logos in pane headers, sub-tabs, disabled terminals,
+  Home selectors and usage cards, notifications and title-bar usage pills. Mimo, Cursor, Copilot,
+  Kimi, Grok, Codewhale and WSL keep their vector marks and theme tint; OpenCode retains its
+  separate light and dark assets. Native macOS agent glyphs remain unchanged.
+- Home and the profile menu use the bundled profile image in the Alethe interface. Quick-launch
+  agent names keep their minimum field width, and notification summaries stay within their rows.
+- Alethe pane identities follow the web's half-width/320pt limit; pane actions and title-bar
+  accessories scroll horizontally when space is limited. Workspace composition tabs and context
+  menu actions include their corresponding icons.
 - Alethe interface title bar follows the web control order: menu and pressed sidebar toggle after
   the traffic lights, then news, sync, profile, live memory in MB and the right-sidebar toggle.
   Idle Pomodoro, notification and usage-launcher buttons no longer occupy the web title bar.

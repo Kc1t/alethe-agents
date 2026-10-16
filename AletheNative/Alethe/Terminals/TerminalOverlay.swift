@@ -111,15 +111,20 @@ func format(_ key: String.LocalizationValue, _ arguments: any CVarArg...) -> Str
 /// Over a disabled pane (upstream disabled terminal): nothing runs until it is enabled; the saved
 /// output comes back with it.
 struct DisabledPaneOverlay: View {
+    var agent: String = "shell"
     let onEnable: () -> Void
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     var body: some View {
         VStack(spacing: metrics.space(.m)) {
-            Image(systemName: "pause.circle")
-                .font(metrics.font(.title1))
-                .foregroundStyle(theme[.statusDisabled])
+            if metrics.isWebInterface {
+                AgentLogo(agent: agent, size: 56, templateColor: theme[AgentTokens.accent(for: agent)])
+            } else {
+                Image(systemName: "pause.circle")
+                    .font(metrics.font(.title1))
+                    .foregroundStyle(theme[.statusDisabled])
+            }
             Text("pane.disabled.title")
                 .font(metrics.font(.headline))
                 .foregroundStyle(theme[.textPrimary])

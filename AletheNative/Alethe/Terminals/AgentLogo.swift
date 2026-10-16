@@ -6,21 +6,23 @@ import SwiftUI
 struct AgentLogo: View {
     let agent: String
     var size: CGFloat = 16
+    var templateColor: Color? = nil
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     var body: some View {
         let side = metrics.size(size)
         Group {
-            if let asset = Self.asset(for: agent, isLight: theme.isLight) {
+            if let asset = Self.asset(for: agent, isLight: theme.isLight),
+               metrics.isWebInterface || !Self.webOnlyAgents.contains(agent) {
                 Image(asset.name)
                     .resizable()
                     .renderingMode(asset.template ? .template : .original)
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
-                    .foregroundStyle(theme[.fgMuted])
+                    .foregroundStyle(templateColor ?? theme[.fgMuted])
             } else {
-                Image(systemName: "sparkles")
+                Image(systemName: metrics.isWebInterface ? "cpu" : "sparkles")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .foregroundStyle(theme[AgentTokens.accent(for: agent)])
@@ -29,6 +31,8 @@ struct AgentLogo: View {
         .frame(width: side, height: side)
         .accessibilityHidden(true)
     }
+
+    private static let webOnlyAgents: Set<String> = ["mimo", "cursor", "copilot", "kimi", "grok", "codewhale", "wsl"]
 
     struct Asset: Equatable {
         let name: String
@@ -44,6 +48,13 @@ struct AgentLogo: View {
         case "antigravity": Asset(name: "AgentLogo-antigravity", template: false)
         case "kiro": Asset(name: "AgentLogo-kiro", template: false)
         case "opencode": Asset(name: isLight ? "AgentLogo-opencode-light" : "AgentLogo-opencode-dark", template: false)
+        case "mimo": Asset(name: "AgentLogo-mimo", template: true)
+        case "cursor": Asset(name: "AgentLogo-cursor", template: true)
+        case "copilot": Asset(name: "AgentLogo-copilot", template: true)
+        case "kimi": Asset(name: "AgentLogo-kimi", template: true)
+        case "grok": Asset(name: "AgentLogo-grok", template: true)
+        case "codewhale": Asset(name: "AgentLogo-codewhale", template: true)
+        case "wsl": Asset(name: "AgentLogo-wsl", template: true)
         case "shell": Asset(name: "AgentLogo-shell", template: true)
         default: nil
         }

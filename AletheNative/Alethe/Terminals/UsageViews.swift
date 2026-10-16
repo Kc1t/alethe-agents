@@ -14,12 +14,27 @@ struct UsagePill: View {
     var body: some View {
         if let peak = environment.usage.usage[provider]?.peak {
             Button { environment.editorRequest = .aiUsage } label: {
-                Text(verbatim: "\(AgentLabels.name(for: provider.rawValue).split(separator: " ").first ?? "") \(Int(peak.usedPercent.rounded()))%")
-                    .font(metrics.font(.caption).monospacedDigit())
-                    .padding(.horizontal, metrics.space(.s))
-                    .padding(.vertical, metrics.space(.xxs))
-                    .background(theme[UsageLevel.token(peak.usedPercent)].opacity(0.18), in: Capsule())
+                if metrics.isWebInterface {
+                    HStack(spacing: metrics.size(6)) {
+                        AgentLogo(agent: provider.rawValue, size: 13)
+                        Text(verbatim: "\(Int(peak.usedPercent.rounded()))%")
+                            .font(metrics.monoFont(size: 11, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, metrics.size(8))
+                    .padding(.vertical, metrics.size(2))
+                    .frame(minHeight: metrics.size(22))
                     .foregroundStyle(theme[UsageLevel.token(peak.usedPercent)])
+                    .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.size(8)))
+                    .fixedSize()
+                } else {
+                    Text(verbatim: "\(AgentLabels.name(for: provider.rawValue).split(separator: " ").first ?? "") \(Int(peak.usedPercent.rounded()))%")
+                        .font(metrics.font(.caption).monospacedDigit())
+                        .padding(.horizontal, metrics.space(.s))
+                        .padding(.vertical, metrics.space(.xxs))
+                        .background(theme[UsageLevel.token(peak.usedPercent)].opacity(0.18), in: Capsule())
+                        .foregroundStyle(theme[UsageLevel.token(peak.usedPercent)])
+                }
             }
             .buttonStyle(.plain)
             .help(Text(String(format: String(localized: "usage.pill.help"), AgentLabels.name(for: provider.rawValue), peak.label)))

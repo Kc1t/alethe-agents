@@ -77,10 +77,15 @@ struct UsageStrip: View {
     private func webCard(_ provider: AgentKind) -> some View {
         VStack(alignment: .leading, spacing: metrics.size(14)) {
             HStack(spacing: metrics.size(9)) {
-                HomeWebBadge(symbol: provider == .claude ? "ant.fill" : "sparkles",
-                             token: AgentTokens.accent(for: provider.rawValue))
+                AgentLogo(agent: provider.rawValue, size: 16)
+                    .frame(width: metrics.size(26), height: metrics.size(26))
+                    .background(theme[AgentTokens.accent(for: provider.rawValue)].opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: metrics.size(7)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.size(7))
+                        .strokeBorder(theme[AgentTokens.accent(for: provider.rawValue)].opacity(0.26),
+                                      lineWidth: metrics.size(1)))
                 Text(verbatim: provider == .claude ? "claude code" : AgentLabels.name(for: provider.rawValue).lowercased())
-                    .font(metrics.font(size: 13.5, weight: .medium))
+                    .font(metrics.font(size: 13.5, weight: .medium)).lineLimit(1)
                 Spacer(minLength: 0)
                 Button { Task { await environment.usage.refresh([provider]) } } label: {
                     Image(systemName: "arrow.clockwise")
@@ -228,7 +233,7 @@ struct ActivityGraph: View {
         VStack(alignment: .leading, spacing: metrics.size(6)) {
             HStack(spacing: metrics.size(9)) {
                 HomeWebBadge(symbol: "waveform.path", token: .statusWorking)
-                Text("home.activity").textCase(.lowercase).font(metrics.font(size: 13.5, weight: .medium))
+                Text("home.activity").textCase(.lowercase).font(metrics.font(size: 13.5, weight: .medium)).lineLimit(1)
                 Text("home.web.range").font(metrics.monoFont(size: 9.5))
                     .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(2))
                     .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(5)))

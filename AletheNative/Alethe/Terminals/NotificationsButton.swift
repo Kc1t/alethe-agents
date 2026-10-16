@@ -67,7 +67,13 @@ struct NotificationList: View {
                     dismiss()
                 } label: {
                     HStack(alignment: .top, spacing: metrics.space(.s)) {
-                        Image(systemName: entry.agent == nil ? "bell" : "sparkles")
+                        Group {
+                            if metrics.isWebInterface, let agent = entry.agent {
+                                AgentLogo(agent: agent, size: 14)
+                            } else {
+                                Image(systemName: entry.agent == nil ? "bell" : "sparkles")
+                            }
+                        }
                             .foregroundStyle(theme[entry.agent.map { AgentTokens.accent(for: $0) } ?? .textTertiary])
                             .frame(width: metrics.size(20))
                         VStack(alignment: .leading, spacing: metrics.space(.xxs)) {

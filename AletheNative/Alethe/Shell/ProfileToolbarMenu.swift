@@ -36,12 +36,21 @@ struct ProfileToolbarMenu: View {
         } label: {
             if sidebar {
                 HStack(spacing: metrics.space(.s)) {
-                    Text(verbatim: String(environment.activeProfileName.prefix(1)).uppercased())
-                        .font(metrics.font(.headline))
-                        .foregroundStyle(theme[.accentOn])
-                        .frame(width: metrics.size(32), height: metrics.size(32))
-                        .background(theme[.accent], in: Circle())
-                        .accessibilityHidden(true)
+                    if metrics.isWebInterface {
+                        Image("DefaultProfile")
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: metrics.size(32), height: metrics.size(32))
+                            .clipShape(Circle())
+                            .accessibilityHidden(true)
+                    } else {
+                        Text(verbatim: String(environment.activeProfileName.prefix(1)).uppercased())
+                            .font(metrics.font(.headline))
+                            .foregroundStyle(theme[.accentOn])
+                            .frame(width: metrics.size(32), height: metrics.size(32))
+                            .background(theme[.accent], in: Circle())
+                            .accessibilityHidden(true)
+                    }
                     VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
                         Text(verbatim: environment.activeProfileName)
                             .font(metrics.font(.body))
@@ -61,6 +70,7 @@ struct ProfileToolbarMenu: View {
             } else {
                 Label {
                     Text(verbatim: environment.activeProfileName)
+                        .lineLimit(metrics.isWebInterface ? 1 : nil)
                 } icon: {
                     if metrics.isWebInterface {
                         Image(systemName: "person.2").font(metrics.font(size: 12))

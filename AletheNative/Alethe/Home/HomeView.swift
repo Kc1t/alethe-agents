@@ -223,10 +223,11 @@ private struct HomeHero: View {
 
     @ViewBuilder private var avatar: some View {
         if metrics.isWebInterface {
-            Text(verbatim: String(firstName.prefix(1)).uppercased())
-                .font(metrics.font(size: 16, weight: .semibold))
-                .foregroundStyle(theme[.fg])
+            Image("DefaultProfile")
+                .resizable()
+                .aspectRatio(contentMode: .fill)
                 .frame(width: metrics.size(44), height: metrics.size(44))
+                .clipShape(Circle())
                 .background(theme[.bgSunken].opacity(0.82), in: Circle())
                 .overlay(Circle().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 .overlay(alignment: .leading) {
@@ -384,14 +385,18 @@ private struct QuickLaunch: View {
             if metrics.isWebInterface {
                 Menu {
                     ForEach(agents, id: \.self) { kind in
-                        Button { agent = kind } label: { Text(verbatim: AgentLabels.name(for: kind.rawValue)) }
+                        Button { agent = kind } label: {
+                            Label { Text(verbatim: AgentLabels.name(for: kind.rawValue)) } icon: {
+                                AgentLogo(agent: kind.rawValue, size: 19)
+                            }
+                        }
                     }
                 } label: {
                     HStack(spacing: metrics.size(6)) {
-                        Image(systemName: "ant.fill").font(metrics.font(size: 15))
-                            .foregroundStyle(theme[AgentTokens.accent(for: agent.rawValue)])
-                        Text("home.web.agent")
-                        Text(verbatim: AgentLabels.name(for: agent.rawValue))
+                        AgentLogo(agent: agent.rawValue, size: 15,
+                                  templateColor: theme[AgentTokens.accent(for: agent.rawValue)])
+                        Text("home.web.agent").fixedSize()
+                        Text(verbatim: AgentLabels.name(for: agent.rawValue)).lineLimit(1)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.down").font(metrics.font(size: 10))
                     }
@@ -404,7 +409,8 @@ private struct QuickLaunch: View {
                 }
             }
         }
-        .frame(width: metrics.size(145))
+        .frame(minWidth: metrics.size(145), maxWidth: metrics.isWebInterface ? nil : metrics.size(145))
+        .fixedSize(horizontal: metrics.isWebInterface, vertical: false)
         .accessibilityLabel(Text("home.quick.agent"))
         .accessibilityIdentifier("home.quick.agent")
     }
@@ -448,8 +454,8 @@ private struct QuickLaunch: View {
                     } label: {
                         HStack(spacing: metrics.size(5)) {
                             AletheStatusDot(.accent, side: 5)
-                            Text("home.web.mode")
-                            Text(unrestricted ? "home.quick.unrestricted" : "home.quick.normal")
+                            Text("home.web.mode").fixedSize()
+                            Text(unrestricted ? "home.quick.unrestricted" : "home.quick.normal").lineLimit(1)
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.down").font(metrics.font(size: 10))
                         }
@@ -820,16 +826,22 @@ private struct HomeWebNotifications: View {
                         if let tab = entry.tab { environment.notifier.open(tab) }
                     } label: {
                         HStack(alignment: .top, spacing: metrics.size(11)) {
-                            Image(systemName: entry.agent == nil ? "bell" : "sparkles")
-                                .font(metrics.font(size: 14))
+                            Group {
+                                if let agent = entry.agent {
+                                    AgentLogo(agent: agent, size: 14)
+                                } else {
+                                    Image(systemName: "bell").font(metrics.font(size: 14))
+                                }
+                            }
                                 .foregroundStyle(theme[entry.agent.map { AgentTokens.accent(for: $0) } ?? .textSecondary])
                                 .frame(width: metrics.size(26), height: metrics.size(26))
                             VStack(alignment: .leading, spacing: metrics.size(2)) {
-                                Text(verbatim: entry.title).font(metrics.font(size: 12, weight: .medium))
-                                Text(verbatim: entry.body).font(metrics.font(size: 11)).foregroundStyle(theme[.textTertiary])
+                                Text(verbatim: entry.title).font(metrics.font(size: 12, weight: .medium)).lineLimit(1)
+                                Text(verbatim: entry.body).font(metrics.font(size: 11)).foregroundStyle(theme[.textTertiary]).lineLimit(2)
                             }
                             Spacer()
                             Text(entry.createdAt, format: .relative(presentation: .named)).font(metrics.monoFont(size: 10))
+                                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                         }
                         .padding(.horizontal, metrics.size(14)).padding(.vertical, metrics.size(12))
                     }
