@@ -1898,9 +1898,20 @@ ExtensionKit (§11.4). *Tests* list what each task must ship; they run per the t
   *Done:* right sidebar (⌥⌘0, View menu; open state and width persisted) shows right-side plugin tabs in
   `ViewPlacements` order through an app `viewID` registry. `TodosPlugin` registered: Todos tab (project and
   global lists, add with `#tag`, done, inline rename, delete, drag reorder) with a Pomodoro pill (1 s tick);
-  View › New Todo reveals it. Docs tab: the project's `*.md` (3 levels, 200 files, skips hidden/build/deps)
-  open in a Markdown pane with undo. Open: tab drag between sidebars, tag editing, focus todo, phase-end
-  notification. Not run in UI tests yet.
+  View › New Todo reveals it. Markdown lists the project's files (3 levels, 200 files, skips
+  hidden/build/deps), opens them inside the inspector with closable tabs, file drops, refresh, source
+  copying, path, Back and Close; Open in pane remains undoable. Strip order follows the web: Markdown,
+  available GSD, contributed right tabs, feature-gated MCP, PRs and Agents, then Mac Todos and extensions.
+  Files is removed from the inspector; Close hides it and MCP Maximize opens its manager. Agents reads
+  orchestrator snapshots and native subagents, scopes to the focused terminal or all jobs, sorts by
+  status and supports approval answers, Stop and opening the board. PR rows show Send to Todo or
+  Already added. No persistence changes.
+  Open: Claude plans, Jev history and Plugins catalog need backend support. Agent model/effort chips
+  need fields absent from native `JobSnapshot`; only the known agent is shown. Existing tab placement,
+  tag editing, focus todo and phase-end notification gaps remain. Validation: strings gate, Swift
+  syntax parsing and diff checks pass; Debug build and UI harness are blocked before compilation by
+  sandbox-denied SwiftPM/Clang cache writes. Runtime behavior still needs review outside the sandbox.
+  ai-memory recording unavailable in this worktree/session (no CLI or connected memory tool).
 - [x] **P4-4 (L) Git layer.** `AletheGit` over the `git` CLI (upstream `git_control.rs`): repository
   discovery, status (porcelain v2 incl. renames, conflicts, submodules), diff and diff summary,
   branches, stage/unstage/discard, commit, pull/push/fetch with progress and credentials left to git,

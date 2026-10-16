@@ -1,3 +1,4 @@
+import AletheDesign
 import AlethePluginKit
 import AletheGitControl
 import AletheModel
@@ -11,7 +12,7 @@ enum PluginViewRegistry {
         case TodosPlugin.viewID: "rightSidebar.todos"
         case DocsView.tabID: "rightSidebar.docs"
         case PullRequestsView.tabID: "rightSidebar.pullRequests"
-        case FilesView.tabID: "rightSidebar.files"
+        case AgentsView.tabID: "rightSidebar.agents"
         case GSDSyncView.tabID: "rightSidebar.gsdSync"
         case McpPanel.tabID: "rightSidebar.mcp"
         default: LocalizedStringKey(tab.title)
@@ -24,7 +25,7 @@ enum PluginViewRegistry {
         case TodosPlugin.viewID: TodosView()
         case DocsView.tabID: DocsView()
         case PullRequestsView.tabID: PullRequestsView()
-        case FilesView.tabID: FilesView()
+        case AgentsView.tabID: AgentsView()
         case GSDSyncView.tabID: GSDSyncView()
         case McpPanel.tabID: McpPanel()
         default: ExtensionOrUnavailable(viewID: viewID)
@@ -74,14 +75,21 @@ private struct ExtensionOrUnavailable: View {
 struct RightSidebar: View {
     @Environment(AppEnvironment.self) private var environment
 
+    @Environment(\.metrics) private var metrics
+    @State private var droppedMarkdown: [URL] = []
+
     private var tabs: [SidebarTabContribution] {
-        // The app's own tabs (Files, Docs, Pull Requests, GSD Sync, MCP) follow the plugin tabs.
-        let own = [FilesView.tab, DocsView.tab] + (environment.features.isOn(.prs) ? [PullRequestsView.tab] : [])
+        let plugins = environment.plugins.map {
+            $0.viewPlacements.arranged($0.contributions.sidebarTabs).right
+        } ?? []
+        return [DocsView.tab]
             + (environment.gsdSync.isAvailable(in: selectedProject) ? [GSDSyncView.tab] : [])
+            + plugins.filter { $0.viewID != TodosPlugin.viewID && $0.viewID != FilesView.tabID }
             + (environment.features.isOn(.mcp) ? [McpPanel.tab] : [])
-        let extensions = environment.extensions?.sidebarTabs ?? []
-        guard let plugins = environment.plugins else { return extensions + own }
-        return plugins.viewPlacements.arranged(plugins.contributions.sidebarTabs).right + extensions + own
+            + (environment.features.isOn(.prs) ? [PullRequestsView.tab] : [])
+            + (environment.features.isOn(.orchestrator) ? [AgentsView.tab] : [])
+            + plugins.filter { $0.viewID == TodosPlugin.viewID }
+            + (environment.extensions?.sidebarTabs ?? [])
     }
 
     private var selectedProject: Project? {
@@ -96,21 +104,45 @@ struct RightSidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if tabs.count > 1 {
-                Picker("rightSidebar.tabs", selection: selection) {
-                    ForEach(tabs, id: \.id) { tab in
-                        Label(PluginViewRegistry.title(for: tab), systemImage: tab.symbol).tag(Optional(tab.id))
+            HStack(spacing: metrics.space(.xs)) {
+                ScrollView(.horizontal) {
+                    Picker("rightSidebar.tabs", selection: selection) {
+                        ForEach(tabs, id: \.id) { tab in
+                            Label(PluginViewRegistry.title(for: tab), systemImage: tab.symbol).tag(Optional(tab.id))
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelStyle(.iconOnly)
+                    .labelsHidden()
+                    .accessibilityIdentifier("rightSidebar.tabs")
+                }
+                if selected?.viewID == McpPanel.tabID {
+                    ContentPaneButton(symbol: "arrow.up.left.and.arrow.down.right", label: "rightSidebar.maximize", id: "rightSidebar.maximize") {
+                        environment.editorRequest = .mcpManager(McpManagerRoute())
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelStyle(.iconOnly)
-                .labelsHidden()
-                .accessibilityIdentifier("rightSidebar.tabs")
-                .padding(8)
+                ContentPaneButton(symbol: "sidebar.right", label: "rightSidebar.close", id: "rightSidebar.close") {
+                    environment.rightSidebarVisible = false
+                }
+                .padding(.trailing, metrics.space(.xs))
+            }
+            .dropDestination(for: URL.self) { urls, _ in
+                let markdown = urls.filter { $0.isFileURL && ["md", "markdown"].contains($0.pathExtension.lowercased()) }
+                guard !markdown.isEmpty else { return false }
+                droppedMarkdown = markdown
+                environment.rightSidebarTab = DocsView.tabID
+                return true
             }
             if let selected {
-                PluginViewRegistry.view(for: selected.viewID)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ZStack {
+                    DocsView(droppedFiles: $droppedMarkdown).opacity(selected.viewID == DocsView.tabID ? 1 : 0)
+                        .allowsHitTesting(selected.viewID == DocsView.tabID)
+                        .accessibilityHidden(selected.viewID != DocsView.tabID)
+                    if selected.viewID != DocsView.tabID {
+                        PluginViewRegistry.view(for: selected.viewID)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView("rightSidebar.empty", systemImage: "sidebar.right")
             }
