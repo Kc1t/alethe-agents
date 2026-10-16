@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Full-window startup console with a themed wordmark card, blinking cursor and staggered progress cells;
+  decorative motion stops when Reduce Motion is enabled.
+- Home content styled after the web dashboard: centered greeting and date chip, terminal-style quick
+  launch, compact two-column recent projects, and uppercase section headings with count pills. Native
+  window chrome and SF Symbols remain, and all dashboard values still come from real data.
 - Shared themed controls in `AletheDesign` (button, icon button, select, card, row highlight, section label,
   count pill, status dot, project monogram) mirroring the web app's primitives.
 - Kimi, Grok and Codewhale agent color tokens in all built-in and theme-pack themes, matching the web palette.

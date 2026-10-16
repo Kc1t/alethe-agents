@@ -31,6 +31,12 @@ struct MainWindow: View {
                         }
                 }
         }
+        .accessibilityHidden(!environment.startupFinished)
+        .overlay {
+            if !environment.startupFinished {
+                StartupLoadingView()
+            }
+        }
         .frame(minWidth: 800, minHeight: 500)
         .sheet(item: editorRequest) { request in
             if let workspace = environment.workspace {

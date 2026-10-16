@@ -36,7 +36,8 @@ struct SetupWalkthroughView: View {
                     row(step, done: progress.done.contains(step))
                 }
             }
-            .homeCard()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .aletheCard()
             .task { await findAgents() }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("setup")

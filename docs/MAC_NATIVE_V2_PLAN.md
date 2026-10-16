@@ -1786,6 +1786,12 @@ ship; they run per the test cadence above.
   *Deviation:* the ASCII background is not ported — decorative, animated, and it would compete with the
   text under reduced transparency and contrast settings; no avatar (the name comes from macOS); Now
   Playing waits for Spotify (Phase 7).
+  *Home visual parity (2026-10-16):* owner chose a hybrid look — native window, toolbar and sidebars,
+  web styling inside the content area. Home now follows the web layout (centered hero, 940 pt content
+  cap, 620 pt terminal-style launcher, two-column recent cards) on the shared `AletheDesign` controls,
+  and a startup screen covers the window until `AppEnvironment.load()` returns. Remaining differences:
+  no ASCII backdrop or avatar, SF Symbols instead of Lucide, system menus, opaque surfaces instead of
+  backdrop blur, and a launcher prompt that grows past 42 pt while focused.
   *Tests (written, not run — owner decision):* `HomeDataTests` (2), `ActivityDaysTests` (2) (ran once
   while writing them); UI `HomeTests` (⇧⌘H toggles; quick launch opens a terminal). Compiled.
 - [x] **P3-16 (M) Setup walkthrough.** First-run steps on Home (agents found, a first project, a first

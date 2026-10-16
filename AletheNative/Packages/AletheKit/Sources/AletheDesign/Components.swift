@@ -244,17 +244,23 @@ extension View {
 /// Uppercase section label (`PROJECTS`: 11pt bold, 0.08em tracking, muted).
 public struct AletheSectionLabel: View {
     let title: Text
+    let tracking: CGFloat
+    let color: ThemeToken
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
-    public init(_ title: Text) { self.title = title }
+    public init(_ title: Text, tracking: CGFloat = 0.88, color: ThemeToken = .fgMuted) {
+        self.title = title
+        self.tracking = tracking
+        self.color = color
+    }
 
     public var body: some View {
         title
             .textCase(.uppercase)
             .font(metrics.font(size: 11, weight: .bold))
-            .tracking(metrics.size(11) * 0.08)
-            .foregroundStyle(theme[.fgMuted])
+            .tracking(metrics.size(tracking))
+            .foregroundStyle(theme[color])
             .accessibilityAddTraits(.isHeader)
     }
 }
@@ -262,14 +268,18 @@ public struct AletheSectionLabel: View {
 /// Small count pill (tab counts: min 18×14, radius 7, panel fill, 9pt bold faint).
 public struct AletheCountPill: View {
     let count: Int
+    let monospaced: Bool
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
-    public init(_ count: Int) { self.count = count }
+    public init(_ count: Int, monospaced: Bool = false) {
+        self.count = count
+        self.monospaced = monospaced
+    }
 
     public var body: some View {
         Text(verbatim: "\(count)")
-            .font(metrics.font(size: 9, weight: .bold).monospacedDigit())
+            .font(monospaced ? metrics.monoFont(size: 10) : metrics.font(size: 9, weight: .bold).monospacedDigit())
             .foregroundStyle(theme[.fgFaint])
             .padding(.horizontal, metrics.size(4))
             .frame(minWidth: metrics.size(18), minHeight: metrics.size(14))
