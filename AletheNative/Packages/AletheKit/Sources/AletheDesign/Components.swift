@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // Shared controls drawn with theme tokens, mirroring the web app's primitives
@@ -8,6 +9,20 @@ extension Metrics {
     /// A UI font at an exact design size (the web uses sizes such as 12.5 that no text style covers).
     public func font(size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size * scale, weight: weight)
+    }
+
+    /// CSS numeric font weights, including the sidebar headers' intermediate 650 weight.
+    public func font(size: CGFloat, weight: Int) -> Font {
+        let stops: [(Int, NSFont.Weight)] = [
+            (100, .ultraLight), (200, .thin), (300, .light), (400, .regular), (500, .medium),
+            (600, .semibold), (700, .bold), (800, .heavy), (900, .black),
+        ]
+        let value = min(900, max(100, weight))
+        let lower = stops.last { $0.0 <= value } ?? stops[0]
+        let upper = stops.first { $0.0 >= value } ?? stops[stops.count - 1]
+        let fraction = upper.0 == lower.0 ? 0 : CGFloat(value - lower.0) / CGFloat(upper.0 - lower.0)
+        let raw = lower.1.rawValue + (upper.1.rawValue - lower.1.rawValue) * fraction
+        return Font(NSFont.systemFont(ofSize: size * scale, weight: NSFont.Weight(rawValue: raw)))
     }
 
     public func monoFont(size: CGFloat, weight: Font.Weight) -> Font {
@@ -422,6 +437,7 @@ public struct AletheActivitySpinner: View {
     }
 }
 
+<<<<<<< HEAD
 /// Compact title-bar pill (`TitleBar.module.css`: 22pt high, 8pt radius, 11pt mono).
 public struct AletheTitleBarPillStyle: ButtonStyle {
     private let iconOnly: Bool
@@ -480,5 +496,100 @@ public struct AletheSidebarTabStyle: ButtonStyle {
             .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
                 .strokeBorder(theme[.border].opacity(isSelected && bordered ? 1 : 0),
                               lineWidth: metrics.size(1)))
+||||||| adcfecb
+=======
+/// Compact right-sidebar tab and utility button (`RightSidebar.module.css`).
+public struct AletheSidebarTabStyle: ButtonStyle {
+    public var selected: Bool
+    public var width: CGFloat
+    public var height: CGFloat
+    public init(selected: Bool = false, width: CGFloat = 28, height: CGFloat = 26) {
+        self.selected = selected
+        self.width = width
+        self.height = height
+    }
+    public func makeBody(configuration: Configuration) -> some View {
+        SidebarTabBody(configuration: configuration, selected: selected, width: width, height: height)
+    }
+}
+
+private struct SidebarTabBody: View {
+    let configuration: ButtonStyleConfiguration
+    let selected: Bool
+    let width: CGFloat
+    let height: CGFloat
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+    @Environment(\.isEnabled) private var enabled
+    @State private var hovering = false
+
+    var body: some View {
+        configuration.label
+            .labelStyle(.iconOnly)
+            .font(metrics.font(size: 14))
+            .foregroundStyle(theme[selected || hovering ? .fg : .fgMuted])
+            .frame(width: metrics.size(width), height: metrics.size(height))
+            .background(
+                theme[selected ? .panel : .panelHover].opacity(selected || hovering ? 1 : 0),
+                in: RoundedRectangle(cornerRadius: metrics.radius(.sm))
+            )
+            .overlay {
+                if selected {
+                    RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                        .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1))
+                }
+            }
+            .shadow(
+                color: theme[.bgSunken].opacity(selected ? 0.25 : 0),
+                radius: metrics.size(2), y: metrics.size(1)
+            )
+            .contentShape(Rectangle())
+            .opacity(enabled ? 1 : 0.5)
+            .onHover { hovering = $0 }
+    }
+}
+
+/// Small bordered actions in sidebar cards (PR actions and worker approval answers).
+public struct AlethePanelActionStyle: ButtonStyle {
+    public var approval: Bool
+    public var accented: Bool
+    public init(approval: Bool = false, accented: Bool = false) {
+        self.approval = approval
+        self.accented = accented
+    }
+    public func makeBody(configuration: Configuration) -> some View {
+        PanelActionBody(configuration: configuration, approval: approval, accented: accented)
+    }
+}
+
+private struct PanelActionBody: View {
+    let configuration: ButtonStyleConfiguration
+    let approval: Bool
+    let accented: Bool
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @Environment(\.isEnabled) private var enabled
+    @State private var hovering = false
+    var body: some View {
+        configuration.label
+            .font(metrics.font(size: approval ? 10 : 11, weight: approval ? .semibold : .regular))
+            .foregroundStyle(theme[enabled ? .fg : .fgFaint])
+            .padding(.horizontal, metrics.size(approval ? 8 : 10))
+            .padding(.vertical, approval ? metrics.size(2) : 0)
+            .frame(maxWidth: approval ? nil : .infinity)
+            .frame(height: approval ? nil : metrics.size(26))
+            .background(
+                theme[hovering ? .panelHover : accented && enabled ? .accentSoft : .bgElevated]
+                    .opacity(approval || hovering || accented && enabled ? 1 : 0),
+                in: RoundedRectangle(cornerRadius: metrics.radius(.sm))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                    .strokeBorder(theme[accented && enabled ? .accentBorder : .border], lineWidth: metrics.size(1))
+            )
+            .contentShape(Rectangle())
+            .opacity(approval && !enabled ? 0.5 : 1)
+            .onHover { hovering = $0 && enabled }
+>>>>>>> mac-native-v2-ui-v3
     }
 }

@@ -28,6 +28,22 @@ struct PullRequestsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if metrics.isWebInterface {
+                WebSidebarHeader {
+                    Image(systemName: "arrow.triangle.pull").font(metrics.font(size: 16))
+                    Text("pullRequests.title")
+                    Text("rightSidebar.prScopeAll").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                    Spacer(minLength: 0)
+                    if phase == .loading { ProgressView().controlSize(.small) }
+                    Button {
+                        reload += 1
+                    } label: {
+                        Label("pullRequests.refresh", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(AletheSidebarTabStyle(width: 24, height: 24))
+                    .help("pullRequests.refresh").disabled(phase == .loading)
+                }
+            } else {
             HStack {
                 Text("pullRequests.title").font(metrics.font(.headline))
                 Spacer()
@@ -39,6 +55,7 @@ struct PullRequestsView: View {
             }
             .padding(.horizontal, metrics.size(10))
             .padding(.vertical, metrics.size(6))
+            }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -76,13 +93,27 @@ struct PullRequestsView: View {
             Color.clear
         case .loading, .ready:
             if prs.isEmpty {
-                ContentUnavailableView("pullRequests.empty", systemImage: "arrow.triangle.pull")
+                if metrics.isWebInterface {
+                    WebSidebarEmpty(title: "pullRequests.empty", detail: "rightSidebar.prEmptyDetail", symbol: "arrow.triangle.pull", boxed: true)
+                } else {
+                    ContentUnavailableView("pullRequests.empty", systemImage: "arrow.triangle.pull")
+                }
             } else {
+                if metrics.isWebInterface {
+                    ScrollView {
+                        LazyVStack(spacing: metrics.size(8)) {
+                            ForEach(prs) { pr in
+                                webRow(pr).task(id: pr.id) { await loadDetails(pr) }
+                            }
+                        }.padding(metrics.size(10))
+                    }
+                } else {
                 List(prs) { pr in
                     row(pr)
                         .task(id: pr.id) { await loadDetails(pr) }
                 }
                 .listStyle(.sidebar)
+                }
             }
         }
     }
@@ -93,6 +124,43 @@ struct PullRequestsView: View {
             Text(verbatim: command)
                 .font(metrics.font(.body).monospaced())
                 .textSelection(.enabled)
+        }
+    }
+
+    private func webRow(_ pr: PullRequestSummary) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: metrics.size(8)) {
+                Text(verbatim: pr.repo).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                Text(verbatim: "#\(pr.number)")
+                if pr.isDraft {
+                    Text("pullRequests.draft").textCase(.uppercase)
+                        .foregroundStyle(theme[.statusWaiting])
+                        .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(1))
+                        .background(theme[.statusWaitingSoft], in: Capsule())
+                }
+            }.font(metrics.monoFont(size: 10, weight: .regular)).foregroundStyle(theme[.fgFaint])
+            Text(verbatim: pr.title).lineLimit(1).font(metrics.font(size: 13, weight: .medium))
+                .foregroundStyle(theme[.fg]).padding(.vertical, metrics.size(6))
+            HStack(spacing: metrics.size(4)) {
+                Text(verbatim: pr.author)
+                if let updated = pr.updatedAt { Text(verbatim: "·"); Text(updated, style: .date) }
+            }.font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint])
+            HStack(spacing: metrics.size(6)) {
+                Button {
+                    if let url = pr.browserURL { NSWorkspace.shared.open(url) }
+                } label: {
+                    Label("pullRequests.open", systemImage: "arrow.up.right.square")
+                }.buttonStyle(AletheSidebarTabStyle(width: 26, height: 26))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                todoButton(pr).buttonStyle(AlethePanelActionStyle(accented: true))
+            }.padding(.top, metrics.size(10))
+        }
+        .padding(.vertical, metrics.size(10)).padding(.horizontal, metrics.size(12))
+        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .contextMenu {
+            Button("pullRequests.reviewWithAgent") { reviewing = pr }
+            Button("pullRequests.squashMergeMenu") { merging = pr }.disabled(reviews.reviewedHead(pr) == nil)
         }
     }
 

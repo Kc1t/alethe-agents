@@ -34922,6 +34922,74 @@
           }
         }
       }
+    },
+    "rightSidebar.markdownEmptyTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Markdown selected"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum Markdown selecionado"
+          }
+        }
+      }
+    },
+    "rightSidebar.markdownEmptyDetail" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open a Markdown file from the project sidebar to preview it here."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abra um arquivo Markdown na sidebar de projetos para visualizá-lo aqui."
+          }
+        }
+      }
+    },
+    "rightSidebar.prScopeAll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "everywhere"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "em tudo"
+          }
+        }
+      }
+    },
+    "rightSidebar.prEmptyDetail" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull requests where you are the author or a reviewer will show up here."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pull requests em que você é autor ou revisor vão aparecer aqui."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -9,6 +9,8 @@ import SwiftUI
 struct GSDSyncView: View {
     @Environment(AppEnvironment.self) private var environment
 
+    @Environment(\.metrics) private var metrics
+
     static let tabID = "gsdSync"
     static let tab = SidebarTabContribution(id: tabID, title: "GSD Sync", symbol: "arrow.triangle.2.circlepath",
                                             side: .right, viewID: tabID)
@@ -22,7 +24,20 @@ struct GSDSyncView: View {
     var body: some View {
         let sessions = project.map { environment.gsdSync.sessions(of: $0.id) } ?? []
         Group {
-            if sessions.isEmpty {
+            if metrics.isWebInterface {
+                if sessions.isEmpty {
+                    WebSidebarEmpty(title: "gsdSync.empty", detail: "gsdSync.empty.detail", symbol: "sparkles")
+                        .accessibilityIdentifier("gsdSync.empty")
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: metrics.size(2)) {
+                            ForEach(sessions) { session in GSDSyncRow(session: session) }
+                        }
+                        .padding(.horizontal, metrics.size(6))
+                        .padding(.top, metrics.size(8)).padding(.bottom, metrics.size(18))
+                    }.accessibilityIdentifier("gsdSync.list")
+                }
+            } else if sessions.isEmpty {
                 ContentUnavailableView {
                     Label("gsdSync.empty", systemImage: "arrow.triangle.2.circlepath")
                 } description: {
@@ -48,6 +63,10 @@ private struct GSDSyncRow: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         Button {
             environment.editorRequest = .gsdSyncActivity(GSDSyncActivityTarget(session))
         } label: {
@@ -70,6 +89,41 @@ private struct GSDSyncRow: View {
                     .font(metrics.font(.footnote))
                     .foregroundStyle(theme[.textTertiary])
             }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(Text(verbatim: session.root.path))
+        .accessibilityIdentifier("gsdSync.row.\(session.name)")
+    }
+
+    private var webBody: some View {
+        Button {
+            environment.editorRequest = .gsdSyncActivity(GSDSyncActivityTarget(session))
+        } label: {
+            HStack(spacing: metrics.size(8)) {
+                GSDSyncStateGlyph(session: session).frame(width: metrics.size(14))
+                VStack(alignment: .leading, spacing: metrics.size(1)) {
+                    Text(verbatim: session.name).font(
+                        metrics.font(size: 12, weight: .medium)
+                    ).lineLimit(1).truncationMode(.middle)
+                    HStack(spacing: metrics.space(.xs)) {
+                        Text(GSDSyncStateGlyph.label(for: session))
+                        if let progress = GSDPlanningText.progress(session) {
+                            Text(verbatim: "·")
+                            Text(verbatim: progress)
+                        }
+                    }
+                    .font(metrics.font(size: 10))
+                    .foregroundStyle(theme[.fgFaint])
+                    .textCase(.uppercase).tracking(metrics.size(0.3))
+                }
+                Spacer(minLength: 0)
+
+            }
+            .padding(.horizontal, metrics.size(6))
+            .padding(.vertical, metrics.size(5))
+            .frame(minHeight: metrics.size(34))
+            .modifier(WebGSDRowBackground())
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -109,5 +163,24 @@ enum GSDPlanningText {
         if let roadmap = session.roadmapProgress { return format("gsdSync.planning.tasks", roadmap.done, roadmap.total) }
         if let percent = session.planning.progress { return format("gsdSync.planning.percent", percent) }
         return nil
+    }
+}
+
+private struct WebGSDRowBackground: ViewModifier {
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @State private var hovering = false
+    func body(content: Content) -> some View {
+        content
+            .background(
+                theme[.panelHover].opacity(metrics.isWebInterface && hovering ? 1 : 0),
+                in: RoundedRectangle(cornerRadius: metrics.radius(.sm))
+            )
+            .overlay {
+                if metrics.isWebInterface && hovering {
+                    RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1))
+                }
+            }
+            .onHover { hovering = $0 }
     }
 }
