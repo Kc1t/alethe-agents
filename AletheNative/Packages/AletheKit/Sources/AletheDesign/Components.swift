@@ -640,3 +640,35 @@ private struct AletheQuickFieldBody: View {
             .onHover { hovering = $0 }
     }
 }
+
+/// Secondary Home actions from the web hero composition.
+public struct AletheHomeActionStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .labelStyle(AletheHomeActionLabelStyle())
+            .font(metrics.monoFont(size: 11))
+            .foregroundStyle(theme[.fgMuted])
+            .padding(.horizontal, metrics.size(10))
+            .padding(.vertical, metrics.size(7))
+            .background(theme[configuration.isPressed ? .bgElevated : .bg].opacity(0.48),
+                        in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+    }
+}
+
+private struct AletheHomeActionLabelStyle: LabelStyle {
+    @Environment(\.metrics) private var metrics
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: metrics.size(7)) {
+            configuration.icon.font(metrics.font(size: 13))
+            configuration.title
+        }
+    }
+}
