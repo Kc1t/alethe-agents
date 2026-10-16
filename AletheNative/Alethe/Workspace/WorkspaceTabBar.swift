@@ -10,80 +10,90 @@ struct WorkspaceTabBar: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var hovered: WorkspaceTabID?
+    @State private var closeHovered: WorkspaceTabID?
     @State private var dragging: WorkspaceTabID?
 
     private var document: WorkspaceDocument { workspace.document }
 
     var body: some View {
         HStack(spacing: metrics.space(.xs)) {
-            navigationButton("chevron.left", label: "menu.view.back", id: "workspaceTabs.back",
+            navigationButton("arrow.left", label: "menu.view.back", id: "workspaceTabs.back",
                              enabled: document.canGoBack) { workspace.update { $0.navigateHistory(-1) } }
-            navigationButton("chevron.right", label: "menu.view.forward", id: "workspaceTabs.forward",
+            navigationButton("arrow.right", label: "menu.view.forward", id: "workspaceTabs.forward",
                              enabled: document.canGoForward) { workspace.update { $0.navigateHistory(1) } }
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: metrics.space(.xxs)) {
+                HStack(spacing: metrics.space(.xs)) {
                     ForEach(document.workspace.tabs) { tab in
                         tabView(tab)
                     }
                 }
             }
         }
-        .padding(.horizontal, metrics.space(.m))
+        .padding(.horizontal, metrics.size(6))
         .frame(height: metrics.size(32))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme[.bgSunken])
-        .overlay(alignment: .bottom) { theme[.borderSubtle].frame(height: 1) }
+        .background(theme[.bgElevated])
+        .overlay(alignment: .bottom) { theme[.border].frame(height: 1) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workspaceTabs")
     }
 
     private func tabView(_ tab: WorkspaceTab) -> some View {
         let isActive = tab.id == document.workspace.activeTabID
+        let isHovered = hovered == tab.id
         let label = document.label(of: tab)
         let name = label?.name ?? String(localized: "workspaceTabs.empty")
+        let radius = metrics.radius(.sm)
+        // Upstream `groupTab`: 26pt, muted until hovered; the active tab sits pressed into the bar.
         return HStack(spacing: metrics.space(.s)) {
             if tab.pinned {
                 Image(systemName: "pin.fill")
-                    .font(metrics.font(.caption))
-                    .foregroundStyle(theme[.textTertiary])
+                    .font(metrics.font(size: 9))
+                    .rotationEffect(.degrees(45))
+                    .foregroundStyle(theme[.accent])
             }
             Circle()
                 .fill(document.color(of: tab).map { theme[$0.token] } ?? theme[.fgFaint])
-                .frame(width: metrics.size(7), height: metrics.size(7))
+                .frame(width: metrics.size(8), height: metrics.size(8))
             Text(verbatim: name)
-                .font(metrics.font(.footnote).weight(isActive ? .semibold : .regular))
-                .foregroundStyle(theme[isActive ? .textPrimary : .textSecondary])
+                .font(metrics.font(size: 11, weight: .semibold))
+                .foregroundStyle(theme[isActive || isHovered ? .fg : .fgMuted])
                 .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if let more = label?.more, more > 0 {
-                Text(verbatim: "+\(more)")
-                    .font(metrics.font(.caption).monospacedDigit())
-                    .foregroundStyle(theme[.textTertiary])
+                AletheCountPill(more)
             }
             // Pure SwiftUI, not a borderless (AppKit-backed) button: inside the horizontal scroll
             // view an NSButton reports a wrong frame and cannot be hit where it is drawn.
             Image(systemName: "xmark")
-                .font(metrics.font(.caption).weight(.semibold))
-                .frame(width: metrics.size(14), height: metrics.size(14))
-                .contentShape(Rectangle())
+                .font(metrics.font(size: 8, weight: .bold))
+                .frame(width: metrics.size(18), height: metrics.size(18))
+                .background(theme[.panelHover].opacity(closeHovered == tab.id ? 1 : 0), in: Circle())
+                .contentShape(Circle())
+                .onHover { closeHovered = $0 ? tab.id : (closeHovered == tab.id ? nil : closeHovered) }
                 .onTapGesture { workspace.update { $0.closeWorkspaceTab(tab.id) } }
                 .accessibilityAddTraits(.isButton)
                 .accessibilityAction { workspace.update { $0.closeWorkspaceTab(tab.id) } }
-            .foregroundStyle(theme[.textTertiary])
-            .opacity(isActive || hovered == tab.id ? 1 : 0)
+            .foregroundStyle(theme[closeHovered == tab.id ? .fg : .fgFaint])
+            .opacity(isActive || isHovered ? 1 : 0)
             .help(Text("workspaceTabs.close"))
             .accessibilityLabel(Text("workspaceTabs.close"))
             .accessibilityIdentifier("workspaceTabs.close.\(name)")
         }
-        .padding(.horizontal, metrics.space(.m))
-        .frame(height: metrics.size(24))
+        .padding(.leading, metrics.size(8))
+        .padding(.trailing, metrics.size(4))
+        .frame(minWidth: metrics.size(96), maxWidth: metrics.size(190))
+        .frame(height: metrics.size(26))
         .background(
-            RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                .fill(theme[isActive ? .panel : (hovered == tab.id ? .panelHover : .bgSunken)])
+            RoundedRectangle(cornerRadius: radius)
+                .fill(isActive ? theme[.bgSunken] : theme[.panelHover].opacity(isHovered ? 1 : 0))
+                .shadow(color: isActive ? theme.shadow(.sm).color.color : .clear,
+                        radius: metrics.size(4), y: metrics.size(2))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                .strokeBorder(theme[isActive ? .border : .bgSunken], lineWidth: 1)
-        )
+        .overlay {
+            if isActive { RoundedRectangle(cornerRadius: radius).strokeBorder(theme[.borderStrong]) }
+        }
+        .offset(y: (isActive || isHovered) && metrics.style == .normal ? -1 : 0)
         .opacity(dragging == tab.id ? 0.5 : 1)
         .contentShape(Rectangle())
         .onHover { hovered = $0 ? tab.id : (hovered == tab.id ? nil : hovered) }
@@ -109,13 +119,9 @@ struct WorkspaceTabBar: View {
     private func navigationButton(_ symbol: String, label: LocalizedStringKey, id: String, enabled: Bool,
                                   action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(metrics.font(.caption).weight(.semibold))
-                .frame(width: metrics.size(20), height: metrics.size(20))
-                .contentShape(Rectangle())
+            Label(label, systemImage: symbol)
         }
-        .buttonStyle(.borderless)
-        .foregroundStyle(theme[enabled ? .textSecondary : .textQuaternary])
+        .buttonStyle(AletheIconButtonStyle(side: 24))
         .disabled(!enabled)
         .help(Text(label))
         .accessibilityLabel(Text(label))

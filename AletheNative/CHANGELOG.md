@@ -348,6 +348,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   faint group tags with a hairline rule, and a `PROJECTS` header with add-folder and new-project
   buttons (the footer button moved there). Working terminals show the dot-matrix spinner and unseen
   finished ones a check mark.
+- Workspace tabs match the web title-bar tabs (26 pt, muted until hovered, the active tab pressed into an
+  elevated bar, count pill, round close button) and the sub-tabs lane gets the web hover, selected card,
+  glowing accent bar and dashed add button.
 
 ### Fixed
 - The app now has its icon in Finder, Launchpad and the DMG, not only in the Dock while running.

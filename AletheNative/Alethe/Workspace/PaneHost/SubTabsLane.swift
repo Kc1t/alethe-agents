@@ -18,7 +18,7 @@ struct SubTabsLane: View {
     var body: some View {
         VStack(spacing: metrics.space(.xs)) {
             ScrollView(.vertical) {
-                VStack(spacing: metrics.space(.xs)) {
+                VStack(spacing: metrics.size(5)) {
                     ForEach(pane.tabs) { tab in
                         SubTabItem(tab: tab, isActive: tab.id == pane.activeTab?.id, isFocused: isFocused,
                                    canClose: pane.tabs.count > 1,
@@ -37,10 +37,14 @@ struct SubTabsLane: View {
                 Image(systemName: "plus")
                     .font(metrics.font(.caption).weight(.semibold))
                     .frame(width: metrics.size(26), height: metrics.size(26))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: metrics.size(6))
+                            .strokeBorder(theme[.borderStrong], style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+                    )
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(theme[.textTertiary])
+            .buttonStyle(.plain)
+            .foregroundStyle(theme[.fgFaint])
             .help(Text("subtabs.new"))
             .accessibilityLabel(Text("subtabs.new"))
             .accessibilityIdentifier("subtabs.new")
@@ -76,12 +80,16 @@ private struct SubTabItem: View {
         Button(action: onActivate) {
             Image(systemName: tab.agent == "shell" ? "terminal" : "sparkles")
                 .font(metrics.font(.footnote))
-                .foregroundStyle(theme[isActive ? AgentTokens.accent(for: tab.agent) : .textSecondary])
+                .foregroundStyle(theme[isActive || isHovered ? AgentTokens.accent(for: tab.agent) : .fgMuted])
                 .frame(width: metrics.size(26), height: metrics.size(26))
+                // Upstream: accent-soft on hover; the active item a selected card with an inset border.
                 .background(
-                    RoundedRectangle(cornerRadius: metrics.radius(.sm) * 1.5)
-                        .fill(theme[isActive ? .panelHover : .shapeTabsLaneBg])
+                    RoundedRectangle(cornerRadius: metrics.size(6))
+                        .fill(isActive ? theme[.surfaceCardSelected] : theme[.accentSoft].opacity(isHovered ? 1 : 0))
                 )
+                .overlay {
+                    if isActive { RoundedRectangle(cornerRadius: metrics.size(6)).strokeBorder(theme[.border]) }
+                }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -90,8 +98,9 @@ private struct SubTabItem: View {
                 // Accent bar on the lane's leading edge (upstream `.active::before`).
                 RoundedRectangle(cornerRadius: 1)
                     .fill(theme[isFocused ? .accent : .borderStrong])
-                    .frame(width: 2, height: metrics.size(16))
-                    .offset(x: -metrics.space(.xs) - 1)
+                    .frame(width: metrics.size(2), height: metrics.size(16))
+                    .shadow(color: isFocused ? theme[.accentRing] : .clear, radius: metrics.size(4))
+                    .offset(x: -metrics.size(5))
             }
         }
         .overlay(alignment: .bottomTrailing) {
