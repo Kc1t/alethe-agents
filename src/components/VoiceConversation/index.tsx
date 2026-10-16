@@ -16,13 +16,21 @@ import {
 } from '../../lib/tauri'
 import { VoiceConversationController } from '../../lib/voice/controller'
 import { decodeHudAction, encodeHudState, type HudViewState } from '../../lib/voice/hudState'
+import { isReadAloudShortcut } from '../../lib/voice/readAloud'
+import { restartVoiceSession } from '../../lib/voice/restartSessions'
 import {
   isAcceleratorRelease,
   matchesAccelerator,
   parseAccelerator,
 } from '../../lib/voice/shortcut'
 import { HUD_IDLE_HIDE_MS, voiceSurface } from '../../lib/voice/surface'
-import { listClaudeTargets, voiceTargetable } from '../../lib/voice/target'
+import {
+  inSidebarOrder,
+  listAgentTargets,
+  resolveTarget,
+  staleSessions,
+  voiceTargetable,
+} from '../../lib/voice/target'
 import { createThrottle } from '../../lib/voice/throttle'
 import { withTtsChoice } from '../../lib/voice/voicePreferences'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -37,8 +45,15 @@ const NOW_TICK_MS = 500
 type VoiceConversationData = ReturnType<typeof useVoiceConversationStore.getState>
 
 const voiceStore = () => useVoiceConversationStore.getState()
-const isActive = (s: Pick<VoiceConversationData, 'capture' | 'turn' | 'permission' | 'notice'>) =>
-  s.capture !== 'idle' || s.turn !== 'idle' || s.permission !== null || s.notice !== null
+/** Something is happening: a turn, a card, a notice, or narration still speaking (a read-aloud). */
+const isActive = (
+  s: Pick<VoiceConversationData, 'capture' | 'turn' | 'permission' | 'notice' | 'narrationActive'>,
+) =>
+  s.capture !== 'idle' ||
+  s.turn !== 'idle' ||
+  s.permission !== null ||
+  s.notice !== null ||
+  s.narrationActive
 const inTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
 const shortcutLabel = (shortcut: string) =>
   formatShortcut(shortcut.replace(/CmdOrCtrl|CommandOrControl/i, 'Ctrl'))
@@ -69,6 +84,7 @@ function VoiceConversationSession() {
   const turn = useVoiceConversationStore((s) => s.turn)
   const target = useVoiceConversationStore((s) => s.target)
   const pinnedPtyId = useVoiceConversationStore((s) => s.pinnedPtyId)
+  const lastAgentPtyId = useVoiceConversationStore((s) => s.lastAgentPtyId)
   const transcript = useVoiceConversationStore((s) => s.transcript)
   const narration = useVoiceConversationStore((s) => s.narration)
   const narrationSpokenOffset = useVoiceConversationStore((s) => s.narrationSpokenOffset)
@@ -130,6 +146,18 @@ function VoiceConversationSession() {
     }
   }, [shortcut])
 
+  // Captured ahead of xterm, which would send Ctrl+Shift+L to the PTY as Ctrl+L (clear screen).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (voiceStore().shortcutRecording || !isReadAloudShortcut(event)) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat) void controllerRef.current?.readSelectionAloud()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [])
+
   const accelerator = useMemo(() => parseAccelerator(shortcut), [shortcut])
 
   // Fallback for when the OS would not register the shortcut; the global one covers it otherwise.
@@ -171,8 +199,23 @@ function VoiceConversationSession() {
     [projects, groups, ungroupedOrder],
   )
   const targets = useMemo(
-    () => listClaudeTargets(projects, voiceTargetable(runtime, hookedPtyIds)),
-    [projects, runtime, hookedPtyIds],
+    () => listAgentTargets(sidebarProjects, targetable),
+    [sidebarProjects, targetable],
+  )
+  // Launched while voice was off: listed with a restart, never resolved as the target.
+  const restartable = useMemo(
+    () => staleSessions(sidebarProjects, runtime, hookedPtyIds),
+    [sidebarProjects, runtime, hookedPtyIds],
+  )
+  // Resolved over every project, exactly as the controller resolves the send.
+  const current = useMemo(
+    () =>
+      resolveTarget(listAgentTargets(projects, targetable), {
+        pinnedPtyId,
+        activeTerminalId,
+        lastAgentPtyId,
+      }),
+    [projects, targetable, pinnedPtyId, activeTerminalId, lastAgentPtyId],
   )
 
   const onAction = useCallback((action: VoiceConversationAction) => {

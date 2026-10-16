@@ -158,15 +158,24 @@ export async function pasteAndSubmit(text: string, io: PromptSubmitIo): Promise<
   await io.write('\r')
 }
 
-/** Claude Code's permission and trust menus: "❯ 1. Yes", optionally inside a box border. */
-const CHOICE_PROMPT_LINE = /^\s*│?\s*[❯›>]?\s*1\.\s+Yes\b/
+/**
+ * Approval menus as agent TUIs draw them, optionally inside a box border: Claude Code and Codex
+ * number them ("❯ 1. Yes", "› 1. Yes, proceed"), others offer "1. Allow once" or a row of
+ * "Allow once … Reject" buttons.
+ */
+const CHOICE_PROMPT_LINES = [
+  /^\s*[│┃]?\s*[❯›>●]?\s*1[.)]\s+(?:Yes|Allow)\b/,
+  /\bAllow once\b.*\b(?:Reject|Deny)\b/i,
+]
 
 /**
- * True when the screen shows one of Claude Code's own choice menus. A submit's Enter there would
- * pick the highlighted option, i.e. approve a tool call nobody approved.
+ * True when the screen shows an agent's own choice menu. A submit's Enter there would pick the
+ * highlighted option, i.e. approve a tool call nobody approved.
  */
 export function looksLikeChoicePrompt(screen: string): boolean {
-  return screen.split('\n').some((line) => CHOICE_PROMPT_LINE.test(line))
+  return screen
+    .split('\n')
+    .some((line) => CHOICE_PROMPT_LINES.some((pattern) => pattern.test(line)))
 }
 
 /** The parts of an xterm.js `IBuffer` the screen read needs. */
@@ -193,6 +202,29 @@ export function readLiveScreen(buffer: ScreenBuffer, rows: number): string {
   for (let y = Math.max(0, buffer.baseY); y < end; y++) {
     const line = buffer.getLine(y)
     if (line) lines.push(line.translateToString(true))
+  }
+  return lines.join('\n')
+}
+
+/**
+ * The last `count` lines of the buffer (scrollback included), as rendered text, with soft-wrapped
+ * rows joined back into their line.
+ */
+export function readRecentLines(
+  buffer: Pick<ScreenBuffer, 'length'> & {
+    getLine: (
+      y: number,
+    ) => { translateToString: (trimRight?: boolean) => string; isWrapped?: boolean } | undefined
+  },
+  count: number,
+): string {
+  const lines: string[] = []
+  for (let y = Math.max(0, buffer.length - count); y < buffer.length; y++) {
+    const line = buffer.getLine(y)
+    if (!line) continue
+    const text = line.translateToString(true)
+    if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += text
+    else lines.push(text)
   }
   return lines.join('\n')
 }

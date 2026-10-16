@@ -19,6 +19,8 @@ type VoiceConversationData = {
   target: VoiceTarget | null
   /** A session the person picked on the panel; wins over the active pane until it closes. */
   pinnedPtyId: string | null
+  /** The last active pane with an agent in front; followed while the active pane has none. */
+  lastAgentPtyId: string | null
   /** Last thing heard; kept when it could not be sent, so it is not lost. */
   transcript: string
   /** Last thing narrated, shown as text too (and only as text when TTS is unavailable). */
@@ -55,6 +57,7 @@ export const INITIAL_VOICE_CONVERSATION: VoiceConversationData = {
   turn: 'idle',
   target: null,
   pinnedPtyId: null,
+  lastAgentPtyId: null,
   transcript: '',
   narration: '',
   narrationSpokenOffset: null,

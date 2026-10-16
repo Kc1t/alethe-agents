@@ -4,6 +4,7 @@ import {
   looksLikeChoicePrompt,
   pasteAndSubmit,
   readLiveScreen,
+  readRecentLines,
   SUBMIT_SETTLE_MS,
   TerminalPromptOpenError,
 } from './agentPromptDelivery'
@@ -105,6 +106,15 @@ describe('looksLikeChoicePrompt', () => {
     expect(looksLikeChoicePrompt(screen)).toBe(true)
   })
 
+  // Other harnesses: Codex numbers its approvals too, OpenCode offers a row of buttons.
+  it('recognises the approval menus of other harnesses', () => {
+    expect(looksLikeChoicePrompt(' › 1. Yes, proceed (y)\n   2. No (esc)')).toBe(true)
+    expect(looksLikeChoicePrompt('  ● 1. Allow once\n    2. Allow always')).toBe(true)
+    expect(looksLikeChoicePrompt('Permission required\n  Allow once   Allow always   Reject')).toBe(
+      true,
+    )
+  })
+
   it('ignores ordinary output and the empty prompt box', () => {
     expect(looksLikeChoicePrompt('⏺ I asked whether to merge: 1. Yes I fixed it')).toBe(false)
     expect(
@@ -149,5 +159,22 @@ describe('readLiveScreen', () => {
     const screen = readLiveScreen(bufferOf(lines, lines.length - 24, 23), 24)
     expect(screen.split('\n')).toHaveLength(24)
     expect(looksLikeChoicePrompt(screen)).toBe(false)
+  })
+})
+
+describe('readRecentLines', () => {
+  const buffer = (rows: Array<[string, boolean?]>) => ({
+    length: rows.length,
+    getLine: (y: number) =>
+      rows[y] && {
+        translateToString: () => rows[y][0],
+        isWrapped: rows[y][1] ?? false,
+      },
+  })
+
+  it('reads the last lines, scrollback included, joining soft-wrapped rows', () => {
+    const rows: Array<[string, boolean?]> = [['old'], ['first half '], ['second half', true], ['end']]
+    expect(readRecentLines(buffer(rows), 3)).toBe('first half second half\nend')
+    expect(readRecentLines(buffer(rows), 10)).toBe('old\nfirst half second half\nend')
   })
 })

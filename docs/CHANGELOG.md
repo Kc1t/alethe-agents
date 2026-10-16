@@ -12,6 +12,23 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Voice conversation with every agent.** Voice now talks to any agent Alethe runs in a pane —
+  Codex, OpenCode, Cursor, Kiro, Kimi, Grok, the other built-ins and custom agents — not only
+  Claude Code. The session picker lists them all with the agent's name. Claude Code keeps its full
+  narration and voice approvals; Codex is narrated from its session transcript; any other agent's
+  turn ends when its output goes quiet, and its reply is read off the terminal. When an agent stops
+  on its own approval menu, voice says it is asking in the terminal. Agent panes other than Claude,
+  Codex and OpenCode now also show the working indicator and the "agent done" notification.
+- **Read terminal text aloud.** With voice conversation on, right-clicking a terminal opens a menu:
+  with a selection, **Read aloud** and **Copy**; without one, **Read copied text aloud** and
+  **Paste**. Ctrl+Shift+L (⌘⇧L on macOS) reads the focused terminal's selection, or the clipboard
+  when nothing is selected. Agents that draw their own selection (Claude Code in full screen,
+  OpenCode) work too: what they copy is read, and Option+drag (Shift+drag on Windows and Linux)
+  still makes a terminal selection over them. Text is spoken with the narration voice and shown on
+  the voice panel or the HUD with its narration controls. With voice conversation off, right-click
+  keeps copying or pasting at once.
+- **Terminal clipboard writes (OSC 52).** Text an app in the terminal copies with OSC 52 now reaches
+  the system clipboard; clipboard reads by apps are never answered.
 - **Hugging Face model search.** Search Hugging Face from Preferences → Voice → Local models and
   download more offline voices (Piper, Kokoro, Kitten) and speech recognition models (Whisper,
   SenseVoice, Paraformer, Zipformer, Parakeet, NeMo CTC, Moonshine, Dolphin), with the same

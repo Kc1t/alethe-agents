@@ -1,3 +1,4 @@
+import { agentLabel as providerLabel } from './agentProviders'
 import { getLocale, translate } from './i18n'
 import type { AgentType } from './types'
 import { notifyAgentDone } from './notifications'
@@ -130,8 +131,7 @@ function buildNotificationBody(options: AgentCompletionMonitorOptions): string {
 
 function agentLabel(agent: Exclude<AgentType, 'shell'>): string {
   if (agent === 'claude') return 'Claude'
-  if (agent === 'codex') return 'Codex'
-  return 'OpenCode'
+  return providerLabel(agent)
 }
 
 function shortPath(path: string): string {

@@ -174,11 +174,17 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 ## Voice Conversation
 
 - Opt-in under Preferences → Voice; it transcribes with the provider chosen in the Conversation tab
-  (a local model by default) and uses the dictation microphone. It applies to Claude panes opened
-  after it is turned on.
+  (a local model by default) and uses the dictation microphone. Its hooks apply to Claude panes
+  opened after it is turned on.
+- Agents: any agent Alethe runs in a pane can be talked to (Claude Code, Codex, OpenCode, the other
+  built-ins and custom agents; never a shell). Claude Code gets the full narration and voice
+  approvals through its hooks. Codex is narrated from its session transcript. Any other agent is
+  driven through its terminal: its turn ends when its output goes quiet and its reply is read off
+  the screen; when it stops on its own approval menu, voice says it is asking in the terminal.
 - Capture: the in-window shortcut Ctrl+Shift+Space (⌘⇧Space on macOS) works as push-to-talk (hold)
   or toggle (press, press). Adding Alt sends the request to Jev.
-- Target: the active Claude pane by default, changeable from the picker on the panel.
+- Target: the active agent pane by default, changeable from the picker on the panel, which names
+  the agent of each session.
 - Panel: docked at the bottom of the main window with a live waveform, transcript, narration text and
   a permission card (Allow / Deny / Answer in the terminal).
 - Narration: Silent speaks none of Claude's text; Final answer only speaks just the reply; Normal and Detailed also
@@ -199,6 +205,24 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
   answering a permission there keeps your app focused, and it appears over full-screen apps. The
   shortcut is recorded by pressing it (Esc cancels; combinations taken by the OS or another app are
   refused). Narration speed is 1x to 2x, from the panel or the HUD.
+- Narration controls on the panel and the HUD: Mute (same pace, no sound, for the session), Pause /
+  Resume (anything new queues meanwhile; the system voice starts again from the sentence it had
+  reached) and Stop
+  (drops the rest). Pressing the shortcut still stops and clears narration. A tap too short to
+  record shows "Hold the shortcut while you speak" instead of an error.
+- Spoken-word highlight: the narration text on the panel and the HUD marks the word being spoken
+  (accent color, soft glow) and what was already said (muted tint), scrolling to keep the word in
+  view. Exact for cloud voices and Piper; estimated from the speaking time for the system voice.
+- Claude sessions started while voice was off show in the picker as needing a restart, with a
+  **Restart** action that resumes the same conversation with voice. Turning voice on offers to
+  restart all of them at once.
+- Read aloud: right-clicking a terminal offers **Read aloud** and **Copy** for a selection, or
+  **Read copied text aloud** and **Paste** without one; Ctrl+Shift+L (⌘⇧L) reads the focused
+  terminal's selection, else the clipboard. Agents that draw their own selection (Claude Code full
+  screen, OpenCode) are covered through what they copy (OSC 52 or the clipboard); Option+drag
+  (Shift+drag elsewhere) forces a terminal selection over them. Text is spoken with the narration
+  voice and shown on the panel or the HUD with the narration controls. Only while voice conversation
+  is on; otherwise right-click copies or pastes at once.
 - Platform notes: Linux builds need `libspeechd-dev`; the macOS bundle declares microphone usage.
 
 ### Voice providers

@@ -12,7 +12,7 @@ const basename = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? 
 const str = (value: unknown): string | null =>
   typeof value === 'string' && value.trim() ? value.trim() : null
 
-/** Turns Claude's markdown into something worth hearing: no syntax, no code, no tables. */
+/** Turns an agent's markdown into something worth hearing: no syntax, no code, no tables. */
 export function speakableText(markdown: string, t: Translate): string {
   const lines = markdown
     .replace(/```[\s\S]*?(?:```|$)/g, `\n${t('voice.narration.codeBlock')}\n`)

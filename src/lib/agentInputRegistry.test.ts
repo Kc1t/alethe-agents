@@ -5,6 +5,7 @@ import { agentInputFor, registerAgentInput } from './agentInputRegistry'
 const input = () => ({
   submit: vi.fn(async () => undefined),
   interrupt: vi.fn(async () => undefined),
+  readScreen: vi.fn(() => ''),
 })
 
 describe('agent input registry', () => {

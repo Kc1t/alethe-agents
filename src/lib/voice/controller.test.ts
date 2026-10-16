@@ -59,29 +59,54 @@ const events = vi.hoisted(() => ({
 }))
 vi.mock('@tauri-apps/api/event', () => events)
 
-const input = { submit: vi.fn(async () => undefined), interrupt: vi.fn(async () => undefined) }
+const input = {
+  submit: vi.fn(async () => undefined),
+  interrupt: vi.fn(async () => undefined),
+  readScreen: vi.fn(() => ''),
+}
 vi.mock('../agentInputRegistry', () => ({ agentInputFor: vi.fn(() => input) }))
 
 const target = {
   ptyId: 'pty-1',
   projectId: 'p',
   terminalId: 't',
+  tabId: 'a',
+  tabActive: true,
+  agent: 'claude',
   label: 'P · Claude',
   cwd: '/w',
   sessionId: 's1',
 }
-const otherTarget = { ...target, ptyId: 'pty-2', terminalId: 't2', label: 'Q · Claude' }
+/** Claude in a background tab of a pane in another project. */
+const otherTarget = {
+  ...target,
+  ptyId: 'pty-2',
+  projectId: 'q',
+  terminalId: 't2',
+  tabId: 'b',
+  tabActive: false,
+  label: 'Q · Claude',
+}
+/** Targets a test adds (another harness); cleared after each test. */
+let extraTargets: (typeof target)[] = []
 let currentTarget = target
-vi.mock('./target', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./target')>()),
-  listClaudeTargets: vi.fn((_projects: unknown, usable: (ptyId: string) => boolean) =>
-    [target, otherTarget].filter((item) => usable(item.ptyId)),
-  ),
-  resolveTarget: vi.fn(
-    (candidates: (typeof target)[]) =>
-      candidates.find((item) => item.ptyId === currentTarget.ptyId) ?? null,
-  ),
-}))
+/** Off: the target is whatever `currentTarget` says. On: the real pin/active-pane resolution. */
+let realResolve = false
+vi.mock('./target', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./target')>()
+  return {
+    ...actual,
+    listAgentTargets: vi.fn(
+      (_projects: unknown, usable: (ptyId: string, agent: string) => boolean) =>
+        [target, otherTarget, ...extraTargets].filter((item) => usable(item.ptyId, item.agent)),
+    ),
+    resolveTarget: vi.fn((candidates: (typeof target)[], context) =>
+      realResolve
+        ? actual.resolveTarget(candidates, context)
+        : (candidates.find((item) => item.ptyId === currentTarget.ptyId) ?? null),
+    ),
+  }
+})
 
 const prefs = {
   language: 'en',
@@ -174,6 +199,7 @@ import {
 import { agentInputFor } from '../agentInputRegistry'
 import { PaneHiddenError, TerminalPromptOpenError } from '../agentPromptDelivery'
 import { VoiceConversationController } from './controller'
+import { setFocusedSelection } from './readAloud'
 
 const state = () => useVoiceConversationStore.getState()
 
@@ -187,6 +213,10 @@ describe('VoiceConversationController', () => {
     prefs.voiceVerbosity = 'silent'
     setStt('local', 'parakeet-tdt-0.6b-v3-int8', null)
     currentTarget = target
+    realResolve = false
+    extraTargets = []
+    terminals.byPtyId = { ...LIVE_RUNTIME }
+    input.readScreen.mockReturnValue('')
     controller = new VoiceConversationController()
     await controller.start()
   })
@@ -1243,6 +1273,147 @@ describe('VoiceConversationController', () => {
       await finishSpeaking(() => expect(state().turn).toBe('idle'))
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(spoken()).toEqual(['Done.'])
+    })
+  })
+
+  // Every harness Alethe runs can be talked to; only Claude Code has the hooks.
+  describe('other harnesses', () => {
+    const opencode = {
+      ...target,
+      ptyId: 'pty-5',
+      terminalId: 't5',
+      tabId: 'o',
+      agent: 'opencode',
+      label: 'P · OpenCode',
+    }
+    const codex = { ...opencode, ptyId: 'pty-6', agent: 'codex', label: 'P · Codex' }
+    const quiet = (ptyId: string) => {
+      const working = { ...terminals.byPtyId, [ptyId]: { alive: true, status: 'working' } }
+      terminals.byPtyId = { ...working, [ptyId]: { alive: true, status: 'waiting' } }
+      terminals.listener?.({ byPtyId: terminals.byPtyId }, { byPtyId: working })
+    }
+    const before = ['opencode v1', '> earlier question', 'earlier answer.'].join('\n')
+
+    beforeEach(() => {
+      extraTargets = [opencode, codex]
+      terminals.byPtyId = { ...LIVE_RUNTIME, 'pty-5': { alive: true }, 'pty-6': { alive: true } }
+      prefs.voiceVerbosity = 'final'
+    })
+
+    afterEach(() => {
+      tauri.agentTranscriptSnapshot.mockResolvedValue({
+        sessionId: 's1',
+        revision: 1,
+        unchanged: false,
+        firstIndex: 0,
+        messages: [],
+      })
+    })
+
+    it('sends to a running harness without voice hooks and holds no permission for it', async () => {
+      currentTarget = opencode
+      await speak('fix the build')
+      expect(input.submit).toHaveBeenCalledWith('fix the build')
+      expect(tauri.voiceSetTargets).toHaveBeenLastCalledWith([])
+      expect(state().turn).toBe('working')
+      expect(state().target?.ptyId).toBe('pty-5')
+    })
+
+    it('ends the turn when its output goes quiet and narrates the reply off its screen', async () => {
+      currentTarget = opencode
+      input.readScreen.mockReturnValue(before)
+      await speak('fix the build')
+      input.readScreen.mockReturnValue(
+        [before, '> fix the build', 'Fixed the build: the import was wrong.', 'esc to interrupt'].join(
+          '\n',
+        ),
+      )
+      quiet('pty-5')
+      await vi.waitFor(() =>
+        expect(tauri.ttsSpeak).toHaveBeenCalledWith(
+          'Fixed the build: the import was wrong.',
+          expect.anything(),
+        ),
+      )
+      ttsEnd(1)
+      await vi.waitFor(() => expect(state().turn).toBe('idle'))
+    })
+
+    it('says the harness is asking in its terminal when it stops on a choice menu', async () => {
+      currentTarget = opencode
+      await speak('delete the cache')
+      input.readScreen.mockReturnValue(['Permission required', 'Allow once   Allow always   Reject'].join('\n'))
+      quiet('pty-5')
+      await vi.waitFor(() =>
+        expect(tauri.ttsSpeak).toHaveBeenCalledWith(
+          'OpenCode is asking something in the terminal. Answer it there.',
+          expect.anything(),
+        ),
+      )
+    })
+
+    it('ignores a quiet Claude pane: its turn ends on the Stop hook', async () => {
+      await speak('fix the build')
+      quiet('pty-1')
+      await Promise.resolve()
+      expect(state().turn).toBe('working')
+    })
+
+    it('reads a Codex transcript and speaks its last answer when the output goes quiet', async () => {
+      currentTarget = codex
+      await speak('fix the build')
+      expect(tauri.agentTranscriptSnapshot).toHaveBeenCalledWith('codex', '/w', 's1', null)
+      tauri.agentTranscriptSnapshot.mockResolvedValue({
+        sessionId: 's1',
+        revision: 2,
+        unchanged: false,
+        firstIndex: 0,
+        messages: [{ role: 'assistant', text: 'Done, the build passes.' }] as never,
+      })
+      quiet('pty-6')
+      await vi.waitFor(() =>
+        expect(tauri.ttsSpeak).toHaveBeenCalledWith('Done, the build passes.', expect.anything()),
+      )
+    })
+  })
+
+  describe('read aloud', () => {
+    it('reads a terminal selection as prose, whatever the verbosity', async () => {
+      prefs.voiceVerbosity = 'silent'
+      useVoiceConversationStore.setState({ hudDismissed: true })
+      controller.readAloud('│ The build failed because the\n│ import path was wrong. │')
+      await vi.waitFor(() =>
+        expect(tauri.ttsSpeak).toHaveBeenCalledWith(
+          'The build failed because the import path was wrong.',
+          expect.anything(),
+        ),
+      )
+      expect(state().hudDismissed).toBe(false)
+      expect(state().narrationActive).toBe(true)
+    })
+
+    it('the shortcut reads the focused selection, else the clipboard', async () => {
+      const release = setFocusedSelection(() => 'Selected in the terminal.')
+      await controller.readSelectionAloud()
+      expect(tauri.ttsSpeak).toHaveBeenLastCalledWith('Selected in the terminal.', expect.anything())
+      release()
+      tauri.readClipboardText.mockResolvedValueOnce('Copied by the TUI.')
+      controller.stopSpeaking()
+      await controller.readSelectionAloud()
+      await vi.waitFor(() =>
+        expect(tauri.ttsSpeak).toHaveBeenLastCalledWith('Copied by the TUI.', expect.anything()),
+      )
+    })
+
+    it('the shortcut says there is nothing to read', async () => {
+      await controller.readSelectionAloud()
+      expect(state().notice).toEqual({ key: 'voice.conv.nothingToRead' })
+      expect(tauri.ttsSpeak).not.toHaveBeenCalled()
+    })
+
+    it('ignores a selection with nothing to say', () => {
+      controller.readAloud('──────\n│  │')
+      expect(tauri.ttsSpeak).not.toHaveBeenCalled()
     })
   })
 })

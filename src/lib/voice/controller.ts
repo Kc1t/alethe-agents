@@ -9,8 +9,13 @@ import {
   useVoiceConversationStore,
   type VoiceNotice,
 } from '../../stores/voiceConversationStore'
-import { agentInputFor } from '../agentInputRegistry'
-import { PaneHiddenError, TerminalPromptOpenError } from '../agentPromptDelivery'
+import { type AgentInput, agentInputFor } from '../agentInputRegistry'
+import {
+  looksLikeChoicePrompt,
+  PaneHiddenError,
+  TerminalPromptOpenError,
+} from '../agentPromptDelivery'
+import { agentLabel } from '../agentProviders'
 import { getLocale, translate } from '../i18n'
 import { sttChoiceFor } from '../speech/engine'
 import { isSpeechTooShort } from '../speech/errors'
@@ -33,6 +38,8 @@ import {
 } from '../tauri'
 import { cloudFailureMessage, forgetProviderKey } from './cloudErrors'
 import { estimateSpeechMs, Narrator, newAssistantTexts, type Translate } from './narrator'
+import { currentSelection, registerReadAloud } from './readAloud'
+import { PausableTimer } from './pausableTimer'
 import {
   answerAllowed,
   describeRequest,
@@ -44,10 +51,20 @@ import { isCloudProvider } from './providers'
 import { routeTranscript } from './routing'
 import { codePointLength, estimatedSpokenOffset, wordStartIn } from './spokenWords'
 import { nextCapture, nextTurn } from './stateMachine'
-import { listClaudeTargets, resolveTarget, type VoiceTarget, voiceTargetable } from './target'
+import {
+  hasVoiceHooks,
+  listAgentTargets,
+  resolveTarget,
+  type VoiceTarget,
+  voiceTargetable,
+} from './target'
+import { chunkForSpeech, readableTerminalText, screenReply } from './terminalText'
 
 const TRANSCRIPT_POLL_MS = 700
-/** Claude's TUI needs a moment after Esc before it takes new input. */
+/** Harnesses whose session transcript Alethe reads (`agent_transcript_snapshot`). */
+const transcriptAgent = (agent: string): 'claude' | 'codex' | null =>
+  agent === 'claude' || agent === 'codex' ? agent : null
+/** An agent's TUI needs a moment after Esc before it takes new input. */
 const INTERRUPT_SETTLE_MS = 300
 const SPOKEN_SUBJECT_CHARS = 120
 /** How long a session brought to front gets to mount its terminal before the send gives up. */
@@ -102,7 +119,13 @@ export class VoiceConversationController {
   private pollTarget: VoiceTarget | null = null
   private revision: number | null = null
   private cursor: number | null = null
-  private lastClaudePtyId: string | null = null
+  /** The last assistant text the transcript gave this turn; the reply when no Stop hook says it. */
+  private lastAssistantText = ''
+  /**
+   * For a harness without hooks: its terminal text when the prompt was sent, and the prompt.
+   * The reply is what its screen shows past them once its output goes quiet.
+   */
+  private screenTurn: { before: string; prompt: string } | null = null
   private jevPending = false
   private starting = false
   private releaseAfterStart = false
@@ -198,9 +221,13 @@ export class VoiceConversationController {
         const active = this.targets().find(
           (item) => item.tabActive && item.terminalId === ui.activeTerminal?.terminalId,
         )
-        if (active) this.lastClaudePtyId = active.ptyId
+        if (active) store().patch({ lastAgentPtyId: active.ptyId })
       }),
-      useTerminalsStore.subscribe(() => this.checkTargetAlive()),
+      useTerminalsStore.subscribe((terminals, previous) => {
+        this.checkTargetAlive()
+        this.checkTurnQuiet(terminals.byPtyId, previous.byPtyId)
+      }),
+      registerReadAloud((text) => this.readAloud(text)),
     )
   }
 
@@ -385,7 +412,7 @@ export class VoiceConversationController {
   }
 
   private targets(): VoiceTarget[] {
-    return listClaudeTargets(
+    return listAgentTargets(
       useProjectsStore.getState().projects,
       voiceTargetable(useTerminalsStore.getState().byPtyId, store().voiceHookedPtyIds),
     )
@@ -400,7 +427,10 @@ export class VoiceConversationController {
     }
   }
 
-  /** Shows the target pane the way the voice command bar does, so its PTY streams again. */
+  /**
+   * Shows the target pane the way the voice command bar does, with its agent tab in front, so its
+   * terminal mounts and its PTY streams again.
+   */
   private showTarget(target: VoiceTarget): void {
     const projects = useProjectsStore.getState()
     projects.setActiveProjectOnly(target.projectId)
@@ -415,7 +445,7 @@ export class VoiceConversationController {
     return resolveTarget(this.targets(), {
       pinnedPtyId: store().pinnedPtyId,
       activeTerminalId: useUiStore.getState().activeTerminal?.terminalId ?? null,
-      lastClaudePtyId: this.lastClaudePtyId,
+      lastAgentPtyId: store().lastAgentPtyId,
     })
   }
 
@@ -505,7 +535,8 @@ export class VoiceConversationController {
     const midTurn = store().turn !== 'idle' && store().target?.ptyId === target.ptyId
     if (!midTurn) await this.beginTurn(target, input, text)
     // Held before the Enter, so a permission request the prompt triggers at once is held too.
-    await voiceSetTargets([target.ptyId])
+    // Only Claude's hooks hold requests; another harness asks in its terminal.
+    await voiceSetTargets(hasVoiceHooks(target.agent) ? [target.ptyId] : [])
     try {
       await input.submit(text)
     } catch (cause) {
@@ -552,13 +583,23 @@ export class VoiceConversationController {
     await voiceSetTargets(running ? [running.ptyId] : []).catch(() => undefined)
   }
 
-  /** Marks where this turn starts in the transcript, so narration never re-reads an older turn. */
-  private async beginTurn(target: VoiceTarget): Promise<void> {
+  /**
+   * Marks where this turn starts in the transcript, so narration never re-reads an older turn,
+   * and keeps the screen as it was for a harness without hooks (see `screenTurn`).
+   */
+  private async beginTurn(target: VoiceTarget, input: AgentInput, prompt: string): Promise<void> {
     this.generation += 1
     const generation = this.generation
     this.pollTarget = null
     this.revision = null
     this.cursor = null
+    this.lastAssistantText = ''
+    this.screenTurn = hasVoiceHooks(target.agent) ? null : { before: input.readScreen(), prompt }
+    const provider = transcriptAgent(target.agent)
+    if (!provider) {
+      this.narrator.beginTurn()
+      return
+    }
     try {
       const snapshot = await agentTranscriptSnapshot(provider, target.cwd, target.sessionId, null)
       if (generation === this.generation) {
@@ -568,7 +609,7 @@ export class VoiceConversationController {
       }
     } catch {
       // No transcript: intermediate narration stays off this turn; the final answer still comes
-      // from the Stop hook.
+      // from the Stop hook (Claude) or the screen (any other harness).
     }
     this.narrator.beginTurn()
   }
@@ -699,13 +740,72 @@ export class VoiceConversationController {
     // A poll already in flight may hold this turn's last text; then one more read for the rest.
     if (this.pollInFlight) await this.pollInFlight
     await this.pollTranscript()
-    await this.narrator.onStop(finalText)
+    await this.narrator.onStop(finalText || this.lastAssistantText || this.screenAnswer())
     await this.closeTurn()
+  }
+
+  /**
+   * The reply of a harness without hooks, read off its screen; when the screen ends on one of its
+   * own choice menus, a line saying it is asking there instead (the menu is answered in the pane).
+   */
+  private screenAnswer(): string {
+    const turn = this.screenTurn
+    const target = store().target
+    if (!turn || !target) return ''
+    const screen = agentInputFor(target.ptyId)?.readScreen()
+    if (!screen) return ''
+    const agent = agentLabel(target.agent)
+    if (looksLikeChoicePrompt(screen.split('\n').slice(-30).join('\n'))) {
+      return t('voice.conv.agentAsksInTerminal', { agent })
+    }
+    return screenReply(turn.before, screen, turn.prompt)
+  }
+
+  /**
+   * A harness without hooks has no Stop: its turn ends when its completion monitor sees the
+   * output go quiet (`working` → `waiting`).
+   */
+  private checkTurnQuiet(
+    now: Record<string, { status?: string } | undefined>,
+    before: Record<string, { status?: string } | undefined>,
+  ): void {
+    const target = store().target
+    if (!target || hasVoiceHooks(target.agent) || store().turn === 'idle') return
+    if (before[target.ptyId]?.status !== 'working') return
+    if (now[target.ptyId]?.status !== 'waiting') return
+    void this.endTurn('')
+  }
+
+  /**
+   * The read-aloud shortcut: the focused terminal's selection (its own, or one its TUI copied),
+   * else whatever is on the clipboard.
+   */
+  async readSelectionAloud(): Promise<void> {
+    if (this.disposed) return
+    let text = currentSelection()
+    if (!text.trim()) text = await readClipboardText().catch(() => '')
+    if (this.disposed) return
+    if (!readableTerminalText(text)) {
+      store().patch({ hudDismissed: false, notice: { key: 'voice.conv.nothingToRead' } })
+      return
+    }
+    this.readAloud(text)
+  }
+
+  /** Reads text the person picked (a terminal selection) through the narration voice. */
+  readAloud(text: string): void {
+    if (this.disposed) return
+    const parts = chunkForSpeech(readableTerminalText(text))
+    if (parts.length === 0) return
+    // Shown again even if the HUD was closed: the person asked for it.
+    store().patch({ hudDismissed: false, notice: null })
+    this.narrator.read(parts)
   }
 
   private async closeTurn(): Promise<void> {
     this.generation += 1
     this.pollTarget = null
+    this.screenTurn = null
     // Untargeting first lets Rust's release of a still-held request find it in `heldRequests`.
     await voiceSetTargets([]).catch(() => undefined)
     const card = store().permission
@@ -721,6 +821,7 @@ export class VoiceConversationController {
     this.narrator.endTurn()
     this.generation += 1
     this.pollTarget = null
+    this.screenTurn = null
     this.terminalPrompts.delete(target.ptyId)
     for (const [requestId, ptyId] of this.heldRequests) {
       if (ptyId === target.ptyId) this.heldRequests.delete(requestId)
@@ -753,6 +854,8 @@ export class VoiceConversationController {
     const generation = this.generation
     try {
       const fresh = this.targets().find((item) => item.ptyId === target.ptyId) ?? target
+      const provider = transcriptAgent(fresh.agent)
+      if (!provider) return
       const snapshot = await agentTranscriptSnapshot(
         provider,
         fresh.cwd,
@@ -765,6 +868,7 @@ export class VoiceConversationController {
       if (snapshot.unchanged) return
       const next = newAssistantTexts(snapshot, this.cursor)
       this.cursor = next.cursor
+      this.lastAssistantText = next.texts[next.texts.length - 1] ?? this.lastAssistantText
       this.narrator.onAssistantText(next.texts)
     } catch {
       // An unreadable transcript only costs intermediate narration.

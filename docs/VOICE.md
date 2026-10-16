@@ -27,7 +27,7 @@ differences are listed in [§11](#11-differences-from-the-specs).
 
 | Feature | In one sentence |
 |---|---|
-| Voice conversation | Hold a shortcut, speak, and the transcript goes to the active Claude pane; Alethe narrates what Claude does and lets you answer its permission requests by voice or with a click. |
+| Voice conversation | Hold a shortcut, speak, and the transcript goes to the active agent pane (Claude Code, Codex, OpenCode or any other harness Alethe runs); Alethe narrates what the agent does and, for Claude, lets you answer its permission requests by voice or with a click. A terminal selection can be read aloud from its right-click menu. |
 | HUD + global shortcut | The shortcut works from any app; while Alethe is in the background a floating, non-activating HUD shows the conversation. |
 | Apple native STT | On macOS 12+, *Apple (native)* is a speech-to-text engine next to Parakeet and Zipformer: no download, on device only, one language at a time. |
 | Voice providers | Dictation, conversation and narration each pick a provider: local models (Parakeet, Zipformer, Whisper, Moonshine, Piper, Apple Speech, system voice) or a cloud API with the user's own key (OpenAI, ElevenLabs, Gemini, OpenRouter), with a local fallback when the cloud fails. |
@@ -110,8 +110,18 @@ to a PTY and never answers a permission by itself.
    - an interrupt word (`voiceInterruptWords`, default `stop`, `espera`, `cancela`) followed by
      punctuation or the end → `Esc` to Claude first, then the rest is sent;
    - otherwise → sent to the target pane.
-4. **Send.** Target = the active Claude pane, else the last focused one (`lib/voice/target.ts`),
-   switchable from the panel. Sending goes through `agentInputRegistry`, never raw PTY writes (§3.2).
+4. **Send.** Target (`lib/voice/target.ts`, `resolveTarget`) = the session picked on the panel or
+   HUD, else the active pane when an agent is its tab in front, else the last such pane. The picker
+   (`listAgentTargets`) lists every live agent (any tab type but `shell`/`wsl`; a Claude only when
+   voice-hooked) in any tab of any non-archived project, labelled with the agent's name unless the
+   pane or tab name already says it, in sidebar order (`inSidebarOrder`), after a *Follow active pane* option that unpins
+   (`{ kind: 'pin', ptyId: null }`); hidden projects and those of archived groups are not listed.
+   Picking a session switches the main window's workspace to it (project, tab, pane), even when the
+   pick comes from the HUD while another app is in front. Only the tab in front mounts a terminal
+   and registers its input, so a send to a session with no mounted terminal shows it, waits up to
+   2 s for its input to register (plus a short settle, so the choice-menu guard reads a replayed
+   screen) and then sends; only when that wait runs out is the person asked to say it again.
+   Sending goes through `agentInputRegistry`, never raw PTY writes (§3.2).
 5. **Narrate** (`lib/voice/narrator.ts`) from hook events and the session transcript (§3.3).
 6. **Approve** permission requests by voice or click (§3.4).
 
@@ -120,16 +130,21 @@ State machine (`lib/voice/stateMachine.ts`):
 from `working`, and `listening` reachable from `working` (talking mid-task: queue by default,
 `voiceMidTaskDefault: 'interrupt'` sends `Esc` first).
 
-### 3.2 Writing into Claude safely — `agentInputRegistry`
+### 3.2 Writing into an agent safely — `agentInputRegistry`
 
-`useXtermSession` registers, per Claude PTY, a `submit(text)` and an `interrupt()`:
+`useXtermSession` registers, per agent PTY (every tab type but `shell`/`wsl`), a `submit(text)`,
+an `interrupt()` and a `readScreen()` (the last 400 buffer lines, soft-wrapped rows joined, read by
+`readRecentLines`; see §3.8). It creates the `AgentCompletionMonitor` for the same PTYs, so every
+agent pane reports `working`/`waiting`:
 
 - `submit` uses the shared `pasteAndSubmit` helper (`lib/agentPromptDelivery.ts`): bracketed paste
   through `writePtyChunked`, 150 ms, one `\r`. The initial-prompt path uses the same helper and
   keeps its extra `\r` retries; **the voice path sends none**, because a stray Enter landing on a
   permission menu that opens a moment later would approve a tool call nobody approved.
 - Before the paste **and again right before the Enter**, the live screen is checked
-  (`readLiveScreen` + `looksLikeChoicePrompt`). If Claude's own numbered menu is showing, the send is
+  (`readLiveScreen` + `looksLikeChoicePrompt`, which knows Claude's and Codex's numbered menus —
+  `❯ 1. Yes`, `› 1. Yes, proceed` — `1. Allow once` and a row of `Allow once … Reject` buttons).
+  If such a menu is showing, the send is
   refused with `TerminalPromptOpenError`; a hidden pane (no output to check) refuses with
   `PaneHiddenError`. `Esc` is not guarded: on that menu it cancels, never approves.
 - The completion monitor is armed (`AgentCompletionMonitor.armForSubmit`) only once the Enter is
@@ -196,8 +211,135 @@ Spoken answers are parsed in English and Portuguese.
 
 `VoiceConversation` (container) + `VoiceConversationView` (pure view, also used by the HUD):
 waveform (`VoiceSpectrum`, extracted from the Jev bar), phase, transcript, narration text,
-permission card (Allow / Deny / Answer in the terminal), target picker, notices, stop-speaking and
-narration speed (1x–2x).
+permission card (Allow / Deny / Answer in the terminal), target picker (always shown, not
+searchable since the HUD takes no keyboard), notices, narration speed (1x–2x) and the narration
+controls (§3.6). In the HUD window (`embedded`) the view always renders — phase ("Ready" when
+idle), picker, last narration, controls and hint — because the window stays open until the main
+window hides it; before the first state arrives it shows a placeholder (drag strip, "Ready",
+close). The in-app panel shows while something is happening or there is a notice, transcript or
+card; the last narration alone does not keep it after the turn.
+
+A tap of the shortcut too short to record (under ~0.17 s) makes `speech_stop_and_transcribe` fail
+with the code `speech_too_short`; the conversation shows the `voice.conv.holdHint` notice and sends
+nothing. Dictation shows `dictation.tooShort`; the Jev bar records it in its history as a hint
+(not a failed entry) and raises no toast.
+
+### 3.6 Narration controls
+
+Three buttons beside the speed steps, routed like every HUD action (`voice_hud_action` →
+`decodeHudAction` → controller in the main window): `toggle-mute`, `toggle-pause` and
+`stop-speaking`. State lives in `voiceConversationStore` (`muted`, `narrationPaused`, not
+persisted) and is published to the HUD in `HudViewState`; a state without them decodes as unmuted
+and playing. The new commands (`tts_set_muted`, `tts_pause`, `tts_resume`) refuse any window but
+`main`.
+
+- **Mute** (`tts_set_muted`, kept in Rust for the session). One toggle at a time; the store
+  changes once Rust took it, and the controller re-sends it on start.
+  - Cloud and Piper: the player applies gain 0, so the queue drains at the same pace and the end is
+    still reported.
+  - System voice: volume 0 is set before each utterance. AVSpeechSynthesizer and WinRT read it per
+    utterance, so the item is spoken again from the sentence reached (`restartSentence`).
+  - speech-dispatcher's quietest volume is not silence: on Linux (or with no volume control) a
+    muted utterance is skipped and the estimate keeps the pace.
+- **Pause / Resume.** Cloud and Piper: `audio_out` holds the utterance — the render callback
+  outputs silence and takes nothing from the queue — and resume continues from the same sample; the
+  controller freezes the utterance's estimate timer (`PausableTimer`) meanwhile. A new `tts_speak`
+  keeps the pause (so a pause pressed as an item starts is not lost); only `tts_stop` and
+  `tts_resume` release it, and the controller releases it on start. System voice: the engine cannot
+  hold, so items are spoken whole and pause stops the utterance. The restart point is estimated:
+  the time since `tts://start` (or since `tts_speak` returned, when no start came) over the
+  item's estimated duration gives a share of its characters, rounded down to the start of the
+  sentence it falls in (`resumeFrom`; sentences end at `.`/`!`/`?`/`…` before a space, or at CJK
+  marks); resume speaks the text from there. While paused, new items queue and the turn does not
+  end. Pause is offered only while something is speaking or queued (`narrationActive`, published
+  to the HUD); a pause whose held utterance ends with nothing queued lets go by itself, so it never
+  outlives the narration (or keeps the Preferences **Test** buttons, disabled while paused, off).
+- **Stop** keeps today's behaviour: the rest is dropped. Stop and a sent transcript also clear
+  the pause, in the store and in Rust (`tts_stop` → `stop_and_release`). Pressing the shortcut
+  pauses (§3.1), so a press that sends nothing never loses the narration.
+
+### 3.7 Spoken-word highlight
+
+The narration text shows what was already said in a muted accent tint, the word being said in the
+accent color with a soft glow, and what is still to come in the normal text color; the box holds
+five lines and scrolls to keep that word in view. Tokens only (`--accent`, `--fg`, `--fg-muted`
+through `color-mix`); the glow fades in over 140 ms, which the OS reduced-motion setting and the
+app's **Reduced motion** preference (published to the HUD as `reducedMotion`) turn off.
+
+- **Position.** `voiceConversationStore.narrationSpokenOffset` is the code-point start of the
+  word being said in `narration` (`wordStartIn`), so the store and the HUD change once a word,
+  not once a character. Null shows plain text: before the utterance is heard, and when TTS is
+  unavailable. It is published in `HudViewState`; a state without it decodes as null.
+  `spokenParts` splits the text there: words are whitespace runs (punctuation stays with its
+  word) and an offset on whitespace takes the next word.
+- **Cloud voices and Piper (exact).** `split_for_tts_spans` gives each chunk its code-point start in
+  the utterance; `PcmQueue` records where each chunk's samples end and counts samples actually
+  played (not while paused, still while muted). `spoken_char_offset` maps that to a character
+  (past the audio queued so far it stays on the last character queued, so a gap while the next
+  chunk is synthesized keeps the word just said), and
+  `tts.rs` emits `tts://progress { id, charOffset }` about ten times a second while it moves, only
+  for the current id, until the utterance ends.
+- **System voice (estimated).** From `tts://start`, the controller estimates the offset every
+  100 ms at the narrator's pace (`SPEECH_MS_PER_CHAR`, scaled by the rate), leaving out held time,
+  until the engine reports progress of its own (a cloud utterance that fell back to the system
+  voice reports none). A pause stops the system voice, so the highlight stays where it was.
+- **Items.** Each item starts at its own offset once heard; a sentence said again after a pause
+  or mute starts where it sits in the item still shown. An item that ends by itself shows as all
+  spoken: on `tts://end`, or when the estimate runs out for an engine that reports no progress
+  (with the player reporting, its estimate running out does not count, as audio may still play).
+  One cut short (stop, barge-in) keeps its highlight where it stopped. HUD publishes stay
+  throttled at 100 ms.
+
+### 3.8 Harnesses other than Claude Code
+
+Only Claude Code has the voice hooks (`hasVoiceHooks` in `target.ts`): tool events, held
+permissions and `Stop`. Every other harness is a target as soon as its PTY runs, and the controller
+drives it through its terminal:
+
+- **Send** goes through the same `agentInputRegistry` submit (§3.2). `voice_set_targets` gets an
+  empty list, as nothing would hold a request for it.
+- **End of turn.** No `Stop` arrives: the turn ends when the pane's `AgentCompletionMonitor` moves
+  from `working` to `waiting` (output quiet for 4.5 s after the prompt), seen through the
+  `terminalsStore` subscription (`checkTurnQuiet`). A Claude pane going quiet is ignored.
+- **Narration.** Codex keeps a session transcript `handoff.rs` reads, so it is polled like Claude's
+  (`agent_transcript_snapshot('codex', …)`) and its last assistant text is the final answer. For
+  every other harness (or a Codex whose transcript gave nothing), `beginTurn` keeps
+  `readScreen()` and the prompt; at the end, `screenReply` (`lib/voice/terminalText.ts`) takes the
+  lines after the prompt's echo that were not on screen before, drops frames, spinners, key hints
+  and token/context meters, and keeps the last 1500 characters from a sentence start. That text is
+  spoken through `onStop` at every verbosity but `silent`.
+- **Its own approval menu.** When the screen ends on a choice menu, voice says
+  `voice.conv.agentAsksInTerminal` ("OpenCode is asking something in the terminal…") instead of
+  reading the screen; the menu is answered in the pane, and the next send is refused while it shows.
+- **Interrupt** sends `Esc`, as for Claude; the turn the Esc cut short ends at once.
+
+### 3.9 Read terminal text aloud — `lib/voice/readAloud.ts`
+
+- The controller registers a reader (`registerReadAloud`) while voice conversation is on. The
+  terminal's right-click handler (`useXtermSession`, capture phase so xterm's right-click word
+  select cannot replace a selected block) checks `canReadAloud()`: with a reader it opens the
+  `XTermView` menu — **Read aloud** and **Copy** for a selection, **Read copied text aloud** and
+  **Paste** (not in a read-only pane) without one. Without a reader it keeps the old behaviour
+  (copy at once, or paste with nothing selected).
+- **TUIs in mouse mode** (Claude Code full screen, OpenCode) draw their own selection, which xterm
+  never has. Three ways cover them: an OSC 52 handler keeps what the TUI copies as the pane's
+  selection until the next left click or key (and writes it to the clipboard; `?` queries are
+  never answered, payloads over 1 MB are dropped, `lib/osc52.ts`); **Read copied text aloud**
+  reads the clipboard (`read_clipboard_text`), for TUIs that copy natively; and
+  `macOptionClickForcesSelection` makes Option+drag an xterm selection on macOS (Shift+drag
+  elsewhere, xterm's default).
+- **Shortcut** `Ctrl+Shift+L` (`⌘⇧L` on macOS, `isReadAloudShortcut`), caught on `window` in the
+  capture phase by `VoiceConversation` so xterm never sends it as Ctrl+L.
+  `controller.readSelectionAloud` reads the selection of the terminal that last took focus
+  (`setFocusedSelection`/`currentSelection`: its xterm selection, else its OSC 52 one), else the
+  clipboard, else shows `voice.conv.nothingToRead`.
+- `controller.readAloud`: `readableTerminalText` drops TUI glyphs and joins the lines of each
+  paragraph, `chunkForSpeech` cuts it into parts of up to 400 characters at sentence ends, and
+  `Narrator.read` stops what was being narrated and queues the parts, whatever the verbosity.
+  `hudDismissed` is cleared so the HUD shows again.
+- Narration still speaking (`narrationActive`) now counts as activity for the surface and keeps
+  the in-app panel visible, so a read-aloud outside a turn shows on the panel (Alethe focused) or
+  the HUD (in the background) with the narration controls.
 
 ---
 

@@ -16,7 +16,12 @@ import styles from './VoiceConversation.module.css'
 
 export type VoiceConversationViewState = Omit<
   ReturnType<typeof useVoiceConversationStore.getState>,
-  'patch' | 'voiceHookedPtyIds' | 'hudDismissed' | 'idleSince' | 'shortcutRecording'
+  | 'patch'
+  | 'voiceHookedPtyIds'
+  | 'lastAgentPtyId'
+  | 'hudDismissed'
+  | 'idleSince'
+  | 'shortcutRecording'
 >
 
 export type VoiceConversationAction =
