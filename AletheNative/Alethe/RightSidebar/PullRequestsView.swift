@@ -40,7 +40,7 @@ struct PullRequestsView: View {
                     } label: {
                         Label("pullRequests.refresh", systemImage: "arrow.clockwise")
                     }
-                    .buttonStyle(AletheSidebarTabStyle(width: 24, height: 24))
+                    .buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 24))
                     .help("pullRequests.refresh").disabled(phase == .loading)
                 }
             } else {
@@ -150,7 +150,7 @@ struct PullRequestsView: View {
                     if let url = pr.browserURL { NSWorkspace.shared.open(url) }
                 } label: {
                     Label("pullRequests.open", systemImage: "arrow.up.right.square")
-                }.buttonStyle(AletheSidebarTabStyle(width: 26, height: 26))
+                }.buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 todoButton(pr).buttonStyle(AlethePanelActionStyle(accented: true))
             }.padding(.top, metrics.size(10))

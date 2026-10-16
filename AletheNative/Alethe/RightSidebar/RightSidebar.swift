@@ -168,7 +168,7 @@ struct RightSidebar: View {
                         } label: {
                             Label(PluginViewRegistry.title(for: tab), systemImage: webSymbol(tab))
                         }
-                        .buttonStyle(AletheSidebarTabStyle(selected: selected?.id == tab.id))
+                        .buttonStyle(AletheRightSidebarTabStyle(selected: selected?.id == tab.id))
                         .help(Text(PluginViewRegistry.title(for: tab)))
                         .accessibilityAddTraits(selected?.id == tab.id ? .isSelected : [])
                     }
@@ -183,7 +183,7 @@ struct RightSidebar: View {
                 } label: {
                     Label("rightSidebar.maximize", systemImage: "arrow.up.left.and.arrow.down.right")
                 }
-                .buttonStyle(AletheSidebarTabStyle())
+                .buttonStyle(AletheRightSidebarTabStyle())
                 .help(Text("rightSidebar.maximize"))
                 .accessibilityIdentifier("rightSidebar.maximize")
             }
@@ -195,7 +195,7 @@ struct RightSidebar: View {
             } label: {
                 Label("rightSidebar.close", systemImage: "sidebar.right")
             }
-            .buttonStyle(AletheSidebarTabStyle())
+            .buttonStyle(AletheRightSidebarTabStyle())
             .help(Text("rightSidebar.close"))
             .accessibilityIdentifier("rightSidebar.close")
         }

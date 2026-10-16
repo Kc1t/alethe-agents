@@ -437,8 +437,53 @@ public struct AletheActivitySpinner: View {
     }
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
+/// Left sidebar icon tabs and the compact layout switch (`NormalProjectSidebar.module.css`: the active
+/// tab gets a 1px border on `panel-hover`).
+public struct AletheSidebarTabStyle: ButtonStyle {
+    let isSelected: Bool
+    let width: CGFloat
+    let height: CGFloat
+    let bordered: Bool
+
+    public init(isSelected: Bool, width: CGFloat = 28, height: CGFloat = 26, bordered: Bool = true) {
+        self.isSelected = isSelected
+        self.width = width
+        self.height = height
+        self.bordered = bordered
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        LeftSidebarTabBody(configuration: configuration, isSelected: isSelected, width: width, height: height,
+                           bordered: bordered)
+    }
+}
+
+private struct LeftSidebarTabBody: View {
+    let configuration: ButtonStyleConfiguration
+    let isSelected: Bool
+    let width: CGFloat
+    let height: CGFloat
+    let bordered: Bool
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+    @State private var hovering = false
+
+    var body: some View {
+        configuration.label
+            .labelStyle(.iconOnly)
+            .font(metrics.font(size: 14))
+            .foregroundStyle(theme[isSelected || hovering ? .fg : .fgMuted])
+            .frame(width: metrics.size(width), height: metrics.size(height))
+            .background(theme[.panelHover].opacity(isSelected || hovering ? 1 : 0),
+                        in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                .strokeBorder(theme[.border].opacity(isSelected && bordered ? 1 : 0),
+                              lineWidth: metrics.size(1)))
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+    }
+}
+
 /// Compact title-bar pill (`TitleBar.module.css`: 22pt high, 8pt radius, 11pt mono).
 public struct AletheTitleBarPillStyle: ButtonStyle {
     private let iconOnly: Bool
@@ -468,39 +513,12 @@ private struct AletheTitleBarPillBody: View {
             .overlay(RoundedRectangle(cornerRadius: metrics.size(8))
                 .strokeBorder(theme[.borderStrong].opacity(hovering ? 1 : 0), lineWidth: metrics.size(1)))
             .onHover { hovering = $0 }
-/// Normal sidebar icon tabs and the compact layout switch.
-public struct AletheSidebarTabStyle: ButtonStyle {
-    let isSelected: Bool
-    let width: CGFloat
-    let height: CGFloat
-    let bordered: Bool
-    @State private var hovering = false
-    @Environment(\.theme) private var theme
-    @Environment(\.metrics) private var metrics
-
-    public init(isSelected: Bool, width: CGFloat = 28, height: CGFloat = 26, bordered: Bool = true) {
-        self.isSelected = isSelected
-        self.width = width
-        self.height = height
-        self.bordered = bordered
     }
+}
 
-    public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .labelStyle(.iconOnly)
-            .font(metrics.font(size: 14))
-            .foregroundStyle(theme[isSelected || hovering ? .fg : .fgMuted])
-            .frame(width: metrics.size(width), height: metrics.size(height))
-            .background(theme[.panelHover].opacity(isSelected || hovering ? 1 : 0),
-                        in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-            .onHover { hovering = $0 }
-            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                .strokeBorder(theme[.border].opacity(isSelected && bordered ? 1 : 0),
-                              lineWidth: metrics.size(1)))
-||||||| adcfecb
-=======
-/// Compact right-sidebar tab and utility button (`RightSidebar.module.css`).
-public struct AletheSidebarTabStyle: ButtonStyle {
+/// Right sidebar tab and utility button (`RightSidebar.module.css`: the active tab sits on `panel`
+/// with a strong border and a small shadow).
+public struct AletheRightSidebarTabStyle: ButtonStyle {
     public var selected: Bool
     public var width: CGFloat
     public var height: CGFloat
@@ -510,11 +528,11 @@ public struct AletheSidebarTabStyle: ButtonStyle {
         self.height = height
     }
     public func makeBody(configuration: Configuration) -> some View {
-        SidebarTabBody(configuration: configuration, selected: selected, width: width, height: height)
+        RightSidebarTabBody(configuration: configuration, selected: selected, width: width, height: height)
     }
 }
 
-private struct SidebarTabBody: View {
+private struct RightSidebarTabBody: View {
     let configuration: ButtonStyleConfiguration
     let selected: Bool
     let width: CGFloat
@@ -591,9 +609,9 @@ private struct PanelActionBody: View {
             .contentShape(Rectangle())
             .opacity(approval && !enabled ? 0.5 : 1)
             .onHover { hovering = $0 && enabled }
->>>>>>> mac-native-v2-ui-v3
-||||||| adcfecb
-=======
+    }
+}
+
 /// Compact Home quick-launch field, matching `.quickProject` and `.quickMode summary`.
 public struct AletheQuickFieldStyle: ButtonStyle {
     public init() {}
@@ -620,6 +638,5 @@ private struct AletheQuickFieldBody: View {
             .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
                 .strokeBorder(theme[hovering ? .accentBorder : .border], lineWidth: metrics.size(1)))
             .onHover { hovering = $0 }
->>>>>>> mac-native-v2-ui-v4
     }
 }

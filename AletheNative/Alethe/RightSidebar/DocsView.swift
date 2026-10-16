@@ -109,7 +109,7 @@ struct DocsView: View {
                             Label("rightSidebar.close", systemImage: "sidebar.right")
                         }
                         .accessibilityIdentifier("docs.close")
-                    }.buttonStyle(AletheSidebarTabStyle(width: 24, height: 24))
+                    }.buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 24))
                 }
                 if opened.count > 1 {
                     ScrollView(.horizontal) {
