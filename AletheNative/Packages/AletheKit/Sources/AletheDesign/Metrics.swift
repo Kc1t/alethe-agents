@@ -9,12 +9,15 @@ public struct Metrics: Hashable, Sendable {
 
     public let scale: CGFloat
     public let style: VisualStyle
+    public let interface: InterfaceStyle
     /// The user chose reduced motion, or macOS Reduce Motion is on.
     public let reducesMotion: Bool
 
-    public init(scale: CGFloat = 1, style: VisualStyle = .normal, reducesMotion: Bool = false) {
+    public init(scale: CGFloat = 1, style: VisualStyle = .normal, interface: InterfaceStyle = .web,
+                reducesMotion: Bool = false) {
         self.scale = min(max(scale, Self.minimumScale), Self.maximumScale)
         self.style = style
+        self.interface = interface
         self.reducesMotion = reducesMotion
     }
 
@@ -25,6 +28,9 @@ public struct Metrics: Hashable, Sendable {
     public enum Radius: CGFloat, CaseIterable, Sendable {
         case sm = 4, md = 8, lg = 14
     }
+
+    /// The web-identical interface is drawn (see `InterfaceStyle`).
+    public var isWebInterface: Bool { interface == .web }
 
     public func space(_ space: Space) -> CGFloat { space.rawValue * scale }
     /// Clean style is denser and flatter (upstream `visual-clean.css`: 3 / 4 / 6).

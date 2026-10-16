@@ -130,6 +130,12 @@ final class AppEnvironment {
         preferences?.document.visualStyle.flatMap(VisualStyle.init(rawValue:)) ?? .normal
     }
 
+    /// Web-identical or native interface. A per-Mac choice (not part of the imported preferences).
+    var interfaceStyle: InterfaceStyle = UserDefaults.standard.string(forKey: "interfaceStyle")
+        .flatMap(InterfaceStyle.init(rawValue:)) ?? .web {
+        didSet { UserDefaults.standard.set(interfaceStyle.rawValue, forKey: "interfaceStyle") }
+    }
+
     /// macOS Reduce Motion, kept current by `load`.
     private(set) var systemReducesMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 
@@ -142,7 +148,8 @@ final class AppEnvironment {
     }
 
     var metrics: Metrics {
-        Metrics(scale: CGFloat(preferences?.document.uiScale ?? 1), style: visualStyle, reducesMotion: reducesMotion)
+        Metrics(scale: CGFloat(preferences?.document.uiScale ?? 1), style: visualStyle, interface: interfaceStyle,
+                reducesMotion: reducesMotion)
     }
 
     /// Optional modules (P5-3); every gated surface reads this.

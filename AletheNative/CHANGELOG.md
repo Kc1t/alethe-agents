@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Settings › Appearance › Interface: "Alethe" (the same interface as on Windows and Linux, the default)
+  or "Native macOS" (system toolbar, sidebar and inspector).
 - Left sidebar with Home, Projects, Files and left-placement plugin tabs, Search, a project
   organization switch, Now Playing and a local profile menu with Preferences and profile switching.
 - Sidebar group creation and empty-state guidance; hover actions for adding projects and terminals,

@@ -29,6 +29,22 @@ struct AppearanceSettings: View {
             .disabled(environment.preferences == nil)
 
             Section {
+                Picker(selection: Binding { environment.interfaceStyle } set: { environment.interfaceStyle = $0 }) {
+                    ForEach(InterfaceStyle.allCases, id: \.self) { style in
+                        VStack(alignment: .leading) {
+                            Text(style.title)
+                            Text(style.detail).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .tag(style)
+                    }
+                } label: {
+                    Text("settings.appearance.interface")
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityIdentifier("settings.interface")
+            }
+
+            Section {
                 Picker(selection: Binding {
                     environment.visualStyle
                 } set: { style in
@@ -277,6 +293,22 @@ extension VisualStyle {
         switch self {
         case .normal: "settings.appearance.style.normal.detail"
         case .clean: "settings.appearance.style.clean.detail"
+        }
+    }
+}
+
+extension InterfaceStyle {
+    var title: LocalizedStringKey {
+        switch self {
+        case .web: "settings.appearance.interface.web"
+        case .mac: "settings.appearance.interface.mac"
+        }
+    }
+
+    var detail: LocalizedStringKey {
+        switch self {
+        case .web: "settings.appearance.interface.web.detail"
+        case .mac: "settings.appearance.interface.mac.detail"
         }
     }
 }
