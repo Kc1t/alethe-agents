@@ -34810,6 +34810,22 @@
           }
         }
       }
+    },
+    "sidebar.disclosure" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expand or collapse"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expandir ou recolher"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -25,7 +25,11 @@ struct LeftSidebar: View {
         selectedTab == "files" || pluginTabs.contains(where: { $0.id == selectedTab }) ? selectedTab : "projects"
     }
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: 0) {
             ScrollView(.horizontal) {
                 HStack(spacing: metrics.space(.xxs)) {
@@ -69,6 +73,107 @@ struct LeftSidebar: View {
         }
         .font(metrics.font(.body))
         .foregroundStyle(theme[.fg])
+    }
+
+    private var webBody: some View {
+        VStack(spacing: 0) {
+            ScrollView(.horizontal) {
+                HStack(spacing: metrics.size(4)) {
+                    Button { environment.toggleHome() } label: {
+                        Label("leftSidebar.home", systemImage: "house")
+                    }
+                    .buttonStyle(AletheSidebarTabStyle(isSelected: environment.showingHome))
+                    .help(Text("leftSidebar.home"))
+                    .accessibilityIdentifier("leftSidebar.home")
+                    webTab("projects", title: "leftSidebar.projects", symbol: "square.grid.3x3")
+                    webTab("files", title: "rightSidebar.files", symbol: "folder")
+                    ForEach(pluginTabs, id: \.id) { tab in
+                        webTab(tab.id, title: PluginViewRegistry.title(for: tab), symbol: tab.symbol)
+                    }
+                }
+                .padding(.horizontal, metrics.size(10))
+            }
+            .scrollIndicators(.hidden)
+            .frame(height: metrics.size(34))
+            .overlay(alignment: .bottom) { rule }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text("leftSidebar.navigation"))
+            Button { environment.editorRequest = .findJump } label: {
+                HStack(spacing: metrics.size(10)) {
+                    Image(systemName: "magnifyingglass")
+                        .font(metrics.font(size: 15))
+                        .foregroundStyle(theme[.textTertiary])
+                    Text("leftSidebar.search").font(metrics.font(size: 13, weight: .medium))
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, metrics.size(8))
+                .padding(.vertical, metrics.size(6))
+                .aletheRowBackground(isSelected: false)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme[.fgMuted])
+            .disabled(environment.workspace == nil)
+            .accessibilityIdentifier("leftSidebar.search")
+            .padding(.horizontal, metrics.size(8))
+            .padding(.vertical, metrics.size(6))
+            .overlay(alignment: .bottom) { rule }
+            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            webFooter
+        }
+        .foregroundStyle(theme[.fg])
+        .background(theme[.bg])
+    }
+
+    private var rule: some View {
+        Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
+    }
+
+    private func webTab(_ id: String, title: LocalizedStringKey, symbol: String) -> some View {
+        Button {
+            selectedTab = id
+            environment.showingHome = false
+        } label: { Label(title, systemImage: symbol) }
+        .buttonStyle(AletheSidebarTabStyle(isSelected: !environment.showingHome && effectiveTab == id))
+        .help(Text(title))
+        .accessibilityIdentifier("leftSidebar.tab.\(id)")
+        .accessibilityAddTraits(effectiveTab == id ? .isSelected : [])
+    }
+
+    private var webFooter: some View {
+        VStack(spacing: 0) {
+            if let project = selectedProject, project.panes.count >= 2 {
+                HStack(spacing: metrics.size(8)) {
+                    Text("leftSidebar.organization")
+                        .textCase(.uppercase)
+                        .font(metrics.font(size: 10, weight: .semibold))
+                        .tracking(metrics.size(0.6))
+                        .foregroundStyle(theme[.fgFaint])
+                    Spacer(minLength: 0)
+                    HStack(spacing: metrics.size(2)) {
+                        ForEach(PaneLayoutMode.allCases, id: \.self) { mode in
+                            Button { environment.workspace?.update { $0.setLayoutMode(mode, for: project.id) } } label: {
+                                Label(mode.title, systemImage: mode.symbol)
+                            }
+                            .buttonStyle(AletheSidebarTabStyle(isSelected: project.layout == mode,
+                                                              width: 24, height: 22, bordered: false))
+                            .help(Text(mode.title))
+                            .accessibilityIdentifier("leftSidebar.layout.\(mode.rawValue)")
+                            .accessibilityAddTraits(project.layout == mode ? .isSelected : [])
+                        }
+                    }
+                    .padding(metrics.size(2))
+                    .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                        .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                }
+                .padding(.horizontal, metrics.size(12))
+                .padding(.top, metrics.size(8))
+                .padding(.bottom, metrics.size(10))
+                .overlay(alignment: .top) { rule }
+            }
+            SidebarNowPlaying()
+            SidebarWebProfile()
+        }
     }
 
     private func tabButton(_ id: String, title: LocalizedStringKey, symbol: String) -> some View {
