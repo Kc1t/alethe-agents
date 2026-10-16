@@ -7,16 +7,37 @@ use base64::Engine as _;
 use serde_json::{json, Value};
 
 use super::http::{
-    auth_headers, safe_path_id, send, CloudError, CloudErrorKind, HttpBody, HttpMethod, HttpRequest,
+    auth_headers, safe_path_id, send, send_reply, CloudError, CloudErrorKind, HttpBody, HttpMethod,
+    HttpRequest,
 };
 use super::{openrouter, CloudProvider};
 use crate::audio_out::pcm16le_to_f32;
 
 /// Under every provider's single-request limit (OpenAI 4096, ElevenLabs 5000).
 pub const MAX_TTS_CHARS: usize = 4000;
+/// Narration's first chunk stays short, so its audio starts soon; the rest is synthesized while
+/// it plays.
+pub const FIRST_CHUNK_CHARS: usize = 220;
+/// Later chunks. Sentence-sized, so the spoken-word highlight (spread evenly over a chunk) stays
+/// close to the voice and each request ends well within the timeout.
+pub const CHUNK_CHARS: usize = 700;
+const _: () = assert!(FIRST_CHUNK_CHARS <= CHUNK_CHARS && CHUNK_CHARS < MAX_TTS_CHARS);
+/// Below this a sample counts as silence (about -46 dBFS).
+const SILENCE_LEVEL: f32 = 0.005;
+/// Silence kept before and after a chunk's speech, so onsets are not clipped and sentences keep a
+/// short pause between them.
+const LEAD_SILENCE_SECS: f32 = 0.05;
+const TAIL_SILENCE_SECS: f32 = 0.2;
 /// OpenAI, ElevenLabs and Gemini return 16-bit mono PCM at 24 kHz when asked for PCM. OpenRouter
-/// is asked for MP3 instead (its PCM rate is model-dependent) and plays at the decoded rate.
+/// is asked for MP3 instead (its PCM rate is model-dependent) and plays at the decoded rate, except
+/// for the models that only speak PCM (see [`openrouter_pcm_only`]).
 pub const CLOUD_PCM_RATE: u32 = 24_000;
+
+/// Gemini TTS behind OpenRouter refuses `response_format: "mp3"` (only `pcm`) and ignores `speed`,
+/// so it is asked for PCM, told apart by the reply's `Content-Type`, and sped up by the player.
+fn openrouter_pcm_only(model: &str) -> bool {
+    model.starts_with("google/")
+}
 const TIMEOUT: Duration = Duration::from_secs(30);
 const ELEVENLABS_SPEED: (f32, f32) = (0.7, 1.2);
 
@@ -209,6 +230,11 @@ pub fn speech_request(
             }),
         ),
         CloudProvider::Openrouter => {
+            let format = if openrouter_pcm_only(model) {
+                "pcm"
+            } else {
+                "mp3"
+            };
             let mut body = json!({
                 "model": model,
                 "input": text,
@@ -331,13 +357,63 @@ fn decode_mp3(body: &[u8]) -> Result<Pcm, CloudError> {
     }
 }
 
-pub fn parse_speech(provider: CloudProvider, body: &[u8]) -> Result<Pcm, CloudError> {
+/// Decodes an MP3 or WAV reply (the probe reads the container from the bytes; the MP3 hint only
+/// breaks ties) to mono samples at the stream's own rate.
+pub fn decode_audio(body: &[u8]) -> Result<Pcm, CloudError> {
+    decode_mp3(body)
+}
+
+/// Rate and channel count of a raw 16-bit PCM reply (`audio/pcm;rate=24000;channels=1`), or
+/// `None` when the reply is not raw PCM.
+fn raw_pcm_format(content_type: Option<&str>) -> Option<(u32, usize)> {
+    let content_type = content_type?.to_ascii_lowercase();
+    let mut parts = content_type.split(';').map(str::trim);
+    if !matches!(parts.next(), Some("audio/pcm" | "audio/l16")) {
+        return None;
+    }
+    let (mut rate, mut channels) = (CLOUD_PCM_RATE, 1);
+    for part in parts {
+        match part.split_once('=') {
+            Some(("rate", value)) => rate = value.parse().ok().filter(|r| *r > 0)?,
+            Some(("channels", value)) => channels = value.parse().ok().filter(|c| *c > 0)?,
+            _ => {}
+        }
+    }
+    Some((rate, channels))
+}
+
+/// Interleaved 16-bit PCM, mixed down to mono.
+fn decode_raw_pcm(body: &[u8], sample_rate: u32, channels: usize) -> Result<Pcm, CloudError> {
+    let samples: Vec<f32> = pcm16le_to_f32(body)
+        .chunks(channels)
+        .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+        .collect();
+    if samples.is_empty() {
+        return Err(CloudError::of(CloudErrorKind::Other));
+    }
+    Ok(Pcm {
+        samples,
+        sample_rate,
+    })
+}
+
+/// A speech reply as samples. `content_type` tells an OpenRouter PCM reply from an MP3 one.
+pub fn parse_speech(
+    provider: CloudProvider,
+    body: &[u8],
+    content_type: Option<&str>,
+) -> Result<Pcm, CloudError> {
     let pcm = |samples| Pcm {
         samples,
         sample_rate: CLOUD_PCM_RATE,
     };
     match provider {
-        CloudProvider::Openrouter => return decode_mp3(body),
+        CloudProvider::Openrouter => {
+            return match raw_pcm_format(content_type) {
+                Some((rate, channels)) => decode_raw_pcm(body, rate, channels),
+                None => decode_mp3(body),
+            }
+        }
         CloudProvider::Openai | CloudProvider::Elevenlabs => return Ok(pcm(pcm16le_to_f32(body))),
         CloudProvider::Gemini => {}
     }
@@ -353,9 +429,11 @@ pub fn parse_speech(provider: CloudProvider, body: &[u8]) -> Result<Pcm, CloudEr
 }
 
 /// The rate to declare to the player for audio decoded at `sample_rate`. Native speed when the
-/// provider has one; the remainder is applied by playing the audio faster or slower.
-pub fn playback_rate(provider: CloudProvider, rate: f32, sample_rate: u32) -> u32 {
+/// provider (or, behind OpenRouter, the model) has one; the remainder is applied by playing the
+/// audio faster or slower.
+pub fn playback_rate(provider: CloudProvider, model: &str, rate: f32, sample_rate: u32) -> u32 {
     let residual = match provider {
+        CloudProvider::Openrouter if openrouter_pcm_only(model) => rate,
         CloudProvider::Openai | CloudProvider::Openrouter => 1.0,
         CloudProvider::Elevenlabs => rate / rate.clamp(ELEVENLABS_SPEED.0, ELEVENLABS_SPEED.1),
         CloudProvider::Gemini => rate,
@@ -402,6 +480,59 @@ pub async fn fetch_voices(key: &str) -> Result<Vec<AccountVoice>, CloudError> {
     parse_voices(&send(voices_request(key), TIMEOUT).await?)
 }
 
+/// `text` in narration chunks: a short first one ([`FIRST_CHUNK_CHARS`]), then sentence-sized
+/// ones ([`CHUNK_CHARS`]), each with where it starts in `text`, in characters.
+pub fn split_for_speech(text: &str) -> Vec<(usize, String)> {
+    let Some((start, head)) = split_for_tts_spans(text, FIRST_CHUNK_CHARS)
+        .into_iter()
+        .next()
+    else {
+        return Vec::new();
+    };
+    let rest_from = start + head.chars().count();
+    let rest_byte = text
+        .char_indices()
+        .nth(rest_from)
+        .map_or(text.len(), |(byte, _)| byte);
+    let mut chunks = vec![(start, head)];
+    chunks.extend(
+        split_for_tts_spans(&text[rest_byte..], CHUNK_CHARS)
+            .into_iter()
+            .map(|(offset, chunk)| (rest_from + offset, chunk)),
+    );
+    chunks
+}
+
+/// Drops the silence providers put around speech (Gemini adds a lot), keeping a short margin. The
+/// player spreads a chunk's text evenly over its audio, so silence would push the highlight off
+/// the voice. Audio with no sample above the silence level is kept as it is.
+pub fn trim_silence(pcm: Pcm) -> Pcm {
+    let loud = |sample: &f32| sample.abs() > SILENCE_LEVEL;
+    let (Some(first), Some(last)) = (
+        pcm.samples.iter().position(loud),
+        pcm.samples.iter().rposition(loud),
+    ) else {
+        return pcm;
+    };
+    let frames = |secs: f32| (pcm.sample_rate as f32 * secs) as usize;
+    let start = first.saturating_sub(frames(LEAD_SILENCE_SECS));
+    let end = (last + 1 + frames(TAIL_SILENCE_SECS)).min(pcm.samples.len());
+    Pcm {
+        samples: pcm.samples[start..end].to_vec(),
+        sample_rate: pcm.sample_rate,
+    }
+}
+
+/// Worth one more try: the network, a timeout or a server-side error. A bad key, an exhausted
+/// quota or a refused request would fail the same way again.
+pub fn is_transient(error: &CloudError) -> bool {
+    match error.kind {
+        CloudErrorKind::Network | CloudErrorKind::Timeout => true,
+        CloudErrorKind::Other => error.status.is_none_or(|status| status >= 500),
+        CloudErrorKind::Auth | CloudErrorKind::Quota | CloudErrorKind::BadAudio => false,
+    }
+}
+
 pub async fn synthesize(
     provider: CloudProvider,
     model: &str,
@@ -411,13 +542,91 @@ pub async fn synthesize(
     rate: f32,
 ) -> Result<Pcm, CloudError> {
     let request = speech_request(provider, model, voice, key, text, rate)?;
-    parse_speech(provider, &send(request, TIMEOUT).await?)
+    let reply = send_reply(request, TIMEOUT).await?;
+    parse_speech(provider, &reply.body, reply.content_type.as_deref())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::voice_providers::http::HttpBody;
+
+    // The HUD highlights the word being spoken: each chunk says where it starts in the text, in
+    // characters (code points), so "é" and "語" count as one.
+    #[test]
+    fn split_spans_start_where_each_chunk_starts_in_the_text() {
+        let text = "Olá, é aqui. Então 語 segue. Fim.";
+        let spans = split_for_tts_spans(text, 14);
+        let chars: Vec<char> = text.chars().collect();
+        assert!(spans.len() > 1);
+        for (start, chunk) in &spans {
+            let len = chunk.chars().count();
+            let slice: String = chars[*start..*start + len].iter().collect();
+            assert_eq!(&slice, chunk);
+        }
+        assert_eq!(spans[0].0, 0);
+        let chunks: Vec<String> = spans.into_iter().map(|(_, chunk)| chunk).collect();
+        assert_eq!(chunks, split_for_tts(text, 14));
+        assert_eq!(
+            split_for_tts_spans("  Oi.", 100),
+            vec![(2, "Oi.".to_string())]
+        );
+    }
+
+    // A short first chunk starts the audio soon; sentence-sized ones follow, nothing lost.
+    #[test]
+    fn speech_chunks_start_short_then_grow_and_cover_the_text() {
+        let sentence = "Esta frase tem um tamanho razoável para o teste. ";
+        let text = sentence.repeat(40);
+        let chunks = split_for_speech(&text);
+        assert!(chunks.len() > 2);
+        assert!(chunks[0].1.chars().count() <= FIRST_CHUNK_CHARS);
+        assert!(chunks[1].1.chars().count() > FIRST_CHUNK_CHARS);
+        assert!(chunks.iter().all(|(_, c)| c.chars().count() <= CHUNK_CHARS));
+        let chars: Vec<char> = text.chars().collect();
+        for (start, chunk) in &chunks {
+            let slice: String = chars[*start..*start + chunk.chars().count()]
+                .iter()
+                .collect();
+            assert_eq!(&slice, chunk);
+        }
+        let joined: Vec<&str> = chunks.iter().map(|(_, c)| c.as_str()).collect();
+        assert_eq!(joined.join(" "), text.trim());
+        assert_eq!(split_for_speech("  Oi.  "), vec![(2, "Oi.".to_string())]);
+        assert!(split_for_speech("   ").is_empty());
+    }
+
+    #[test]
+    fn silence_around_speech_is_trimmed_to_a_short_margin() {
+        let rate = 1_000;
+        let mut samples = vec![0.0; 800];
+        samples.extend(vec![0.5; 100]);
+        samples.extend(vec![0.001; 900]);
+        let trimmed = trim_silence(Pcm {
+            samples,
+            sample_rate: rate,
+        });
+        // 50 ms before, the 100 samples of speech, 200 ms after.
+        assert_eq!(trimmed.samples.len(), 50 + 100 + 200);
+        assert_eq!(trimmed.samples[50], 0.5);
+        let silent = Pcm {
+            samples: vec![0.0; 10],
+            sample_rate: rate,
+        };
+        assert_eq!(trim_silence(silent.clone()), silent);
+    }
+
+    #[test]
+    fn only_transient_failures_are_retried() {
+        let error = |kind, status| CloudError { kind, status };
+        assert!(is_transient(&error(CloudErrorKind::Network, None)));
+        assert!(is_transient(&error(CloudErrorKind::Timeout, None)));
+        assert!(is_transient(&error(CloudErrorKind::Other, Some(503))));
+        assert!(is_transient(&error(CloudErrorKind::Other, None)));
+        assert!(!is_transient(&error(CloudErrorKind::Other, Some(400))));
+        assert!(!is_transient(&error(CloudErrorKind::Auth, Some(401))));
+        assert!(!is_transient(&error(CloudErrorKind::Quota, Some(429))));
+    }
 
     #[test]
     fn split_for_tts_keeps_short_text_whole() {
@@ -707,6 +916,46 @@ mod tests {
             pcm.samples.iter().any(|s| s.abs() > 0.05),
             "the tone (peak about -21 dBFS) is not silence"
         );
+    }
+
+    // Gemini behind OpenRouter refuses MP3; its PCM reply names its rate in the Content-Type.
+    #[test]
+    fn openrouter_gemini_asks_for_pcm_and_decodes_it_by_content_type() {
+        let request = speech_request(
+            CloudProvider::Openrouter,
+            "google/gemini-3.8-flash-lite-tts",
+            Some("Zephyr"),
+            "k",
+            "hi",
+            1.0,
+        )
+        .unwrap();
+        let HttpBody::Json(body) = request.body else {
+            panic!("json")
+        };
+        assert_eq!(body["response_format"], "pcm");
+
+        let mono = [0x00, 0x00, 0xff, 0x7f];
+        let pcm = parse_speech(
+            CloudProvider::Openrouter,
+            &mono,
+            Some("audio/pcm;rate=24000;channels=1"),
+        )
+        .unwrap();
+        assert_eq!((pcm.samples.len(), pcm.sample_rate), (2, 24_000));
+
+        let stereo = [0x00, 0x40, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00];
+        let pcm = parse_speech(
+            CloudProvider::Openrouter,
+            &stereo,
+            Some("audio/pcm; rate=16000; channels=2"),
+        )
+        .unwrap();
+        assert_eq!((pcm.samples.len(), pcm.sample_rate), (2, 16_000));
+        assert!((pcm.samples[0] - 0.5).abs() < 0.01);
+
+        assert!(parse_speech(CloudProvider::Openrouter, &[], Some("audio/pcm")).is_err());
+        assert!(parse_speech(CloudProvider::Openrouter, &mono, Some("audio/pcm;rate=0")).is_err());
     }
 
     #[test]

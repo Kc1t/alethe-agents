@@ -152,9 +152,20 @@ pub fn safe_path_id(id: &str) -> Result<&str, CloudError> {
     }
 }
 
+/// A 2xx reply: its body and its `Content-Type`, when the provider sent one.
+pub struct Reply {
+    pub body: Vec<u8>,
+    pub content_type: Option<String>,
+}
+
 /// Sends the request and returns the body of a 2xx reply. Errors carry no body text: provider
 /// error bodies can echo request content.
 pub async fn send(request: HttpRequest, timeout: Duration) -> Result<Vec<u8>, CloudError> {
+    send_reply(request, timeout).await.map(|reply| reply.body)
+}
+
+/// [`send`], keeping the reply's `Content-Type` (an audio format can be told only from it).
+pub async fn send_reply(request: HttpRequest, timeout: Duration) -> Result<Reply, CloudError> {
     let mut builder = match request.method {
         HttpMethod::Get => client().get(&request.url),
         HttpMethod::Post => client().post(&request.url),
@@ -202,11 +213,17 @@ pub async fn send(request: HttpRequest, timeout: Duration) -> Result<Vec<u8>, Cl
             status: Some(status),
         });
     }
-    response
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let body = response
         .bytes()
         .await
         .map(|bytes| bytes.to_vec())
-        .map_err(|_| CloudError::of(CloudErrorKind::Network))
+        .map_err(|_| CloudError::of(CloudErrorKind::Network))?;
+    Ok(Reply { body, content_type })
 }
 
 #[cfg(test)]

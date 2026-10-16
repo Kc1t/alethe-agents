@@ -305,10 +305,7 @@ pub async fn tts_speak(
         return speak_system(app, text, voice, rate, id).await;
     };
     stop_all(&app).await;
-    let model = model
-        .filter(|m| !m.trim().is_empty())
-        .or_else(|| catalog::default_model(cloud, "tts").map(str::to_string))
-        .unwrap_or_default();
+    let model = cloud_model(cloud, model);
     let rate = normalized_rate(rate);
     tauri::async_runtime::spawn(speak_cloud(app, id, cloud, model, voice, rate, text));
     Ok(id)
@@ -360,7 +357,7 @@ async fn speak_local(app: AppHandle, id: u64, local: LocalVoice, rate: f32, text
         return;
     }
     out.begin(id);
-    for (index, chunk) in tts_cloud::split_for_tts(&text, LOCAL_CHUNK_CHARS)
+    for (index, (start, chunk)) in tts_cloud::split_for_tts_spans(&text, LOCAL_CHUNK_CHARS)
         .into_iter()
         .enumerate()
     {
@@ -395,6 +392,111 @@ async fn speak_local(app: AppHandle, id: u64, local: LocalVoice, rate: f32, text
     out.close(id);
 }
 
+fn server_or_missing(server: Option<VoiceServer>) -> Result<VoiceServer, ServerErrorKind> {
+    server.ok_or(ServerErrorKind::Missing)
+}
+
+/// Reports a local server failure and, when nothing has played yet, speaks the whole text with the
+/// system voice under the same id. Logs and events carry the server id and error kind only.
+/// `server` must already be a `shown_server_id`.
+async fn fall_back_server(
+    app: AppHandle,
+    id: u64,
+    server: String,
+    kind: ServerErrorKind,
+    text: String,
+    rate: f32,
+) {
+    if !is_current(id) {
+        return;
+    }
+    let _ = crate::diagnostics::append_spawn_log(
+        &app,
+        &format!("voice tts: server {server} failed: {kind:?}"),
+    );
+    let _ = app.emit(
+        "voice://fallback",
+        serde_json::json!({ "usage": "narration", "provider": "server", "server": server, "reason": kind, "fallback": "system" }),
+    );
+    let _ = speak_system(app, text, None, Some(rate), id).await;
+}
+
+/// The server id for logs and events: the webview's string is shown only once it parses as an id.
+fn shown_server_id(raw: &str) -> String {
+    crate::voice_servers::id::ServerId::parse(raw)
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "invalid".into())
+}
+
+/// A local voice server, chunk by chunk (short chunks: a CPU-only server is slow). A failure
+/// before audio plays hands the text to the system voice; a later one stops where it is.
+async fn speak_server(
+    app: AppHandle,
+    id: u64,
+    server_id: String,
+    voice: Option<String>,
+    rate: f32,
+    text: String,
+) {
+    let shown = shown_server_id(&server_id);
+    let server = match server_or_missing(crate::voice_servers::find_active(&app, &server_id)) {
+        Ok(server) => server,
+        Err(kind) => return fall_back_server(app, id, shown, kind, text, rate).await,
+    };
+    let key = match crate::voice_servers::server_key(&app, &server).await {
+        Ok(key) => key,
+        Err(kind) => return fall_back_server(app, id, shown, kind, text, rate).await,
+    };
+    let Ok(out) = player(&app) else {
+        return fall_back_server(app, id, shown, ServerErrorKind::Other, text, rate).await;
+    };
+    if !is_current(id) {
+        return;
+    }
+    out.begin(id);
+    let mut started = false;
+    for (start, chunk) in tts_cloud::split_for_tts_spans(&text, LOCAL_CHUNK_CHARS) {
+        if !is_current(id) {
+            return;
+        }
+        match crate::voice_servers::client::synthesize(
+            &server,
+            key.as_deref(),
+            voice.as_deref(),
+            &chunk,
+            rate,
+        )
+        .await
+        {
+            Ok(pcm) => {
+                let pcm = tts_cloud::trim_silence(pcm);
+                let playback = crate::voice_servers::adapter::playback_rate(
+                    server.kind,
+                    rate,
+                    pcm.sample_rate,
+                );
+                out.push(id, &pcm.samples, playback, span_of(start, &chunk));
+                if !started {
+                    started = true;
+                    emit_start(&app, id);
+                    report_progress(app.clone(), Arc::clone(&out), id);
+                }
+            }
+            Err(kind) if !started => {
+                return fall_back_server(app, id, shown, kind, text, rate).await
+            }
+            Err(kind) => {
+                let _ = crate::diagnostics::append_spawn_log(
+                    &app,
+                    &format!("voice tts: server {shown} chunk failed: {kind:?}"),
+                );
+                break;
+            }
+        }
+    }
+    out.close(id);
+}
+
 /// Reports a cloud failure and, when nothing has played yet, speaks the whole text with the
 /// system voice under the same id. Logs carry the provider id and error class only.
 async fn fall_back(
@@ -420,6 +522,110 @@ async fn fall_back(
     let _ = speak_system(app, text, None, Some(rate), id).await;
 }
 
+/// What a chunk was synthesized with; a prefetched chunk is used only for the very same request.
+#[derive(Clone, Debug, PartialEq)]
+struct ChunkKey {
+    cloud: CloudProvider,
+    model: String,
+    voice: Option<String>,
+    rate: u32,
+    text: String,
+}
+
+impl ChunkKey {
+    fn new(cloud: CloudProvider, model: &str, voice: Option<&str>, rate: f32, text: &str) -> Self {
+        Self {
+            cloud,
+            model: model.to_string(),
+            voice: voice.map(str::to_string),
+            rate: rate.to_bits(),
+            text: text.to_string(),
+        }
+    }
+}
+
+type Synthesis = Result<tts_cloud::Pcm, CloudError>;
+type PendingChunk = Arc<tokio::sync::OnceCell<Synthesis>>;
+
+/// First chunks of what the narrator says next (`tts_prefetch`), synthesized while the current
+/// item plays so the next one starts without waiting for the network. A speak takes its chunk out,
+/// waiting for it when the synthesis is still running.
+static PREFETCHED: Mutex<Vec<(ChunkKey, PendingChunk)>> = Mutex::new(Vec::new());
+/// Only the next item or two is ever prefetched; older entries were skipped and are dropped.
+const PREFETCH_KEPT: usize = 4;
+
+fn take_prefetched(key: &ChunkKey) -> Option<PendingChunk> {
+    let mut cache = PREFETCHED.lock().unwrap_or_else(|e| e.into_inner());
+    let index = cache.iter().position(|(cached, _)| cached == key)?;
+    Some(cache.remove(index).1)
+}
+
+/// The pending synthesis for `key`, added when there is none; `true` when it was just added.
+fn prefetch_slot(key: ChunkKey) -> (PendingChunk, bool) {
+    let mut cache = PREFETCHED.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, pending)) = cache.iter().find(|(cached, _)| *cached == key) {
+        return (Arc::clone(pending), false);
+    }
+    if cache.len() >= PREFETCH_KEPT {
+        cache.remove(0);
+    }
+    let pending = PendingChunk::default();
+    cache.push((key, Arc::clone(&pending)));
+    (pending, true)
+}
+
+/// One chunk, from the prefetch cache when it holds it, else from the provider, with one more try
+/// after a transient failure.
+async fn synthesize_chunk(key: &ChunkKey, api_key: &str) -> Synthesis {
+    if let Some(pending) = take_prefetched(key) {
+        if let Ok(pcm) = pending.get_or_init(|| synthesize_once(key, api_key)).await {
+            return Ok(pcm.clone());
+        }
+    }
+    match synthesize_once(key, api_key).await {
+        Err(error) if tts_cloud::is_transient(&error) => synthesize_once(key, api_key).await,
+        result => result,
+    }
+}
+
+async fn synthesize_once(key: &ChunkKey, api_key: &str) -> Synthesis {
+    tts_cloud::synthesize(
+        key.cloud,
+        &key.model,
+        key.voice.as_deref(),
+        api_key,
+        &key.text,
+        f32::from_bits(key.rate),
+    )
+    .await
+    .map(tts_cloud::trim_silence)
+}
+
+/// The voice to ask for: ElevenLabs voices belong to the account, so without a choice it is the
+/// account's first one.
+async fn resolve_voice(
+    cloud: CloudProvider,
+    voice: Option<String>,
+    api_key: &str,
+) -> Result<Option<String>, CloudError> {
+    match (cloud, voice) {
+        (CloudProvider::Elevenlabs, None) => Ok(tts_cloud::fetch_voices(api_key)
+            .await?
+            .into_iter()
+            .next()
+            .map(|voice| voice.id)),
+        (_, voice) => Ok(voice),
+    }
+}
+
+/// The model to speak with: the one chosen, else the provider's default.
+fn cloud_model(cloud: CloudProvider, model: Option<String>) -> String {
+    model
+        .filter(|m| !m.trim().is_empty())
+        .or_else(|| catalog::default_model(cloud, "tts").map(str::to_string))
+        .unwrap_or_default()
+}
+
 async fn speak_cloud(
     app: AppHandle,
     id: u64,
@@ -434,12 +640,9 @@ async fn speak_cloud(
         Ok(None) => return fall_back(app, id, cloud, CloudErrorKind::Auth, text, rate).await,
         Err(_) => return fall_back(app, id, cloud, CloudErrorKind::Other, text, rate).await,
     };
-    let voice = match (cloud, voice) {
-        (CloudProvider::Elevenlabs, None) => match tts_cloud::fetch_voices(&key).await {
-            Ok(list) => list.into_iter().next().map(|voice| voice.id),
-            Err(error) => return fall_back(app, id, cloud, error.kind, text, rate).await,
-        },
-        (_, voice) => voice,
+    let voice = match resolve_voice(cloud, voice, &key).await {
+        Ok(voice) => voice,
+        Err(error) => return fall_back(app, id, cloud, error.kind, text, rate).await,
     };
     let out = match player(&app) {
         Ok(out) => out,
@@ -449,29 +652,82 @@ async fn speak_cloud(
         return;
     }
     out.begin(id);
-    for (index, chunk) in tts_cloud::split_for_tts(&text, tts_cloud::MAX_TTS_CHARS)
-        .into_iter()
-        .enumerate()
-    {
+    let mut started = false;
+    for (start, chunk) in tts_cloud::split_for_speech(&text) {
         if !is_current(id) {
             return;
         }
-        match tts_cloud::synthesize(cloud, &model, voice.as_deref(), &key, &chunk, rate).await {
+        let chunk_key = ChunkKey::new(cloud, &model, voice.as_deref(), rate, &chunk);
+        match synthesize_chunk(&chunk_key, &key).await {
             Ok(pcm) => {
-                let playback = tts_cloud::playback_rate(cloud, rate, pcm.sample_rate);
-                out.push(id, &pcm.samples, playback);
-                if index == 0 {
+                let playback = tts_cloud::playback_rate(cloud, &model, rate, pcm.sample_rate);
+                out.push(id, &pcm.samples, playback, span_of(start, &chunk));
+                if !started {
+                    started = true;
                     emit_start(&app, id);
                     report_progress(app.clone(), Arc::clone(&out), id);
                 }
             }
-            // Nothing played yet: hand the whole text to the system voice under the same id.
-            Err(error) if index == 0 => {
-                return fall_back(app, id, cloud, error.kind, text, rate).await
+            Err(error) => {
+                let _ = crate::diagnostics::append_spawn_log(
+                    &app,
+                    &format!("voice tts: {} chunk failed: {error}", cloud.id()),
+                );
+                // Nothing played yet: hand the whole text to the system voice under the same id.
+                if !started {
+                    return fall_back(app, id, cloud, error.kind, text, rate).await;
+                }
+                // Mid-utterance: skip what could not be said and go on with the rest, rather than
+                // leave the narration cut short.
             }
         }
     }
     out.close(id);
+}
+
+/// Synthesizes the first chunk of `text` ahead of its `tts_speak`, for a cloud voice only (local
+/// and system voices start quickly). Best effort: a failure is retried by the speak itself.
+#[tauri::command]
+pub async fn tts_prefetch(
+    webview: tauri::WebviewWindow,
+    app: AppHandle,
+    text: String,
+    voice: Option<String>,
+    rate: Option<f32>,
+    provider: Option<TtsProvider>,
+    model: Option<String>,
+) -> Result<(), String> {
+    crate::voice_hud::require_window(webview.label(), "main")?;
+    let Some(cloud) = provider.and_then(TtsProvider::cloud) else {
+        return Ok(());
+    };
+    let Some((_, chunk)) = tts_cloud::split_for_speech(&text).into_iter().next() else {
+        return Ok(());
+    };
+    let Ok(Some(api_key)) = keys::read_key_async(&app, cloud).await else {
+        return Ok(());
+    };
+    let model = cloud_model(cloud, model);
+    // Keyed by the resolved voice, as the speak keys its chunks.
+    let resolved = resolve_voice(cloud, voice, &api_key)
+        .await
+        .map_err(|error| error.to_string())?;
+    let key = ChunkKey::new(
+        cloud,
+        &model,
+        resolved.as_deref(),
+        normalized_rate(rate),
+        &chunk,
+    );
+    let (pending, added) = prefetch_slot(key.clone());
+    if added {
+        tauri::async_runtime::spawn(async move {
+            let _ = pending
+                .get_or_init(|| synthesize_once(&key, &api_key))
+                .await;
+        });
+    }
+    Ok(())
 }
 
 async fn stop_all(app: &AppHandle) {
@@ -631,7 +887,67 @@ pub async fn tts_voices(
 
 #[cfg(test)]
 mod tests {
-    use super::{matching_id, scaled_rate};
+
+    // A prefetched chunk is found only for the very same request, once, and the cache stays small.
+    #[test]
+    fn prefetched_chunks_match_their_request_and_are_taken_once() {
+        let key = |text: &str, rate: f32| {
+            ChunkKey::new(
+                CloudProvider::Openrouter,
+                "google/x-tts",
+                Some("Zephyr"),
+                rate,
+                text,
+            )
+        };
+        let (first, added) = prefetch_slot(key("prefetch test one.", 1.0));
+        assert!(added);
+        let (again, added) = prefetch_slot(key("prefetch test one.", 1.0));
+        assert!(!added && Arc::ptr_eq(&first, &again));
+        assert!(take_prefetched(&key("prefetch test one.", 1.5)).is_none());
+        assert!(take_prefetched(&key("prefetch test one.", 1.0)).is_some());
+        assert!(take_prefetched(&key("prefetch test one.", 1.0)).is_none());
+        for index in 0..PREFETCH_KEPT + 2 {
+            prefetch_slot(key(&format!("prefetch test filler {index}."), 1.0));
+        }
+        assert!(PREFETCHED.lock().unwrap().len() <= PREFETCH_KEPT);
+    }
+    use std::sync::Arc;
+
+    use super::{
+        local_failure_log, matching_id, prefetch_slot, scaled_rate, take_prefetched, ChunkKey,
+        CloudProvider, TtsProvider, PREFETCHED, PREFETCH_KEPT,
+    };
+
+    #[test]
+    fn server_is_a_provider_without_a_cloud() {
+        let provider: TtsProvider = serde_json::from_str("\"server\"").unwrap();
+        assert_eq!(provider, TtsProvider::Server);
+        assert!(provider.cloud().is_none());
+    }
+
+    #[test]
+    fn shown_server_id_hides_unparsed_input() {
+        assert_eq!(super::shown_server_id("V1StGXR8_Z5jdHi6B-myT"), "V1StGXR8_Z5jdHi6B-myT");
+        assert_eq!(super::shown_server_id("not an id\nINJECT"), "invalid");
+    }
+
+    #[test]
+    fn missing_server_reads_as_missing() {
+        assert_eq!(
+            super::server_or_missing(None),
+            Err(crate::voice_servers::error::ServerErrorKind::Missing)
+        );
+    }
+
+    #[test]
+    fn a_hub_voice_failure_is_logged_as_one() {
+        assert_eq!(
+            local_failure_log(true),
+            "voice tts: local hub model failed to load"
+        );
+        assert_eq!(local_failure_log(false), "voice tts: local failed");
+    }
 
     #[test]
     fn only_cloud_providers_map_to_a_cloud_id() {

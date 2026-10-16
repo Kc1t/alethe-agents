@@ -140,6 +140,23 @@ export type NarratorDeps = {
   /** Resolves when the utterance ended or was stopped; `shown` is the whole item it belongs to. */
   speak: (text: string, shown: string) => Promise<void>
   stop: () => void
+  /** Ends the wait for the utterance in flight without stopping it; the next speak replaces it. */
+  skip?: () => void
+  /** Prepares the item queued next while the current one plays (cloud voices). */
+  prefetch?: (text: string) => void
+  /** Holds the utterance in flight where it is (cloud and local voices). */
+  pauseSpeech?: () => void
+  resumeSpeech?: () => void
+  /**
+   * The engine cannot hold an utterance (the system voice): a pause stops it, and a resume speaks
+   * it again from the start of the sentence it had reached (`progress`, see `resumeFrom`).
+   */
+  restartsOnPause?: () => boolean
+  /** Share (0–1) of the utterance in flight already spoken, by its estimated duration. */
+  progress?: () => number
+  onPausedChange?: (paused: boolean) => void
+  /** Something is speaking or queued (a paused item counts); only then can it be paused. */
+  onActiveChange?: (active: boolean) => void
   t: Translate
   verbosity: () => VoiceVerbosity
   fillAfterMs: () => number
@@ -298,6 +315,8 @@ export class Narrator {
     if (front) this.queue.unshift(trimmed)
     else this.queue.push(trimmed)
     if (!front) this.lastQueued = trimmed
+    // Next in line behind what is speaking: get it ready now.
+    if (this.speaking && this.queue[0] === trimmed) this.deps.prefetch?.(trimmed)
     this.lastActivityAt = this.now()
     this.syncActive()
     void this.drain()
@@ -336,9 +355,18 @@ export class Narrator {
     this.speaking = true
     const generation = this.generation
     try {
-      while (this.queue.length > 0 && generation === this.generation) {
-        const next = this.queue.shift()!
-        await this.deps.speak(next).catch(() => undefined)
+      while (generation === this.generation && !this.paused) {
+        if (!this.current) {
+          const next = this.queue.shift()
+          if (next === undefined) break
+          const restarts = this.deps.restartsOnPause?.() ?? false
+          this.current = { text: next, remaining: next, restarts }
+        }
+        const current = this.current
+        this.interrupted = false
+        const next = this.queue[0]
+        if (next !== undefined) this.deps.prefetch?.(next)
+        await this.deps.speak(current.remaining, current.text).catch(() => undefined)
         this.lastActivityAt = this.now()
         if (generation !== this.generation || this.interrupted) continue
         this.current = null

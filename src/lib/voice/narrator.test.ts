@@ -187,6 +187,35 @@ describe('Narrator', () => {
     expect(spoken).toEqual(['Allow npm install?'])
   })
 
+  it('prefetches the item queued next while the current one speaks', async () => {
+    const prefetch = vi.fn()
+    let finish: () => void = () => undefined
+    const slow = new Narrator({
+      speak: () => new Promise<void>((resolve) => (finish = resolve)),
+      stop: vi.fn(),
+      prefetch,
+      t,
+      verbosity: () => 'normal',
+      fillAfterMs: () => 8000,
+    })
+    slow.read(['One.', 'Two.'])
+    expect(prefetch).toHaveBeenCalledWith('Two.')
+    slow.onAssistantText(['Three.'])
+    expect(prefetch).toHaveBeenCalledTimes(1)
+    finish()
+    await vi.advanceTimersByTimeAsync(0)
+    // "Two." speaks now, and "Three." is next.
+    expect(prefetch).toHaveBeenLastCalledWith('Three.')
+    slow.dispose()
+  })
+
+  it('reads text asked for in order, even in silent mode', async () => {
+    verbosity = 'silent'
+    narrator.read(['First part.', 'Second part.'])
+    await vi.runOnlyPendingTimersAsync()
+    expect(spoken).toEqual(['First part.', 'Second part.'])
+  })
+
   it('also speaks every tool start in detailed mode', async () => {
     verbosity = 'detailed'
     narrator.onToolStart({ tool_name: 'Read', tool_input: { file_path: '/x/README.md' } })

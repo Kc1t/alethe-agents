@@ -13,6 +13,21 @@ export function ttsSpeak(text: string, choice: TtsChoice): Promise<number> {
     rate: choice.rate,
     provider: choice.provider,
     model: choice.model || null,
+    server: choice.server ?? null,
+  })
+}
+
+/**
+ * Synthesizes the start of `text` ahead of its `ttsSpeak`, so the next narration item plays
+ * without waiting for a cloud voice. Does nothing for local and system voices.
+ */
+export async function ttsPrefetch(text: string, choice: TtsChoice): Promise<void> {
+  await invoke('tts_prefetch', {
+    text,
+    voice: choice.voice,
+    rate: choice.rate,
+    provider: choice.provider,
+    model: choice.model || null,
   })
 }
 

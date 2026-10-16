@@ -578,6 +578,7 @@ pub fn run() {
             speech_hub::speech_hub_search,
             speech_hub::speech_hub_resolve,
             tts::tts_speak,
+            tts::tts_prefetch,
             tts::tts_stop,
             tts::tts_pause,
             tts::tts_resume,

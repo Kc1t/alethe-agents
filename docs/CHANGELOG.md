@@ -467,6 +467,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Smoother cloud narration.** With a cloud voice (OpenAI, ElevenLabs, Gemini, OpenRouter) the
+  next narration item is prepared while the current one plays, so there is no pause between
+  them; speech starts sooner (a short first chunk) and the highlighted word stays on the voice
+  (shorter chunks, silence around each chunk trimmed). A slow voice is no longer cut off mid-text
+  by the next item, and a chunk that fails mid-text is retried once and otherwise skipped instead
+  of ending the narration.
+- **Google Gemini voices through OpenRouter narrate again.** They only answer in PCM, so asking for
+  MP3 failed and narration fell back to the system voice. Alethe now asks them for PCM, plays it at
+  the rate the reply declares, and applies the narration speed itself, since they ignore it.
 - **A keychain password prompt no longer freezes the Voice settings.** Cloud voice API keys are read
   only when a cloud voice is actually used (at most once per run), never at launch or to list
   OpenRouter's models, and a voice model list that cannot be read shows **Retry** instead of

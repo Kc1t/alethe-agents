@@ -8,6 +8,7 @@ const tauri = vi.hoisted(() => ({
   speechStopAndTranscribe: vi.fn(async () => 'fix the build'),
   speechStopCapture: vi.fn(async () => ({ samples: [], sampleRate: 16000, peak: 0 })),
   ttsSpeak: vi.fn(async () => 1),
+  ttsPrefetch: vi.fn(async () => undefined),
   ttsStop: vi.fn(async () => undefined),
   ttsPause: vi.fn(async () => undefined),
   ttsResume: vi.fn(async () => undefined),
@@ -643,6 +644,48 @@ describe('VoiceConversationController', () => {
       prefs.voiceTts = { provider: 'system', model: '', voice: null, rate: 1 }
       vi.useRealTimers()
     }
+  })
+
+  // A cloud voice slower than the estimate kept playing: the next item must not cut it off.
+  it('keeps waiting for a cloud utterance while the player reports progress', async () => {
+    vi.useFakeTimers()
+    prefs.voiceTts = { provider: 'openai', model: 'gpt-4o-mini-tts', voice: null, rate: 1 }
+    try {
+      controller.readAloud('Done.')
+      await vi.advanceTimersByTimeAsync(0)
+      ttsStart(1)
+      // The estimate for "Done." is about 2 s; the voice is still on its first letters at 20 s.
+      for (let second = 1; second <= 20; second += 1) {
+        await vi.advanceTimersByTimeAsync(1_000)
+        ttsProgress(1, 1)
+      }
+      expect(state().narrationActive).toBe(true)
+      ttsEnd(1)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(state().narrationActive).toBe(false)
+    } finally {
+      prefs.voiceTts = { provider: 'system', model: '', voice: null, rate: 1 }
+      vi.useRealTimers()
+    }
+  })
+
+  it('prefetches the next item for a cloud voice only', async () => {
+    prefs.voiceTts = { provider: 'openai', model: 'gpt-4o-mini-tts', voice: null, rate: 1 }
+    try {
+      controller.readAloud(`${'First part of the text. '.repeat(20)}Second part.`)
+      await vi.waitFor(() => expect(tauri.ttsPrefetch).toHaveBeenCalled())
+      expect(tauri.ttsPrefetch).toHaveBeenCalledWith(
+        expect.stringContaining('Second part.'),
+        prefs.voiceTts,
+      )
+    } finally {
+      prefs.voiceTts = { provider: 'system', model: '', voice: null, rate: 1 }
+    }
+    controller.stopSpeaking()
+    vi.mocked(tauri.ttsPrefetch).mockClear()
+    controller.readAloud(`${'First part of the text. '.repeat(20)}Second part.`)
+    await vi.waitFor(() => expect(tauri.ttsSpeak).toHaveBeenCalled())
+    expect(tauri.ttsPrefetch).not.toHaveBeenCalled()
   })
 
   it('does not wait forever for a cloud utterance that never starts', async () => {

@@ -32,6 +32,10 @@ import {
   speechStartCapture,
   speechStopAndTranscribe,
   speechStopCapture,
+  ttsPause,
+  ttsResume,
+  ttsSetMuted,
+  ttsPrefetch,
   ttsSpeak,
   ttsStop,
   voiceSetTargets,
@@ -74,7 +78,8 @@ const INPUT_POLL_MS = 100
 const INPUT_SETTLE_MS = 300
 /**
  * Cloud and local voices synthesize after `tts_speak` returns; this bounds the wait for their
- * first audio, so a start event that never comes cannot hold the narration forever.
+ * first audio (and for a later chunk while the player reports progress), so an event that never
+ * comes cannot hold the narration forever.
  */
 const TTS_START_GRACE_MS = 30_000
 /** Starts that arrived before their utterance's waiter was set; only the newest few matter. */
@@ -180,6 +185,15 @@ export class VoiceConversationController {
     this.narrator = new Narrator({
       speak: (text, shown) => this.speak(text, shown),
       stop: () => this.stopSpeech(),
+      skip: () => this.endSpeechWait(),
+      prefetch: (text) => this.prefetch(text),
+      pauseSpeech: () => this.holdSpeech(true),
+      resumeSpeech: () => this.holdSpeech(false),
+      // The system voice cannot hold an utterance; cloud and local voices play through the player.
+      restartsOnPause: () => prefs().voiceTts.provider === 'system',
+      progress: () => this.speechProgress(),
+      onPausedChange: (paused) => store().patch({ narrationPaused: paused }),
+      onActiveChange: (active) => store().patch({ narrationActive: active }),
       t,
       verbosity: () => prefs().voiceVerbosity,
       fillAfterMs: () => prefs().voiceFillAfterMs,
@@ -967,6 +981,63 @@ export class VoiceConversationController {
     // `tts_speak` has not returned this id yet.
     if (this.earlyStarts.size >= EARLY_STARTS_KEPT) this.earlyStarts.clear()
     this.earlyStarts.add(id)
+  }
+
+  /**
+   * The player's own position in the utterance in flight; from then on it replaces the estimate.
+   * A player that reports is alive: the utterance's timer is pushed out to what is left of it,
+   * plus room for a chunk still being synthesized, so a voice slower than the estimate is never
+   * cut off by the next item.
+   */
+  private onTtsProgress(id: number, charOffset: number): void {
+    const span = this.spokenSpan
+    if (this.disposed || !span || span.id !== id) return
+    span.exact = true
+    this.stopSpokenEstimate()
+    const reached = Math.min(span.length, Math.max(0, charOffset))
+    this.setSpokenOffset(span, span.base + reached)
+    const left = span.length > 0 ? 1 - reached / span.length : 0
+    this.speechTimer?.arm(this.speechEstimate * left + TTS_START_GRACE_MS)
+  }
+
+  /** Cloud voices only: local and system voices start without a network round trip. */
+  private prefetch(text: string): void {
+    const choice = prefs().voiceTts
+    if (this.ttsUnavailable || !isCloudProvider(choice.provider)) return
+    void ttsPrefetch(text, choice).catch(() => undefined)
+  }
+
+  /** Estimates the spoken word from the speaking time until the engine reports its own. */
+  private startSpokenEstimate(rate: number): void {
+    this.stopSpokenEstimate()
+    const span = this.spokenSpan
+    if (!span || span.exact) return
+    // Heard from now: its first word is the current one.
+    this.setSpokenOffset(span, span.base)
+    this.spokenTimer = setInterval(() => {
+      if (span !== this.spokenSpan || span.exact || this.speechStartedAt === null) return
+      const reached = estimatedSpokenOffset(this.speakingMs(), rate, span.length)
+      this.setSpokenOffset(span, span.base + reached)
+    }, SPOKEN_ESTIMATE_MS)
+  }
+
+  private stopSpokenEstimate(): void {
+    if (this.spokenTimer !== null) clearInterval(this.spokenTimer)
+    this.spokenTimer = null
+  }
+
+  /** Stores the start of the word `offset` falls in, so the panel updates once a word. */
+  private setSpokenOffset(span: { shown: string[] }, offset: number): void {
+    const word = wordStartIn(span.shown, offset)
+    if (store().narrationSpokenOffset !== word) store().patch({ narrationSpokenOffset: word })
+  }
+
+  /** How long the utterance in flight has been heard, its held (paused) time left out. */
+  private speakingMs(): number {
+    if (this.speechStartedAt === null) return 0
+    const now = Date.now()
+    const held = this.speechHeldMs + (this.speechHeldAt === null ? 0 : now - this.speechHeldAt)
+    return Math.max(0, now - this.speechStartedAt - held)
   }
 
   private stopSpeech(): void {
