@@ -16,7 +16,45 @@ struct SubTabsLane: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        VStack(spacing: metrics.space(.xs)) {
+        if metrics.isWebInterface { webLane } else { nativeLane }
+    }
+
+    private var webLane: some View {
+        ScrollView(.vertical) {
+            VStack(spacing: metrics.size(5)) {
+                ForEach(pane.tabs) { tab in
+                    SubTabItem(tab: tab, isActive: tab.id == pane.activeTab?.id, isFocused: isFocused,
+                               canClose: pane.tabs.count > 1,
+                               onActivate: { onActivate(tab.id) }, onClose: { onClose(tab.id) },
+                               onRestart: { onRestart(tab) })
+                }
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                        .font(metrics.font(size: 12))
+                        .frame(width: metrics.size(26), height: metrics.size(26))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.size(6))
+                            .strokeBorder(theme[.borderStrong], style: StrokeStyle(lineWidth: metrics.size(1), dash: [metrics.size(3), metrics.size(2)])))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(theme[.fgFaint])
+                .padding(.top, metrics.size(6))
+                .help(Text("subtabs.new"))
+                .accessibilityLabel(Text("subtabs.new"))
+                .accessibilityIdentifier("subtabs.new")
+            }
+            .padding(.vertical, metrics.size(6))
+            .frame(maxWidth: .infinity)
+        }
+        .scrollIndicators(.never)
+        .frame(width: metrics.size(36))
+        .background(theme[.shapeTabsLaneBg])
+        .overlay(alignment: .trailing) { theme[.shapeTabsLaneBorder].frame(width: metrics.size(1)) }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("subtabs.lane")
+    }
+
+    private var nativeLane: some View {
+        VStack(spacing: metrics.isWebInterface ? metrics.size(5) : metrics.space(.xs)) {
             ScrollView(.vertical) {
                 VStack(spacing: metrics.size(5)) {
                     ForEach(pane.tabs) { tab in
@@ -31,7 +69,7 @@ struct SubTabsLane: View {
                 .animation(Motion.animation(Motion.quick, reduceMotion: metrics.reducesMotion), value: pane.tabs.map(\.id))
             }
             .scrollIndicators(.never)
-            .frame(maxHeight: .infinity, alignment: .top)
+            .frame(maxHeight: metrics.isWebInterface ? nil : .infinity, alignment: .top)
 
             Button(action: onAdd) {
                 Image(systemName: "plus")
@@ -48,10 +86,11 @@ struct SubTabsLane: View {
             .help(Text("subtabs.new"))
             .accessibilityLabel(Text("subtabs.new"))
             .accessibilityIdentifier("subtabs.new")
+            .padding(.top, metrics.isWebInterface ? metrics.size(6) : 0)
             .padding(.bottom, metrics.space(.s))
         }
         .frame(width: metrics.size(36))
-        .frame(maxHeight: .infinity)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(theme[.shapeTabsLaneBg])
         .overlay(alignment: .trailing) {
             Rectangle().fill(theme[.shapeTabsLaneBorder]).frame(width: 1)
@@ -97,7 +136,7 @@ private struct SubTabItem: View {
             if isActive {
                 // Accent bar on the lane's leading edge (upstream `.active::before`).
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(theme[isFocused ? .accent : .borderStrong])
+                    .fill(theme[metrics.isWebInterface || isFocused ? .accent : .borderStrong])
                     .frame(width: metrics.size(2), height: metrics.size(16))
                     .shadow(color: isFocused ? theme[.accentRing] : .clear, radius: metrics.size(4))
                     .offset(x: -metrics.size(5))
@@ -118,7 +157,7 @@ private struct SubTabItem: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme[.textSecondary])
-                .offset(x: metrics.size(3), y: -metrics.size(3))
+                .offset(x: metrics.size(metrics.isWebInterface ? 4 : 3), y: -metrics.size(metrics.isWebInterface ? 4 : 3))
                 .help(Text("subtabs.close"))
                 .accessibilityLabel(Text("subtabs.close"))
                 .accessibilityIdentifier("subtabs.close")

@@ -1,4 +1,5 @@
 import AppKit
+import AletheDesign
 
 /// An invisible resize handle over the gap between two tracks. Reports the pointer's travel since
 /// mouse-down; the owner turns it into track sizes.
@@ -9,6 +10,38 @@ final class DividerView: NSView {
     var onDrag: ((CGFloat) -> Void)?
     var onEnd: (() -> Void)?
     private var start: CGPoint?
+    private var context: PaneHostContext?
+    private var hovering = false
+    private var tracking: NSTrackingArea?
+
+    func configure(context: PaneHostContext?) {
+        self.context = context
+        needsDisplay = true
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovering = true; needsDisplay = true }
+    override func mouseExited(with event: NSEvent) { hovering = false; needsDisplay = true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context, context.metrics.isWebInterface else { return }
+        let active = hovering || start != nil
+        if active { context.theme.nsColor(.accentSoft).setFill(); bounds.fill() }
+        context.theme.nsColor(active ? .accent : .borderStrong).withAlphaComponent(active ? 1 : 0.7).setFill()
+        let thickness = context.metrics.size(active ? 3 : 1)
+        let length = active ? context.metrics.size(36) : (axis == .vertical ? bounds.height : bounds.width)
+        let rect = axis == .vertical
+            ? CGRect(x: (bounds.width - thickness) / 2, y: (bounds.height - length) / 2, width: thickness, height: length)
+            : CGRect(x: (bounds.width - length) / 2, y: (bounds.height - thickness) / 2, width: length, height: thickness)
+        NSBezierPath(roundedRect: rect, xRadius: context.metrics.size(active ? 3 : 2), yRadius: context.metrics.size(active ? 3 : 2)).fill()
+    }
 
     init(axis: Axis) {
         self.axis = axis

@@ -32,8 +32,8 @@ struct ContentPaneHeader<Actions: View>: View {
         }
         .padding(.horizontal, metrics.space(.m))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .frame(height: metrics.size(28))
-        .background(theme[isFocused ? .bgElevated : .bgSunken])
+        .frame(height: metrics.size(metrics.isWebInterface ? 26 : 28))
+        .background(theme[metrics.isWebInterface || isFocused ? .bgElevated : .bgSunken])
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 4, coordinateSpace: .global)
@@ -59,7 +59,7 @@ struct ContentPaneButton: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(metrics.font(.caption).weight(.semibold))
-                .frame(width: metrics.size(18), height: metrics.size(18))
+                .frame(width: metrics.size(metrics.isWebInterface ? 20 : 18), height: metrics.size(metrics.isWebInterface ? 20 : 18))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)

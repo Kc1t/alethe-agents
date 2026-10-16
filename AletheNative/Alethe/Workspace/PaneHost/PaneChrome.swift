@@ -26,7 +26,7 @@ struct ContainerHeader: View {
                 .frame(width: metrics.size(7), height: metrics.size(7))
             Text(verbatim: project.name)
                 .font(metrics.font(size: 11, weight: .semibold))
-                .foregroundStyle(theme[isSelected ? .fg : .fgMuted])
+                .foregroundStyle(theme[metrics.isWebInterface || isSelected ? .fg : .fgMuted])
                 .lineLimit(1)
             Spacer(minLength: 0)
             if !project.namedGrids.isEmpty { gridMenu }
@@ -124,7 +124,7 @@ struct ContainerHeader: View {
         Button(action: action) {
             Label(label, systemImage: symbol)
         }
-        .buttonStyle(AletheIconButtonStyle(side: 20))
+        .buttonStyle(AletheIconButtonStyle(side: metrics.isWebInterface ? 16 : 20))
         .help(Text(label))
         .accessibilityLabel(Text(label))
         .accessibilityIdentifier(id)
@@ -157,8 +157,8 @@ struct CollapsedContainerStrip: View {
         }
         .padding(.vertical, metrics.space(.l))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
-        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border]))
+        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.isWebInterface ? 0 : metrics.radius(.md)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.isWebInterface ? 0 : metrics.radius(.md)).strokeBorder(theme[.border]))
         .contentShape(Rectangle())
         .onTapGesture(perform: onExpand)
         .gesture(
@@ -211,6 +211,86 @@ struct PaneHeader: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface { webHeader } else { nativeHeader }
+        }
+    }
+
+    private var webHeader: some View {
+        HStack(spacing: metrics.size(8)) {
+            HStack(spacing: metrics.size(6)) {
+                Image(systemName: "line.3.horizontal")
+                    .font(metrics.font(size: 12))
+                    .foregroundStyle(theme[.fgFaint])
+                Image(systemName: tab.agent == "shell" ? "terminal" : "sparkles")
+                    .font(metrics.font(size: 16))
+                    .foregroundStyle(theme[AgentTokens.accent(for: tab.agent)])
+                Text(verbatim: environment.terminals.displayName(of: tab))
+                    .font(metrics.font(size: 12, weight: .medium))
+                    .foregroundStyle(theme[.fg]).lineLimit(1)
+                if let folder = tab.workingDirectory, !folder.isEmpty {
+                    Text(verbatim: URL(filePath: folder).lastPathComponent)
+                        .font(metrics.monoFont(size: 10, weight: .medium))
+                        .foregroundStyle(theme[.fgFaint]).lineLimit(1)
+                        .padding(.horizontal, metrics.size(7))
+                        .padding(.vertical, metrics.size(1))
+                        .background(theme[.bgElevated], in: Capsule())
+                        .overlay(Capsule().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                        .frame(maxWidth: metrics.size(240))
+                }
+                AgentStatusGlyph(tab: tab.id)
+                if isRemoteShared { RemoteSharedGlyph() }
+            }
+            .padding(.horizontal, metrics.size(6))
+            .frame(height: metrics.size(26))
+            .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+            Spacer(minLength: 0)
+            HStack(spacing: metrics.size(2)) {
+                webAction("plus", "subtabs.newEllipsis", action: onNewSubTab)
+                webAction("sidebar.left", isLaneVisible ? "subtabs.hideLane" : "subtabs.showLane", action: onToggleLane)
+                    .disabled(isLaneVisible && !canHideLane)
+                webAction("arrow.up.left.and.arrow.down.right", isIsolated ? "pane.showAll" : "pane.showAlone", action: onToggleIsolation)
+                webAction("viewfinder", isInFocusMode ? "focusMode.exit" : "focusMode.enter", action: onToggleFocus)
+                if let onFillFreeSpace { webAction("arrow.up.left.and.arrow.down.right", "pane.fillFreeSpace", action: onFillFreeSpace) }
+                if let onSessionCost { webAction("dollarsign", "menu.terminal.sessionCost", action: onSessionCost) }
+                if let onHandoff { webAction("arrow.left.arrow.right", "menu.terminal.handoff", action: onHandoff) }
+                webAction("pause", "pane.disable", action: onDisable)
+                webAction("xmark", "pane.close", action: onClose).accessibilityIdentifier("pane.close")
+            }
+            .padding(.horizontal, metrics.size(3))
+            .frame(height: metrics.size(26))
+            .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        }
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2, perform: onToggleFocus)
+        .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
+            .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
+        .contextMenu {
+            if !gridTargets.isEmpty {
+                Menu("pane.moveToGrid") {
+                    ForEach(gridTargets) { target in
+                        Button { onMoveToGrid(target.grid) } label: {
+                            if let name = target.name { Text(verbatim: name) } else { Text("projectGrid.main") }
+                        }
+                    }
+                }
+            }
+            Toggle("remote.share", isOn: Binding(get: { isRemoteShared }, set: { _ in onToggleRemoteShared() }))
+                .accessibilityIdentifier("remote.share")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pane.header.\(tab.title ?? tab.agent)")
+    }
+
+    private func webAction(_ symbol: String, _ label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Label(label, systemImage: symbol) }
+            .buttonStyle(AletheIconButtonStyle(side: 20))
+            .help(Text(label)).accessibilityLabel(Text(label))
+    }
+
+    private var nativeHeader: some View {
         HStack(spacing: metrics.space(.s)) {
             identityChip
             AgentStatusGlyph(tab: tab.id)

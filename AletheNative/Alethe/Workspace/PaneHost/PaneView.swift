@@ -47,6 +47,21 @@ final class PaneView: NSView {
 
     private var headerHeight: CGFloat = 28
     private var laneWidth: CGFloat = 36
+    private let focusInset = CALayer()
+
+    private func style(focused: Bool, dropTarget: Bool, context: PaneHostContext) {
+        let web = context.metrics.isWebInterface
+        layer?.cornerRadius = web ? 0 : context.metrics.radius(.md)
+        layer?.borderWidth = web ? context.metrics.size(dropTarget ? 2 : 1) : (dropTarget ? 2 : 1)
+        layer?.borderColor = context.theme.nsColor(dropTarget ? .accent : focused ? (web ? .focusRing : context.focusBorder) : .border).cgColor
+        layer?.backgroundColor = context.theme.nsColor(.bgSunken).cgColor
+        if web && focused {
+            if focusInset.superlayer == nil { layer?.addSublayer(focusInset) }
+            focusInset.borderColor = context.theme.nsColor(.focusRing).withAlphaComponent(0.7).cgColor
+            focusInset.borderWidth = context.metrics.size(1)
+            focusInset.zPosition = 10
+        } else { focusInset.removeFromSuperlayer() }
+    }
     /// A file or page pane (Markdown…): one SwiftUI view in place of header, lane and terminal.
     private var contentHost: NSHostingView<AnyView>?
 
@@ -63,7 +78,7 @@ final class PaneView: NSView {
         guard let tab = pane.activeTab else { return }
         self.context = context
         let environment = context.environment
-        headerHeight = context.metrics.size(28)
+        headerHeight = context.metrics.size(context.metrics.isWebInterface ? 34 : 28)
         laneWidth = context.metrics.size(36)
         let isIsolated = context.workspace?.document.workspace.isolatedPaneID == pane.id
         header.rootView = context.hosted(PaneHeader(
@@ -86,10 +101,7 @@ final class PaneView: NSView {
             onDrag: onDrag))
         configureLane(pane: pane, project: project, focused: focused, context: context)
 
-        layer?.cornerRadius = context.metrics.radius(.md)
-        layer?.borderWidth = dropTarget ? 2 : 1
-        layer?.borderColor = context.theme.nsColor(dropTarget ? .accent : focused ? context.focusBorder : .border).cgColor
-        layer?.backgroundColor = context.theme.nsColor(.bgSunken).cgColor
+        style(focused: focused, dropTarget: dropTarget, context: context)
 
         let switched = tabID != nil && tabID != tab.id
         tabID = tab.id
@@ -135,10 +147,7 @@ final class PaneView: NSView {
         lane = nil
         overlay?.removeFromSuperview()
         overlay = nil
-        layer?.cornerRadius = context.metrics.radius(.md)
-        layer?.borderWidth = dropTarget ? 2 : 1
-        layer?.borderColor = context.theme.nsColor(dropTarget ? .accent : focused ? context.focusBorder : .border).cgColor
-        layer?.backgroundColor = context.theme.nsColor(.bgSunken).cgColor
+        style(focused: focused, dropTarget: dropTarget, context: context)
 
         let view: AnyView
         switch pane.content {
@@ -340,15 +349,23 @@ final class PaneView: NSView {
 
     override func layout() {
         super.layout()
+        let edge = context?.metrics.size(1) ?? 1
+        focusInset.frame = bounds.insetBy(dx: edge, dy: edge)
         if let contentHost {
             contentHost.frame = bounds
             return
         }
-        header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
+        let web = context?.metrics.isWebInterface == true
+        let inset = web ? context?.metrics.size(4) ?? 4 : 0
+        header.frame = CGRect(x: inset, y: inset, width: max(0, bounds.width - inset * 2), height: web ? context?.metrics.size(26) ?? 26 : headerHeight)
         let body = CGRect(x: 0, y: headerHeight, width: bounds.width, height: max(0, bounds.height - headerHeight))
         let leading = lane == nil ? 0 : min(laneWidth, body.width)
         lane?.frame = CGRect(x: 0, y: body.minY, width: leading, height: body.height)
-        content.frame = CGRect(x: leading, y: body.minY, width: body.width - leading, height: body.height)
+        let padding = context?.metrics
+        content.frame = CGRect(x: leading + (web ? padding?.size(8) ?? 8 : 0),
+                               y: body.minY + (web ? padding?.size(4) ?? 4 : 0),
+                               width: max(0, body.width - leading - (web ? padding?.size(14) ?? 14 : 0)),
+                               height: max(0, body.height - (web ? padding?.size(6) ?? 6 : 0)))
         overlay?.frame = content.frame
         if let offerBar {
             let height = offerBar.fittingSize.height

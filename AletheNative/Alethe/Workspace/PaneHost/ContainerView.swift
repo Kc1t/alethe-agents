@@ -8,6 +8,7 @@ import SwiftUI
 @MainActor
 final class ContainerView: NSView {
     let projectID: ProjectID
+    private let accentLine = CALayer()
     private let header = NSHostingView(rootView: AnyView(EmptyView()))
     private var emptyState: NSHostingView<AnyView>?
     private var panes: [PaneID: PaneView] = [:]
@@ -70,6 +71,21 @@ final class ContainerView: NSView {
                    owners: [PaneID: Project] = [:], showsHeader: Bool = true,
                    context: PaneHostContext, onHeaderDrag: @escaping (CGSize?) -> Void) {
         self.context = context
+        if context.metrics.isWebInterface {
+            wantsLayer = true
+            layer?.cornerRadius = 0
+            layer?.borderWidth = context.metrics.size(1)
+            layer?.borderColor = context.theme.nsColor(.border).cgColor
+            layer?.backgroundColor = context.theme.nsColor(.bg).cgColor
+            if accentLine.superlayer == nil { layer?.addSublayer(accentLine) }
+            accentLine.backgroundColor = context.theme.nsColor(project.color.token).cgColor
+            accentLine.opacity = 0.65
+            accentLine.zPosition = 10
+        } else {
+            layer?.borderWidth = 0
+            layer?.backgroundColor = nil
+            accentLine.removeFromSuperlayer()
+        }
         self.owners = owners
         self.showsHeader = showsHeader
         if let lastProject, lastProject.layout != project.layout { animateNextLayout = true }
@@ -136,14 +152,14 @@ final class ContainerView: NSView {
         needsLayout = true
     }
 
-    private var headerHeight: CGFloat { showsHeader ? context?.metrics.size(30) ?? 30 : 0 }
-    private var gap: CGFloat { context?.metrics.space(.s) ?? 6 }
+    private var headerHeight: CGFloat { showsHeader ? context?.metrics.size(context?.metrics.isWebInterface == true ? 32 : 30) ?? 30 : 0 }
+    private var gap: CGFloat { context.map { $0.metrics.isWebInterface ? $0.metrics.size(10) : $0.metrics.space(.s) } ?? 6 }
     private var minimumPane: CGSize {
         CGSize(width: context?.metrics.size(160) ?? 160, height: context?.metrics.size(100) ?? 100)
     }
 
     private var paneArea: CGRect {
-        let top = showsHeader ? headerHeight + gap : 0
+        let top = showsHeader ? headerHeight + (context?.metrics.isWebInterface == true ? 0 : gap) : 0
         return CGRect(x: 0, y: top, width: bounds.width, height: max(0, bounds.height - top))
     }
 
@@ -168,6 +184,7 @@ final class ContainerView: NSView {
 
     override func layout() {
         super.layout()
+        accentLine.frame = CGRect(x: 0, y: 0, width: bounds.width, height: context?.metrics.size(1) ?? 1)
         strip?.frame = bounds
         header.isHidden = isCollapsed || !showsHeader || focus != nil
         emptyState?.isHidden = isCollapsed
@@ -270,6 +287,7 @@ final class ContainerView: NSView {
         }
         for (kind, rect) in geometry.dividers {
             let view = dividers[kind] ?? makeDivider(kind)
+            view.configure(context: context)
             view.frame = rect
         }
     }
