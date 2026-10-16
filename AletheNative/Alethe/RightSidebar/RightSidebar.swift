@@ -76,6 +76,7 @@ struct RightSidebar: View {
     @Environment(AppEnvironment.self) private var environment
 
     @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
     @State private var droppedMarkdown: [URL] = []
 
     private var tabs: [SidebarTabContribution] {
@@ -104,27 +105,8 @@ struct RightSidebar: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: metrics.space(.xs)) {
-                ScrollView(.horizontal) {
-                    Picker("rightSidebar.tabs", selection: selection) {
-                        ForEach(tabs, id: \.id) { tab in
-                            Label(PluginViewRegistry.title(for: tab), systemImage: tab.symbol).tag(Optional(tab.id))
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelStyle(.iconOnly)
-                    .labelsHidden()
-                    .accessibilityIdentifier("rightSidebar.tabs")
-                }
-                if selected?.viewID == McpPanel.tabID {
-                    ContentPaneButton(symbol: "arrow.up.left.and.arrow.down.right", label: "rightSidebar.maximize", id: "rightSidebar.maximize") {
-                        environment.editorRequest = .mcpManager(McpManagerRoute())
-                    }
-                }
-                ContentPaneButton(symbol: "sidebar.right", label: "rightSidebar.close", id: "rightSidebar.close") {
-                    environment.rightSidebarVisible = false
-                }
-                .padding(.trailing, metrics.space(.xs))
+            Group {
+                if metrics.isWebInterface { webTabs } else { nativeTabs }
             }
             .dropDestination(for: URL.self) { urls, _ in
                 let markdown = urls.filter { $0.isFileURL && ["md", "markdown"].contains($0.pathExtension.lowercased()) }
@@ -147,9 +129,134 @@ struct RightSidebar: View {
                 ContentUnavailableView("rightSidebar.empty", systemImage: "sidebar.right")
             }
         }
+        .background(metrics.isWebInterface ? theme[.bg] : .clear)
+    }
+
+    private var nativeTabs: some View {
+        HStack(spacing: metrics.space(.xs)) {
+            ScrollView(.horizontal) {
+                Picker("rightSidebar.tabs", selection: selection) {
+                    ForEach(tabs, id: \.id) { tab in
+                        Label(PluginViewRegistry.title(for: tab), systemImage: tab.symbol).tag(Optional(tab.id))
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelStyle(.iconOnly)
+                .labelsHidden()
+                .accessibilityIdentifier("rightSidebar.tabs")
+            }
+            if selected?.viewID == McpPanel.tabID {
+                ContentPaneButton(symbol: "arrow.up.left.and.arrow.down.right", label: "rightSidebar.maximize", id: "rightSidebar.maximize")
+                {
+                    environment.editorRequest = .mcpManager(McpManagerRoute())
+                }
+            }
+            ContentPaneButton(symbol: "sidebar.right", label: "rightSidebar.close", id: "rightSidebar.close") {
+                environment.rightSidebarVisible = false
+            }
+            .padding(.trailing, metrics.space(.xs))
+        }
+    }
+
+    private var webTabs: some View {
+        HStack(spacing: metrics.size(4)) {
+            ScrollView(.horizontal) {
+                HStack(spacing: metrics.size(4)) {
+                    ForEach(tabs, id: \.id) { tab in
+                        Button {
+                            environment.rightSidebarTab = tab.id
+                        } label: {
+                            Label(PluginViewRegistry.title(for: tab), systemImage: webSymbol(tab))
+                        }
+                        .buttonStyle(AletheSidebarTabStyle(selected: selected?.id == tab.id))
+                        .help(Text(PluginViewRegistry.title(for: tab)))
+                        .accessibilityAddTraits(selected?.id == tab.id ? .isSelected : [])
+                    }
+                }
+            }
+            .scrollIndicators(.hidden)
+            .accessibilityIdentifier("rightSidebar.tabs")
+            Spacer(minLength: 0)
+            if selected?.viewID == McpPanel.tabID {
+                Button {
+                    environment.editorRequest = .mcpManager(McpManagerRoute())
+                } label: {
+                    Label("rightSidebar.maximize", systemImage: "arrow.up.left.and.arrow.down.right")
+                }
+                .buttonStyle(AletheSidebarTabStyle())
+                .help(Text("rightSidebar.maximize"))
+                .accessibilityIdentifier("rightSidebar.maximize")
+            }
+            Rectangle().fill(theme[.border])
+                .frame(width: metrics.size(1), height: metrics.size(14))
+                .padding(.horizontal, metrics.size(5))
+            Button {
+                environment.rightSidebarVisible = false
+            } label: {
+                Label("rightSidebar.close", systemImage: "sidebar.right")
+            }
+            .buttonStyle(AletheSidebarTabStyle())
+            .help(Text("rightSidebar.close"))
+            .accessibilityIdentifier("rightSidebar.close")
+        }
+        .padding(.horizontal, metrics.size(10))
+        .padding(.vertical, metrics.size(4))
+        .frame(height: metrics.size(34))
+        .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+    }
+
+    private func webSymbol(_ tab: SidebarTabContribution) -> String {
+        switch tab.viewID {
+        case AgentsView.tabID: "brain.head.profile"
+        case GSDSyncView.tabID: "sparkles"
+        default: tab.symbol
+        }
     }
 
     private var selection: Binding<String?> {
         Binding { selected?.id } set: { environment.rightSidebarTab = $0 }
+    }
+}
+
+/// Shared web panel header; native panels retain their original header layouts.
+struct WebSidebarHeader<Content: View>: View {
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @ViewBuilder var content: Content
+    var body: some View {
+        HStack(spacing: metrics.size(7)) { content }
+            .font(metrics.font(size: 12, weight: 650))
+            .foregroundStyle(theme[.fg])
+            .padding(.leading, metrics.size(12))
+            .padding(.trailing, metrics.size(10))
+            .frame(height: metrics.size(38))
+            .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+    }
+}
+
+struct WebSidebarEmpty: View {
+    let title: LocalizedStringKey
+    var detail: LocalizedStringKey? = nil
+    var symbol = "doc.text"
+    var boxed = false
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    var body: some View {
+        VStack(spacing: metrics.size(8)) {
+            Image(systemName: symbol).font(metrics.font(size: 20))
+                .frame(width: boxed ? metrics.size(38) : nil, height: boxed ? metrics.size(38) : nil)
+                .background(theme[.bgElevated].opacity(boxed ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                .overlay {
+                    if boxed { RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)) }
+                }
+            Text(title).font(metrics.font(size: 12, weight: .bold)).foregroundStyle(theme[.fg])
+            if let detail {
+                Text(detail).font(metrics.font(size: 11))
+                    .multilineTextAlignment(.center).frame(maxWidth: metrics.size(240))
+            }
+        }
+        .foregroundStyle(theme[.fgMuted])
+        .padding(metrics.size(24))
+        .frame(maxWidth: .infinity, minHeight: metrics.size(boxed ? 220 : 180), maxHeight: .infinity)
     }
 }

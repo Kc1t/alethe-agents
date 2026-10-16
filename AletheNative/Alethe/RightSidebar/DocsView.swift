@@ -31,7 +31,9 @@ struct DocsView: View {
 
     var body: some View {
         Group {
-            if let file = opened.first(where: { $0.path == selectedPath }) {
+            if metrics.isWebInterface {
+                webContent
+            } else if let file = opened.first(where: { $0.path == selectedPath }) {
                 viewer(file)
             } else if let project {
                 if files.isEmpty {
@@ -71,6 +73,126 @@ struct DocsView: View {
         .task(id: project?.folder) {
             guard let folder = project?.folder else { files = []; return }
             files = await Task.detached { Self.scan(folder) }.value
+        }
+    }
+
+    @ViewBuilder private var webContent: some View {
+        if let file = opened.first(where: { $0.path == selectedPath }) {
+            VStack(spacing: 0) {
+                WebSidebarHeader {
+                    Image(systemName: "doc.text").font(metrics.font(size: 15))
+                    Text(verbatim: file.name).lineLimit(1)
+                    Spacer(minLength: 0)
+                    HStack(spacing: metrics.size(2)) {
+                        Button {
+                            file.reload()
+                        } label: {
+                            Label("markdown.refresh", systemImage: "arrow.clockwise")
+                        }
+                        .accessibilityIdentifier("docs.refresh")
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(file.source, forType: .string)
+                        } label: {
+                            Label("markdown.copySource", systemImage: "doc.on.clipboard")
+                        }
+                        .disabled(!file.isLoaded || file.loadError != nil).accessibilityIdentifier("docs.copy")
+                        Button {
+                            selectedPath = nil
+                        } label: {
+                            Label("docs.back", systemImage: "arrow.left")
+                        }
+                        .accessibilityIdentifier("docs.back")
+                        Button {
+                            environment.rightSidebarVisible = false
+                        } label: {
+                            Label("rightSidebar.close", systemImage: "sidebar.right")
+                        }
+                        .accessibilityIdentifier("docs.close")
+                    }.buttonStyle(AletheSidebarTabStyle(width: 24, height: 24))
+                }
+                if opened.count > 1 {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: metrics.size(3)) {
+                            ForEach(opened, id: \.path) { tab in
+                                HStack(spacing: 0) {
+                                    Button {
+                                        selectedPath = tab.path
+                                    } label: {
+                                        HStack(spacing: metrics.size(5)) {
+                                            Image(systemName: "doc.text").font(metrics.font(size: 11))
+                                            Text(verbatim: tab.name).lineLimit(1)
+                                        }
+                                        .padding(.leading, metrics.size(7)).padding(.trailing, metrics.size(4))
+                                        .padding(.vertical, metrics.size(5)).frame(maxWidth: metrics.size(150))
+                                    }
+                                    Button {
+                                        close(tab)
+                                    } label: {
+                                        Image(systemName: "xmark").font(metrics.font(size: 10))
+                                            .padding(.leading, metrics.size(3)).padding(.trailing, metrics.size(6))
+                                            .padding(.vertical, metrics.size(5))
+                                    }.accessibilityLabel(Text("docs.closeTab")).accessibilityIdentifier("docs.tab.close")
+                                }
+                                .buttonStyle(.plain).font(metrics.font(size: 10))
+                                .foregroundStyle(theme[selectedPath == tab.path ? .fg : .fgMuted])
+                                .padding(.bottom, metrics.size(2))
+                                .overlay(alignment: .bottom) {
+                                    Rectangle().fill(theme[.accent].opacity(selectedPath == tab.path ? 1 : 0)).frame(
+                                        height: metrics.size(2))
+                                }
+                                .frame(maxWidth: metrics.size(180))
+                            }
+                        }.padding(.horizontal, metrics.size(8)).padding(.top, metrics.size(5))
+                    }
+                    .scrollIndicators(.hidden)
+                    .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+                }
+                Text(verbatim: file.path).font(metrics.monoFont(size: 10, weight: .regular))
+                    .foregroundStyle(theme[.fgFaint]).lineLimit(1).truncationMode(.middle)
+                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, metrics.size(7)).padding(.horizontal, metrics.size(10))
+                    .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+                if let error = file.loadError {
+                    VStack(spacing: metrics.size(7)) {
+                        Image(systemName: "doc.text").font(metrics.font(size: 20))
+                        Text(verbatim: format("markdown.loadError", file.path)).font(metrics.font(size: 12, weight: .bold))
+                        Text(verbatim: error).font(metrics.font(size: 11))
+                        Button("markdown.refresh") { file.reload() }.buttonStyle(AletheButtonStyle(size: .small))
+                    }
+                    .foregroundStyle(theme[.fgMuted]).padding(metrics.size(24))
+                    .frame(maxWidth: .infinity, minHeight: metrics.size(220), maxHeight: .infinity)
+                    .accessibilityIdentifier("markdown.error")
+                } else {
+                    ScrollView {
+                        MarkdownBlocksView(blocks: file.blocks)
+                            .padding(metrics.size(12)).frame(maxWidth: .infinity, alignment: .leading)
+                    }.accessibilityIdentifier("markdown.rendered")
+                }
+            }
+        } else if let project, !files.isEmpty {
+            ScrollView {
+                LazyVStack(spacing: metrics.size(4)) {
+                    ForEach(files, id: \.self) { path in
+                        Button {
+                            openInSidebar(path)
+                        } label: {
+                            HStack(spacing: metrics.size(8)) {
+                                Image(systemName: "doc.text").font(metrics.font(size: 13)).foregroundStyle(theme[.accent])
+                                Text(verbatim: relative(path, to: project.folder)).lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .font(metrics.font(size: 12)).foregroundStyle(theme[.fg])
+                            .padding(.vertical, metrics.size(8)).padding(.horizontal, metrics.size(10))
+                            .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.size(6)))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: metrics.size(6)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                        }.buttonStyle(.plain).help(path)
+                    }
+                }.padding(metrics.size(12))
+            }
+        } else {
+            WebSidebarEmpty(title: "rightSidebar.markdownEmptyTitle", detail: "rightSidebar.markdownEmptyDetail")
         }
     }
 
