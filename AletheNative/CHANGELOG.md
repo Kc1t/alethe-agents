@@ -9,6 +9,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Alethe interface title bar spans the window with its left controls aligned to the sidebar width;
   standard macOS traffic lights remain visible and centered after resizing and appearance changes.
 - Alethe interface links and controls inherit the active theme accent throughout the main window.
+- Alethe sidebar surfaces use the base background and the web Explorer header dimensions and borders.
+- The sidebar profile footer keeps its full-width avatar, identity and account actions visible;
+  Home preserves the selected sidebar panel, and sidebar navigation keeps Home open like the web app.
 - Alethe interface workspace containers use square borders, project-colored top rules and 32pt
   headers; panes use square focus rings, 10pt split gutters with hover handles, and web terminal padding.
 - Pane actions use compact identity and action chips; sub-tabs keep their add control next to the tabs.
