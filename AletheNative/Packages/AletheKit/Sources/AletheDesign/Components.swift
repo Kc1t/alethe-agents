@@ -672,3 +672,22 @@ private struct AletheHomeActionLabelStyle: LabelStyle {
         }
     }
 }
+
+/// Home usage-card refresh control (`HomeView.module.css`, `.iconBtn`).
+public struct AletheHomeRefreshStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(metrics.font(size: 12))
+            .foregroundStyle(theme[.textTertiary])
+            .frame(width: metrics.size(23), height: metrics.size(23))
+            .background(theme[.panelHover].opacity(configuration.isPressed ? 1 : 0),
+                        in: RoundedRectangle(cornerRadius: metrics.size(6)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.size(6))
+                .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+    }
+}

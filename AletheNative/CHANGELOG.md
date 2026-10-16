@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- Alethe Home follows the web dashboard's lowercase date, separated streak bubble, labeled quick-launch
+  menus, single-letter project badges and three outlined start actions. Usage cards, repeated activity
+  heatmaps, time summaries and notification empty states use web dimensions and theme colors;
+  Native macOS mode retains its existing presentation.
 - Alethe interface title bar spans the window with its left controls aligned to the sidebar width;
   standard macOS traffic lights remain visible and centered after resizing and appearance changes.
 - Alethe interface links and controls inherit the active theme accent throughout the main window.
