@@ -34810,6 +34810,102 @@
           }
         }
       }
+    },
+    "chrome.mainMenu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Main menu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menu principal"
+          }
+        }
+      }
+    },
+    "chrome.toggleSidebar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toggle left sidebar"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alternar barra lateral esquerda"
+          }
+        }
+      }
+    },
+    "chrome.whatsNew" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What’s new"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Novidades"
+          }
+        }
+      }
+    },
+    "chrome.news.chrome" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Alethe interface now places workspace tabs and status controls in a compact title bar with resizable sidebars."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A interface Alethe agora reúne abas e controles de status em uma barra de título compacta com barras laterais redimensionáveis."
+          }
+        }
+      }
+    },
+    "chrome.resizeLeftSidebar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resize left sidebar"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redimensionar barra lateral esquerda"
+          }
+        }
+      }
+    },
+    "chrome.resizeRightSidebar" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resize right sidebar"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redimensionar barra lateral direita"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

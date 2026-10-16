@@ -58,7 +58,7 @@ struct WorkspaceView: View {
 
     private var workspaceContent: some View {
         VStack(spacing: 0) {
-            if let workspace = environment.workspace, !workspace.document.workspace.tabs.isEmpty {
+            if !metrics.isWebInterface, let workspace = environment.workspace, !workspace.document.workspace.tabs.isEmpty {
                 WorkspaceTabBar(workspace: workspace)
             }
             if let doc = environment.workspace?.document, !doc.workspace.openProjectIDs.isEmpty {

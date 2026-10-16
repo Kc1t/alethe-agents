@@ -33,7 +33,16 @@ struct AletheApp: App {
         .defaultSize(width: 1280, height: 800)
         .windowToolbarStyle(.unified)
         .commands {
-            SidebarCommands()
+            if environment.metrics.isWebInterface {
+                CommandGroup(after: .sidebar) {
+                    Button("chrome.toggleSidebar") {
+                        NotificationCenter.default.post(name: .aletheToggleWebSidebar, object: nil)
+                    }
+                    .keyboardShortcut("s", modifiers: [.command, .control])
+                }
+            } else {
+                SidebarCommands()
+            }
             ToolbarCommands()
             FileCommands(environment: environment)
             ViewCommands(environment: environment)

@@ -12,8 +12,61 @@ struct MainWindow: View {
     @Environment(\.undoManager) private var undoManager
     @SceneStorage("main.columnVisibility") private var sidebarVisible = true
     @AppStorage("main.rightSidebarWidth") private var rightSidebarWidth = 280.0
+    @AppStorage("main.webLeftWidth") private var webLeftWidth = 286.0
+    @AppStorage("main.webRightWidth") private var webRightWidth = 300.0
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface {
+                webShell
+            } else {
+                nativeShell
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aletheToggleWebSidebar)) { _ in
+            if metrics.isWebInterface { sidebarVisible.toggle() }
+        }
+        .background(WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(32)))
+        .accessibilityHidden(!environment.startupFinished)
+        .overlay {
+            if !environment.startupFinished { StartupLoadingView() }
+        }
+        .frame(minWidth: metrics.isWebInterface ? metrics.size(800) : 800,
+               minHeight: metrics.isWebInterface ? metrics.size(500) : 500)
+        .sheet(item: editorRequest) { request in
+            if let workspace = environment.workspace { editor(for: request, workspace: workspace) }
+        }
+    }
+
+    private var webShell: some View {
+        VStack(spacing: 0) {
+            WebTitleBar(sidebarVisible: $sidebarVisible)
+            HStack(spacing: 0) {
+                if sidebarVisible {
+                    LeftSidebar()
+                        .frame(width: metrics.size(webLeftWidth))
+                        .background(theme[.bg])
+                    WebShellSeparator(width: $webLeftWidth, limits: 220...380)
+                }
+                WorkspaceView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                    .overlay(alignment: .bottom) { DictationHUD() }
+                if environment.rightSidebarVisible {
+                    WebShellSeparator(width: $webRightWidth, limits: 260...420, trailing: true)
+                    RightSidebar()
+                        .frame(width: metrics.size(webRightWidth))
+                        .background(theme[.bg])
+                }
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .background(theme[.bg])
+        .ignoresSafeArea(.container, edges: .top)
+        .toolbarVisibility(.hidden, for: .windowToolbar)
+    }
+
+    private var nativeShell: some View {
         NavigationSplitView(columnVisibility: columnVisibility) {
             LeftSidebar()
                 .navigationSplitViewColumnWidth(min: metrics.size(200), ideal: metrics.size(240), max: metrics.size(360))
@@ -30,18 +83,6 @@ struct MainWindow: View {
                             if width > 0 { rightSidebarWidth = width }
                         }
                 }
-        }
-        .accessibilityHidden(!environment.startupFinished)
-        .overlay {
-            if !environment.startupFinished {
-                StartupLoadingView()
-            }
-        }
-        .frame(minWidth: 800, minHeight: 500)
-        .sheet(item: editorRequest) { request in
-            if let workspace = environment.workspace {
-                editor(for: request, workspace: workspace)
-            }
         }
     }
 

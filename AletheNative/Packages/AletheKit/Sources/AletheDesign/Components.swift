@@ -387,3 +387,35 @@ public struct AletheActivitySpinner: View {
         }
     }
 }
+
+/// Compact title-bar pill (`TitleBar.module.css`: 22pt high, 8pt radius, 11pt mono).
+public struct AletheTitleBarPillStyle: ButtonStyle {
+    private let iconOnly: Bool
+
+    public init(iconOnly: Bool = false) { self.iconOnly = iconOnly }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        AletheTitleBarPillBody(configuration: configuration, iconOnly: iconOnly)
+    }
+}
+
+private struct AletheTitleBarPillBody: View {
+    let configuration: ButtonStyleConfiguration
+    let iconOnly: Bool
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+    @State private var hovering = false
+
+    var body: some View {
+        configuration.label
+            .font(metrics.monoFont(size: 11, weight: .semibold))
+            .foregroundStyle(theme[hovering ? .fg : .fgMuted])
+            .padding(.horizontal, metrics.size(iconOnly ? 0 : 8))
+            .frame(minWidth: metrics.size(iconOnly ? 26 : 0), minHeight: metrics.size(22))
+            .background(theme[hovering || configuration.isPressed ? .panelHover : .bgSunken],
+                        in: RoundedRectangle(cornerRadius: metrics.size(8)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.size(8))
+                .strokeBorder(theme[.borderStrong].opacity(hovering ? 1 : 0), lineWidth: metrics.size(1)))
+            .onHover { hovering = $0 }
+    }
+}

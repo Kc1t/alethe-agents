@@ -7,6 +7,7 @@ import SwiftUI
 /// pins it; tabs reorder by dragging.
 struct WorkspaceTabBar: View {
     let workspace: WorkspaceModel
+    @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var hovered: WorkspaceTabID?
@@ -17,10 +18,11 @@ struct WorkspaceTabBar: View {
 
     var body: some View {
         HStack(spacing: metrics.space(.xs)) {
-            navigationButton("arrow.left", label: "menu.view.back", id: "workspaceTabs.back",
-                             enabled: document.canGoBack) { workspace.update { $0.navigateHistory(-1) } }
-            navigationButton("arrow.right", label: "menu.view.forward", id: "workspaceTabs.forward",
-                             enabled: document.canGoForward) { workspace.update { $0.navigateHistory(1) } }
+            if metrics.isWebInterface {
+                HStack(spacing: metrics.size(2)) { historyButtons }
+            } else {
+                historyButtons
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: metrics.space(.xs)) {
                     ForEach(document.workspace.tabs) { tab in
@@ -33,9 +35,17 @@ struct WorkspaceTabBar: View {
         .frame(height: metrics.size(32))
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme[.bgElevated])
-        .overlay(alignment: .bottom) { theme[.border].frame(height: 1) }
+        .overlay(alignment: .bottom) { if !metrics.isWebInterface { theme[.border].frame(height: 1) } }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workspaceTabs")
+    }
+
+    @ViewBuilder
+    private var historyButtons: some View {
+        navigationButton("arrow.left", label: "menu.view.back", id: "workspaceTabs.back",
+                         enabled: document.canGoBack) { navigate(-1) }
+        navigationButton("arrow.right", label: "menu.view.forward", id: "workspaceTabs.forward",
+                         enabled: document.canGoForward) { navigate(1) }
     }
 
     private func tabView(_ tab: WorkspaceTab) -> some View {
@@ -45,7 +55,7 @@ struct WorkspaceTabBar: View {
         let name = label?.name ?? String(localized: "workspaceTabs.empty")
         let radius = metrics.radius(.sm)
         // Upstream `groupTab`: 26pt, muted until hovered; the active tab sits pressed into the bar.
-        return HStack(spacing: metrics.space(.s)) {
+        return HStack(spacing: metrics.isWebInterface ? metrics.size(2) : metrics.space(.s)) {
             if tab.pinned {
                 Image(systemName: "pin.fill")
                     .font(metrics.font(size: 9))
@@ -55,6 +65,7 @@ struct WorkspaceTabBar: View {
             Circle()
                 .fill(document.color(of: tab).map { theme[$0.token] } ?? theme[.fgFaint])
                 .frame(width: metrics.size(8), height: metrics.size(8))
+                .padding(.trailing, metrics.isWebInterface ? metrics.size(5) : 0)
             Text(verbatim: name)
                 .font(metrics.font(size: 11, weight: .semibold))
                 .foregroundStyle(theme[isActive || isHovered ? .fg : .fgMuted])
@@ -67,7 +78,7 @@ struct WorkspaceTabBar: View {
             // view an NSButton reports a wrong frame and cannot be hit where it is drawn.
             Image(systemName: "xmark")
                 .font(metrics.font(size: 8, weight: .bold))
-                .frame(width: metrics.size(18), height: metrics.size(18))
+                .frame(width: metrics.size(metrics.isWebInterface && !isActive && !isHovered ? 0 : 18), height: metrics.size(18))
                 .background(theme[.panelHover].opacity(closeHovered == tab.id ? 1 : 0), in: Circle())
                 .contentShape(Circle())
                 .onHover { closeHovered = $0 ? tab.id : (closeHovered == tab.id ? nil : closeHovered) }
@@ -93,11 +104,14 @@ struct WorkspaceTabBar: View {
         .overlay {
             if isActive { RoundedRectangle(cornerRadius: radius).strokeBorder(theme[.borderStrong]) }
         }
-        .offset(y: (isActive || isHovered) && metrics.style == .normal ? -1 : 0)
+        .offset(y: (isActive || isHovered) && metrics.style == .normal ? (metrics.isWebInterface ? -metrics.size(1) : -1) : 0)
         .opacity(dragging == tab.id ? 0.5 : 1)
         .contentShape(Rectangle())
         .onHover { hovered = $0 ? tab.id : (hovered == tab.id ? nil : hovered) }
-        .onTapGesture { workspace.update { $0.activateWorkspaceTab(tab.id) } }
+        .onTapGesture {
+            workspace.update { $0.activateWorkspaceTab(tab.id) }
+            if metrics.isWebInterface { environment.showingHome = false }
+        }
         .onDrag {
             dragging = tab.id
             return NSItemProvider(object: tab.id.rawValue as NSString)
@@ -114,6 +128,11 @@ struct WorkspaceTabBar: View {
         .accessibilityAddTraits(isActive ? [.isSelected, .isButton] : .isButton)
         .accessibilityLabel(Text(verbatim: name))
         .accessibilityIdentifier("workspaceTabs.tab.\(name)")
+    }
+
+    private func navigate(_ direction: Int) {
+        workspace.update { $0.navigateHistory(direction) }
+        if metrics.isWebInterface { environment.showingHome = false }
     }
 
     private func navigationButton(_ symbol: String, label: LocalizedStringKey, id: String, enabled: Bool,

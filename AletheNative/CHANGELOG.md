@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Alethe interface window chrome with a compact 32-point title bar, system traffic lights,
+  workspace tabs and history, menu and sidebar controls, profile, sync and live status widgets.
+- Resizable Alethe sidebars with web-matched default widths and limits, one-point separators and
+  hover grips; the Native macOS interface keeps its system toolbar, sidebar and inspector.
+- Interface changes update window chrome in place, and the left-sidebar menu shortcut works in
+  both interfaces.
 - Settings › Appearance › Interface: "Alethe" (the same interface as on Windows and Linux, the default)
   or "Native macOS" (system toolbar, sidebar and inspector).
 - Left sidebar with Home, Projects, Files and left-placement plugin tabs, Search, a project
