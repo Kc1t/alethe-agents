@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EMPTY_PROJECTS_FILE } from '../../../../lib/types'
@@ -207,7 +207,25 @@ describe('NarrationPanel', () => {
     const local = await screen.findByRole('radio', { name: 'voice.provider.local' })
     expect((local as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceActionManageModels' }))
-    expect(onOpen).toHaveBeenCalledWith('local')
+    expect(onOpen).toHaveBeenCalledWith('local', 'tts')
+  })
+
+  it('warns instead of "In use" when the chosen local voice was removed', async () => {
+    tauri.speechListModels.mockResolvedValue([
+      { id: 'piper-a', label: 'Piper A', kind: 'download', capability: 'tts', sizeBytes: 1 },
+    ])
+    tauri.speechModelStates.mockResolvedValue([{ id: 'piper-a', status: 'not-downloaded' }])
+    useProjectsStore.getState().setPreferences({
+      voiceTts: { provider: 'local', model: 'piper-a', voice: null, rate: 1 },
+    })
+    const onOpen = vi.fn()
+    render(<NarrationPanel onOpenProvider={onOpen} />)
+    const local = await screen.findByRole('article', { name: 'voice.provider.local' })
+    expect(await within(local).findByText('prefs.voiceWarnNotDownloaded')).toBeTruthy()
+    expect(within(local).getByText('prefs.voiceStatusNotReady')).toBeTruthy()
+    expect(within(local).queryByText('prefs.voiceStatusInUse')).toBeNull()
+    fireEvent.click(within(local).getByRole('button', { name: 'prefs.voiceActionManageModels' }))
+    expect(onOpen).toHaveBeenCalledWith('local', 'tts')
   })
 
   it('shows the privacy note on the selected cloud card only', async () => {

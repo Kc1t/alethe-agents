@@ -201,7 +201,21 @@ pub async fn tts_speak(
         if let Some(Ok((dir, model_file))) = found {
             stop_all(&app).await;
             let rate = normalized_rate(rate);
-            tauri::async_runtime::spawn(speak_local(app, id, dir, model_file, rate, text));
+            // A local voice id is the speaker number of a multi-voice model.
+            let sid = voice
+                .as_deref()
+                .and_then(|v| v.parse::<i32>().ok())
+                .unwrap_or(0);
+            let model_id = model.as_deref().unwrap_or_default();
+            let local = LocalVoice {
+                dir,
+                layout,
+                sid,
+                lang: crate::speech::local_tts_language(&app, model_id, sid)
+                    .and_then(|tag| crate::tts_local::kokoro_lang(&tag)),
+                hub: crate::speech_hub::installed::repo_of(model_id).is_some(),
+            };
+            tauri::async_runtime::spawn(speak_local(app, id, local, rate, text));
             return Ok(id);
         }
         // A missing local voice falls back to the system voice below, never to the cloud.
@@ -229,16 +243,36 @@ fn normalized_rate(rate: Option<f32>) -> f32 {
 const LOCAL_CHUNK_CHARS: usize = 400;
 const _: () = assert!(LOCAL_CHUNK_CHARS < tts_cloud::MAX_TTS_CHARS);
 
-/// A Piper voice. Any failure before audio plays hands the whole text to the system voice under
-/// the same id; it never reaches for a cloud provider.
-async fn speak_local(
-    app: AppHandle,
-    id: u64,
+/// A downloaded local voice and how to speak with it.
+struct LocalVoice {
     dir: std::path::PathBuf,
-    model_file: &'static str,
-    rate: f32,
-    text: String,
-) {
+    layout: crate::tts_local::TtsLayout,
+    sid: i32,
+    /// Kokoro's language for the speaker, when the manifest names it.
+    lang: Option<&'static str>,
+    /// A Hugging Face model: a failure is logged as one.
+    hub: bool,
+}
+
+/// What spawn.log records when a local voice fails before any audio plays.
+fn local_failure_log(hub: bool) -> &'static str {
+    if hub {
+        "voice tts: local hub model failed to load"
+    } else {
+        "voice tts: local failed"
+    }
+}
+
+/// A local voice. Any failure before audio plays hands the whole text to the system voice under
+/// the same id; it never reaches for a cloud provider.
+async fn speak_local(app: AppHandle, id: u64, local: LocalVoice, rate: f32, text: String) {
+    let LocalVoice {
+        dir,
+        layout,
+        sid,
+        lang,
+        hub,
+    } = local;
     let Ok(out) = player(&app) else {
         let _ = speak_system(app, text, None, Some(rate), id).await;
         return;
@@ -268,7 +302,7 @@ async fn speak_local(
             }
             // Nothing played yet: the system voice speaks the whole text instead.
             _ if index == 0 => {
-                let _ = crate::diagnostics::append_spawn_log(&app, "voice tts: local failed");
+                let _ = crate::diagnostics::append_spawn_log(&app, local_failure_log(hub));
                 let _ = speak_system(app, text, None, Some(rate), id).await;
                 return;
             }

@@ -84,7 +84,8 @@
   background: var(--status-working-soft);
 }
 
-.badge[data-status='invalid'] {
+.badge[data-status='invalid'],
+.badge[data-status='notReady'] {
   border-color: color-mix(in srgb, var(--status-waiting) 40%, transparent);
   color: var(--status-waiting);
   background: var(--status-waiting-soft);

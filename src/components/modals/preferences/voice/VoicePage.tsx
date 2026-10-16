@@ -2,6 +2,7 @@ import { useLayoutEffect, useState } from 'react'
 
 import { useT } from '../../../../lib/i18n'
 import { formatShortcut } from '../../../../lib/platform'
+import controls from '../../controls.module.css'
 import { NarrationBehaviorSection } from '../NarrationBehaviorSection'
 import { VoiceConversationSection } from '../VoiceConversationSection'
 import { VoiceDictationSection } from '../VoiceDictationSection'
@@ -11,7 +12,14 @@ import { ProviderGrid } from './ProviderGrid'
 import type { VoiceProviderId } from './providerMeta'
 import { SttProviderChoices } from './SttProviderChoices'
 import { UsageTabs, type VoiceTab } from './UsageTabs'
+import { VoiceInUseSummary } from './VoiceInUseSummary'
 import styles from './VoicePage.module.css'
+
+type Detail = {
+  id: VoiceProviderId
+  filter?: 'stt' | 'tts' | 'all'
+  mode?: 'installed' | 'search'
+}
 
 /** The tab a preferences-search target lives in; null for targets outside the tabs. */
 export function tabForTarget(target: string | null): VoiceTab | null {
@@ -41,7 +49,12 @@ export function VoicePage({ target }: { target: string | null }) {
   if (detail) {
     return (
       <div className={styles.page}>
-        <ProviderDetail id={detail} onBack={() => setDetail(null)} />
+        <ProviderDetail
+          id={detail.id}
+          filter={detail.filter}
+          initialMode={detail.mode}
+          onBack={() => setDetail(null)}
+        />
       </div>
     )
   }
@@ -50,26 +63,52 @@ export function VoicePage({ target }: { target: string | null }) {
     <div className={styles.page}>
       <header className={styles.header}>
         <h1>{t('prefs.categoryVoice')}</h1>
-        <p>{t('prefs.categoryVoiceDesc')}</p>
       </header>
+      <VoiceInUseSummary onOpenTab={setTab} />
       <UsageTabs value={tab} onChange={setTab} />
       <div className={styles.tabBody} role="tabpanel">
-        <p className={styles.intro}>
-          {tab === 'dictation'
-            ? t('prefs.voiceTabIntroDictation', { shortcut: formatShortcut('Ctrl+E') })
-            : tab === 'conversation'
-              ? t('prefs.voiceTabIntroConversation')
-              : t('prefs.voiceTabIntroNarration')}
-        </p>
+        <div className={styles.introRow}>
+          <p className={styles.intro}>
+            {tab === 'dictation'
+              ? t('prefs.voiceTabIntroDictation', { shortcut: formatShortcut('Ctrl+E') })
+              : tab === 'conversation'
+                ? t('prefs.voiceTabIntroConversation')
+                : t('prefs.voiceTabIntroNarration')}
+          </p>
+          <div className={styles.introActions}>
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() =>
+                setDetail({ id: 'local', filter: tab === 'narration' ? 'tts' : 'stt' })
+              }
+            >
+              {t('prefs.voiceCompareModels')}
+            </button>
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() =>
+                setDetail({
+                  id: 'local',
+                  filter: tab === 'narration' ? 'tts' : 'stt',
+                  mode: 'search',
+                })
+              }
+            >
+              {t('prefs.voiceHubMoreModels')}
+            </button>
+          </div>
+        </div>
         {tab === 'dictation' ? (
           <>
-            <SttProviderChoices use="dictation" onOpenProvider={setDetail} />
+            <SttProviderChoices use="dictation" onOpenProvider={openProvider} />
             <VoiceDictationSection />
           </>
         ) : null}
         {tab === 'conversation' ? (
           <>
-            <SttProviderChoices use="conversation" onOpenProvider={setDetail} />
+            <SttProviderChoices use="conversation" onOpenProvider={openProvider} />
             <VoiceConversationSection />
           </>
         ) : null}

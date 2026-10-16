@@ -5,13 +5,15 @@ import { useT } from '../../../../lib/i18n'
 import type { ProviderStatus } from './ProviderCard'
 import styles from './ProviderUseCard.module.css'
 
-export type ProviderUseStatus = 'inUse' | ProviderStatus
+/** `notReady`: chosen but cannot run yet (a local model not downloaded); never shown as in use. */
+export type ProviderUseStatus = 'inUse' | 'notReady' | ProviderStatus
 
 const STATUS_KEY = {
   inUse: 'prefs.voiceStatusInUse',
   connected: 'prefs.voiceStatusConnected',
   disconnected: 'prefs.voiceStatusDisconnected',
   invalid: 'prefs.voiceStatusInvalid',
+  notReady: 'prefs.voiceStatusNotReady',
 } as const
 
 /**
@@ -28,6 +30,7 @@ export function ProviderUseCard({
   onSelect,
   disabled = false,
   footer,
+  summary,
   note,
 }: {
   icon: LucideIcon
@@ -38,13 +41,17 @@ export function ProviderUseCard({
   onSelect: () => void
   disabled?: boolean
   footer?: ReactNode
+  /** One line under the footer describing the chosen model, e.g. languages and tiers. */
+  summary?: ReactNode
   /** Muted line under the footer, e.g. where a cloud provider sends data. */
   note?: string
 }) {
   const t = useT()
   const titleId = useId()
-  // An invalid key keeps its warning even on the card in use; the selection still shows in the border.
-  const badge: ProviderUseStatus = selected && status !== 'invalid' ? 'inUse' : status
+  // A warning (invalid key, model not ready) stays even on the chosen card; the border shows the
+  // selection.
+  const warns = status === 'invalid' || status === 'notReady'
+  const badge: ProviderUseStatus = selected && !warns ? 'inUse' : status
   return (
     <article
       className={styles.card}
@@ -74,9 +81,10 @@ export function ProviderUseCard({
         </button>
       </h3>
       <p className={styles.description}>{description}</p>
-      {footer || note ? (
+      {footer || summary || note ? (
         <div className={styles.footer}>
           {footer}
+          {summary}
           {note ? <p className={styles.note}>{note}</p> : null}
         </div>
       ) : null}

@@ -161,6 +161,15 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
   once. On macOS 26 a language that is not installed can be installed from the picker.
 - **Parakeet** is multilingual (about 670 MB download); **Zipformer** is English.
 - A Mac that never picked a model moves to Apple (native) once, unless Parakeet is already downloaded.
+- **Hugging Face search.** In the local models view, a search mode queries Hugging Face for more
+  voices and recognizers (only while the search tab is open). Only models Alethe can run are
+  listed: Piper, Kokoro and Kitten voices; Whisper, SenseVoice, Paraformer, Zipformer, Parakeet,
+  NeMo CTC, Moonshine and Dolphin recognizers. Results use the same table, details and pausable
+  downloads as built-in models; tiers marked "≈" are estimates and the size shows "…" while a
+  result's files are checked (the first 10 results of each page right away, any other one when its
+  details open). A multi-voice model that narrates gets a speaker picker. A Hugging Face
+  model that is not ready can be removed from its row. Downloaded models live in
+  `profiles/<profileId>/speech-models/hf--{author}--{repo}/` under the app's local data directory.
 
 ## Voice Conversation
 
@@ -197,7 +206,27 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 - Preferences → Voice has one tab per use: Dictation, Conversation and Narration. Each use picks its
   own provider, so dictation can stay on this device while narration uses a cloud voice. The tabs
   show the same provider cards as the providers grid (local and cloud groups); the card a use runs on
-  is marked **In use**, and each card picks its model from a searchable list.
+  is marked **In use**, and each card picks its model from a searchable list. **Compare models** on
+  a tab opens the local models table filtered to that use.
+- The Voice page opens with an **In use** summary of what each use runs on, with warnings when it
+  cannot work (model not downloaded, downloading or paused, missing or invalid key, no Apple language
+  or one not installed). A chosen local model that cannot run yet shows a warning on its card
+  instead of **In use**. The providers grid is titled **Accounts and models**.
+- Local models are a comparison table: languages, speed and accuracy tiers (curated catalog data from
+  published benchmarks, not measured in the app), size, status (not downloaded, downloading, paused,
+  verifying, unpacking, downloaded), **Used in** and **Selected for**. A row expands into strengths,
+  limits, the full language list and **Use for …** buttons. Voices rate quality instead of accuracy,
+  and the recommended voice is the one in the app language. While downloading, the status shows the
+  time left. Removing a model that is in use switches that use to another downloaded model of the
+  same kind, or to its default.
+- Downloads can be paused, resumed and cancelled. Pause is persistent and derived from the partial
+  files on disk, so a paused model stays paused after closing Alethe and nothing resumes on its own.
+  Only one download runs at a time; cancel deletes the whole partial model; a read that stalls for
+  30 seconds ends the attempt so it can be resumed.
+- Cloud provider pages show their models in the same table, with voices by language and, for
+  OpenRouter, its raw prices (OpenRouter does not state the unit, so a hint says so). The Apple
+  Speech page shows the permission status and lists installed languages apart from those available
+  to install; the System voice page lists voices per language and has a single Test button.
 - Local (default, nothing leaves the device): Parakeet, Zipformer, Whisper base and small, Moonshine
   base (English), Apple Speech (macOS) for recognition; Piper voices "Faber (pt-BR)" and "Amy
   (en-US)" and the system voice for narration.
@@ -209,7 +238,8 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
   multilingual voices (they speak the language of the text), then the rest. Picking a narration
   model whose voices do not include the current one selects a voice in the app language.
 - Keys are stored in the system keychain per profile and are never shown again after saving; a
-  provider page can save, test and remove a key. Narration verbosity and filler delay live in the
+  provider page can save, test and remove a key. A key is read from the keychain only when a cloud
+  voice is used (at most once per run), so a keychain prompt never appears at launch. Narration verbosity and filler delay live in the
   Narration tab, and **Test voice** previews the chosen voice.
 - Fallback: if a cloud provider fails, dictation and conversation use Apple Speech (when ready with
   a language set), otherwise the first downloaded local model; narration uses the system voice. A

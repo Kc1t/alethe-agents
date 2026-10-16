@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { intlLocale, useT } from '../../../../lib/i18n'
 import { ttsSpeak, type TtsVoice, ttsVoices } from '../../../../lib/tauri'
@@ -15,7 +15,9 @@ import { useProjectsStore } from '../../../../stores/projectsStore'
 import { Dropdown } from '../../../ui/Dropdown'
 import controls from '../../controls.module.css'
 import { CloudUseCard } from './CloudUseCard'
+import { localStateWarning } from './inUseWarnings'
 import { ModelDropdown } from './ModelDropdown'
+import { ModelSummaryLine } from './ModelSummaryLine'
 import styles from './NarrationPanel.module.css'
 import { ProviderGroup } from './ProviderGroup'
 import { PROVIDER_META, type VoiceProviderId } from './providerMeta'
@@ -39,16 +41,17 @@ export function NarrationPanel({
 }) {
   const t = useT()
   const choice = useProjectsStore((s) => s.preferences.voiceTts)
+  const narrationPaused = useVoiceConversationStore((s) => s.narrationPaused)
   const language = useProjectsStore((s) => s.preferences.language)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const { models, states } = useSpeechInventory()
   const { catalog } = useVoiceCatalog()
   const appLocale = intlLocale(language)
   const [fetched, setFetched] = useState<{ key: string; list: TtsVoice[] } | null>(null)
-  // The provider/model just picked; once its voice list loads, a default voice is filled in.
-  const wantsDefault = useRef<string | null>(null)
   // The provider/model whose loaded voice list was last checked against the saved voice.
   const checkedKey = useRef<string | null>(null)
+  // The provider/model just picked; once its voice list loads, a default voice is filled in.
+  const wantsDefault = useRef<string | null>(null)
 
   // OpenRouter's live catalog already names each model's voices; other providers are asked.
   const catalogVoices = useMemo(() => {
@@ -75,7 +78,7 @@ export function NarrationPanel({
     return () => {
       cancelled = true
     }
-  }, [choice.provider, choice.model, fromCatalog])
+  }, [choice.provider, choice.model, listModel, fromCatalog])
 
   // null while the list for the current provider/model is still loading.
   const voices = catalogVoices ?? (fetched?.key === voicesKey ? fetched.list : null)
@@ -87,8 +90,10 @@ export function NarrationPanel({
   const patch = (next: Partial<TtsChoice>) =>
     setPreferences(withTtsChoice({ voiceTts: choice }, next))
 
-  // Once per loaded list: a saved voice the list lacks is replaced by a default; a null voice
-  // (provider default) is filled only right after picking a provider or model.
+  // Once per loaded list, the app-language default replaces: a saved voice the list lacks; no
+  // voice right after picking a provider or model; no voice on ElevenLabs, whose voices belong to
+  // the account so the backend has no default. Elsewhere a null voice is the provider default
+  // (OpenAI, Gemini, OpenRouter, single-speaker local models) and is kept; the system voice too.
   useEffect(() => {
     if (voices === null || checkedKey.current === voicesKey) return
     checkedKey.current = voicesKey
@@ -96,7 +101,8 @@ export function NarrationPanel({
     // previous list when that list's reply lands in the same batch as the pick.
     const picked = wantsDefault.current === voicesKey
     if (picked) wantsDefault.current = null
-    if (choice.voice ? voices.some((voice) => voice.id === choice.voice) : !picked) return
+    const fillsNull = picked || choice.provider === 'elevenlabs'
+    if (choice.voice ? voices.some((voice) => voice.id === choice.voice) : !fillsNull) return
     const next = defaultVoice(voices, appLocale)
     if (next) setPreferences(withTtsChoice({ voiceTts: choice }, { voice: next.id }))
   }, [voices, voicesKey, choice, appLocale, setPreferences])
@@ -119,6 +125,9 @@ export function NarrationPanel({
   const multilingual = selectedVoice !== null && isMultilingual(selectedVoice)
   const localSelected = choice.provider === 'local'
   const localName = t('voice.provider.local')
+  // A removed or cancelled local voice; quiet until the inventory loads.
+  const localWarning =
+    localSelected && models.length > 0 ? localStateWarning(states[choice.model]?.status) : null
 
   return (
     <div className={styles.root} data-setting-id="voice-conversation-voice" tabIndex={-1}>
@@ -128,29 +137,36 @@ export function NarrationPanel({
             icon={PROVIDER_META.local.icon}
             title={localName}
             description={t(PROVIDER_META.local.description)}
-            status={readyLocal.length > 0 ? 'connected' : 'disconnected'}
+            status={
+              localWarning ? 'notReady' : readyLocal.length > 0 ? 'connected' : 'disconnected'
+            }
             selected={localSelected}
             disabled={readyLocal.length === 0}
+            summary={localSelected ? <ModelSummaryLine modelId={choice.model} /> : undefined}
+            note={localWarning ? t(localWarning) : undefined}
             onSelect={() => {
               if (!localSelected && readyLocal.length > 0) pick('local', readyLocal[0].id)
             }}
             footer={
-              readyLocal.length > 0 ? (
-                <ModelDropdown
-                  provider={localName}
-                  models={readyLocal}
-                  value={localSelected ? choice.model : readyLocal[0].id}
-                  onChange={(id) => pick('local', id)}
-                />
-              ) : (
-                <button
-                  type="button"
-                  className={controls.btn}
-                  onClick={() => onOpenProvider('local')}
-                >
-                  {t('prefs.voiceActionManageModels')}
-                </button>
-              )
+              <>
+                {readyLocal.length > 0 ? (
+                  <ModelDropdown
+                    provider={localName}
+                    models={readyLocal}
+                    value={localSelected ? (localWarning ? '' : choice.model) : readyLocal[0].id}
+                    onChange={(id) => pick('local', id)}
+                  />
+                ) : null}
+                {readyLocal.length === 0 || localWarning ? (
+                  <button
+                    type="button"
+                    className={controls.btn}
+                    onClick={() => onOpenProvider('local', 'tts')}
+                  >
+                    {t('prefs.voiceActionManageModels')}
+                  </button>
+                ) : null}
+              </>
             }
           />
           <ProviderUseCard
@@ -230,10 +246,16 @@ export function NarrationPanel({
         <button
           type="button"
           className={controls.btn}
+          disabled={narrationPaused}
+          title={narrationPaused ? t('prefs.voiceTestPausedHint') : undefined}
           onClick={() => void ttsSpeak(t('prefs.voiceTestSentence'), choice)}
         >
           {t('prefs.voiceTest')}
         </button>
+        {/* The paused conversation holds the player: a test would play nothing. */}
+        {narrationPaused ? (
+          <small className={styles.hint}>{t('prefs.voiceTestPausedHint')}</small>
+        ) : null}
       </div>
     </div>
   )

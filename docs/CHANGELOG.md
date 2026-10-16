@@ -11,6 +11,33 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ## [Unreleased]
 
 ### Added
+- **Hugging Face model search.** Search Hugging Face from Preferences → Voice → Local models and
+  download more offline voices (Piper, Kokoro, Kitten) and speech recognition models (Whisper,
+  SenseVoice, Paraformer, Zipformer, Parakeet, NeMo CTC, Moonshine, Dolphin), with the same
+  comparison table, details and pausable downloads as built-in models. A model that is no longer
+  available or never finished downloading can be removed from its row.
+- **Speaker picker for local voices.** Pick the speaker of multi-voice local models (Kokoro, Kitten,
+  multi-speaker Piper) for narration. Kokoro speaks with the pronunciation of the chosen speaker's
+  language.
+
+- **Clearer voice settings.** Preferences → Voice opens with an **In use** summary of what each
+  feature runs on right now, and warns when something cannot work (model not downloaded, still
+  downloading or paused, missing or invalid key, no Apple language or one not installed). A chosen
+  local model that is not downloaded is flagged on its card instead of showing as in use. The
+  providers grid is now **Accounts and models**. Local models are a comparison table — languages,
+  speed and accuracy tiers (quality for voices, curated from published benchmarks), size, status
+  (including time left while downloading, paused, verifying and unpacking), where each is used and
+  selected — whose rows expand into what the model is good for, its limits, every language it
+  speaks and **Use for …** buttons; the recommended voice follows the app language, and each use tab
+  has **Compare models**. Removing a model that is in use switches that use to another downloaded
+  model of the same kind, or to its default. Cloud provider pages list their models in the same
+  table, with voices by language and OpenRouter's raw prices (it does not state the unit, so a hint
+  says so). The Apple Speech page shows the recognition permission and splits installed languages
+  from those available to install; the system voice page lists voices per language and has a single
+  **Test** button.
+- **Pause and resume model downloads.** A download can be paused and resumed later, even after
+  closing Alethe, or cancelled to delete the whole partial model. One download runs at a time, and a
+  download that stalls for 30 seconds stops and can be resumed.
 
 - **Voice providers.** Preferences has a new **Voice** page. Dictation, voice conversation and
   narration each pick their own provider: models on this device (Parakeet, Zipformer, Whisper,
@@ -392,6 +419,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **A keychain password prompt no longer freezes the Voice settings.** Cloud voice API keys are read
+  only when a cloud voice is actually used (at most once per run), never at launch or to list
+  OpenRouter's models, and a voice model list that cannot be read shows **Retry** instead of
+  loading forever. A cloud provider whose key is missing on this computer is shown as not connected
+  the first time it is used, and its uses go back to their defaults.
 - **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
   server or watcher it already has running on the board (for example after reopening the app, or
   from a new planner terminal) now reuses that running shell and adopts it under the new planner,

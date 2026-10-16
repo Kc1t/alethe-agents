@@ -1,10 +1,11 @@
 # Voice in Alethe — architecture and review guide
 
-This document describes the voice work that landed together: **voice conversation with Claude
-Code**, the **floating HUD with a system-wide shortcut**, **Apple's on-device speech recognition on
-the Mac**, and **per-use voice providers** (local models and cloud APIs) with a dedicated
-**Preferences → Voice** page. It is written for whoever reviews or maintains this code: what each
-part does, where it lives, how data flows, what was decided and why, and how it was verified.
+This document describes the voice work that landed together: **voice conversation with Claude Code
+and the other agents Alethe runs**, the **floating HUD with a system-wide shortcut**, **Apple's
+on-device speech recognition on the Mac**, and **per-use voice providers** (local models and cloud
+APIs) with a dedicated **Preferences → Voice** page. It is written for whoever reviews or maintains
+this code: what each part does, where it lives, how data flows, what was decided and why, and how it
+was verified.
 
 User-facing descriptions live in [`CHANGELOG.md`](CHANGELOG.md) (`[Unreleased]`) and
 [`FEATURES.md`](FEATURES.md) (Speech models, Voice Conversation, Voice providers). The design
@@ -30,7 +31,7 @@ differences are listed in [§11](#11-differences-from-the-specs).
 | HUD + global shortcut | The shortcut works from any app; while Alethe is in the background a floating, non-activating HUD shows the conversation. |
 | Apple native STT | On macOS 12+, *Apple (native)* is a speech-to-text engine next to Parakeet and Zipformer: no download, on device only, one language at a time. |
 | Voice providers | Dictation, conversation and narration each pick a provider: local models (Parakeet, Zipformer, Whisper, Moonshine, Piper, Apple Speech, system voice) or a cloud API with the user's own key (OpenAI, ElevenLabs, Gemini, OpenRouter), with a local fallback when the cloud fails. |
-| Model downloads | Speech model downloads show bytes, file, speed and ETA, report the SHA-256 check, resume a `.part` file, and throttle progress events. |
+| Model downloads | Speech model downloads show bytes, file, speed and ETA, report the SHA-256 check, resume a `.part` file, and throttle progress events. They can be paused, resumed and cancelled (`speech_pause_download`, `speech_cancel_download`). |
 
 Supporting changes that ride along:
 
@@ -291,6 +292,23 @@ Keys are stored in the OS keychain per profile (`SecretKind::VoiceProviderKey`, 
 `profile:<id>:voice-key-<provider>`). All cloud traffic is built and sent from Rust: the webview
 never sees a key, and the CSP gains no `connect-src` entry.
 
+On macOS a keychain read can show a password prompt that blocks its thread until answered (dev
+builds are ad-hoc signed, so it returns after every rebuild). So:
+
+- Every keychain read and write for a voice key runs on tokio's blocking pool
+  (`keys::blocking` / `read_key_async`), never on an async worker that unrelated commands need.
+- A key is read only when a cloud voice is actually used (prepare, transcribe, speak, ElevenLabs
+  voices, **Test**), and at most once per run: `KeyCache` remembers the answer (key or no key) per
+  profile and provider, saving or removing a key updates it, and a keychain error is not remembered
+  so the next use asks again. Concurrent uses of one key wait for its one read; other keys stay
+  readable meanwhile (one lock per key). Deleting a profile runs on the blocking pool too.
+- Nothing reads keys at launch. `preferences.voiceProviders` (set by the key form on save, test and
+  remove) is the source of truth for "configured". When `speech_prepare` answers `false` for a cloud
+  provider (flags restored on a machine without the key), the dictation button, the Jev bar and the
+  conversation controller call `forgetProviderKey`, which does what **Remove** does; an error from
+  the check changes nothing. Narration that finds no key falls back like any other auth failure.
+- The OpenRouter model list is public and is fetched without a key.
+
 ### 7.2 Fallback
 
 If a cloud STT call fails (including a missing or unreadable key), `speech_stop_and_transcribe`
@@ -303,19 +321,30 @@ error class and HTTP status reach `spawn.log`.
 ### 7.3 Frontend
 
 - **Preferences → Voice** (`components/modals/preferences/voice/`): `VoicePage` with usage tabs
-  (Dictation · Conversation · Narration). Each tab shows the provider cards (local and cloud
+  (Dictation · Conversation · Narration), opening with an **In use** summary and warnings
+  (`inUseWarnings.ts`). Each tab shows the provider cards (local and cloud
   groups), the card in use marked **In use**, models picked from a searchable list
   (`ModelDropdown`); below them the tab's behaviour settings (the former Integrations sections). A
-  **Providers** grid with an All / Local / Cloud filter opens a provider page: key form (save, test,
-  remove), privacy note, model lists, local downloads (`LocalModelList` + `ModelDownloadProgress`).
+  **Accounts and models** grid with an All / Local / Cloud filter opens a provider page: key form
+  (save, test, remove), privacy note and models. Models render in `ModelTable` (languages, speed and
+  accuracy tiers via `TierDots`, size, status, "Used in", "Selected for", expandable details with
+  "Use for …"): `LocalModelsView` for local models (download, pause, resume, cancel, remove; removing
+  an in-use model resets that use to its default) and `CloudModelsView` for cloud ones (voices by
+  language; OpenRouter's raw prices with a unit hint). `BuiltInProviderView` covers Apple Speech
+  (languages, permission) and the system voice (voices per language with Test). **Compare models**
+  on a use tab opens the table for that use. Speed/accuracy tiers are curated catalog data from
+  published benchmarks; size, languages, status and prices are real data, and missing values show
+  "—".
 - **Narration voices** are grouped by language (`lib/voice/voiceLanguages.ts`): app language first,
   then multilingual voices, then the rest. Picking a model whose voices exclude the current voice
   selects one in the app language.
 - `lib/speech/engine.ts` → `sttChoiceFor(prefs, 'dictation' | 'conversation')` is the single source
   for every speech consumer (dictation button, Jev bar, voice controller). The Jev bar uses the
   conversation choice.
-- `useVoiceProviderStatus` mirrors keychain status into `preferences.voiceProviders` at startup
-  (flags only).
+- `preferences.voiceProviders` (flags only) is written by the key form when a key is saved, tested or
+  removed; nothing reads the keychain at startup to rebuild it.
+- The provider grid and the local models table show **Retry** when the model catalog or states
+  cannot be read, instead of loading forever.
 
 ### 7.4 Model downloads (`speech.rs` + `ModelDownloadProgress`)
 
@@ -325,9 +354,85 @@ error class and HTTP status reach `spawn.log`.
   when it is verifying the SHA-256 instead of sitting at 100%.
 - An interrupted download keeps its `.part` file and continues with an HTTP `Range` request; a
   server that ignores the range restarts the file.
+- **Pause / cancel** (`speech_pause_download`, `speech_cancel_download`): pause stops the transfer and
+  keeps the partial files; it is persistent because the paused state is derived from the partial
+  files on disk, not held in memory, and nothing resumes by itself. Resume continues from the
+  `.part` file. Only one download runs at a time. Cancel deletes the whole partial model. A 30 s read
+  timeout aborts a stalled transfer, leaving it resumable.
 - Piper archives unpack into a staging folder, are checked for unsafe paths (anything that would
   leave the destination fails the whole archive; links are skipped) and are moved into place only
   when complete.
+### 7.5 Hugging Face models
+
+Local voices and recognizers beyond the built-in catalog can be searched on Hugging Face and
+downloaded. All network access is in Rust.
+
+**Layout.** `src-tauri/src/speech_hub/`: `hf.rs` (API client, host and redirect rules), `detect.rs`
+(family detector, a pure function over the repo name and file list), `meta.rs` (languages, tiers,
+voices), `search.rs` (search and resolve), `installed.rs` (manifests on disk), `mod.rs`
+(commands). `speech_layout.rs` holds the recognizer layouts and `TtsLayout` (in `tts_local.rs`)
+the voice layouts; both carry the file names, because files keep their repo names on disk.
+Commands: `speech_hub_search` (list candidates) and `speech_hub_resolve` (pin the commit, list and
+check the files). Downloads reuse `speech_download_model` with an `hf:` id.
+
+**Search.** One API page per author and term, ranked and paged by the backend. Resolving a repo costs
+2–3 API calls, so the frontend resolves only the first 10 results of each fetched page right away,
+through one shared queue (at most 2 at once, each repo once); any other result is resolved when its
+details are expanded, or by the download itself. Until then its size reads "—".
+
+**Families.** A repo is offered only when its **repo name pattern and its required files both
+match**. A repo name containing `streaming`, `online`, `apk`, `wheel`, `tagging`, `diariz`,
+`denois`, `punct`, `speaker`, `kws`, `keyword`, `vad`, `spleeter`, `matcha` or `canary` is excluded,
+as is one with the word `test` or `tests` (split on `-`, `_` and `.`, so `latest` stays) and a CTC
+model that is not NeMo. An int8 variant is preferred when both exist; test wavs, READMEs, licenses
+and scripts are never downloaded.
+
+| Kokoro | TTS | `kokoro-*` | `model*.onnx`, `voices.bin`, `tokens.txt`, `espeak-ng-data/` |
+| Kitten | TTS | `kitten-*` | `model*.onnx`, `voices.bin`, `tokens.txt`, `espeak-ng-data/` |
+| Dolphin | STT | `*dolphin*` | `model(.int8).onnx`, `tokens.txt` |
+
+**Security.**
+
+- Only repos from an author allowlist fixed in code (`csukuangfj`, `csukuangfj2`, `k2-fsa`); public,
+  non-gated repos, no token.
+- Requests go only to `huggingface.co`; redirects are followed only to `huggingface.co`,
+  `*.huggingface.co`, `hf.co` and `*.hf.co` over HTTPS, at most 5 hops.
+- Repo names are `[A-Za-z0-9._-]`, at most 96 characters, never `..`, under an allowlisted author.
+  Every file path goes through `safe_path`: at most 8 `/`-separated segments of `[A-Za-z0-9._+!-]`,
+  never `.` or `..`, no segment ending in `.`, and no Windows reserved name (`con`, `prn`, `aux`,
+  `nul`, `com1`–`com9`, `lpt1`–`lpt9`, with or without an extension), so it stays inside the model
+  folder on every OS.
+- The commit is pinned at resolve; every file is fetched from that commit.
+- LFS files are verified by SHA-256; non-LFS files by git blob SHA-1 and capped at 16 MiB each.
+  Models over 4 GiB are not offered; sizes are summed with saturation.
+- Manifests are re-validated on every read (known family, safe paths, files present); an invalid
+  manifest hides the model.
+
+**Manifest.** `speech-models/hf--{author}--{repo}/alethe-model.json` records `version`, `id`,
+`repo`, `commit`, `family`, `layout`, `files` (path, size, and `sha256` or `gitSha1`), `meta`
+(label, languages, tiers, named voices), `stats` (likes, license, last modified) and `complete`. It
+is written with `complete: false` when a download starts and flipped to `true` at the end. State stays derived from
+disk, as for catalog models: a manifest that is not complete reads as paused ("Paused · X of Y
+MB") after a restart, and nothing resumes by itself.
+
+**Failures.** A file that answers 404 (the pinned commit is gone) deletes the model folder, forgets
+the cached resolve and reports "This model is no longer available"; a 429 reports the rate limit.
+A Hugging Face model that is not ready (a pending manifest, a failed download) can be removed from
+its row. A downloaded recognizer that sherpa cannot load fails with "This model cannot run in
+Alethe. Remove it in Preferences → Voice."; a voice that cannot load falls back to the system voice
+and logs `voice tts: local hub model failed to load` to `spawn.log`. The table does not mark such a
+model in advance: it reads Ready until used.
+
+**Voices.** Named speakers come from the manifest without loading the model; only a model whose
+speakers are not named is loaded, to count them. The speaker picker shows only for the model that
+narrates. For Kokoro, the speaker's language sets the engine's `lang` (`en-us`, `en-gb`, `es`,
+`fr-fr`, `hi`, `it`, `pt-br`; Kokoro's default for Chinese, Japanese and anything else).
+
+**Reviewing.** Rust: the tests under `speech_hub` (detector against real API JSON fixtures in
+`speech_hub/testdata/`, file selection, manifests, redirect host check, layouts, tiers/languages).
+Frontend: `src/lib/voice/hubModels.test.ts`,
+`src/components/modals/preferences/voice/useHubSearch.test.ts` and `LocalModelsView.test.tsx`.
+
 
 ---
 

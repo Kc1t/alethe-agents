@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_STT_CHOICE, DEFAULT_TTS_CHOICE } from './providers'
 import {
   clearProviderUses,
-  flagsFromStatus,
   normalizeVoicePreferences,
   withSttChoice,
   withTtsChoice,
@@ -106,20 +105,6 @@ describe('choice helpers', () => {
 })
 
 describe('provider flags', () => {
-  it('keeps the invalid mark only while the key still exists', () => {
-    const next = flagsFromStatus(
-      [
-        { provider: 'openai', configured: true },
-        { provider: 'gemini', configured: false },
-      ],
-      { openai: { configured: true, invalid: true }, gemini: { configured: true, invalid: true } },
-    )
-    expect(next).toEqual({
-      openai: { configured: true, invalid: true },
-      gemini: { configured: false, invalid: false },
-    })
-  })
-
   it('moves every use off a provider whose key is gone', () => {
     const prefs = {
       voiceStt: {

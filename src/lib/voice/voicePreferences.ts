@@ -141,17 +141,6 @@ export function withTtsChoice(
   return { voiceTts: { ...prefs.voiceTts, ...patch } }
 }
 
-export function flagsFromStatus(
-  statuses: { provider: CloudVoiceProviderId; configured: boolean }[],
-  previous: VoiceProviderFlags,
-): VoiceProviderFlags {
-  const next: VoiceProviderFlags = {}
-  for (const { provider, configured } of statuses) {
-    next[provider] = { configured, invalid: configured && previous[provider]?.invalid === true }
-  }
-  return next
-}
-
 export function clearProviderUses(
   prefs: Pick<Preferences, 'voiceStt' | 'voiceTts'>,
   provider: CloudVoiceProviderId,

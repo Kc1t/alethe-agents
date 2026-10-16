@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 
 import { useT } from '../../../../lib/i18n'
 import { APPLE_SPEECH_MODEL_ID } from '../../../../lib/tauri'
 import { CLOUD_VOICE_PROVIDERS } from '../../../../lib/voice/providers'
 import { useProjectsStore } from '../../../../stores/projectsStore'
+import controls from '../../controls.module.css'
 import { ProviderCard, type ProviderStatus } from './ProviderCard'
 import styles from './ProviderGrid.module.css'
 import { ProviderGroup } from './ProviderGroup'
@@ -15,7 +16,7 @@ type Filter = 'all' | 'local' | 'cloud'
 export function ProviderGrid({ onOpen }: { onOpen: (id: VoiceProviderId) => void }) {
   const t = useT()
   const flags = useProjectsStore((s) => s.preferences.voiceProviders)
-  const { models, states } = useSpeechInventory()
+  const { models, states, failed, retry } = useSpeechInventory()
   const [filter, setFilter] = useState<Filter>('all')
 
   const appleAvailable = models.some((model) => model.id === APPLE_SPEECH_MODEL_ID)
@@ -51,8 +52,8 @@ export function ProviderGrid({ onOpen }: { onOpen: (id: VoiceProviderId) => void
     <section className={styles.root} data-setting-id="voice-providers" tabIndex={-1}>
       <div className={styles.header}>
         <div>
-          <h2>{t('prefs.voiceProvidersTitle')}</h2>
-          <p>{t('prefs.voiceProvidersDesc')}</p>
+          <h2>{t('prefs.voiceAccountsTitle')}</h2>
+          <p>{t('prefs.voiceAccountsDesc')}</p>
         </div>
         <div className={styles.filter} role="radiogroup" aria-label={t('prefs.voiceFilterLabel')}>
           {(['all', 'local', 'cloud'] as const).map((id) => (
@@ -75,6 +76,14 @@ export function ProviderGrid({ onOpen }: { onOpen: (id: VoiceProviderId) => void
           ))}
         </div>
       </div>
+      {failed ? (
+        <div role="alert" className={styles.failure}>
+          <p>{t('prefs.voiceLoadFailed')}</p>
+          <button type="button" className={`${controls.btn} ${controls.btnSm}`} onClick={retry}>
+            {t('prefs.voiceRetry')}
+          </button>
+        </div>
+      ) : null}
       {groups
         .filter((group) => filter === 'all' || filter === group.id)
         .map((group) => (

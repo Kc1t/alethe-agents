@@ -4,24 +4,22 @@
 //! native cpal (not WebKit getUserMedia) so AppImage/PipeWire still sees devices.
 
 use std::fs::{self, File};
-use std::io::Write;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sherpa_onnx::{
-    OfflineMoonshineModelConfig, OfflineRecognizer, OfflineRecognizerConfig,
-    OfflineTransducerModelConfig, OfflineWhisperModelConfig,
-};
+use sherpa_onnx::OfflineRecognizer;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::paths::app_data_dir;
 use crate::speech_capture::{self, CaptureSession, CapturedAudio, SpeechInputDevice};
+use crate::speech_download::{self, ActiveDownload, DownloadFlags, WriteOutcome};
+use crate::speech_layout::SttLayout;
 use crate::voice_providers::http::{CloudError, CloudErrorKind};
 use crate::voice_providers::CloudProvider;
 
@@ -46,15 +44,23 @@ pub struct SpeechModelManifest {
     pub kind: String,
     /// `stt` or `tts`.
     pub capability: String,
+    /// `catalog` or `huggingface`.
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hub: Option<crate::speech_hub::HubModelInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpeechModelState {
     pub id: String,
+    /// `ready`, `downloading`, `paused`, `not-downloaded`, or a native engine status.
     pub status: String,
     pub progress: Option<f64>,
     pub error: Option<String>,
+    /// Bytes on disk (finished files plus `.part` sizes); `None` for the native engine.
+    pub downloaded_bytes: Option<u64>,
+    pub total_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,7 +70,8 @@ struct DownloadProgressEvent {
     downloaded: u64,
     total: u64,
     fraction: f64,
-    /// `downloading`, or `verifying` while the SHA-256 of a finished file is checked.
+    /// `downloading`, `verifying` while the SHA-256 of a finished file is checked, `unpacking`
+    /// while a voice archive is installed, or `paused` once a pause has landed.
     phase: &'static str,
     file: String,
     /// 1-based position of `file` among the model's files.
@@ -75,6 +82,9 @@ struct DownloadProgressEvent {
 /// A chunk arrives every few KB; one event per chunk floods the webview with tens of thousands of
 /// IPC messages for a 650 MB model and slows the download itself.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
+
+/// Longest wait for the next bytes of a model download before it fails (and can be resumed).
+const DOWNLOAD_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 struct ProgressThrottle {
@@ -101,11 +111,113 @@ fn resume_offset(part_len: Option<u64>, expected: u64) -> u64 {
     }
 }
 
+/// A `.part` as long as the file it stands for (a pause on the last chunk) needs no request:
+/// it goes straight to verification.
+fn part_is_complete(part_len: Option<u64>, expected: u64) -> bool {
+    expected > 0 && part_len == Some(expected)
+}
+
+/// A resumed request continues the `.part` only when the server honored the `Range` header.
+fn should_append(offset: u64, status: reqwest::StatusCode) -> bool {
+    offset > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT
+}
+
 struct ModelFile {
     name: &'static str,
     url: &'static str,
     size_bytes: u64,
     sha256: &'static str,
+}
+
+/// A file to fetch: catalog files convert from `ModelFile`, Hugging Face files from a manifest.
+/// `name` is relative to the model folder and may contain `/`.
+struct DownloadFile {
+    name: String,
+    url: String,
+    size_bytes: u64,
+    check: Check,
+}
+
+enum Check {
+    Sha256(String),
+    /// Git blob SHA-1, for Hugging Face files stored outside LFS.
+    GitSha1(String),
+}
+
+impl From<&ModelFile> for DownloadFile {
+    fn from(file: &ModelFile) -> Self {
+        Self {
+            name: file.name.into(),
+            url: file.url.into(),
+            size_bytes: file.size_bytes,
+            check: Check::Sha256(file.sha256.into()),
+        }
+    }
+}
+
+fn hub_download_files(
+    repo: &str,
+    commit: &str,
+    files: &[crate::speech_hub::detect::RepoFile],
+) -> Result<Vec<DownloadFile>, String> {
+    files
+        .iter()
+        .map(|file| {
+            let check = match (&file.sha256, &file.git_sha1) {
+                (Some(sha), _) => Check::Sha256(sha.clone()),
+                (None, Some(sha)) => Check::GitSha1(sha.clone()),
+                (None, None) => return Err(format!("no checksum for {}", file.path)),
+            };
+            Ok(DownloadFile {
+                name: file.path.clone(),
+                url: crate::speech_hub::hf::resolve_url(repo, commit, &file.path),
+                size_bytes: file.size,
+                check,
+            })
+        })
+        .collect()
+}
+
+/// `git hash-object` of a file: SHA-1 over `blob {len}\0` and the content.
+fn git_blob_sha1(path: &Path) -> Result<String, String> {
+    use sha1::{Digest as _, Sha1};
+    use std::io::Read;
+    let len = fs::metadata(path)
+        .map_err(|e| format!("read {}: {e}", path.display()))?
+        .len();
+    let mut file = File::open(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut hasher = Sha1::new();
+    hasher.update(format!("blob {len}\0").as_bytes());
+    let mut buf = [0u8; 1024 * 64];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("read {}: {e}", path.display()))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn verify(path: &Path, check: &Check) -> Result<bool, String> {
+    Ok(match check {
+        Check::Sha256(expected) => sha256_file(path)? == *expected,
+        Check::GitSha1(expected) => git_blob_sha1(path)? == *expected,
+    })
+}
+
+/// Below this size a file is verified without its own progress event, so a voice's ~350 small
+/// espeak files do not flood the webview.
+const QUIET_VERIFY_BYTES: u64 = 8 * 1024 * 1024;
+
+fn download_client() -> Result<reqwest::Client, String> {
+    // A stalled connection fails as a resumable error instead of hanging, so pause and cancel land.
+    reqwest::Client::builder()
+        .read_timeout(DOWNLOAD_READ_TIMEOUT)
+        .build()
+        .map_err(|e| format!("download client: {e}"))
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -119,6 +231,32 @@ enum Layout {
         tokens: &'static str,
     },
     Moonshine,
+}
+
+impl From<Layout> for SttLayout {
+    fn from(layout: Layout) -> Self {
+        match layout {
+            Layout::Transducer { model_type } => SttLayout::Transducer {
+                model_type: model_type.into(),
+                encoder: "encoder.int8.onnx".into(),
+                decoder: "decoder.int8.onnx".into(),
+                joiner: "joiner.int8.onnx".into(),
+                tokens: "tokens.txt".into(),
+            },
+            Layout::Whisper { encoder, decoder, tokens } => SttLayout::Whisper {
+                encoder: encoder.into(),
+                decoder: decoder.into(),
+                tokens: tokens.into(),
+            },
+            Layout::Moonshine => SttLayout::Moonshine {
+                preprocessor: "preprocess.onnx".into(),
+                encoder: "encode.int8.onnx".into(),
+                uncached_decoder: "uncached_decode.int8.onnx".into(),
+                cached_decoder: "cached_decode.int8.onnx".into(),
+                tokens: "tokens.txt".into(),
+            },
+        }
+    }
 }
 
 struct CatalogEntry {
@@ -408,6 +546,8 @@ const TTS_CATALOG: &[TtsCatalogEntry] = &[
 pub struct SpeechState {
     /// Serializes downloads so two prefs clicks don't race the same folder.
     download_lock: AsyncMutex<()>,
+    /// Stop flag of the active download, read by pause and cancel.
+    downloads: DownloadFlags,
     /// Active native mic capture (stream lives on a dedicated thread).
     capture: Mutex<Option<CaptureSession>>,
     /// Loading the encoder costs hundreds of megabytes of disk read per utterance.
@@ -418,6 +558,7 @@ impl Default for SpeechState {
     fn default() -> Self {
         Self {
             download_lock: AsyncMutex::new(()),
+            downloads: DownloadFlags::default(),
             capture: Mutex::new(None),
             recognizer: Mutex::new(None),
         }
@@ -428,7 +569,7 @@ impl SpeechState {
     fn recognizer_for(
         &self,
         dir: &Path,
-        layout: Layout,
+        layout: &SttLayout,
     ) -> Result<Arc<OfflineRecognizer>, String> {
         let mut slot = self
             .recognizer
@@ -450,7 +591,45 @@ fn models_root(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 fn model_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
-    Ok(models_root(app)?.join(id))
+    let root = models_root(app)?;
+    if installed::repo_of(id).is_some() {
+        return installed::dir_name(id)
+            .map(|name| root.join(name))
+            .ok_or_else(|| format!("Unknown speech model: {id}"));
+    }
+    Ok(root.join(id))
+}
+
+use crate::speech_hub::detect::HubLayout;
+use crate::speech_hub::installed::{self, HubManifest};
+
+/// What kind of model an id names, to check readiness the right way.
+enum ReadyCheck {
+    Stt(&'static CatalogEntry),
+    Tts(&'static TtsCatalogEntry),
+    Hub,
+}
+
+impl ReadyCheck {
+    fn is_ready(&self, dir: &Path) -> bool {
+        match self {
+            Self::Stt(entry) => model_ready(dir, entry),
+            Self::Tts(entry) => tts_ready(dir, entry),
+            Self::Hub => installed::read(dir).is_some_and(|m| installed::is_ready(dir, &m)),
+        }
+    }
+}
+
+fn ready_check(id: &str) -> Result<ReadyCheck, String> {
+    if installed::repo_of(id).is_some() {
+        return installed::dir_name(id)
+            .map(|_| ReadyCheck::Hub)
+            .ok_or_else(|| format!("Unknown speech model: {id}"));
+    }
+    if let Some(entry) = find_tts_entry(id) {
+        return Ok(ReadyCheck::Tts(entry));
+    }
+    find_entry(id).map(ReadyCheck::Stt)
 }
 
 fn find_entry(id: &str) -> Result<&'static CatalogEntry, String> {
@@ -478,19 +657,96 @@ fn tts_ready(dir: &Path, entry: &TtsCatalogEntry) -> bool {
         && dir.join("espeak-ng-data").is_dir()
 }
 
-/// The unpacked folder of a downloaded voice and its model file, or why it cannot speak yet.
+/// What a downloaded Hugging Face model that sherpa cannot load reports.
+const HUB_INCOMPATIBLE: &str =
+    "This model cannot run in Alethe. Remove it in Preferences → Voice.";
+
+/// A Hugging Face model that fails to load reads as incompatible; a catalog model keeps the
+/// engine's own error.
+fn load_error(model_id: &str, error: String) -> String {
+    if installed::repo_of(model_id).is_some() {
+        HUB_INCOMPATIBLE.to_string()
+    } else {
+        error
+    }
+}
+
+fn not_downloaded(id: &str) -> String {
+    format!("Speech model '{id}' is not downloaded. Open Preferences → Voice and download it.")
+}
+
+/// A downloaded Hugging Face model's manifest, or `None`.
+fn ready_manifest(dir: &Path) -> Option<HubManifest> {
+    installed::read(dir).filter(|m| installed::is_ready(dir, m))
+}
+
+/// The folder and recognizer layout of a downloaded local model, or why it cannot run yet.
+fn local_stt(app: &AppHandle, model_id: &str) -> Result<(PathBuf, SttLayout), String> {
+    let dir = model_dir(app, model_id)?;
+    if installed::repo_of(model_id).is_some() {
+        return match ready_manifest(&dir).map(|m| m.layout) {
+            Some(HubLayout::Stt(layout)) => Ok((dir, layout)),
+            Some(HubLayout::Tts(_)) => Err(format!(
+                "'{model_id}' is a voice, not a speech recognition model."
+            )),
+            None => Err(not_downloaded(model_id)),
+        };
+    }
+    let entry = find_entry(model_id)?;
+    if !model_ready(&dir, entry) {
+        return Err(not_downloaded(model_id));
+    }
+    Ok((dir, SttLayout::from(entry.layout)))
+}
+
+/// The unpacked folder of a downloaded voice and how to load it, or why it cannot speak yet.
 pub(crate) fn local_tts_model(
     app: &AppHandle,
     id: &str,
-) -> Result<(PathBuf, &'static str), String> {
-    let entry = find_tts_entry(id).ok_or_else(|| format!("Unknown voice model: {id}"))?;
+) -> Result<(PathBuf, crate::tts_local::TtsLayout), String> {
     let dir = model_dir(app, id)?;
-    if !tts_ready(&dir, entry) {
-        return Err(format!(
-            "Voice model '{id}' is not downloaded. Open Preferences → Voice."
-        ));
+    let missing = || format!("Voice model '{id}' is not downloaded. Open Preferences → Voice.");
+    if installed::repo_of(id).is_some() {
+        return match ready_manifest(&dir).map(|m| m.layout) {
+            Some(HubLayout::Tts(layout)) => Ok((dir, layout)),
+            _ => Err(missing()),
+        };
     }
-    Ok((dir, entry.model_file))
+    let entry = find_tts_entry(id).ok_or_else(|| format!("Unknown voice model: {id}"))?;
+    if !tts_ready(&dir, entry) {
+        return Err(missing());
+    }
+    Ok((dir, crate::tts_local::TtsLayout::piper(entry.model_file)))
+}
+
+/// Speakers of a downloaded local voice, named when the model's names are known; empty for a
+/// single-voice model or a voice that is not downloaded. Only a voice whose speakers are not
+/// named is loaded (on a worker), to count them.
+pub(crate) async fn local_tts_voices(
+    app: &AppHandle,
+    id: &str,
+) -> Vec<crate::speech_hub::meta::HubVoice> {
+    let Ok((dir, layout)) = local_tts_model(app, id) else {
+        return Vec::new();
+    };
+    let meta = ready_manifest(&dir).map(|m| m.meta).unwrap_or_default();
+    if let Some(voices) = crate::speech_hub::meta::known_voices(&meta) {
+        return voices;
+    }
+    let reported = tokio::task::spawn_blocking(move || crate::tts_local::num_speakers(&dir, &layout))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or(1);
+    crate::speech_hub::meta::voice_list(&[], reported)
+}
+
+/// The language tag of speaker `sid` of a downloaded Hugging Face voice, when its manifest
+/// names it; `None` for a catalog voice or an unknown speaker.
+pub(crate) fn local_tts_language(app: &AppHandle, id: &str, sid: i32) -> Option<String> {
+    installed::repo_of(id)?;
+    let manifest = ready_manifest(&model_dir(app, id).ok()?)?;
+    crate::speech_hub::meta::speaker_language(&manifest.meta, sid).map(str::to_string)
 }
 
 /// Unpacks the files under `root/` into `dest`. Links and special entries are skipped, and a path
@@ -588,6 +844,8 @@ fn catalog_manifests(apple_available: bool) -> Vec<SpeechModelManifest> {
             recommended: entry.recommended,
             kind: "download".to_string(),
             capability: "stt".to_string(),
+            source: "catalog".to_string(),
+            hub: None,
         })
         .collect();
     list.extend(TTS_CATALOG.iter().map(|entry| SpeechModelManifest {
@@ -600,6 +858,8 @@ fn catalog_manifests(apple_available: bool) -> Vec<SpeechModelManifest> {
         recommended: false,
         kind: "download".to_string(),
         capability: "tts".to_string(),
+        source: "catalog".to_string(),
+        hub: None,
     }));
     if apple_available {
         list.insert(
@@ -614,15 +874,45 @@ fn catalog_manifests(apple_available: bool) -> Vec<SpeechModelManifest> {
                 recommended: false,
                 kind: "native".to_string(),
                 capability: "stt".to_string(),
+                source: "catalog".to_string(),
+                hub: None,
             },
         );
     }
     list
 }
 
+fn hub_manifest_view(manifest: &HubManifest) -> SpeechModelManifest {
+    SpeechModelManifest {
+        id: manifest.id.clone(),
+        label: manifest.meta.label.clone(),
+        description: String::new(),
+        language: manifest.meta.languages.join(","),
+        sample_rate: if manifest.family.is_tts() {
+            0
+        } else {
+            SAMPLE_RATE as u32
+        },
+        size_bytes: manifest.total_bytes(),
+        recommended: false,
+        kind: "download".to_string(),
+        capability: manifest.family.use_name().to_string(),
+        source: "huggingface".to_string(),
+        hub: Some(manifest.info()),
+    }
+}
+
 #[tauri::command]
-pub fn speech_list_models() -> Vec<SpeechModelManifest> {
-    catalog_manifests(crate::speech_apple::bridge().is_some())
+pub fn speech_list_models(app: AppHandle) -> Vec<SpeechModelManifest> {
+    let mut list = catalog_manifests(crate::speech_apple::bridge().is_some());
+    if let Ok(root) = models_root(&app) {
+        list.extend(
+            installed::list(&root)
+                .iter()
+                .map(|(_, manifest)| hub_manifest_view(manifest)),
+        );
+    }
+    list
 }
 
 #[tauri::command]
@@ -643,6 +933,7 @@ pub fn speech_list_input_devices() -> Result<Vec<SpeechInputDevice>, String> {
 #[tauri::command]
 pub async fn speech_model_states(
     app: AppHandle,
+    state: State<'_, SpeechState>,
     locale: Option<String>,
 ) -> Result<Vec<SpeechModelState>, String> {
     let root = models_root(&app)?;
@@ -650,31 +941,29 @@ pub async fn speech_model_states(
         .iter()
         .map(|entry| {
             let dir = root.join(entry.id);
-            let status = if model_ready(&dir, entry) {
-                "ready"
-            } else {
-                "not-downloaded"
-            };
-            SpeechModelState {
-                id: entry.id.to_string(),
-                status: status.to_string(),
-                progress: None,
-                error: None,
-            }
+            let files: Vec<(&str, u64)> = entry
+                .files
+                .iter()
+                .map(|file| (file.name, file.size_bytes))
+                .collect();
+            let disk = speech_download::disk_state(&dir, &files, model_ready(&dir, entry));
+            disk_model_state(&state.downloads, entry.id, disk, entry_size_bytes(entry))
         })
         .collect();
     states.extend(TTS_CATALOG.iter().map(|entry| {
-        let status = if tts_ready(&root.join(entry.id), entry) {
-            "ready"
-        } else {
-            "not-downloaded"
-        };
-        SpeechModelState {
-            id: entry.id.to_string(),
-            status: status.to_string(),
-            progress: None,
-            error: None,
-        }
+        let dir = root.join(entry.id);
+        let archive = [(entry.archive.name, entry.archive.size_bytes)];
+        let disk = speech_download::disk_state(&dir, &archive, tts_ready(&dir, entry));
+        disk_model_state(&state.downloads, entry.id, disk, entry.archive.size_bytes)
+    }));
+    states.extend(installed::list(&root).into_iter().map(|(dir, manifest)| {
+        let files: Vec<(&str, u64)> = manifest
+            .files
+            .iter()
+            .map(|f| (f.path.as_str(), f.size))
+            .collect();
+        let disk = speech_download::disk_state(&dir, &files, installed::is_ready(&dir, &manifest));
+        disk_model_state(&state.downloads, &manifest.id, disk, manifest.total_bytes())
     }));
     if let Some(bridge) = crate::speech_apple::bridge() {
         let status = tokio::task::spawn_blocking(move || {
@@ -693,10 +982,34 @@ pub async fn speech_model_states(
                 status: status.to_string(),
                 progress: None,
                 error: None,
+                downloaded_bytes: None,
+                total_bytes: None,
             },
         );
     }
     Ok(states)
+}
+
+/// The state of a downloadable model: what is on disk, or `downloading` while its download runs.
+fn disk_model_state(
+    downloads: &DownloadFlags,
+    id: &str,
+    disk: speech_download::DiskState,
+    total: u64,
+) -> SpeechModelState {
+    let status = if downloads.is_active(id) {
+        "downloading"
+    } else {
+        disk.status
+    };
+    SpeechModelState {
+        id: id.to_string(),
+        status: status.to_string(),
+        progress: None,
+        error: None,
+        downloaded_bytes: Some(disk.downloaded_bytes),
+        total_bytes: Some(total),
+    }
 }
 
 struct NativeInstallProgress;
@@ -757,6 +1070,8 @@ async fn install_native_locale(
         status: "ready".into(),
         progress: Some(1.0),
         error: None,
+        downloaded_bytes: None,
+        total_bytes: None,
     })
 }
 
@@ -764,52 +1079,192 @@ async fn install_native_locale(
 pub async fn speech_download_model(
     app: AppHandle,
     state: State<'_, SpeechState>,
+    hub: State<'_, crate::speech_hub::HubState>,
     model_id: String,
     locale: Option<String>,
 ) -> Result<SpeechModelState, String> {
     if model_id == APPLE_MODEL_ID {
         return install_native_locale(&app, model_id, locale).await;
     }
+    if installed::repo_of(&model_id).is_some() {
+        return download_hub_model(&app, &state, &hub, &model_id).await;
+    }
     let tts_entry = find_tts_entry(&model_id);
     let stt_entry = match tts_entry {
         Some(_) => None,
         None => Some(find_entry(&model_id)?),
     };
+    let stop = state.downloads.start(&model_id)?;
+    // Clears the flag on every exit: done, paused, failed, or the command future dropped.
+    let _active = ActiveDownload::new(&state.downloads, &model_id);
     let _guard = state.download_lock.lock().await;
     let dir = model_dir(&app, &model_id)?;
     fs::create_dir_all(&dir).map_err(|e| format!("create model dir: {e}"))?;
+    let client = download_client()?;
+    let total_bytes = match (tts_entry, stt_entry) {
+        (Some(entry), _) => entry.archive.size_bytes,
+        (None, Some(entry)) => entry_size_bytes(entry),
+        (None, None) => 0,
+    };
     if let Some(entry) = tts_entry {
         if !tts_ready(&dir, entry) {
-            download_files(&app, &model_id, &dir, std::slice::from_ref(&entry.archive)).await?;
+            let files = [DownloadFile::from(&entry.archive)];
+            download_files(&app, &client, &model_id, &dir, &files, &stop).await?;
+            // The stop flag is no longer read: a pause or cancel waits for the unpack to finish.
+            let _ = app.emit(
+                "speech://download-progress",
+                DownloadProgressEvent {
+                    model_id: model_id.clone(),
+                    downloaded: total_bytes,
+                    total: total_bytes,
+                    fraction: 1.0,
+                    phase: "unpacking",
+                    file: entry.archive.name.to_string(),
+                    file_index: 1,
+                    file_count: 1,
+                },
+            );
             let unpack_dir = dir.clone();
             tokio::task::spawn_blocking(move || install_tts_archive(&unpack_dir, entry))
                 .await
                 .map_err(|e| format!("unpack worker join: {e}"))??;
         }
     } else if let Some(entry) = stt_entry {
-        download_files(&app, &model_id, &dir, entry.files).await?;
+        let files: Vec<DownloadFile> = entry.files.iter().map(DownloadFile::from).collect();
+        download_files(&app, &client, &model_id, &dir, &files, &stop).await?;
     }
     Ok(SpeechModelState {
-        id: model_id,
+        id: model_id.clone(),
         status: "ready".into(),
         progress: Some(1.0),
         error: None,
+        downloaded_bytes: Some(total_bytes),
+        total_bytes: Some(total_bytes),
     })
+}
+
+/// Downloads every file of a Hugging Face model. A paused download continues the commit and file
+/// list of the manifest already on disk; a new one resolves the repo first.
+async fn download_hub_model(
+    app: &AppHandle,
+    state: &SpeechState,
+    hub: &crate::speech_hub::HubState,
+    model_id: &str,
+) -> Result<SpeechModelState, String> {
+    let stop = state.downloads.start(model_id)?;
+    let _active = ActiveDownload::new(&state.downloads, model_id);
+    let _guard = state.download_lock.lock().await;
+    let dir = model_dir(app, model_id)?;
+    let existing = installed::read(&dir);
+    let manifest = match existing {
+        Some(found) => found,
+        None => {
+            let repo = installed::repo_of(model_id).unwrap_or_default();
+            let resolved = crate::speech_hub::resolve(hub, repo).await?;
+            installed::for_download(None, || installed::from_resolved(&resolved))
+        }
+    };
+    fs::create_dir_all(&dir).map_err(|e| format!("create model dir: {e}"))?;
+    if !installed::is_ready(&dir, &manifest) {
+        installed::write(
+            &dir,
+            &HubManifest {
+                complete: false,
+                ..manifest.clone()
+            },
+        )?;
+        let files = hub_download_files(&manifest.repo, &manifest.commit, &manifest.files)?;
+        let client = crate::speech_hub::hf::client()?;
+        if let Err(error) = download_files(app, &client, model_id, &dir, &files, &stop).await {
+            return Err(match hub_file_error(&error) {
+                Some(code) if code == crate::speech_hub::hf::UNKNOWN_REPO => {
+                    // The pinned commit is gone: drop the folder and the cached resolve so a new
+                    // download starts from the repo as it is now.
+                    let _ = fs::remove_dir_all(&dir);
+                    hub.forget(&manifest.repo);
+                    code.to_string()
+                }
+                Some(code) => code.to_string(),
+                None => error,
+            });
+        }
+        installed::write(
+            &dir,
+            &HubManifest {
+                complete: true,
+                ..manifest.clone()
+            },
+        )?;
+    }
+    let total = manifest.total_bytes();
+    Ok(SpeechModelState {
+        id: model_id.to_string(),
+        status: "ready".into(),
+        progress: Some(1.0),
+        error: None,
+        downloaded_bytes: Some(total),
+        total_bytes: Some(total),
+    })
+}
+
+/// Asks the active download of `model_id` to stop after its current chunk; `false` when idle.
+#[tauri::command]
+pub fn speech_pause_download(state: State<'_, SpeechState>, model_id: String) -> bool {
+    state.downloads.stop(&model_id)
+}
+
+/// Stops the download of `model_id` and, when the model is not ready, deletes its folder so it
+/// reads as `not-downloaded`. A ready model is untouched. Only that model's own download is
+/// waited for (through a verify or unpack phase too); another model's download is not.
+#[tauri::command]
+pub async fn speech_cancel_download(
+    app: AppHandle,
+    state: State<'_, SpeechState>,
+    model_id: String,
+) -> Result<(), String> {
+    let check = ready_check(&model_id)?;
+    let dir = model_dir(&app, &model_id)?;
+    speech_download::cancel_download(
+        &state.downloads,
+        &state.download_lock,
+        &model_id,
+        &dir,
+        move |dir| check.is_ready(dir),
+    )
+    .await
+    .map_err(|e| format!("cancel download: {e}"))
+}
+
+/// The error of a file request the server refused.
+fn http_failure(name: &str, status: reqwest::StatusCode) -> String {
+    format!("download {name} failed: HTTP {status}")
+}
+
+/// The Hugging Face code for a refused file request: a missing file means the pinned commit is
+/// gone, too many requests is a rate limit. `None` keeps the error as it is.
+fn hub_file_error(error: &str) -> Option<&'static str> {
+    let status = error.split_once(" failed: HTTP ")?.1;
+    match status.split(' ').next()? {
+        "404" => Some(crate::speech_hub::hf::UNKNOWN_REPO),
+        "429" => Some(crate::speech_hub::hf::RATE_LIMITED),
+        _ => None,
+    }
 }
 
 /// Downloads `files` into `dir`, resuming `.part` files and checking each SHA-256.
 async fn download_files(
     app: &AppHandle,
+    client: &reqwest::Client,
     model_id: &str,
     dir: &Path,
-    files: &[ModelFile],
+    files: &[DownloadFile],
+    stop: &AtomicBool,
 ) -> Result<(), String> {
-    let client = reqwest::Client::new();
     let total: u64 = files.iter().map(|f| f.size_bytes).sum();
     let file_count = files.len();
     let mut downloaded_total = 0u64;
     let mut throttle = ProgressThrottle::default();
-    let emit = |phase: &'static str, file: &ModelFile, index: usize, overall: u64| {
+    let emit = |phase: &'static str, file: &DownloadFile, index: usize, overall: u64| {
         let fraction = if total == 0 {
             0.0
         } else {
@@ -823,7 +1278,7 @@ async fn download_files(
                 total,
                 fraction,
                 phase,
-                file: file.name.to_string(),
+                file: file.name.clone(),
                 file_index: index + 1,
                 file_count,
             },
@@ -831,11 +1286,16 @@ async fn download_files(
     };
 
     for (index, file) in files.iter().enumerate() {
-        let dest = dir.join(file.name);
+        let dest = dir.join(&file.name);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
+        }
         if dest.is_file() {
-            emit("verifying", file, index, downloaded_total);
-            match sha256_file(&dest) {
-                Ok(hash) if hash == file.sha256 => {
+            if file.size_bytes >= QUIET_VERIFY_BYTES {
+                emit("verifying", file, index, downloaded_total);
+            }
+            match verify(&dest, &file.check) {
+                Ok(true) => {
                     downloaded_total += file.size_bytes;
                     continue;
                 }
@@ -846,58 +1306,62 @@ async fn download_files(
         }
 
         let tmp = dir.join(format!("{}.part", file.name));
-        // An interrupted download keeps its `.part`; continue it instead of starting over.
-        let offset = resume_offset(fs::metadata(&tmp).ok().map(|m| m.len()), file.size_bytes);
-        let mut request = client.get(file.url);
-        if offset > 0 {
-            request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
-        }
-        let response = request
-            .send()
-            .await
-            .map_err(|e| format!("download {}: {e}", file.name))?;
-        if !response.status().is_success() {
-            if offset > 0 {
-                let _ = fs::remove_file(&tmp);
-            }
-            return Err(format!(
-                "download {} failed: HTTP {}",
-                file.name,
-                response.status()
-            ));
-        }
-        let resumed = offset > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-
-        let mut out = if resumed {
-            fs::OpenOptions::new().append(true).open(&tmp)
+        let part_len = fs::metadata(&tmp).ok().map(|m| m.len());
+        let file_got = if part_is_complete(part_len, file.size_bytes) {
+            file.size_bytes
         } else {
-            File::create(&tmp)
-        }
-        .map_err(|e| format!("open {}: {e}", tmp.display()))?;
-        let mut stream = response.bytes_stream();
-        let mut file_got = if resumed { offset } else { 0 };
-        emit("downloading", file, index, downloaded_total + file_got);
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| format!("download stream {}: {e}", file.name))?;
-            out.write_all(&chunk)
-                .map_err(|e| format!("write {}: {e}", file.name))?;
-            file_got += chunk.len() as u64;
-            if throttle.ready(Instant::now(), false) {
-                emit("downloading", file, index, downloaded_total + file_got);
+            // An interrupted download keeps its `.part`; continue it instead of starting over.
+            let offset = resume_offset(part_len, file.size_bytes);
+            let mut request = client.get(&file.url);
+            if offset > 0 {
+                request = request.header(reqwest::header::RANGE, format!("bytes={offset}-"));
             }
-        }
-        out.flush().map_err(|e| format!("flush {}: {e}", file.name))?;
-        drop(out);
+            let response = request
+                .send()
+                .await
+                .map_err(|e| format!("download {}: {e}", file.name))?;
+            if !response.status().is_success() {
+                if offset > 0 {
+                    let _ = fs::remove_file(&tmp);
+                }
+                return Err(http_failure(&file.name, response.status()));
+            }
+            let resumed = should_append(offset, response.status());
 
-        // Hashing the 650 MB encoder takes seconds; say so instead of sitting at 100%.
-        emit("verifying", file, index, downloaded_total + file_got);
-        let hash = sha256_file(&tmp)?;
-        if hash != file.sha256 {
+            let mut out = if resumed {
+                fs::OpenOptions::new().append(true).open(&tmp)
+            } else {
+                File::create(&tmp)
+            }
+            .map_err(|e| format!("open {}: {e}", tmp.display()))?;
+            let start = if resumed { offset } else { 0 };
+            emit("downloading", file, index, downloaded_total + start);
+            // Only this loop reads `stop`; verification and the rename below always run to the end.
+            let outcome =
+                speech_download::write_stream(response.bytes_stream(), &mut out, stop, |got| {
+                    if throttle.ready(Instant::now(), false) {
+                        emit("downloading", file, index, downloaded_total + start + got);
+                    }
+                })
+                .await
+                .map_err(|e| format!("{e} ({})", file.name))?;
+            drop(out);
+            match outcome {
+                WriteOutcome::Done(got) => start + got,
+                WriteOutcome::Paused(got) => {
+                    emit("paused", file, index, downloaded_total + start + got);
+                    return Err(speech_download::PAUSED.into());
+                }
+            }
+        };
+
+        if file.size_bytes >= QUIET_VERIFY_BYTES || throttle.ready(Instant::now(), false) {
+            // Hashing the 650 MB encoder takes seconds; say so instead of sitting at 100%.
+            emit("verifying", file, index, downloaded_total + file_got);
+        }
+        if !verify(&tmp, &file.check)? {
             let _ = fs::remove_file(&tmp);
-            return Err(format!(
-                "checksum mismatch for {}: expected {}, got {}",
-                file.name, file.sha256, hash
-            ));
+            return Err(format!("checksum mismatch for {}", file.name));
         }
         fs::rename(&tmp, &dest).map_err(|e| format!("finalize {}: {e}", file.name))?;
         downloaded_total += file.size_bytes;
@@ -906,15 +1370,22 @@ async fn download_files(
 }
 
 #[tauri::command]
-pub fn speech_delete_model(app: AppHandle, model_id: String) -> Result<(), String> {
+pub fn speech_delete_model(
+    app: AppHandle,
+    state: State<'_, SpeechState>,
+    model_id: String,
+) -> Result<(), String> {
     if model_id == APPLE_MODEL_ID {
         return Err("The Apple engine has nothing to delete.".to_string());
     }
-    if find_tts_entry(&model_id).is_none() {
-        find_entry(&model_id)?;
-    }
+    ready_check(&model_id)?;
     let dir = model_dir(&app, &model_id)?;
     crate::tts_local::forget(&dir);
+    // The cached recognizer holds the model's files open (Windows refuses to delete them).
+    crate::tts_local::forget_in(
+        &mut state.recognizer.lock().unwrap_or_else(|e| e.into_inner()),
+        &dir,
+    );
     if dir.exists() {
         fs::remove_dir_all(&dir).map_err(|e| format!("delete model: {e}"))?;
     }
@@ -1008,65 +1479,23 @@ fn write_hotwords(dir: &Path) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn build_recognizer(dir: &Path, layout: Layout) -> Result<OfflineRecognizer, String> {
-    let path = |name: &str| -> Result<String, String> {
-        let full = dir.join(name);
-        if !full.is_file() {
-            return Err(format!("missing model file: {}", full.display()));
-        }
-        Ok(full.to_string_lossy().into_owned())
-    };
-    let mut config = OfflineRecognizerConfig::default();
-    config.model_config.num_threads = decode_threads();
-    config.feat_config.sample_rate = SAMPLE_RATE;
-    match layout {
-        Layout::Transducer { model_type } => {
-            config.model_config.transducer = OfflineTransducerModelConfig {
-                encoder: Some(path("encoder.int8.onnx")?),
-                decoder: Some(path("decoder.int8.onnx")?),
-                joiner: Some(path("joiner.int8.onnx")?),
-            };
-            config.model_config.tokens = Some(path("tokens.txt")?);
-            config.model_config.model_type = Some(model_type.to_string());
-
-            // Biasing only bites on a BPE model when the vocab is handed over too, and sherpa wants the
-            // text vocab, not the sentencepiece model: the binary one takes the process down.
-            let bpe = dir.join("bpe.vocab");
-            if model_type == "transducer" && is_text_vocab(&bpe) {
-                if let Ok(hotwords) = write_hotwords(dir) {
-                    config.decoding_method = Some("modified_beam_search".into());
-                    config.max_active_paths = 4;
-                    config.hotwords_file = Some(hotwords.to_string_lossy().into_owned());
-                    config.hotwords_score = 3.0;
-                    config.model_config.modeling_unit = Some("bpe".into());
-                    config.model_config.bpe_vocab = Some(bpe.to_string_lossy().into_owned());
-                }
+fn build_recognizer(dir: &Path, layout: &SttLayout) -> Result<OfflineRecognizer, String> {
+    let mut config = crate::speech_layout::recognizer_config(dir, layout, decode_threads(), SAMPLE_RATE)?;
+    // Biasing only bites on a BPE model when the vocab is handed over too, and sherpa wants the
+    // text vocab, not the sentencepiece model: the binary one takes the process down.
+    if let SttLayout::Transducer { model_type, .. } = layout {
+        let bpe = dir.join("bpe.vocab");
+        if model_type == "transducer" && is_text_vocab(&bpe) {
+            if let Ok(hotwords) = write_hotwords(dir) {
+                config.decoding_method = Some("modified_beam_search".into());
+                config.max_active_paths = 4;
+                config.hotwords_file = Some(hotwords.to_string_lossy().into_owned());
+                config.hotwords_score = 3.0;
+                config.model_config.modeling_unit = Some("bpe".into());
+                config.model_config.bpe_vocab = Some(bpe.to_string_lossy().into_owned());
             }
         }
-        Layout::Whisper { encoder, decoder, tokens } => {
-            config.model_config.whisper = OfflineWhisperModelConfig {
-                encoder: Some(path(encoder)?),
-                decoder: Some(path(decoder)?),
-                // Empty language = detect it per utterance.
-                language: Some(String::new()),
-                task: Some("transcribe".into()),
-                tail_paddings: -1,
-                ..Default::default()
-            };
-            config.model_config.tokens = Some(path(tokens)?);
-        }
-        Layout::Moonshine => {
-            config.model_config.moonshine = OfflineMoonshineModelConfig {
-                preprocessor: Some(path("preprocess.onnx")?),
-                encoder: Some(path("encode.int8.onnx")?),
-                uncached_decoder: Some(path("uncached_decode.int8.onnx")?),
-                cached_decoder: Some(path("cached_decode.int8.onnx")?),
-                merged_decoder: None,
-            };
-            config.model_config.tokens = Some(path("tokens.txt")?);
-        }
     }
-
     OfflineRecognizer::create(&config).ok_or_else(|| "failed to create OfflineRecognizer".into())
 }
 
@@ -1187,18 +1616,18 @@ impl SttProvider {
 #[derive(Debug)]
 enum FallbackStt {
     Apple(String),
-    Sherpa(&'static str),
+    Sherpa(String),
 }
 
 /// Apple Speech when ready for a locale, else the first downloaded sherpa model.
 fn pick_fallback(
     apple_locale_ready: Option<String>,
-    ready_sherpa: &[&'static str],
+    ready_sherpa: &[String],
 ) -> Option<FallbackStt> {
     if let Some(locale) = apple_locale_ready {
         return Some(FallbackStt::Apple(locale));
     }
-    ready_sherpa.first().map(|id| FallbackStt::Sherpa(id))
+    ready_sherpa.first().map(|id| FallbackStt::Sherpa(id.clone()))
 }
 
 #[derive(Clone, Serialize)]
@@ -1232,23 +1661,29 @@ async fn fallback_transcriber(
         _ => None,
     };
     let root = models_root(app).ok()?;
-    let ready: Vec<&'static str> = CATALOG
+    let mut ready: Vec<String> = CATALOG
         .iter()
         .filter(|entry| model_ready(&root.join(entry.id), entry))
-        .map(|entry| entry.id)
+        .map(|entry| entry.id.to_string())
         .collect();
+    ready.extend(
+        installed::list(&root)
+            .into_iter()
+            .filter(|(dir, m)| !m.family.is_tts() && installed::is_ready(dir, m))
+            .map(|(_, m)| m.id),
+    );
     match pick_fallback(apple_ready, &ready)? {
         FallbackStt::Apple(locale) => transcriber_for(app, state, APPLE_MODEL_ID, Some(&locale))
             .ok()
             .map(|t| (t, APPLE_MODEL_ID.to_string())),
-        FallbackStt::Sherpa(id) => transcriber_for(app, state, id, None)
+        FallbackStt::Sherpa(id) => transcriber_for(app, state, &id, None)
             .ok()
-            .map(|t| (t, id.to_string())),
+            .map(|t| (t, id)),
     }
 }
 
 enum Engine {
-    Sherpa(&'static CatalogEntry),
+    Local,
     Apple { locale: String },
 }
 
@@ -1258,7 +1693,10 @@ fn engine_for(
     apple_available: bool,
 ) -> Result<Engine, String> {
     if model_id != APPLE_MODEL_ID {
-        return find_entry(model_id).map(Engine::Sherpa);
+        if installed::repo_of(model_id).is_none() {
+            find_entry(model_id)?;
+        }
+        return Ok(Engine::Local);
     }
     if !apple_available {
         return Err(APPLE_UNAVAILABLE.to_string());
@@ -1333,16 +1771,13 @@ fn transcriber_for(
 ) -> Result<Box<dyn Transcriber>, String> {
     let bridge = crate::speech_apple::bridge();
     match engine_for(model_id, locale, bridge.is_some())? {
-        Engine::Sherpa(entry) => {
-            let dir = model_dir(app, model_id)?;
-            if !model_ready(&dir, entry) {
-                return Err(format!(
-                    "Speech model '{model_id}' is not downloaded. Open Preferences → Voice and download it."
-                ));
-            }
+        Engine::Local => {
+            let (dir, layout) = local_stt(app, model_id)?;
             Ok(Box::new(SherpaTranscriber {
-                recognizer: state.recognizer_for(&dir, entry.layout)?,
-                whisper: matches!(entry.layout, Layout::Whisper { .. }),
+                recognizer: state
+                    .recognizer_for(&dir, &layout)
+                    .map_err(|e| load_error(model_id, e))?,
+                whisper: layout.is_whisper(),
             }))
         }
         Engine::Apple { locale } => Ok(Box::new(AppleTranscriber {
@@ -1371,7 +1806,9 @@ pub async fn speech_prepare(
     locale: Option<String>,
 ) -> Result<bool, String> {
     if let Some(cloud) = SttProvider::infer(provider, &model_id).cloud() {
-        return Ok(crate::voice_providers::keys::read_key(&app, cloud)?.is_some());
+        return Ok(crate::voice_providers::keys::read_key_async(&app, cloud)
+            .await?
+            .is_some());
     }
     if model_id == APPLE_MODEL_ID {
         let Some(bridge) = crate::speech_apple::bridge() else {
@@ -1391,13 +1828,29 @@ pub async fn speech_prepare(
         .await
         .map_err(|e| format!("speech worker join: {e}"));
     }
-    let entry = find_entry(&model_id)?;
-    let dir = model_dir(&app, &model_id)?;
-    if !model_ready(&dir, entry) {
-        return Ok(false);
+    if installed::repo_of(&model_id).is_none() {
+        find_entry(&model_id)?;
     }
-    state.recognizer_for(&dir, entry.layout)?;
-    Ok(true)
+    match local_stt(&app, &model_id) {
+        Ok((dir, layout)) => {
+            state
+                .recognizer_for(&dir, &layout)
+                .map_err(|e| load_error(&model_id, e))?;
+            Ok(true)
+        }
+        Err(_) => Ok(false),
+    }
+}
+
+/// The error a recording too short to transcribe ends with (usually a quick tap of the shortcut);
+/// the frontend matches it to show a hint instead of a failure.
+pub const SPEECH_TOO_SHORT: &str = "speech_too_short";
+
+fn check_recording_length(samples: usize) -> Result<(), String> {
+    if samples < (SAMPLE_RATE as usize) / 6 {
+        return Err(SPEECH_TOO_SHORT.to_string());
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1411,9 +1864,7 @@ pub async fn speech_stop_and_transcribe(
     usage: Option<String>,
 ) -> Result<String, String> {
     let audio = stop_capture(&state)?;
-    if audio.samples.len() < (SAMPLE_RATE as usize) / 6 {
-        return Err("Recording was too short — hold a bit longer, then release.".into());
-    }
+    check_recording_length(audio.samples.len())?;
     if audio.peak < 0.005 {
         return Err(
             "No audio captured. Check the microphone and that PipeWire/PulseAudio can see it."
@@ -1426,7 +1877,7 @@ pub async fn speech_stop_and_transcribe(
     };
     let trimmed = trim_silence(&audio.samples).to_vec();
     // A keychain failure is a cloud failure like any other: the local fallback still runs.
-    let error = match crate::voice_providers::keys::read_key(&app, cloud) {
+    let error = match crate::voice_providers::keys::read_key_async(&app, cloud).await {
         Err(_) => CloudError::of(CloudErrorKind::Other),
         Ok(Some(key)) => match crate::voice_providers::stt_cloud::transcribe(
             cloud,
@@ -1635,8 +2086,43 @@ mod tests {
     }
 
     #[test]
+    fn git_blob_sha1_matches_git() {
+        let path = std::env::temp_dir().join(format!("alethe-blob-{}", std::process::id()));
+        std::fs::write(&path, b"hello\n").unwrap();
+        // `printf 'hello\n' | git hash-object --stdin`
+        assert_eq!(git_blob_sha1(&path).unwrap(), "ce013625030ba8dba906f756967f9e9ca394464a");
+        assert!(verify(&path, &Check::GitSha1("ce013625030ba8dba906f756967f9e9ca394464a".into())).unwrap());
+        assert!(!verify(&path, &Check::Sha256("0".repeat(64))).unwrap());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn hub_files_become_download_files_with_their_checks() {
+        let files = vec![
+            crate::speech_hub::detect::RepoFile { path: "a.onnx".into(), size: 5, sha256: Some("f".repeat(64)), git_sha1: None },
+            crate::speech_hub::detect::RepoFile { path: "espeak-ng-data/x".into(), size: 2, sha256: None, git_sha1: Some("e".repeat(40)) },
+        ];
+        let out = hub_download_files("csukuangfj/r", &"c".repeat(40), &files).unwrap();
+        assert_eq!(out[0].url, format!("https://huggingface.co/csukuangfj/r/resolve/{}/a.onnx", "c".repeat(40)));
+        assert!(matches!(&out[0].check, Check::Sha256(h) if h == &"f".repeat(64)));
+        assert!(matches!(&out[1].check, Check::GitSha1(h) if h == &"e".repeat(40)));
+        assert_eq!(out[1].name, "espeak-ng-data/x");
+        let unchecked = vec![crate::speech_hub::detect::RepoFile { path: "b".into(), size: 1, sha256: None, git_sha1: None }];
+        assert!(hub_download_files("csukuangfj/r", &"c".repeat(40), &unchecked).is_err());
+    }
+
+    #[test]
+    fn hub_ids_are_known_models() {
+        assert!(matches!(ready_check("hf:csukuangfj/x"), Ok(ReadyCheck::Hub)));
+        assert!(ready_check("hf:someone/x").is_err());
+        assert!(matches!(ready_check("piper-en-us-amy-low"), Ok(ReadyCheck::Tts(_))));
+        assert!(matches!(ready_check("whisper-base-int8"), Ok(ReadyCheck::Stt(_))));
+        assert!(ready_check("nope").is_err());
+    }
+
+    #[test]
     fn tts_manifests_are_listed_as_text_to_speech() {
-        let list = speech_list_models();
+        let list = catalog_manifests(false);
         let tts: Vec<_> = list.iter().filter(|m| m.capability == "tts").collect();
         assert_eq!(tts.len(), TTS_CATALOG.len());
         assert!(tts.iter().all(|m| m.kind == "download" && m.size_bytes > 0));
@@ -1644,14 +2130,17 @@ mod tests {
 
     #[test]
     fn fallback_order_prefers_apple_with_a_ready_locale() {
-        let picked = pick_fallback(Some("pt-BR".into()), &["parakeet-tdt-0.6b-v3-int8"]);
+        let picked = pick_fallback(Some("pt-BR".into()), &["parakeet-tdt-0.6b-v3-int8".to_string()]);
         assert!(matches!(picked, Some(FallbackStt::Apple(locale)) if locale == "pt-BR"));
     }
 
     #[test]
     fn fallback_order_uses_the_first_ready_sherpa_model() {
-        let picked = pick_fallback(None, &["zipformer-small-en-int8", "parakeet-tdt-0.6b-v3-int8"]);
-        assert!(matches!(picked, Some(FallbackStt::Sherpa("zipformer-small-en-int8"))));
+        let picked = pick_fallback(
+            None,
+            &["zipformer-small-en-int8".to_string(), "parakeet-tdt-0.6b-v3-int8".to_string()],
+        );
+        assert!(matches!(picked, Some(FallbackStt::Sherpa(id)) if id == "zipformer-small-en-int8"));
     }
 
     #[test]
@@ -1670,7 +2159,7 @@ mod tests {
     fn catalog_recommends_exactly_one_downloadable_model() {
         // Which model is recommended is a product choice that changes with the catalogue; the
         // preferences list only needs exactly one of them marked, and every entry to have files.
-        let list = speech_list_models();
+        let list = catalog_manifests(false);
         assert_eq!(
             list.iter()
                 .filter(|model| model.capability == "stt" && model.recommended)
@@ -1685,10 +2174,11 @@ mod tests {
 
     #[test]
     fn sherpa_ids_dispatch_to_their_catalog_entry() {
-        match engine_for("parakeet-tdt-0.6b-v3-int8", None, true).unwrap() {
-            Engine::Sherpa(entry) => assert_eq!(entry.id, "parakeet-tdt-0.6b-v3-int8"),
-            Engine::Apple { .. } => panic!("expected sherpa"),
-        }
+        assert!(matches!(
+            engine_for("parakeet-tdt-0.6b-v3-int8", None, true),
+            Ok(Engine::Local)
+        ));
+        assert!(matches!(engine_for("hf:csukuangfj/x", None, true), Ok(Engine::Local)));
         assert!(engine_for("nope", None, true).is_err());
     }
 
@@ -1699,7 +2189,7 @@ mod tests {
         assert!(engine_for(APPLE_MODEL_ID, Some("  "), true).is_err());
         match engine_for(APPLE_MODEL_ID, Some("pt-BR"), true).unwrap() {
             Engine::Apple { locale } => assert_eq!(locale, "pt-BR"),
-            Engine::Sherpa(_) => panic!("expected apple"),
+            Engine::Local => panic!("expected apple"),
         }
     }
 
@@ -1839,11 +2329,73 @@ mod tests {
     }
 
     #[test]
+    fn resume_without_partial_content_restarts_the_file() {
+        // offset > 0 but the server answered 200: the part file must be truncated, not appended to.
+        assert!(!should_append(100, reqwest::StatusCode::OK));
+        assert!(should_append(100, reqwest::StatusCode::PARTIAL_CONTENT));
+        assert!(!should_append(0, reqwest::StatusCode::PARTIAL_CONTENT));
+    }
+
+    #[test]
     fn only_a_partial_file_shorter_than_expected_is_resumed() {
         assert_eq!(resume_offset(None, 100), 0);
         assert_eq!(resume_offset(Some(0), 100), 0);
         assert_eq!(resume_offset(Some(40), 100), 40);
         assert_eq!(resume_offset(Some(100), 100), 0);
         assert_eq!(resume_offset(Some(140), 100), 0);
+    }
+
+    #[test]
+    fn a_recording_too_short_to_transcribe_is_reported_by_its_code() {
+        let sixth = (SAMPLE_RATE as usize) / 6;
+        assert_eq!(check_recording_length(0), Err(SPEECH_TOO_SHORT.to_string()));
+        assert_eq!(
+            check_recording_length(sixth - 1),
+            Err(SPEECH_TOO_SHORT.to_string())
+        );
+        assert_eq!(check_recording_length(sixth), Ok(()));
+        assert_eq!(SPEECH_TOO_SHORT, "speech_too_short");
+    }
+
+    #[test]
+    fn a_partial_file_of_full_length_is_verified_without_a_request() {
+        // A pause on the last chunk leaves a complete `.part`; it must not restart from zero.
+        assert!(part_is_complete(Some(100), 100));
+        assert!(!part_is_complete(Some(40), 100));
+        assert!(!part_is_complete(Some(140), 100));
+        assert!(!part_is_complete(None, 100));
+        assert!(!part_is_complete(Some(0), 0));
+    }
+
+    #[test]
+    fn hub_file_failures_map_to_hub_codes() {
+        let gone = http_failure("model.onnx", reqwest::StatusCode::NOT_FOUND);
+        assert_eq!(
+            hub_file_error(&gone),
+            Some(crate::speech_hub::hf::UNKNOWN_REPO)
+        );
+        let limited = http_failure("model.onnx", reqwest::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            hub_file_error(&limited),
+            Some(crate::speech_hub::hf::RATE_LIMITED)
+        );
+        let other = http_failure("model.onnx", reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(hub_file_error(&other), None);
+        assert_eq!(hub_file_error("checksum mismatch for 404.bin"), None);
+        assert_eq!(hub_file_error("download a: connection reset"), None);
+    }
+
+    #[test]
+    fn a_hub_model_that_will_not_load_says_so_in_words() {
+        let sherpa = "failed to create OfflineRecognizer".to_string();
+        assert_eq!(
+            load_error("hf:csukuangfj/sherpa-onnx-whisper-turbo", sherpa.clone()),
+            HUB_INCOMPATIBLE
+        );
+        assert_eq!(
+            HUB_INCOMPATIBLE,
+            "This model cannot run in Alethe. Remove it in Preferences → Voice."
+        );
+        assert_eq!(load_error("whisper-base-int8", sherpa.clone()), sherpa);
     }
 }

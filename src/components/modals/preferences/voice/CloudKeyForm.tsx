@@ -10,7 +10,7 @@ import {
   voiceProviderTest,
 } from '../../../../lib/tauri'
 import type { CloudVoiceProviderId } from '../../../../lib/types'
-import { clearProviderUses } from '../../../../lib/voice/voicePreferences'
+import { forgetProviderKey } from '../../../../lib/voice/cloudErrors'
 import { useProjectsStore } from '../../../../stores/projectsStore'
 import controls from '../../controls.module.css'
 import styles from './CloudKeyForm.module.css'
@@ -85,14 +85,7 @@ export function CloudKeyForm({
     setFeedback(null)
     try {
       await voiceProviderDeleteKey(provider)
-      const store = useProjectsStore.getState()
-      store.setPreferences({
-        ...clearProviderUses(store.preferences, provider),
-        voiceProviders: {
-          ...store.preferences.voiceProviders,
-          [provider]: { configured: false, invalid: false },
-        },
-      })
+      forgetProviderKey(provider)
       setFeedback(null)
     } catch {
       setFeedback({ tone: 'error', text: t('prefs.voiceKeyRemoveFailed') })
@@ -164,7 +157,6 @@ export function CloudKeyForm({
           {feedback.text}
         </p>
       ) : null}
-      <p className={styles.privacy}>{t('prefs.voiceCloudPrivacy', { provider: name })}</p>
     </div>
   )
 }

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt;
 
 const SERVICE: &str = "com.kc1t.alethe";
@@ -12,13 +13,13 @@ pub enum SecretKind {
 }
 
 impl SecretKind {
-    fn suffix(self) -> &'static str {
+    fn suffix(self) -> Cow<'static, str> {
         match self {
-            Self::GithubSyncToken => "github-sync-token",
-            Self::SpotifyClientSecret => "spotify-client-secret",
-            Self::SpotifyAccessToken => "spotify-access-token",
-            Self::SpotifyRefreshToken => "spotify-refresh-token",
-            Self::VoiceProviderKey(provider) => match provider {
+            Self::GithubSyncToken => Cow::Borrowed("github-sync-token"),
+            Self::SpotifyClientSecret => Cow::Borrowed("spotify-client-secret"),
+            Self::SpotifyAccessToken => Cow::Borrowed("spotify-access-token"),
+            Self::SpotifyRefreshToken => Cow::Borrowed("spotify-refresh-token"),
+            Self::VoiceProviderKey(provider) => Cow::Borrowed(match provider {
                 crate::voice_providers::CloudProvider::Openai => "voice-key-openai",
                 crate::voice_providers::CloudProvider::Elevenlabs => "voice-key-elevenlabs",
                 crate::voice_providers::CloudProvider::Gemini => "voice-key-gemini",

@@ -3,13 +3,14 @@ import { invoke } from '@tauri-apps/api/core'
 import type { CloudVoiceProviderId } from '../types'
 
 export type CloudErrorKind = 'network' | 'auth' | 'quota' | 'badAudio' | 'timeout' | 'other'
-export type VoiceProviderStatus = { provider: CloudVoiceProviderId; configured: boolean }
 export type VoiceCatalogModel = {
   id: string
   label: string
   capability: 'stt' | 'tts'
   /** Voices the model speaks; only OpenRouter's live list carries them. */
   voices?: string[]
+  /** OpenRouter's per-unit price (`$input` or `$input · $output`); the unit is not published. */
+  price?: string
 }
 export type VoiceCatalogVoice = { id: string; label: string }
 export type VoiceProviderCatalog = {
@@ -19,10 +20,6 @@ export type VoiceProviderCatalog = {
   voices: VoiceCatalogVoice[]
 }
 export type VoiceTestResult = { ok: boolean; reason: CloudErrorKind | null }
-
-export function voiceProvidersStatus(): Promise<VoiceProviderStatus[]> {
-  return invoke('voice_providers_status')
-}
 
 export async function voiceProviderSetKey(
   provider: CloudVoiceProviderId,

@@ -80,6 +80,14 @@ describe('ProviderUseCard', () => {
     expect(container.querySelector('article')?.hasAttribute('data-selected')).toBe(true)
   })
 
+  it('keeps a not-ready warning on the selected card instead of "In use"', () => {
+    const { container } = card({ selected: true, status: 'notReady', note: 'Model not downloaded' })
+    expect(screen.getByText('prefs.voiceStatusNotReady')).toBeTruthy()
+    expect(screen.queryByText('prefs.voiceStatusInUse')).toBeNull()
+    expect(container.querySelector('[data-status="notReady"]')).toBeTruthy()
+    expect(screen.getByText('Model not downloaded')).toBeTruthy()
+  })
+
   it('shows a note under the footer', () => {
     card({ note: 'Audio is sent to OpenAI.' })
     expect(screen.getByText('Audio is sent to OpenAI.')).toBeTruthy()

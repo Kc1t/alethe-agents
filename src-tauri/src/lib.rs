@@ -78,8 +78,11 @@ mod session_watcher;
 mod single_instance_probe;
 mod skills;
 mod speech;
+mod speech_layout;
+mod speech_hub;
 mod speech_apple;
 mod speech_capture;
+mod speech_download;
 mod spotify;
 mod stats;
 mod supervisor;
@@ -226,6 +229,7 @@ pub fn run() {
         .manage(router9::Router9Process::default())
         .manage(ai_memory::AiMemoryProcess::default())
         .manage(speech::SpeechState::default())
+        .manage(speech_hub::HubState::default())
         .manage(voice_hud::StateStore::default())
         .manage(voice_hud::ShortcutState::default())
         .manage(voice_hud::HudWindowState::default())
@@ -560,6 +564,8 @@ pub fn run() {
             speech::speech_list_input_devices,
             speech::speech_model_states,
             speech::speech_download_model,
+            speech::speech_pause_download,
+            speech::speech_cancel_download,
             speech::speech_delete_model,
             speech::speech_start_capture,
             speech::speech_capture_level,
@@ -568,6 +574,8 @@ pub fn run() {
             speech::speech_stop_and_transcribe,
             speech::speech_transcribe,
             speech::speech_native_locales,
+            speech_hub::speech_hub_search,
+            speech_hub::speech_hub_resolve,
             tts::tts_speak,
             tts::tts_stop,
             tts::tts_voices,

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EMPTY_PROJECTS_FILE } from '../../../../lib/types'
@@ -18,9 +18,11 @@ vi.mock('../../../../lib/tauri', async (importOriginal) => ({
   ...tauri,
   saveProjectsFile: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('../../../../lib/i18n', () => ({
+vi.mock('../../../../lib/i18n', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../lib/i18n')>()),
   useT: () => (key: string, params?: Record<string, unknown>) =>
     params ? `${key}:${JSON.stringify(params)}` : key,
+  intlLocale: () => 'en',
 }))
 
 const prefs = () => useProjectsStore.getState().preferences
@@ -93,6 +95,41 @@ describe('SttProviderChoices', () => {
     expect(screen.getAllByText('prefs.voiceStatusInUse')).toHaveLength(1)
     expect(screen.getByText('prefs.voiceGroupLocal')).toBeTruthy()
     expect(screen.getByText('prefs.voiceGroupCloud')).toBeTruthy()
+  })
+
+  it('sums up the chosen local model on its card: languages, speed and accuracy', async () => {
+    render(<SttProviderChoices use="dictation" onOpenProvider={() => undefined} />)
+    const local = await screen.findByRole('article', { name: 'voice.provider.local' })
+    expect(
+      await within(local).findByText(
+        /^prefs\.voiceModelLanguagesManyWith:\{"count":25,"language":"English"\}/,
+      ),
+    ).toBeTruthy()
+    expect(
+      within(local).getByRole('img', {
+        name: 'prefs.voiceTierLabel:{"label":"prefs.voiceColSpeed","tier":2}',
+      }),
+    ).toBeTruthy()
+    expect(
+      within(local).getByRole('img', {
+        name: 'prefs.voiceTierLabel:{"label":"prefs.voiceColAccuracy","tier":3}',
+      }),
+    ).toBeTruthy()
+    const openai = screen.getByRole('article', { name: 'voice.provider.openai' })
+    expect(within(openai).queryByRole('img')).toBeNull()
+  })
+
+  it('leaves cloud cards and an unselected local card without the model summary', async () => {
+    useProjectsStore.getState().setPreferences({
+      voiceStt: {
+        dictation: { provider: 'openai', model: 'whisper-1', locale: null },
+        conversation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+      },
+    })
+    render(<SttProviderChoices use="dictation" onOpenProvider={() => undefined} />)
+    await screen.findByText('prefs.voiceCloudSendsAudio:{"provider":"voice.provider.openai"}')
+    expect(screen.queryByRole('img')).toBeNull()
+    expect(screen.queryByText(/prefs\.voiceModelLanguages/)).toBeNull()
   })
 
   it('shows the privacy note on the selected cloud card only', async () => {
@@ -209,7 +246,49 @@ describe('SttProviderChoices', () => {
     const onOpen = vi.fn()
     render(<SttProviderChoices use="dictation" onOpenProvider={onOpen} />)
     fireEvent.click(await screen.findByRole('button', { name: 'prefs.voiceActionManageModels' }))
-    expect(onOpen).toHaveBeenCalledWith('local')
+    expect(onOpen).toHaveBeenCalledWith('local', 'stt')
+  })
+
+  it.each([
+    ['not-downloaded', 'prefs.voiceWarnNotDownloaded'],
+    ['paused', 'prefs.voiceWarnPaused'],
+    ['downloading', 'prefs.voiceWarnDownloading'],
+  ])('does not call a %s chosen local model "In use"', async (status, warning) => {
+    // Fresh profile: Parakeet is the default choice before it is downloaded.
+    tauri.speechModelStates.mockResolvedValue([
+      { id: 'parakeet-tdt-0.6b-v3-int8', status },
+      { id: 'whisper-base-int8', status: 'ready' },
+    ])
+    tauri.speechListModels.mockResolvedValue([
+      {
+        id: 'parakeet-tdt-0.6b-v3-int8',
+        label: 'Parakeet',
+        kind: 'download',
+        capability: 'stt',
+        sizeBytes: 1,
+      },
+      {
+        id: 'whisper-base-int8',
+        label: 'Whisper',
+        kind: 'download',
+        capability: 'stt',
+        sizeBytes: 1,
+      },
+    ])
+    const onOpen = vi.fn()
+    render(<SttProviderChoices use="conversation" onOpenProvider={onOpen} />)
+    const local = await screen.findByRole('article', { name: 'voice.provider.local' })
+    expect(await within(local).findByText(warning)).toBeTruthy()
+    expect(within(local).getByText('prefs.voiceStatusNotReady')).toBeTruthy()
+    expect(screen.queryByText('prefs.voiceStatusInUse')).toBeNull()
+    // Another downloaded model can still be picked, and the models page opens on speech-to-text.
+    expect(
+      within(local).getByRole('button', {
+        name: 'prefs.voicePickModelFor:{"provider":"voice.provider.local"}',
+      }),
+    ).toBeTruthy()
+    fireEvent.click(within(local).getByRole('button', { name: 'prefs.voiceActionManageModels' }))
+    expect(onOpen).toHaveBeenCalledWith('local', 'stt')
   })
 
   const withApple = (status: string) => {

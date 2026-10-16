@@ -6,6 +6,18 @@
   outline: none;
 }
 
+.failure {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.failure p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
 .header {
   display: flex;
   align-items: flex-start;

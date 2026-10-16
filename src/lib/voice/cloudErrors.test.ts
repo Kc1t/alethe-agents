@@ -7,7 +7,12 @@ vi.mock('../tauri', async (importOriginal) => ({
 
 import { useProjectsStore } from '../../stores/projectsStore'
 import { EMPTY_PROJECTS_FILE } from '../types'
-import { cloudFailureMessage, markKeyInvalid, parseCloudError } from './cloudErrors'
+import {
+  cloudFailureMessage,
+  forgetProviderKey,
+  markKeyInvalid,
+  parseCloudError,
+} from './cloudErrors'
 
 const t = (key: string, params?: Record<string, string | number>) =>
   params ? `${key}:${JSON.stringify(params)}` : key
@@ -64,5 +69,30 @@ describe('markKeyInvalid', () => {
     markKeyInvalid('openai')
     expect(providers().openai?.configured ?? false).toBe(false)
     expect(providers().openai?.invalid ?? false).toBe(false)
+  })
+})
+
+describe('forgetProviderKey', () => {
+  beforeEach(() => {
+    useProjectsStore.setState({ ...structuredClone(EMPTY_PROJECTS_FILE), hydrated: true })
+  })
+
+  it('marks the provider unconfigured and moves its uses back to the defaults', () => {
+    useProjectsStore.getState().setPreferences({
+      voiceProviders: {
+        openai: { configured: true, invalid: true },
+        gemini: { configured: true, invalid: false },
+      },
+      voiceStt: {
+        dictation: { provider: 'openai', model: 'gpt-4o-transcribe', locale: null },
+        conversation: { provider: 'gemini', model: 'gemini-2.5-flash', locale: null },
+      },
+    })
+    forgetProviderKey('openai')
+    const prefs = useProjectsStore.getState().preferences
+    expect(prefs.voiceProviders.openai).toEqual({ configured: false, invalid: false })
+    expect(prefs.voiceProviders.gemini).toEqual({ configured: true, invalid: false })
+    expect(prefs.voiceStt.dictation.provider).toBe('local')
+    expect(prefs.voiceStt.conversation.provider).toBe('gemini')
   })
 })

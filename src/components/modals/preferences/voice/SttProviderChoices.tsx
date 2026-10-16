@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useT } from '../../../../lib/i18n'
 import {
   APPLE_SPEECH_MODEL_ID,
+  listenerCleanup,
   type NativeLocale,
   onSpeechDownloadProgress,
   speechDownloadModel,
@@ -17,7 +18,9 @@ import { Dropdown } from '../../../ui/Dropdown'
 import controls from '../../controls.module.css'
 import { ModelDownloadProgress } from '../ModelDownloadProgress'
 import { CloudUseCard } from './CloudUseCard'
+import { localStateWarning } from './inUseWarnings'
 import { ModelDropdown } from './ModelDropdown'
+import { ModelSummaryLine } from './ModelSummaryLine'
 import { ProviderGroup } from './ProviderGroup'
 import { PROVIDER_META, type VoiceProviderId } from './providerMeta'
 import { ProviderUseCard } from './ProviderUseCard'
@@ -30,7 +33,7 @@ export function SttProviderChoices({
   onOpenProvider,
 }: {
   use: VoiceUse
-  onOpenProvider: (id: VoiceProviderId) => void
+  onOpenProvider: (id: VoiceProviderId, filter?: 'stt' | 'tts') => void
 }) {
   const t = useT()
   const voiceStt = useProjectsStore((s) => s.preferences.voiceStt)
@@ -45,23 +48,16 @@ export function SttProviderChoices({
   const [install, setInstall] = useState<SpeechDownloadProgress | null>(null)
   const [installing, setInstalling] = useState(false)
 
-  useEffect(() => {
-    let unlisten: (() => void) | undefined
-    let cancelled = false
-    void onSpeechDownloadProgress((progress) => {
-      if (progress.modelId !== APPLE_SPEECH_MODEL_ID) return
-      setInstall(progress)
-    })
-      .then((fn) => {
-        if (cancelled) fn()
-        else unlisten = fn
-      })
-      .catch(() => undefined)
-    return () => {
-      cancelled = true
-      unlisten?.()
-    }
-  }, [])
+  useEffect(
+    () =>
+      listenerCleanup(
+        onSpeechDownloadProgress((progress) => {
+          if (progress.modelId !== APPLE_SPEECH_MODEL_ID) return
+          setInstall(progress)
+        }),
+      ),
+    [],
+  )
 
   const installLocale = async (locale: string) => {
     setInstalling(true)
@@ -116,6 +112,9 @@ export function SttProviderChoices({
   )
   const localSelected = current.provider === 'local'
   const localName = t('voice.provider.local')
+  // Stay quiet until the inventory loads; before that every model reads as missing.
+  const localWarning =
+    localSelected && models.length > 0 ? localStateWarning(states[current.model]?.status) : null
   const appleSelected = current.provider === 'apple'
 
   return (
@@ -129,30 +128,35 @@ export function SttProviderChoices({
           icon={PROVIDER_META.local.icon}
           title={localName}
           description={t(PROVIDER_META.local.description)}
-          status={readyLocal.length > 0 ? 'connected' : 'disconnected'}
+          status={localWarning ? 'notReady' : readyLocal.length > 0 ? 'connected' : 'disconnected'}
           selected={localSelected}
           disabled={readyLocal.length === 0}
+          summary={localSelected ? <ModelSummaryLine modelId={current.model} /> : undefined}
+          note={localWarning ? t(localWarning) : undefined}
           onSelect={() => {
             if (localSelected || readyLocal.length === 0) return
             choose({ provider: 'local', model: readyLocal[0].id, locale: null })
           }}
           footer={
-            readyLocal.length > 0 ? (
-              <ModelDropdown
-                provider={localName}
-                models={readyLocal}
-                value={localSelected ? current.model : readyLocal[0].id}
-                onChange={(id) => choose({ provider: 'local', model: id, locale: null })}
-              />
-            ) : (
-              <button
-                type="button"
-                className={controls.btn}
-                onClick={() => onOpenProvider('local')}
-              >
-                {t('prefs.voiceActionManageModels')}
-              </button>
-            )
+            <>
+              {readyLocal.length > 0 ? (
+                <ModelDropdown
+                  provider={localName}
+                  models={readyLocal}
+                  value={localSelected ? (localWarning ? '' : current.model) : readyLocal[0].id}
+                  onChange={(id) => choose({ provider: 'local', model: id, locale: null })}
+                />
+              ) : null}
+              {readyLocal.length === 0 || localWarning ? (
+                <button
+                  type="button"
+                  className={controls.btn}
+                  onClick={() => onOpenProvider('local', 'stt')}
+                >
+                  {t('prefs.voiceActionManageModels')}
+                </button>
+              ) : null}
+            </>
           }
         />
         {appleAvailable ? (

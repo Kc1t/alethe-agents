@@ -19,22 +19,32 @@ export type SpeechModelManifest = {
   kind: 'download' | 'native'
   /** Absent until the backend reports it; treated as speech to text. */
   capability?: 'stt' | 'tts'
+  /** `huggingface` for a model downloaded from the search; absent on older backends. */
+  source?: 'catalog' | 'huggingface'
+  hub?: HubModelInfo
 }
 
 export type SpeechModelState = {
   id: string
-  status: 'not-downloaded' | 'downloading' | 'ready' | 'error' | string
+  status: 'not-downloaded' | 'downloading' | 'paused' | 'ready' | 'error' | string
   progress?: number | null
   error?: string | null
+  downloadedBytes?: number | null
+  totalBytes?: number | null
 }
+
+/** Rejection code of `speech_download_model` when the user paused the download. */
+export const DOWNLOAD_PAUSED = 'speech_download_paused'
+/** Rejection code of `speech_download_model` when another download is already running. */
+export const DOWNLOAD_BUSY = 'speech_download_busy'
 
 export type SpeechDownloadProgress = {
   modelId: string
   downloaded: number
   total: number
   fraction: number
-  /** `verifying` while the SHA-256 of a finished file is checked. */
-  phase: 'downloading' | 'verifying'
+  /** `verifying` while a finished file's SHA-256 is checked; `unpacking` while an archive is extracted. */
+  phase: 'downloading' | 'verifying' | 'unpacking' | 'paused'
   file: string
   /** 1-based position of `file` among the model's files. */
   fileIndex: number
@@ -51,6 +61,69 @@ export type CapturedAudio = {
   samples: number[]
   sampleRate: number
   peak: number
+}
+
+export type HubFamily =
+  | 'vits'
+  | 'kokoro'
+  | 'kitten'
+  | 'transducer'
+  | 'nemo-transducer'
+  | 'whisper'
+  | 'moonshine'
+  | 'sense-voice'
+  | 'paraformer'
+  | 'nemo-ctc'
+  | 'dolphin'
+
+export type HubModelInfo = {
+  repo: string
+  /** Pinned once the repo's files were checked. */
+  commit: string | null
+  family: HubFamily
+  languages: string[]
+  languageCount: number | null
+  multilingual: boolean
+  /** Estimated 1–3 tiers. */
+  speed: number | null
+  accuracy: number | null
+  voiceCount: number | null
+  license: string | null
+  lastModified: string | null
+  likes: number
+  fileCount: number | null
+  totalBytes: number | null
+}
+
+export type HubSearchResult = { id: string; use: 'stt' | 'tts'; label: string; hub: HubModelInfo }
+export type HubSearchQuery = {
+  use: 'stt' | 'tts' | null
+  query: string
+  language: string | null
+  sort: 'likes' | 'recent'
+  offset: number
+}
+export type HubSearchPage = { results: HubSearchResult[]; hasMore: boolean }
+
+/** Rejection codes of the Hugging Face commands. */
+export const HUB_ERROR = {
+  offline: 'hub_offline',
+  rateLimited: 'hub_rate_limited',
+  unavailable: 'hub_unavailable',
+  badResponse: 'hub_bad_response',
+  incompatible: 'hub_incompatible',
+  tooLarge: 'hub_too_large',
+  gated: 'hub_gated',
+  unknownRepo: 'hub_unknown_repo',
+} as const
+
+export async function speechHubSearch(query: HubSearchQuery): Promise<HubSearchPage> {
+  return invoke('speech_hub_search', { query })
+}
+
+/** Pins the repo's current commit and returns the exact files and size to download. */
+export async function speechHubResolve(repo: string): Promise<HubSearchResult> {
+  return invoke('speech_hub_resolve', { repo })
 }
 
 export async function speechListModels(): Promise<SpeechModelManifest[]> {
@@ -70,6 +143,15 @@ export async function speechDownloadModel(
   locale?: string | null,
 ): Promise<SpeechModelState> {
   return invoke('speech_download_model', { modelId, locale: locale ?? null })
+}
+
+export async function speechPauseDownload(modelId: string): Promise<boolean> {
+  return invoke('speech_pause_download', { modelId })
+}
+
+/** Discards a partial download (no-op on a ready model). */
+export async function speechCancelDownload(modelId: string): Promise<void> {
+  await invoke('speech_cancel_download', { modelId })
 }
 
 export async function speechDeleteModel(modelId: string): Promise<void> {

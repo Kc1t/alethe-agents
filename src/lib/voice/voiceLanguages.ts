@@ -109,6 +109,16 @@ export function languageName(lang: string, displayLocale: string): string {
   }
 }
 
+/** A voice's name with its gender when known: `<Name> (<gender>)`. */
+export function voiceDisplayName(voice: VoiceLike, t: (key: MessageKey) => string): string {
+  const info = describeVoice(voice.id, voice.language)
+  const name = info.name !== voice.id ? info.name : voice.name || voice.id
+  const gender = info.gender
+    ? ` (${t(info.gender === 'female' ? 'prefs.voiceGenderFemale' : 'prefs.voiceGenderMale')})`
+    : ''
+  return `${name}${gender}`
+}
+
 /** Picker option for a voice: `<Name> (<gender>) · <Language>`, searchable by id, name and language. */
 export function voiceOption(
   voice: VoiceLike,
@@ -119,12 +129,9 @@ export function voiceOption(
   const name = info.name !== voice.id ? info.name : voice.name || voice.id
   const language =
     info.lang === 'multi' ? t('prefs.voiceLangMulti') : languageName(info.lang, displayLocale)
-  const gender = info.gender
-    ? ` (${t(info.gender === 'female' ? 'prefs.voiceGenderFemale' : 'prefs.voiceGenderMale')})`
-    : ''
   return {
     value: voice.id,
-    label: `${name}${gender} · ${language}`,
+    label: `${voiceDisplayName(voice, t)} · ${language}`,
     searchText: `${voice.id} ${name} ${language} ${info.lang}`,
   }
 }

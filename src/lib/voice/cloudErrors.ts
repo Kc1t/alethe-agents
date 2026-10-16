@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n'
 import type { CloudErrorKind } from '../tauri/voiceProviders'
 import type { CloudVoiceProviderId } from '../types'
 import { isCloudProvider } from './providers'
+import { clearProviderUses } from './voicePreferences'
 
 type Translate = (key: MessageKey, params?: Record<string, string | number>) => string
 
@@ -31,6 +32,22 @@ export function markKeyInvalid(provider: CloudVoiceProviderId): void {
     voiceProviders: {
       ...store.preferences.voiceProviders,
       [provider]: { ...current, invalid: true },
+    },
+  })
+}
+
+/**
+ * Records that a provider has no saved key, as removing it does: the provider is unconfigured and
+ * every use on it moves back to its default. Used when a real use finds the key missing, e.g. flags
+ * restored on a machine whose keychain does not have the key.
+ */
+export function forgetProviderKey(provider: CloudVoiceProviderId): void {
+  const store = useProjectsStore.getState()
+  store.setPreferences({
+    ...clearProviderUses(store.preferences, provider),
+    voiceProviders: {
+      ...store.preferences.voiceProviders,
+      [provider]: { configured: false, invalid: false },
     },
   })
 }

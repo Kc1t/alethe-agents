@@ -1,0 +1,130 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.headerRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge[data-status='connected'] {
+  border-color: color-mix(in srgb, var(--status-working) 40%, transparent);
+  color: var(--status-working);
+  background: var(--status-working-soft);
+}
+
+.badge[data-status='invalid'] {
+  border-color: color-mix(in srgb, var(--status-waiting) 40%, transparent);
+  color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+
+.inUse {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.privacy {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  background: var(--accent-faint);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.subTitle {
+  margin: 8px 0 0;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.text {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.label {
+  margin-right: 8px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.uses {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.uses button[aria-pressed='true'] {
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+.voiceGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.voiceList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  list-style: none;
+}
+
+.priceNote {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}

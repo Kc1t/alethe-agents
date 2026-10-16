@@ -19,11 +19,17 @@ vi.mock('./ProviderGrid', () => ({
   ),
 }))
 vi.mock('./ProviderDetail', () => ({
-  ProviderDetail: ({ id, onBack }: { id: string; onBack: () => void }) => (
-    <button onClick={onBack}>{`detail-${id}`}</button>
+  ProviderDetail: ({ id, filter, onBack }: { id: string; filter?: string; onBack: () => void }) => (
+    <button onClick={onBack}>{filter ? `detail-${id}-${filter}` : `detail-${id}`}</button>
   ),
 }))
-vi.mock('../../../../lib/i18n', () => ({
+vi.mock('./VoiceInUseSummary', () => ({
+  VoiceInUseSummary: ({ onOpenTab }: { onOpenTab: (tab: 'narration') => void }) => (
+    <button onClick={() => onOpenTab('narration')}>in-use-summary</button>
+  ),
+}))
+vi.mock('../../../../lib/i18n', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../lib/i18n')>()),
   useT: () => (key: string, params?: Record<string, unknown>) =>
     params ? `${key}:${JSON.stringify(params)}` : key,
 }))
@@ -60,6 +66,31 @@ describe('VoicePage', () => {
     expect(screen.queryByText('dictation-body')).toBeNull()
     fireEvent.click(screen.getByText('detail-openai'))
     expect(screen.getByText('dictation-body')).toBeTruthy()
+  })
+
+  it('shows the in-use summary instead of the generic description', () => {
+    render(<VoicePage target={null} />)
+    expect(screen.queryByText('prefs.categoryVoiceDesc')).toBeNull()
+    fireEvent.click(screen.getByText('in-use-summary'))
+    expect(screen.getByText('narration-body')).toBeTruthy()
+    expect(screen.queryByText('dictation-body')).toBeNull()
+  })
+
+  it("Compare models opens Local models filtered to the tab's use", () => {
+    render(<VoicePage target={null} />)
+    fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceCompareModels' }))
+    fireEvent.click(screen.getByText('detail-local-stt'))
+    expect(screen.getByText('dictation-body')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'prefs.voiceTabConversation' }))
+    fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceCompareModels' }))
+    fireEvent.click(screen.getByText('detail-local-stt'))
+    expect(screen.getByText('conversation-body')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'prefs.voiceTabNarration' }))
+    fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceCompareModels' }))
+    expect(screen.queryByText('narration-body')).toBeNull()
+    expect(screen.getByText('detail-local-tts')).toBeTruthy()
   })
 
   it('maps search targets to tabs', () => {

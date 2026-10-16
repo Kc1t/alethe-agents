@@ -51,6 +51,7 @@ tar = "0.4"
 bzip2 = "0.4"
 flate2 = "1"
 sha2 = "0.10"
+sha1 = "0.10"
 sysinfo = "0.31"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 hex = "0.4"

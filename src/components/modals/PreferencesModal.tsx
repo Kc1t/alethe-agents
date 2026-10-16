@@ -372,10 +372,10 @@ export function PreferencesModal() {
       {
         category: 'voice',
         target: 'voice-providers',
-        label: t('prefs.voiceProvidersTitle'),
-        description: t('prefs.voiceProvidersDesc'),
+        label: t('prefs.voiceAccountsTitle'),
+        description: t('prefs.voiceAccountsDesc'),
         keywords:
-          'provider api key openai elevenlabs gemini openrouter cloud local whisper piper provedor chave nuvem 提供方 密钥 云端',
+          'provider account models api key openai elevenlabs gemini openrouter cloud local whisper piper provedor conta modelos chave nuvem 提供方 账户 模型 密钥 云端',
       },
       {
         category: 'voice',
