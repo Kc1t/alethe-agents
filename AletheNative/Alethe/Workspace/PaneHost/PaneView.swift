@@ -89,7 +89,7 @@ final class PaneView: NSView {
         layer?.cornerRadius = context.metrics.radius(.md)
         layer?.borderWidth = dropTarget ? 2 : 1
         layer?.borderColor = context.theme.nsColor(dropTarget ? .accent : focused ? context.focusBorder : .border).cgColor
-        layer?.backgroundColor = context.theme.nsColor(.bg).cgColor
+        layer?.backgroundColor = context.theme.nsColor(.bgSunken).cgColor
 
         let switched = tabID != nil && tabID != tab.id
         tabID = tab.id
@@ -138,7 +138,7 @@ final class PaneView: NSView {
         layer?.cornerRadius = context.metrics.radius(.md)
         layer?.borderWidth = dropTarget ? 2 : 1
         layer?.borderColor = context.theme.nsColor(dropTarget ? .accent : focused ? context.focusBorder : .border).cgColor
-        layer?.backgroundColor = context.theme.nsColor(.bg).cgColor
+        layer?.backgroundColor = context.theme.nsColor(.bgSunken).cgColor
 
         let view: AnyView
         switch pane.content {

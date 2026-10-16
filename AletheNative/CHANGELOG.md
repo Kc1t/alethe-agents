@@ -351,6 +351,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Workspace tabs match the web title-bar tabs (26 pt, muted until hovered, the active tab pressed into an
   elevated bar, count pill, round close button) and the sub-tabs lane gets the web hover, selected card,
   glowing accent bar and dashed add button.
+- Container and pane headers follow the web: 11 pt container tags over a hairline rule, an elevated
+  identity chip (agent icon, name, working-folder pill) in pane headers, themed icon buttons, sunken pane
+  surfaces and the focus-ring color on the focused pane in Normal style.
 
 ### Fixed
 - The app now has its icon in Finder, Launchpad and the DMG, not only in the Dock while running.

@@ -19,13 +19,14 @@ struct ContainerHeader: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        HStack(spacing: metrics.space(.m)) {
+        // Upstream container tag: 7pt bullet, 11pt semibold name, 1px rule under an elevated bar.
+        HStack(spacing: metrics.space(.s)) {
             Circle()
                 .fill(theme[project.color.token])
-                .frame(width: metrics.size(8), height: metrics.size(8))
+                .frame(width: metrics.size(7), height: metrics.size(7))
             Text(verbatim: project.name)
-                .font(metrics.font(.headline))
-                .foregroundStyle(theme[isSelected ? .textPrimary : .textSecondary])
+                .font(metrics.font(size: 11, weight: .semibold))
+                .foregroundStyle(theme[isSelected ? .fg : .fgMuted])
                 .lineLimit(1)
             Spacer(minLength: 0)
             if !project.namedGrids.isEmpty { gridMenu }
@@ -39,9 +40,10 @@ struct ContainerHeader: View {
                          id: "container.fullscreen.\(project.name)", action: onFullscreen)
             headerButton("xmark", label: "workspace.container.close", id: "container.close.\(project.name)", action: onClose)
         }
-        .padding(.horizontal, metrics.space(.l))
+        .padding(.horizontal, metrics.space(.m))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme[.bgElevated])
+        .overlay(alignment: .bottom) { theme[.border].frame(height: 1) }
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 4, coordinateSpace: .global)
@@ -120,13 +122,9 @@ struct ContainerHeader: View {
     private func headerButton(_ symbol: String, label: LocalizedStringKey, id: String,
                               action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(metrics.font(.caption).weight(.semibold))
-                .frame(width: metrics.size(18), height: metrics.size(18))
-                .contentShape(Rectangle())
+            Label(label, systemImage: symbol)
         }
-        .buttonStyle(.borderless)
-        .foregroundStyle(theme[.textTertiary])
+        .buttonStyle(AletheIconButtonStyle(side: 20))
         .help(Text(label))
         .accessibilityLabel(Text(label))
         .accessibilityIdentifier(id)
@@ -214,13 +212,7 @@ struct PaneHeader: View {
 
     var body: some View {
         HStack(spacing: metrics.space(.s)) {
-            Circle()
-                .fill(theme[AgentTokens.accent(for: tab.agent)])
-                .frame(width: metrics.size(6), height: metrics.size(6))
-            Text(verbatim: environment.terminals.displayName(of: tab))
-                .font(metrics.font(.footnote).weight(.medium))
-                .foregroundStyle(theme[isFocused ? .textPrimary : .textSecondary])
-                .lineLimit(1)
+            identityChip
             AgentStatusGlyph(tab: tab.id)
             if isRemoteShared { RemoteSharedGlyph() }
             if tab.unrestricted {
@@ -232,18 +224,16 @@ struct PaneHeader: View {
             }
             Spacer(minLength: 0)
             Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(metrics.font(.caption).weight(.semibold))
+                Label("pane.close", systemImage: "xmark")
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(theme[.textTertiary])
+            .buttonStyle(AletheIconButtonStyle(side: 20))
             .help(Text("pane.close"))
             .accessibilityLabel(Text("pane.close"))
             .accessibilityIdentifier("pane.close")
         }
-        .padding(.horizontal, metrics.space(.m))
+        .padding(.horizontal, metrics.space(.xs))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme[isFocused ? .bgElevated : .bgSunken])
+        .background(theme[.bgSunken])
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: onToggleFocus)
         .help(Text(isInFocusMode ? "focusMode.exitHint" : "focusMode.enterHint"))
@@ -284,6 +274,35 @@ struct PaneHeader: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pane.header.\(tab.title ?? tab.agent)")
+    }
+
+    /// Upstream `headLeft`: agent icon, name and working-directory pill on an elevated chip.
+    private var identityChip: some View {
+        HStack(spacing: metrics.space(.s)) {
+            Image(systemName: tab.agent == "shell" ? "terminal" : "sparkles")
+                .font(metrics.font(size: 11, weight: .medium))
+                .foregroundStyle(theme[AgentTokens.accent(for: tab.agent)])
+            Text(verbatim: environment.terminals.displayName(of: tab))
+                .font(metrics.font(size: 12, weight: .medium))
+                .foregroundStyle(theme[isFocused ? .fg : .fgMuted])
+                .lineLimit(1)
+            if let folder = tab.workingDirectory, !folder.isEmpty {
+                Text(verbatim: URL(filePath: folder).lastPathComponent)
+                    .font(metrics.monoFont(size: 10, weight: .regular))
+                    .foregroundStyle(theme[.fgFaint])
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, metrics.space(.s))
+                    .padding(.vertical, metrics.size(1))
+                    .background(theme[.panel], in: Capsule())
+                    .frame(maxWidth: metrics.size(240), alignment: .leading)
+                    .help(Text(verbatim: folder))
+            }
+        }
+        .padding(.horizontal, metrics.space(.s))
+        .padding(.vertical, metrics.space(.xxs))
+        .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border]))
     }
 }
 
