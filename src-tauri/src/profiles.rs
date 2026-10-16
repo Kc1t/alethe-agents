@@ -530,6 +530,10 @@ pub fn delete_profile_state(app: &AppHandle, profile_id: &str) -> Result<Profile
     }
     crate::spotify::delete_profile_secrets(&target.id)?;
     crate::voice_providers::keys::delete_profile_keys(&target.id)?;
+    crate::voice_providers::keys::delete_secret(
+        &target.id,
+        crate::secure_store::SecretKind::OpenrouterManagementKey,
+    )?;
     crate::voice_servers::delete_profile_keys(&target.id, &target_dir)?;
 
     let _index = index_lock();

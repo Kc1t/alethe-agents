@@ -38,6 +38,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Voice success toast.** Commands that run now confirm with an ephemeral toast, matching the
   existing failure toast.
 
+- **OpenRouter credit usage.** OpenRouter joins the AI usage panel, the topbar and the usage
+  reading switches (off until turned on). With the OpenRouter API key from voice it shows that
+  key's spend today, this week and this month, its limit and the budget that blocks it first. An
+  optional management key, checked with OpenRouter and kept in the system keychain, adds the
+  account balance (credits bought, used and left), 30-day activity and the most expensive models.
+  The card leads with the percentage used of the tightest cap and estimates how many days the
+  balance lasts at the last week's pace; the topbar pill shows the dollars left. Alethe warns once
+  at 80% used or 3 days left, again at 95% or 1 day left, and when the balance is used up, with a
+  system notification while the window is in the background.
 - **Cleaner Markdown viewer tabs.** The right-sidebar document tabs now use a compact strip with a
   clearer active state, hidden scrollbar chrome, and a less prominent file path row.
 - **Easier hands-free voice sending.** Short Portuguese send phrases such as “manda”, “envia” and

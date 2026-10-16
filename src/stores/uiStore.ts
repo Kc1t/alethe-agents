@@ -15,6 +15,7 @@ import type {
   ClaudeUsage,
   CodexUsage,
   MemoryStats,
+  OpenRouterUsage,
   RuntimeSnapshot,
 } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
@@ -102,6 +103,7 @@ type UiState = {
   codexUsage: CodexUsage | null
   antigravityUsage: AntigravityUsage | null
   kimiUsage: KimiUsage | null
+  openrouterUsage: OpenRouterUsage | null
 
   focusedTerminalId: string | null
   /**
@@ -176,6 +178,7 @@ type UiState = {
   setCodexUsage: (value: CodexUsage | null) => void
   setAntigravityUsage: (value: AntigravityUsage | null) => void
   setKimiUsage: (value: KimiUsage | null) => void
+  setOpenRouterUsage: (value: OpenRouterUsage | null) => void
   setFocusedTerminal: (id: string | null) => void
   requestPaneFocus: (terminalId: string) => void
   requestPaneFlash: (terminalId: string) => void
@@ -231,6 +234,7 @@ export const useUiStore = create<UiState>((set) => ({
   codexUsage: null,
   antigravityUsage: null,
   kimiUsage: null,
+  openrouterUsage: null,
   focusedTerminalId: null,
   keptAlivePaneIds: [],
   mountedPaneIds: [],
@@ -288,6 +292,7 @@ export const useUiStore = create<UiState>((set) => ({
   setCodexUsage: (value) => set({ codexUsage: value }),
   setAntigravityUsage: (value) => set({ antigravityUsage: value }),
   setKimiUsage: (value) => set({ kimiUsage: value }),
+  setOpenRouterUsage: (value) => set({ openrouterUsage: value }),
   setFocusedTerminal: (id) => set({ focusedTerminalId: id }),
   requestPaneFocus: (terminalId) => set({ focusRequest: { terminalId, ts: Date.now() } }),
   requestPaneFlash: (terminalId) => set({ focusFlash: { terminalId, ts: Date.now() } }),

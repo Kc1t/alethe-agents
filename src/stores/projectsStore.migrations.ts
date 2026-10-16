@@ -113,15 +113,19 @@ function normalizeUsageAccess(raw: unknown): Preferences['usageAccess'] {
   ) as Preferences['usageAccess']
 }
 
+/** Providers added after the usage consent; a file from before it never ran their meters. */
+const PROVIDERS_AFTER_CONSENT: readonly UsageProviderId[] = ['openrouter']
+
 /**
  * A file saved before the usage consent existed belongs to someone who already had the meters
- * running, so every provider stays on for them. Only a profile with no saved file starts off.
+ * running, so every provider of that time stays on for them. Only a profile with no saved file
+ * starts off.
  */
 function usageAccessOfSavedFile(rawPreferences: unknown): Preferences['usageAccess'] {
   const raw = (rawPreferences as LegacyPreferences | undefined)?.usageAccess
   if (isUsageAccessRecord(raw)) return normalizeUsageAccess(raw)
   return Object.fromEntries(
-    USAGE_PROVIDER_IDS.map((id) => [id, true]),
+    USAGE_PROVIDER_IDS.map((id) => [id, !PROVIDERS_AFTER_CONSENT.includes(id)]),
   ) as Preferences['usageAccess']
 }
 

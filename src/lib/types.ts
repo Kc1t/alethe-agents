@@ -24,7 +24,7 @@ export type BuiltinAgentType =
 export type AgentType = BuiltinAgentType | (string & {})
 
 /** Providers whose subscription usage Alethe can read. */
-export type UsageProviderId = 'claude' | 'codex' | 'antigravity' | 'kimi'
+export type UsageProviderId = 'claude' | 'codex' | 'antigravity' | 'kimi' | 'openrouter'
 
 export const AGENT_TYPE_LABELS: Record<BuiltinAgentType, string> = {
   claude: 'Claude Code',
@@ -869,11 +869,13 @@ export type Preferences = {
   usageShowCodex: boolean
   usageShowAntigravity: boolean
   usageShowKimi: boolean
+  usageShowOpenRouter: boolean
   /** Itens opcionais exibidos no canto direito da topbar. */
   topbarShowClaudeUsage: boolean
   topbarShowCodexUsage: boolean
   topbarShowAntigravityUsage: boolean
   topbarShowKimiUsage: boolean
+  topbarShowOpenRouterUsage: boolean
   topbarShowSync: boolean
   topbarShowProfile: boolean
   topbarShowMemory: boolean
@@ -1103,15 +1105,17 @@ export const DEFAULT_PREFERENCES: Preferences = {
   spotifyClientId: '',
   spotifyClientSecret: '',
   discordRichPresenceEnabled: false,
-  usageAccess: { claude: false, codex: false, antigravity: false, kimi: false },
+  usageAccess: { claude: false, codex: false, antigravity: false, kimi: false, openrouter: false },
   usageShowClaude: true,
   usageShowCodex: true,
   usageShowAntigravity: true,
   usageShowKimi: true,
+  usageShowOpenRouter: true,
   topbarShowClaudeUsage: true,
   topbarShowCodexUsage: true,
   topbarShowAntigravityUsage: true,
   topbarShowKimiUsage: false,
+  topbarShowOpenRouterUsage: true,
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
