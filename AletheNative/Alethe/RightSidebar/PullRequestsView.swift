@@ -158,7 +158,7 @@ struct PullRequestsView: View {
     private func badges(_ pr: PullRequestSummary) -> some View {
         if pr.isDraft {
             Text("pullRequests.draft")
-                .font(metrics.font(.caption2))
+                .font(metrics.font(.caption))
                 .foregroundStyle(theme[.statusDisabled])
         }
         switch pr.reviewDecision {
