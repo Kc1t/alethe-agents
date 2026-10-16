@@ -327,13 +327,14 @@ public struct AletheMonogram: View {
 
     public var body: some View {
         let length = metrics.size(side)
-        let radius = metrics.style == .clean ? metrics.radius(.sm) : metrics.size(min(6, side * 0.4))
+        let radius = metrics.isWebInterface ? metrics.size(6) : metrics.style == .clean ? metrics.radius(.sm) : metrics.size(min(6, side * 0.4))
         Text(verbatim: initials)
-            .font(.custom(AletheFonts.terminalFamily, size: length * 0.46).weight(.bold))
+            .font(metrics.isWebInterface ? metrics.monoFont(size: (side * 0.46).rounded(), weight: .bold)
+                  : .custom(AletheFonts.terminalFamily, size: length * 0.46).weight(.bold))
             .foregroundStyle(theme[.accentOn])
             .frame(width: length, height: length)
             .background(color, in: RoundedRectangle(cornerRadius: radius))
-            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Color.white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder((metrics.isWebInterface ? theme[.fg] : Color.white).opacity(0.08)))
             .accessibilityHidden(true)
     }
 
@@ -363,7 +364,40 @@ public struct AletheActivitySpinner: View {
         (0, 0), (1, 0), (2, 0), (3, 0), (3, 1), (3, 2), (3, 3), (2, 3), (1, 3), (0, 3), (0, 2), (0, 1),
     ]
 
-    public var body: some View {
+    @ViewBuilder public var body: some View {
+        if metrics.isWebInterface { webSpinner } else { nativeSpinner }
+    }
+
+    private var webSpinner: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24, paused: metrics.reducesMotion)) { context in
+            Canvas { canvas, _ in
+                let ring = [1, 2, 3, 9, 14, 19, 23, 22, 21, 15, 10, 5]
+                for index in 0..<25 {
+                    let row = index / 5
+                    let column = index % 5
+                    if (row == 0 || row == 4) && (column == 0 || column == 4) { continue }
+                    var alpha = index == 12 ? 0.4 : 0.08
+                    var expansion = 1.0
+                    if let order = ring.firstIndex(of: index) {
+                        let phase = (context.date.timeIntervalSinceReferenceDate + Double(order) * 0.05 / 1.2)
+                            .truncatingRemainder(dividingBy: 1.5) / 1.5
+                        let step = Int(phase * 12) % 4
+                        alpha = metrics.reducesMotion ? 0.4 : step == 0 ? 0.95 : step == 1 || step == 2 ? 0.4 : 0.08
+                        expansion = !metrics.reducesMotion && step == 0 ? 1.12 : 1
+                    }
+                    let dot = metrics.size(2) * expansion
+                    let centerX = metrics.size(1 + CGFloat(column) * 3)
+                    let centerY = metrics.size(1 + CGFloat(row) * 3)
+                    let rect = CGRect(x: centerX - dot / 2, y: centerY - dot / 2, width: dot, height: dot)
+                    canvas.fill(Path(ellipseIn: rect), with: .color(theme[color].opacity(alpha)))
+                }
+            }
+            .frame(width: metrics.size(14), height: metrics.size(14))
+            .shadow(color: theme[color], radius: metrics.size(2))
+        }
+    }
+
+    @ViewBuilder private var nativeSpinner: some View {
         let side = metrics.size(14)
         if metrics.reducesMotion {
             AletheStatusDot(color, side: 7)
@@ -417,5 +451,34 @@ private struct AletheTitleBarPillBody: View {
             .overlay(RoundedRectangle(cornerRadius: metrics.size(8))
                 .strokeBorder(theme[.borderStrong].opacity(hovering ? 1 : 0), lineWidth: metrics.size(1)))
             .onHover { hovering = $0 }
+/// Normal sidebar icon tabs and the compact layout switch.
+public struct AletheSidebarTabStyle: ButtonStyle {
+    let isSelected: Bool
+    let width: CGFloat
+    let height: CGFloat
+    let bordered: Bool
+    @State private var hovering = false
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+
+    public init(isSelected: Bool, width: CGFloat = 28, height: CGFloat = 26, bordered: Bool = true) {
+        self.isSelected = isSelected
+        self.width = width
+        self.height = height
+        self.bordered = bordered
+    }
+
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .labelStyle(.iconOnly)
+            .font(metrics.font(size: 14))
+            .foregroundStyle(theme[isSelected || hovering ? .fg : .fgMuted])
+            .frame(width: metrics.size(width), height: metrics.size(height))
+            .background(theme[.panelHover].opacity(isSelected || hovering ? 1 : 0),
+                        in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .onHover { hovering = $0 }
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                .strokeBorder(theme[.border].opacity(isSelected && bordered ? 1 : 0),
+                              lineWidth: metrics.size(1)))
     }
 }

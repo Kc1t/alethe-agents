@@ -16,11 +16,20 @@ struct SidebarView: View {
         if let workspace = environment.workspace {
             content(workspace)
         } else {
-            List {}.listStyle(.sidebar)
+            List {}.modifier(SidebarListAppearance())
         }
     }
 
-    private func content(_ workspace: WorkspaceModel) -> some View {
+    @ViewBuilder private func content(_ workspace: WorkspaceModel) -> some View {
+        if metrics.isWebInterface {
+            VStack(spacing: 0) {
+                SidebarProjectsHeader(actions: SidebarActions(workspace: workspace, undoManager: undoManager))
+                projectList(workspace)
+            }
+        } else { projectList(workspace) }
+    }
+
+    private func projectList(_ workspace: WorkspaceModel) -> some View {
         let actions = SidebarActions(workspace: workspace, undoManager: undoManager)
         let doc = workspace.document
         return List(selection: selection(workspace, actions)) {
@@ -52,10 +61,10 @@ struct SidebarView: View {
                     SidebarDrag.load(providers) { actions.insert($0, into: .ungrouped, at: index) }
                 }
             } header: {
-                SidebarProjectsHeader(actions: actions)
+                if !metrics.isWebInterface { SidebarProjectsHeader(actions: actions) }
             }
         }
-        .listStyle(.sidebar)
+        .modifier(SidebarListAppearance())
         // Clean style: the compact sidebar (upstream `CleanProjectSidebar`).
         .environment(\.sidebarRowSize, metrics.style == .clean ? .small : .medium)
         .accessibilityIdentifier("sidebar.list")
@@ -90,8 +99,10 @@ private struct SidebarProjectsHeader: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.metrics) private var metrics
 
+    @Environment(\.theme) private var theme
+
     var body: some View {
-        HStack(spacing: metrics.space(.xxs)) {
+        HStack(spacing: metrics.isWebInterface ? metrics.size(4) : metrics.space(.xxs)) {
             AletheSectionLabel(Text("sidebar.projects.header"))
             Spacer(minLength: metrics.space(.s))
             Button { environment.editorRequest = .newGroup(parent: nil) } label: {
@@ -113,6 +124,13 @@ private struct SidebarProjectsHeader: View {
             .help(Text("menu.file.newProject"))
             .accessibilityIdentifier("sidebar.newProject")
         }
+        .padding(.horizontal, metrics.isWebInterface ? metrics.size(12) : 0)
+        .frame(height: metrics.isWebInterface ? metrics.size(34) : nil)
+        .overlay(alignment: .bottom) {
+            if metrics.isWebInterface {
+                Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
+            }
+        }
     }
 }
 
@@ -127,7 +145,7 @@ private struct GroupRow: View {
 
     var body: some View {
         let doc = actions.workspace.document
-        DisclosureGroup(isExpanded: Binding {
+        SidebarDisclosure(isGroup: true, item: .group(group.id), isExpanded: Binding {
             !group.isCollapsed
         } set: { expanded in
             actions.setCollapsed(group.id, !expanded)
@@ -155,7 +173,7 @@ private struct GroupRow: View {
         } label: {
             Label {
                 // Upstream group tag: faint, lightly tracked name followed by a hairline rule.
-                HStack(spacing: metrics.space(.s)) {
+                HStack(spacing: metrics.isWebInterface ? metrics.size(8) : metrics.space(.s)) {
                     Text(verbatim: group.name)
                         .font(metrics.font(size: 11))
                         .tracking(metrics.size(11) * 0.04)
@@ -179,13 +197,17 @@ private struct GroupRow: View {
                     .opacity(hovering ? 1 : 0)
                 }
             } icon: {
-                if let color = group.color {
+                if metrics.isWebInterface {
+                    AletheMonogram(name: group.name, color: theme[group.color?.token ?? .panelHover], side: 14)
+                } else if let color = group.color {
                     AletheMonogram(name: group.name, color: theme[color.token], side: 14)
                 } else {
                     Image(systemName: "folder")
                         .foregroundStyle(theme[.fgFaint])
                 }
             }
+            .modifier(SidebarLabelAppearance(isGroup: true))
+            .modifier(SidebarWebRow(kind: .group, first: doc.childGroups(of: nil).first?.id == group.id))
             .onDrop(of: [.plainText], isTargeted: nil) { providers in
                 SidebarDrag.load(providers) { actions.drop($0, onGroup: group.id) }
                 return true
@@ -212,8 +234,7 @@ private struct GroupRow: View {
             }
             .accessibilityIdentifier("sidebar.group.\(group.name)")
         }
-        .tag(SidebarItem.group(group.id))
-        .itemProvider { NSItemProvider(object: SidebarDrag.payload(group.id) as NSString) }
+        .modifier(SidebarNativeDragSource(payload: SidebarDrag.payload(group.id)))
     }
 }
 
@@ -233,9 +254,11 @@ private struct ProjectRow: View {
             if tabs.isEmpty && merges.sessions.isEmpty && planning.isEmpty {
                 label
             } else {
-                DisclosureGroup {
+                SidebarDisclosure(isGroup: false, item: .project(project.id)) {
                     ForEach(tabs) { tab in
-                        SidebarTerminalRow(tab: tab, project: project, actions: actions)
+                        if !metrics.isWebInterface || actions.workspace.document.paneHolding(tab.id)?.pane.activeTab?.id == tab.id {
+                            SidebarTerminalRow(tab: tab, project: project, actions: actions)
+                        }
                     }
                     ForEach(merges.sessions) { session in
                         SidebarMergePanel(session: session, project: project)
@@ -248,8 +271,7 @@ private struct ProjectRow: View {
                 }
             }
         }
-        .tag(SidebarItem.project(project.id))
-        .itemProvider { NSItemProvider(object: SidebarDrag.payload(project.id) as NSString) }
+        .modifier(SidebarNativeDragSource(payload: SidebarDrag.payload(project.id)))
         .task(id: project.folder) {
             await merges.watch(folder: URL(filePath: project.folder, directoryHint: .isDirectory), projectID: project.id)
         }
@@ -259,12 +281,13 @@ private struct ProjectRow: View {
         let doc = actions.workspace.document
         let dimmed = doc.isProjectDisabled(project.id) || doc.isSuspended(project.id)
         let selected = doc.workspace.selectedProjectID == project.id
+        let working = project.panes.flatMap(\.tabs).contains { environment.terminals.activity[$0.id] == .working }
         return Label {
-            HStack(spacing: metrics.space(.xs)) {
+            HStack(spacing: metrics.isWebInterface ? metrics.size(9) : metrics.space(.xs)) {
                 Text(verbatim: project.name)
                     .font(metrics.font(size: 12.5, weight: selected ? .medium : .regular))
                     .foregroundStyle(theme[dimmed ? .textTertiary : .textPrimary])
-                if project.panes.flatMap(\.tabs).contains(where: { environment.terminals.activity[$0.id] == .working }) {
+                if working && !metrics.isWebInterface {
                     AletheActivitySpinner()
                         .accessibilityLabel(Text("agentStatus.working"))
                 }
@@ -279,21 +302,32 @@ private struct ProjectRow: View {
                 }
                 .buttonStyle(AletheIconButtonStyle(side: 20))
                 .help(Text("terminal.new"))
-                .opacity(hovering ? 1 : 0)
+                .opacity(hovering || (metrics.isWebInterface && project.panes.isEmpty) ? 1 : 0)
                 Menu { ProjectContextMenu(project: project, actions: actions) } label: {
                     Label("sidebar.rowMenu", systemImage: "ellipsis")
                 }
                 .menuIndicator(.hidden)
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .frame(width: metrics.isWebInterface ? metrics.size(hovering ? 20 : working ? 16 : 0) : nil)
                 .help(Text("sidebar.rowMenu"))
                 .opacity(hovering ? 1 : 0)
+                .overlay {
+                    if metrics.isWebInterface && working && !hovering {
+                        AletheActivitySpinner()
+                            .accessibilityLabel(Text("agentStatus.working"))
+                            .allowsHitTesting(false)
+                    }
+                }
             }
         } icon: {
             AletheMonogram(name: project.name, color: theme[project.color.token])
                 .opacity(dimmed ? 0.6 : 1)
         }
+        .modifier(SidebarLabelAppearance(isGroup: false))
+        .modifier(SidebarWebRow(kind: .project))
         .onHover { hovering = $0 }
+        .tag(SidebarItem.project(project.id))
         .help(Text(verbatim: project.folder))
         .onDrop(of: [.plainText], isTargeted: nil) { providers in
             SidebarDrag.load(providers) { actions.drop($0, onProject: project.id) }
@@ -316,17 +350,28 @@ private struct SidebarTerminalRow: View {
     var body: some View {
         let pane = actions.workspace.document.paneHolding(tab.id)?.pane
         let disabled = pane?.isDisabled == true
+        let statusTab = pane?.tabs.first { environment.terminals.activity[$0.id] == .working }
+            ?? pane?.tabs.first { environment.terminals.unread.contains($0.id) } ?? tab
         Label {
-            HStack(spacing: metrics.space(.xs)) {
+            HStack(spacing: metrics.isWebInterface ? metrics.size(9) : metrics.space(.xs)) {
                 Text(verbatim: environment.terminals.displayName(of: tab))
                     .font(metrics.font(size: 12.5))
-                    .foregroundStyle(theme[disabled ? .textTertiary : .fgMuted])
+                    .foregroundStyle(theme[disabled ? (metrics.isWebInterface ? .textQuaternary : .textTertiary) : metrics.isWebInterface ? .fg : .fgMuted])
                     .lineLimit(1)
-                AgentStatusGlyph(tab: tab.id)
-                if let pane, pane.tabs.count > 1, pane.tabs.first?.id == tab.id {
-                    AletheCountPill(pane.tabs.count)
+                if !metrics.isWebInterface { AgentStatusGlyph(tab: tab.id) }
+                if let pane, pane.tabs.count > 1, metrics.isWebInterface || pane.tabs.first?.id == tab.id {
+                    if metrics.isWebInterface {
+                        Text(verbatim: "\(pane.tabs.count)")
+                            .font(metrics.font(size: 11))
+                            .foregroundStyle(theme[.textTertiary])
+                            .padding(.horizontal, metrics.size(7))
+                            .padding(.vertical, metrics.size(4))
+                            .background(theme[.panelHover].opacity(0.6),
+                                        in: RoundedRectangle(cornerRadius: metrics.size(5)))
+                    } else { AletheCountPill(pane.tabs.count) }
                 }
                 Spacer(minLength: metrics.space(.xxs))
+                if metrics.isWebInterface && !hovering { AgentStatusGlyph(tab: statusTab.id) }
                 Menu {
                     TabContextMenu(tab: tab, project: project, actions: actions)
                 } label: {
@@ -335,6 +380,7 @@ private struct SidebarTerminalRow: View {
                 .menuIndicator(.hidden)
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .frame(width: metrics.isWebInterface ? metrics.size(hovering ? 20 : 0) : nil)
                 .help(Text("sidebar.rowMenu"))
                 .opacity(hovering ? 1 : 0)
                 if pane?.isRemoteShared == true { RemoteSharedGlyph() }
@@ -355,6 +401,9 @@ private struct SidebarTerminalRow: View {
                 .saturation(disabled ? 0 : 1)
                 .help(environment.terminals.hibernated.contains(tab.id) ? Text("sidebar.hibernated") : Text(verbatim: ""))
         }
+        .modifier(SidebarLabelAppearance(isGroup: false))
+        .modifier(SidebarWebRow(kind: .terminal,
+            focused: actions.workspace.document.workspace.focusedPaneID == pane?.id))
         .onHover { hovering = $0 }
         .tag(SidebarItem.tab(tab.id))
         .contextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }

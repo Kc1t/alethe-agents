@@ -140,31 +140,33 @@ struct SidebarNowPlaying: View {
 
     private func row(_ track: SpotifyNowPlaying) -> some View {
         HStack(spacing: metrics.space(.m)) {
-            CoverArt(url: track.coverURL, size: metrics.size(28))
+            CoverArt(url: track.coverURL, size: metrics.size(metrics.isWebInterface ? 24 : 28), sidebarWeb: metrics.isWebInterface)
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: track.track)
-                    .font(metrics.font(.footnote).weight(.medium))
-                    .foregroundStyle(theme[.textPrimary])
+                    .font(metrics.isWebInterface ? metrics.font(size: 11, weight: .medium) : metrics.font(.footnote).weight(.medium))
+                    .foregroundStyle(theme[metrics.isWebInterface ? .fg : .textPrimary])
                     .lineLimit(1)
                 Text(verbatim: track.artist)
-                    .font(metrics.font(.caption))
-                    .foregroundStyle(theme[.textSecondary])
+                    .font(metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.caption))
+                    .foregroundStyle(theme[metrics.isWebInterface ? .fgFaint : .textSecondary])
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
             if track.playing {
-                Equalizer(barCount: 3, height: metrics.size(10))
+                Equalizer(barCount: 3, height: metrics.size(metrics.isWebInterface ? 12 : 10),
+                          sidebarWeb: metrics.isWebInterface)
             } else {
                 Image(systemName: "pause.fill")
-                    .font(metrics.font(.caption))
-                    .foregroundStyle(theme[.textTertiary])
+                    .font(metrics.isWebInterface ? metrics.font(size: 14) : metrics.font(.caption))
+                    .foregroundStyle(theme[metrics.isWebInterface ? .fgFaint : .textTertiary])
                     .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, metrics.space(.l))
-        .padding(.vertical, metrics.space(.s))
+        .padding(.horizontal, metrics.isWebInterface ? metrics.size(10) : metrics.space(.l))
+        .padding(.vertical, metrics.isWebInterface ? 0 : metrics.space(.s))
+        .frame(height: metrics.isWebInterface ? metrics.size(40) : nil)
         .overlay(alignment: .top) {
-            Rectangle().fill(theme[.borderSubtle]).frame(height: 1)
+            Rectangle().fill(theme[metrics.isWebInterface ? .border : .borderSubtle]).frame(height: metrics.isWebInterface ? metrics.size(1) : 1)
         }
         .help(Text(verbatim: NowPlayingText.summary(track)))
         .accessibilityElement(children: .ignore)
@@ -240,21 +242,30 @@ private struct NowPlayingProgress: View {
 private struct Equalizer: View {
     let barCount: Int
     let height: CGFloat
+    var sidebarWeb = false
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     private static let rest: [CGFloat] = [0.6, 1, 0.4, 0.8]
 
+    private func barLevel(at time: TimeInterval, index: Int) -> CGFloat {
+        if metrics.reducesMotion { return Self.rest[index % Self.rest.count] }
+        if sidebarWeb {
+            let phase = (time - Double(index) * 0.18) / 0.9
+            return CGFloat(0.675 - 0.325 * cos(2 * .pi * phase))
+        }
+        let phase = time * (3.1 + Double(index) * 0.9) + Double(index)
+        return CGFloat(0.35 + 0.65 * abs(sin(phase)))
+    }
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 12, paused: metrics.reducesMotion)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .bottom, spacing: metrics.size(1.5)) {
+            HStack(alignment: .bottom, spacing: metrics.size(sidebarWeb ? 2 : 1.5)) {
                 ForEach(0..<barCount, id: \.self) { index in
-                    let level = metrics.reducesMotion
-                        ? Self.rest[index % Self.rest.count]
-                        : 0.35 + 0.65 * abs(sin(time * (3.1 + Double(index) * 0.9) + Double(index)))
+                    let level: CGFloat = barLevel(at: time, index: index)
                     RoundedRectangle(cornerRadius: metrics.size(1))
-                        .fill(theme[.accent])
+                        .fill(theme[sidebarWeb ? .statusActive : .accent])
                         .frame(width: metrics.size(2), height: height * level)
                 }
             }
@@ -268,25 +279,26 @@ private struct Equalizer: View {
 private struct CoverArt: View {
     let url: URL?
     let size: CGFloat
+    var sidebarWeb = false
     @State private var image: NSImage?
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: metrics.radius(.sm)).fill(theme[.bgSunken])
+            RoundedRectangle(cornerRadius: sidebarWeb ? metrics.size(3) : metrics.radius(.sm)).fill(theme[sidebarWeb ? .bgElevated : .bgSunken])
             if let image {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-            } else {
+            } else if !sidebarWeb {
                 Image(systemName: "music.note")
                     .font(.system(size: size * 0.4))
                     .foregroundStyle(theme[.textTertiary])
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+        .clipShape(RoundedRectangle(cornerRadius: sidebarWeb ? metrics.size(3) : metrics.radius(.sm)))
         .accessibilityHidden(true)
         .task(id: url) {
             image = nil

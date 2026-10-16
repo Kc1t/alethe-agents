@@ -377,6 +377,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The DMG opens a branded install window: drag Alethe onto the Applications shortcut to install.
 
 ### Changed
+- The Alethe interface uses web-sized left-sidebar icon tabs, Search and Projects headers, custom
+  group and project disclosures with guide lines, 28 pt terminal rows and multi-tab counts, a
+  segmented layout switch, and compact Now Playing and profile footers. Native macOS retains its
+  source-list presentation.
 - Right sidebar follows the web tab order, with Mac-only Todos and extensions last; Files is no
   longer shown there. The strip includes Close and an MCP-only action to open its manager.
 - Pull request rows show Send to Todo directly and Already added for linked Todos, including in
