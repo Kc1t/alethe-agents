@@ -28867,6 +28867,22 @@
         }
       }
     },
+    "sidebar.addGroupToTab" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Group to Current Tab"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar grupo à aba atual"
+          }
+        }
+      }
+    },
     "sidebar.addProject" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -28914,6 +28930,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Apagar Grupo"
+          }
+        }
+      }
+    },
+    "sidebar.deleteGroupAndProjects" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete Group and Projects…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluir grupo e projetos…"
+          }
+        }
+      }
+    },
+    "sidebar.deleteGroupAndProjects.detail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This removes this group, its subgroups and all their projects from Alethe. Files on disk are kept."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Isso remove este grupo, seus subgrupos e todos os seus projetos do Alethe. Os arquivos no disco são mantidos."
+          }
+        }
+      }
+    },
+    "sidebar.designLayout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Design Layout…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projetar layout…"
           }
         }
       }
@@ -28969,6 +29033,38 @@
         }
       }
     },
+    "sidebar.empty.detail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create the first project here and start building your workspace."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crie o primeiro projeto aqui e comece a montar seu espaço de trabalho."
+          }
+        }
+      }
+    },
+    "sidebar.empty.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No projects yet"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum projeto ainda"
+          }
+        }
+      }
+    },
     "sidebar.enableProject" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29003,6 +29099,22 @@
         }
       }
     },
+    "sidebar.group.empty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No projects yet. Click + to create one and add a terminal."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum projeto ainda. Clique em + para criar um e adicionar um terminal."
+          }
+        }
+      }
+    },
     "sidebar.hibernated" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29016,6 +29128,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hibernado para poupar memória; retoma ao aparecer"
+          }
+        }
+      }
+    },
+    "sidebar.killTerminal" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kill Terminal"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerrar terminal"
           }
         }
       }
@@ -29173,6 +29301,22 @@
         }
       }
     },
+    "sidebar.openOnlyGroup" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Only This Group"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir somente este grupo"
+          }
+        }
+      }
+    },
     "sidebar.planning.open" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29241,6 +29385,22 @@
         }
       }
     },
+    "sidebar.rename" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rename…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renomear…"
+          }
+        }
+      }
+    },
     "sidebar.resumeGroup" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -29271,6 +29431,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mostrar no Finder"
+          }
+        }
+      }
+    },
+    "sidebar.rowMenu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More Actions"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mais ações"
           }
         }
       }

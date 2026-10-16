@@ -25,6 +25,17 @@ struct SidebarView: View {
         let doc = workspace.document
         return List(selection: selection(workspace, actions)) {
             Section {
+                if doc.projects.isEmpty && doc.groups.isEmpty {
+                    VStack(alignment: .leading, spacing: metrics.space(.s)) {
+                        Label("sidebar.empty.title", systemImage: "folder")
+                            .font(metrics.font(.headline))
+                        Text("sidebar.empty.detail")
+                            .font(metrics.font(.caption))
+                        Button("menu.file.newProject") { environment.editorRequest = .newProject(.ungrouped) }
+                    }
+                    .padding(metrics.space(.s))
+                    .accessibilityIdentifier("sidebar.empty")
+                }
                 ForEach(doc.childGroups(of: nil)) { group in
                     GroupRow(group: group, actions: actions)
                 }
@@ -86,6 +97,12 @@ private struct SidebarProjectsHeader: View {
         HStack(spacing: metrics.space(.xxs)) {
             AletheSectionLabel(Text("sidebar.projects.header"))
             Spacer(minLength: metrics.space(.s))
+            Button { environment.editorRequest = .newGroup(parent: nil) } label: {
+                Label("menu.file.newGroup", systemImage: "rectangle.stack.badge.plus")
+            }
+            .buttonStyle(AletheIconButtonStyle(side: 20))
+            .help(Text("menu.file.newGroup"))
+            .accessibilityIdentifier("sidebar.newGroup")
             Button { actions.chooseFolders() } label: {
                 Label("sidebar.addProject", systemImage: "folder.badge.plus")
             }
@@ -109,6 +126,8 @@ private struct GroupRow: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
+    @State private var hovering = false
+
     var body: some View {
         let doc = actions.workspace.document
         DisclosureGroup(isExpanded: Binding {
@@ -116,6 +135,11 @@ private struct GroupRow: View {
         } set: { expanded in
             actions.setCollapsed(group.id, !expanded)
         }) {
+            if group.projectIDs.isEmpty && doc.childGroups(of: group.id).isEmpty {
+                Text("sidebar.group.empty")
+                    .font(metrics.font(.caption))
+                    .foregroundStyle(theme[.fgFaint])
+            }
             ForEach(doc.childGroups(of: group.id)) { child in
                 GroupRow(group: child, actions: actions)
             }
@@ -148,8 +172,14 @@ private struct GroupRow: View {
                     }
                     Rectangle()
                         .fill(theme[.border])
-                        .frame(height: 1)
+                        .frame(height: metrics.size(1))
                         .frame(maxWidth: .infinity)
+                    Button { environment.editorRequest = .newProject(.group(group.id)) } label: {
+                        Label("sidebar.newProjectHere", systemImage: "plus")
+                    }
+                    .buttonStyle(AletheIconButtonStyle(side: 20))
+                    .help(Text("sidebar.newProjectHere"))
+                    .opacity(hovering ? 1 : 0)
                 }
             } icon: {
                 if let color = group.color {
@@ -163,7 +193,13 @@ private struct GroupRow: View {
                 SidebarDrag.load(providers) { actions.drop($0, onGroup: group.id) }
                 return true
             }
+            .onHover { hovering = $0 }
             .contextMenu {
+                Button("sidebar.openOnlyGroup") { actions.openGroup(group.id, adding: false) }
+                    .disabled(!doc.groups.contains { doc.isGroup($0.id, inside: group.id) && !$0.projectIDs.isEmpty })
+                Button("sidebar.addGroupToTab") { actions.openGroup(group.id, adding: true) }
+                    .disabled(!doc.groups.contains { doc.isGroup($0.id, inside: group.id) && !$0.projectIDs.isEmpty })
+                Divider()
                 Button("sidebar.editGroup") { environment.editorRequest = .editGroup(group.id) }
                 Button("sidebar.newProjectHere") { environment.editorRequest = .newProject(.group(group.id)) }
                 Button("sidebar.newSubgroup") { environment.editorRequest = .newGroup(parent: group.id) }
@@ -175,6 +211,7 @@ private struct GroupRow: View {
                 }
                 Divider()
                 Button("sidebar.deleteGroup") { actions.deleteGroup(group.id) }
+                Button("sidebar.deleteGroupAndProjects", role: .destructive) { actions.deleteGroupAndProjects(group) }
             }
             .accessibilityIdentifier("sidebar.group.\(group.name)")
         }
@@ -190,14 +227,7 @@ private struct ProjectRow: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var merges = ProjectMergeWatcher()
-
-    private var disabledTabs: Set<TabID> {
-        Set(project.panes.filter(\.isDisabled).flatMap { $0.tabs.map(\.id) })
-    }
-
-    private var sharedTabs: Set<TabID> {
-        Set(project.panes.filter(\.isRemoteShared).flatMap { $0.tabs.map(\.id) })
-    }
+    @State private var hovering = false
 
     var body: some View {
         let tabs = project.panes.flatMap(\.tabs)
@@ -208,35 +238,7 @@ private struct ProjectRow: View {
             } else {
                 DisclosureGroup {
                     ForEach(tabs) { tab in
-                        let disabled = disabledTabs.contains(tab.id)
-                        Label {
-                            HStack(spacing: metrics.space(.xs)) {
-                                Text(verbatim: environment.terminals.displayName(of: tab))
-                                    .font(metrics.font(size: 12.5))
-                                    .foregroundStyle(theme[disabled ? .textTertiary : .fgMuted])
-                                    .lineLimit(1)
-                                AgentStatusGlyph(tab: tab.id)
-                                if sharedTabs.contains(tab.id) { RemoteSharedGlyph() }
-                                if let branch = tab.worktreeBranch {
-                                    Image(systemName: "arrow.triangle.branch")
-                                        .font(metrics.font(.footnote))
-                                        .foregroundStyle(theme[.textTertiary])
-                                        .help(Text(verbatim: String(format: String(localized: "sidebar.worktree"), branch)))
-                                        .accessibilityLabel(Text(verbatim: String(format: String(localized: "sidebar.worktree"), branch)))
-                                        .accessibilityIdentifier("sidebar.tab.worktree")
-                                }
-                            }
-                        } icon: {
-                            Image(systemName: disabled ? "pause.circle"
-                                  : environment.terminals.hibernated.contains(tab.id) ? "moon.zzz"
-                                  : tab.agent == "shell" ? "terminal" : "sparkles")
-                                .foregroundStyle(theme[disabled ? .statusDisabled : AgentTokens.accent(for: tab.agent)])
-                                .saturation(disabled ? 0 : 1)
-                                .help(environment.terminals.hibernated.contains(tab.id) ? Text("sidebar.hibernated") : Text(verbatim: ""))
-                        }
-                        .tag(SidebarItem.tab(tab.id))
-                        .contextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }
-                        .accessibilityIdentifier("sidebar.tab.\(tab.agent)")
+                        SidebarTerminalRow(tab: tab, project: project, actions: actions)
                     }
                     ForEach(merges.sessions) { session in
                         SidebarMergePanel(session: session, project: project)
@@ -261,13 +263,40 @@ private struct ProjectRow: View {
         let dimmed = doc.isProjectDisabled(project.id) || doc.isSuspended(project.id)
         let selected = doc.workspace.selectedProjectID == project.id
         return Label {
-            Text(verbatim: project.name)
-                .font(metrics.font(size: 12.5, weight: selected ? .medium : .regular))
-                .foregroundStyle(theme[dimmed ? .textTertiary : .textPrimary])
+            HStack(spacing: metrics.space(.xs)) {
+                Text(verbatim: project.name)
+                    .font(metrics.font(size: 12.5, weight: selected ? .medium : .regular))
+                    .foregroundStyle(theme[dimmed ? .textTertiary : .textPrimary])
+                if project.panes.flatMap(\.tabs).contains(where: { environment.terminals.activity[$0.id] == .working }) {
+                    AletheActivitySpinner()
+                        .accessibilityLabel(Text("agentStatus.working"))
+                }
+                if !project.panes.isEmpty && project.panes.allSatisfy(\.isDisabled) {
+                    Image(systemName: "pause.circle")
+                        .foregroundStyle(theme[.statusDisabled])
+                        .accessibilityLabel(Text("sidebar.disableProject"))
+                }
+                Spacer(minLength: metrics.space(.xxs))
+                Button { environment.editorRequest = .newTerminal(project.id) } label: {
+                    Label("terminal.new", systemImage: "plus")
+                }
+                .buttonStyle(AletheIconButtonStyle(side: 20))
+                .help(Text("terminal.new"))
+                .opacity(hovering ? 1 : 0)
+                Menu { ProjectContextMenu(project: project, actions: actions) } label: {
+                    Label("sidebar.rowMenu", systemImage: "ellipsis")
+                }
+                .menuIndicator(.hidden)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help(Text("sidebar.rowMenu"))
+                .opacity(hovering ? 1 : 0)
+            }
         } icon: {
             AletheMonogram(name: project.name, color: theme[project.color.token])
                 .opacity(dimmed ? 0.6 : 1)
         }
+        .onHover { hovering = $0 }
         .help(Text(verbatim: project.folder))
         .onDrop(of: [.plainText], isTargeted: nil) { providers in
             SidebarDrag.load(providers) { actions.drop($0, onProject: project.id) }
@@ -278,15 +307,81 @@ private struct ProjectRow: View {
     }
 }
 
+private struct SidebarTerminalRow: View {
+    let tab: PaneTab
+    let project: Project
+    let actions: SidebarActions
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+    @State private var hovering = false
+
+    var body: some View {
+        let pane = actions.workspace.document.paneHolding(tab.id)?.pane
+        let disabled = pane?.isDisabled == true
+        Label {
+            HStack(spacing: metrics.space(.xs)) {
+                Text(verbatim: environment.terminals.displayName(of: tab))
+                    .font(metrics.font(size: 12.5))
+                    .foregroundStyle(theme[disabled ? .textTertiary : .fgMuted])
+                    .lineLimit(1)
+                AgentStatusGlyph(tab: tab.id)
+                if let pane, pane.tabs.count > 1, pane.tabs.first?.id == tab.id {
+                    AletheCountPill(pane.tabs.count)
+                }
+                Spacer(minLength: metrics.space(.xxs))
+                Menu {
+                    TabContextMenu(tab: tab, project: project, actions: actions)
+                } label: {
+                    Label("sidebar.rowMenu", systemImage: "ellipsis")
+                }
+                .menuIndicator(.hidden)
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help(Text("sidebar.rowMenu"))
+                .opacity(hovering ? 1 : 0)
+                if pane?.isRemoteShared == true { RemoteSharedGlyph() }
+                if let branch = tab.worktreeBranch {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(metrics.font(.footnote))
+                        .foregroundStyle(theme[.textTertiary])
+                        .help(Text(verbatim: String(format: String(localized: "sidebar.worktree"), branch)))
+                        .accessibilityLabel(Text(verbatim: String(format: String(localized: "sidebar.worktree"), branch)))
+                        .accessibilityIdentifier("sidebar.tab.worktree")
+                }
+            }
+        } icon: {
+            Image(systemName: disabled ? "pause.circle"
+                  : environment.terminals.hibernated.contains(tab.id) ? "moon.zzz"
+                  : tab.agent == "shell" ? "terminal" : "sparkles")
+                .foregroundStyle(theme[disabled ? .statusDisabled : AgentTokens.accent(for: tab.agent)])
+                .saturation(disabled ? 0 : 1)
+                .help(environment.terminals.hibernated.contains(tab.id) ? Text("sidebar.hibernated") : Text(verbatim: ""))
+        }
+        .onHover { hovering = $0 }
+        .tag(SidebarItem.tab(tab.id))
+        .contextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }
+        .accessibilityIdentifier("sidebar.tab.\(tab.agent)")
+    }
+}
+
 private struct ProjectContextMenu: View {
     let project: Project
     let actions: SidebarActions
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
 
     var body: some View {
         let doc = actions.workspace.document
         NewTerminalButton(project: project)
         Divider()
+        Button("sidebar.designLayout") { environment.editorRequest = .layoutDesigner(project.id) }
+        Button("sidebar.rename") {
+            guard let name = SidebarRenamePrompt.name(initial: project.name, width: metrics.size(280), height: metrics.size(24)) else { return }
+            actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "sidebar.rename")) {
+                $0.updateProject(project.id) { $0.name = name }
+            }
+        }
         Button("sidebar.editProject") { environment.editorRequest = .editProject(project.id) }
         Button("sidebar.revealInFinder") { actions.revealInFinder(project) }
         Button("openIn.vscode") { OpenInActions.vsCode(project.folder, launchers: environment.launchers) }
@@ -356,14 +451,41 @@ private struct TabContextMenu: View {
     let project: Project
     let actions: SidebarActions
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
 
     var body: some View {
+        Button("sidebar.rename") {
+            guard let name = SidebarRenamePrompt.name(initial: tab.title ?? "", width: metrics.size(280), height: metrics.size(24)) else { return }
+            actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "sidebar.rename")) {
+                $0.updateTab(tab.id) { $0.title = name }
+            }
+        }
+        Button("sidebar.killTerminal") { environment.terminals.view(for: tab.id)?.terminate() }
+            .disabled(environment.terminals.view(for: tab.id) == nil)
         Button("terminal.restart") { environment.terminals.restart(tab, in: project, environment: environment) }
         Button("openIn.vscode") {
             OpenInActions.vsCode(tab.workingDirectory ?? project.folder, launchers: environment.launchers)
         }
         Button("sidebar.revealInFinder") { OpenInActions.revealInFinder(tab.workingDirectory ?? project.folder) }
         if let pane = actions.workspace.document.paneHolding(tab.id)?.pane {
+            Button(environment.focusModePaneID == pane.id ? LocalizedStringKey("focusMode.exit") : "focusMode.enter") {
+                if environment.focusModePaneID == pane.id {
+                    environment.focusModePaneID = nil
+                } else {
+                    actions.select(.tab(tab.id))
+                    environment.focusModePaneID = pane.id
+                }
+            }
+            if !project.namedGrids.isEmpty {
+                Menu("pane.moveToGrid") {
+                    Button("projectGrid.main") { move(pane.id, to: nil) }
+                        .disabled(pane.gridID == nil)
+                    ForEach(project.namedGrids) { grid in
+                        Button { move(pane.id, to: grid.id) } label: { Text(verbatim: grid.name) }
+                            .disabled(pane.gridID == grid.id)
+                    }
+                }
+            }
             Button(pane.isDisabled ? LocalizedStringKey("pane.enable") : "pane.disable") {
                 actions.setTabDisabled(tab.id, !pane.isDisabled)
             }
@@ -387,6 +509,30 @@ private struct TabContextMenu: View {
         }
         Divider()
         Button("terminal.close") { actions.closeTab(tab.id) }
+    }
+
+    private func move(_ pane: PaneID, to grid: ProjectGridID?) {
+        actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "undo.move")) {
+            $0.movePane(pane, toGrid: grid)
+        }
+    }
+}
+
+@MainActor
+private enum SidebarRenamePrompt {
+    static func name(initial: String, width: CGFloat, height: CGFloat) -> String? {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "sidebar.rename")
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: width, height: height))
+        field.stringValue = initial
+        field.setAccessibilityIdentifier("sidebar.rename.name")
+        alert.accessoryView = field
+        alert.addButton(withTitle: String(localized: "files.rename"))
+        alert.addButton(withTitle: String(localized: "editor.cancel"))
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
     }
 }
 
