@@ -28,10 +28,10 @@ struct HomeView: View {
                         QuickLaunch(workspace: workspace)
                         HStack(spacing: metrics.size(8)) {
                             Button { environment.editorRequest = .newTerminal(nil) } label: {
-                                Label("home.action.newTerminal", systemImage: "terminal")
+                                Label(metrics.isWebInterface ? "home.web.newTerminal" : "home.action.newTerminal", systemImage: "terminal")
                             }
                             Button { environment.editorRequest = .newProject(.ungrouped) } label: {
-                                Label("home.action.newProject", systemImage: "folder.badge.plus")
+                                Label(metrics.isWebInterface ? "home.web.newProject" : "home.action.newProject", systemImage: "folder.badge.plus")
                             }
                         }
                         .buttonStyle(AletheHomeActionStyle())
@@ -40,7 +40,7 @@ struct HomeView: View {
                     .padding(.top, metrics.size(28))
                     .padding(.bottom, metrics.size(42))
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: geometry.size.width <= metrics.size(900)
+                    .frame(minHeight: geometry.size.width - 2 * min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03)) <= metrics.size(900)
                            ? metrics.size(430)
                            : min(metrics.size(610), max(metrics.size(430), geometry.size.height * 0.56)))
                     .entrance(appeared, step: 0, reduced: metrics.reducesMotion, rise: metrics.size(8))
@@ -54,10 +54,10 @@ struct HomeView: View {
                             .frame(maxWidth: .infinity)
                         HStack(spacing: metrics.space(.xl)) {
                             Button { environment.editorRequest = .newTerminal(nil) } label: {
-                                Label("home.action.newTerminal", systemImage: "terminal")
+                                Label(metrics.isWebInterface ? "home.web.newTerminal" : "home.action.newTerminal", systemImage: "terminal")
                             }
                             Button { environment.editorRequest = .newProject(.ungrouped) } label: {
-                                Label("home.action.newProject", systemImage: "folder.badge.plus")
+                                Label(metrics.isWebInterface ? "home.web.newProject" : "home.action.newProject", systemImage: "folder.badge.plus")
                             }
                         }
                         .buttonStyle(.link)
@@ -81,9 +81,12 @@ struct HomeView: View {
                     UsageStrip()
                     ActivityGraph(days: $activityDays)
                     TimeAnalytics()
-                    NotificationList(isHome: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .aletheCard()
+                    if metrics.isWebInterface { HomeWebNotifications() }
+                    else {
+                        NotificationList(isHome: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .aletheCard()
+                    }
                     HomeFooter()
                 }
                 .entrance(appeared, step: 2, reduced: metrics.reducesMotion, rise: metrics.size(8))
@@ -122,7 +125,7 @@ struct HomeSectionHeader: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        HStack(spacing: metrics.space(.s)) {
+        HStack(spacing: metrics.size(metrics.isWebInterface ? 10 : 6)) {
             if metrics.isWebInterface {
                 Text(title).textCase(.uppercase)
                     .font(metrics.font(size: 11, weight: .medium))
@@ -190,7 +193,10 @@ private struct HomeHero: View {
                     .minimumScaleFactor(25.0 / 34.0)
                     .lineLimit(1)
                     .foregroundStyle(theme[.textPrimary])
-                Text(context.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
+                Group {
+                    if metrics.isWebInterface { Text(verbatim: webDate(context.date)) }
+                    else { Text(context.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute()) }
+                }
                     .font(metrics.font(size: metrics.isWebInterface ? 13 : 11, weight: .medium))
                     .foregroundStyle(theme[.fg])
                     .padding(.vertical, metrics.size(3))
@@ -200,6 +206,13 @@ private struct HomeHero: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.greeting")
+    }
+
+    private func webDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "EEE, d MMM · HH:mm"
+        return formatter.string(from: date).replacingOccurrences(of: ".", with: "").lowercased()
     }
 
     private var firstName: String {
@@ -231,7 +244,7 @@ private struct HomeHero: View {
                                 .background(theme[.bgSunken], in: Capsule())
                                 .offset(y: -metrics.size(6))
                         }
-                        .offset(x: -metrics.size(31))
+                        .offset(x: -metrics.size(46))
                         .accessibilityLabel(Text(String(format: String(localized: "home.activity.streak"), streak)))
                 }
         } else {
@@ -367,8 +380,29 @@ private struct QuickLaunch: View {
     }
 
     @ViewBuilder private var agentControl: some View {
-        AletheSelect(selection: $agent, options: agents) {
-            Text(verbatim: AgentLabels.name(for: $0.rawValue))
+        Group {
+            if metrics.isWebInterface {
+                Menu {
+                    ForEach(agents, id: \.self) { kind in
+                        Button { agent = kind } label: { Text(verbatim: AgentLabels.name(for: kind.rawValue)) }
+                    }
+                } label: {
+                    HStack(spacing: metrics.size(6)) {
+                        Image(systemName: "ant.fill").font(metrics.font(size: 15))
+                            .foregroundStyle(theme[AgentTokens.accent(for: agent.rawValue)])
+                        Text("home.web.agent")
+                        Text(verbatim: AgentLabels.name(for: agent.rawValue))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.down").font(metrics.font(size: 10))
+                    }
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                .buttonStyle(AletheQuickFieldStyle())
+            } else {
+                AletheSelect(selection: $agent, options: agents) {
+                    Text(verbatim: AgentLabels.name(for: $0.rawValue))
+                }
+            }
         }
         .frame(width: metrics.size(145))
         .accessibilityLabel(Text("home.quick.agent"))
@@ -377,14 +411,27 @@ private struct QuickLaunch: View {
 
     @ViewBuilder private var projectControl: some View {
         Button(action: chooseFolder) {
-            Label {
+            if metrics.isWebInterface {
+            HStack(spacing: metrics.size(5)) {
+                Image(systemName: "folder").font(metrics.font(size: 13))
+                if metrics.isWebInterface { Text("home.web.path") }
                 if let folder = workingDirectory ?? project?.folder {
                     Text(verbatim: (folder as NSString).abbreviatingWithTildeInPath)
                         .lineLimit(1).truncationMode(.middle)
-                } else {
-                    Text("home.quick.project")
+                } else { Text("home.quick.project") }
+                if metrics.isWebInterface {
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down").font(metrics.font(size: 10))
                 }
-            } icon: { Image(systemName: "folder") }
+            }
+            } else {
+                Label {
+                    if let folder = workingDirectory ?? project?.folder {
+                        Text(verbatim: (folder as NSString).abbreviatingWithTildeInPath)
+                            .lineLimit(1).truncationMode(.middle)
+                    } else { Text("home.quick.project") }
+                } icon: { Image(systemName: "folder") }
+            }
         }
         .modifier(QuickProjectStyle())
         .accessibilityLabel(Text("home.quick.project"))
@@ -395,9 +442,21 @@ private struct QuickLaunch: View {
         if descriptor?.unrestrictedFlag != nil {
             Group {
                 if metrics.isWebInterface {
-                    AletheSelect(selection: $unrestricted, options: [false, true]) {
-                        Text($0 ? "home.quick.unrestricted" : "home.quick.normal")
-                    }.frame(width: metrics.size(132))
+                    Menu {
+                        Button("home.quick.normal") { unrestricted = false }
+                        Button("home.quick.unrestricted") { unrestricted = true }
+                    } label: {
+                        HStack(spacing: metrics.size(5)) {
+                            AletheStatusDot(.accent, side: 5)
+                            Text("home.web.mode")
+                            Text(unrestricted ? "home.quick.unrestricted" : "home.quick.normal")
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.down").font(metrics.font(size: 10))
+                        }
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                    .buttonStyle(AletheQuickFieldStyle())
+                    .frame(width: metrics.size(132))
                 } else {
                     Picker("home.quick.mode", selection: $unrestricted) {
                         Text("home.quick.normal").tag(false)
@@ -415,12 +474,12 @@ private struct QuickLaunch: View {
         Button(action: send) { Label("home.quick.send", systemImage: "paperplane")
             .labelStyle(.iconOnly)
             .frame(width: metrics.size(38), height: metrics.size(30))
-            .background(theme[.accent], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .background(theme[.accent], in: RoundedRectangle(cornerRadius: metrics.radius(metrics.isWebInterface ? .md : .sm)))
             .foregroundStyle(theme[.accentOn]) }
             .buttonStyle(.plain)
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(project == nil || agents.isEmpty || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .opacity(project == nil || agents.isEmpty || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+            .disabled(project == nil || agents.isEmpty || (!metrics.isWebInterface && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+            .opacity(project == nil || agents.isEmpty || (!metrics.isWebInterface && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? (metrics.isWebInterface ? 0.45 : 0.5) : 1)
             .accessibilityLabel(Text("home.quick.send"))
             .accessibilityIdentifier("home.quick.send")
     }
@@ -463,12 +522,19 @@ private struct RecentProjects: View {
 
     var body: some View {
         let recent = workspace.document.recentProjectIDs(limit: 6).compactMap(workspace.document.project)
-        VStack(alignment: .leading, spacing: metrics.space(.m)) {
+        VStack(alignment: .leading, spacing: metrics.size(metrics.isWebInterface ? 12 : 8)) {
             HStack {
                 HomeSectionHeader(title: "home.recent", count: recent.isEmpty ? nil : recent.count)
                 Spacer()
-                Button("home.recent.viewAll") { environment.editorRequest = .findJump }
-                    .buttonStyle(.link)
+                if metrics.isWebInterface {
+                    Button("home.recent.viewAll") { environment.editorRequest = .findJump }
+                        .buttonStyle(.plain).font(metrics.font(size: 10))
+                        .textCase(.uppercase).tracking(metrics.size(0.6))
+                        .foregroundStyle(theme[.textQuaternary])
+                        .accessibilityIdentifier("home.action.findJump")
+                } else {
+                    Button("home.recent.viewAll") { environment.editorRequest = .findJump }.buttonStyle(.link)
+                }
             }
             if recent.isEmpty {
                 VStack(alignment: .leading, spacing: metrics.space(.s)) {
@@ -504,13 +570,20 @@ private struct RecentProjects: View {
             workspace.update { $0.openInTab(project.id) }
             environment.showingHome = false
         } label: {
-            HStack(spacing: metrics.space(.m)) {
-                AletheMonogram(name: project.name, color: theme[project.color.token], side: 28)
+            HStack(spacing: metrics.size(metrics.isWebInterface ? 9 : 8)) {
+                if metrics.isWebInterface {
+                    Text(verbatim: String(project.name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased())
+                        .font(metrics.font(size: 10, weight: .semibold))
+                        .foregroundStyle(theme[.accentOn])
+                        .frame(width: metrics.size(28), height: metrics.size(28))
+                        .background(theme[project.color.token], in: RoundedRectangle(cornerRadius: metrics.size(6)))
+                } else { AletheMonogram(name: project.name, color: theme[project.color.token], side: 28) }
                 VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
                     Text(verbatim: project.name).font(metrics.font(size: 11, weight: .semibold)).lineLimit(1)
                     TimelineView(.everyMinute) { _ in
                         HStack(spacing: metrics.space(.xxs)) {
-                            Text(String(format: String(localized: "home.recent.terminals"), terminals))
+                            Text(String(format: String(localized: terminals == 1 && metrics.isWebInterface
+                                        ? "home.web.oneTerminal" : "home.recent.terminals"), terminals))
                             if let lastUsed = lastUsed(project.id) {
                                 Text(verbatim: "·")
                                 Text(lastUsed, format: .relative(presentation: .named))
@@ -572,7 +645,7 @@ private struct HomeActions: View {
     }
 
     private var webBody: some View {
-        VStack(alignment: .leading, spacing: metrics.space(.m)) {
+        VStack(alignment: .leading, spacing: metrics.size(12)) {
             HomeSectionHeader(title: "home.start")
             LazyVGrid(columns: metrics.isWebInterface
                       ? [GridItem(.adaptive(minimum: metrics.size(150)), spacing: metrics.size(8))]
@@ -586,10 +659,15 @@ private struct HomeActions: View {
                 row("home.action.newGroup", icon: "square.stack.3d.up", keys: "⇧⌘N", id: "home.action.newGroup") {
                     environment.editorRequest = .newGroup(parent: nil)
                 }
-                row("home.action.findJump", icon: "magnifyingglass", keys: "⌘K", id: "home.action.findJump") {
-                    environment.editorRequest = .findJump
-                }
             }
+        }
+    }
+
+    private func webTitle(_ id: String) -> LocalizedStringKey {
+        switch id {
+        case "home.action.newTerminal": "home.web.newTerminal"
+        case "home.action.newProject": "home.web.newProject"
+        default: "home.web.newGroup"
         }
     }
 
@@ -597,15 +675,22 @@ private struct HomeActions: View {
         Button(action: action) {
             HStack(spacing: metrics.space(.m)) {
                 Image(systemName: icon).frame(width: metrics.size(18)).foregroundStyle(theme[.textSecondary])
-                Text(title)
+                if metrics.isWebInterface { Text(webTitle(id)).font(metrics.font(size: 12)) }
+                else { Text(title) }
                 Spacer()
-                if let keys { Text(verbatim: keys).font(metrics.font(.footnote)).foregroundStyle(theme[.textTertiary]) }
+                if let keys, !metrics.isWebInterface { Text(verbatim: keys).font(metrics.font(.footnote)).foregroundStyle(theme[.textTertiary]) }
             }
-            .padding(.horizontal, metrics.space(.l))
-            .padding(.vertical, metrics.space(.m))
+            .padding(.horizontal, metrics.size(metrics.isWebInterface ? 14 : 12))
+            .padding(.vertical, metrics.size(metrics.isWebInterface ? 12 : 8))
             .contentShape(Rectangle())
             .frame(minHeight: metrics.isWebInterface ? metrics.size(44) : nil)
-            .background(theme[metrics.isWebInterface ? .bgSunken : .surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .background(theme[metrics.isWebInterface ? .bgSunken : .surfaceCardDefault].opacity(metrics.isWebInterface ? 0.86 : 1), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .overlay {
+                if metrics.isWebInterface {
+                    RoundedRectangle(cornerRadius: metrics.radius(.md))
+                        .strokeBorder(theme[.border], lineWidth: metrics.size(1))
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(id)
@@ -626,11 +711,11 @@ private struct HomeFooter: View {
             Link(destination: Self.repository.appending(path: "issues")) { Label("home.issues", systemImage: "smallcircle.filled.circle") }
             Link(destination: Self.repository.appending(path: "releases")) { Label("home.releases", systemImage: "shippingbox") }
             Spacer(minLength: 0)
-            Button { environment.editorRequest = .findJump } label: {
-                Text("home.footer.search")
+            if !metrics.isWebInterface {
+                Button { environment.editorRequest = .findJump } label: { Text("home.footer.search") }
+                Button { environment.editorRequest = .onboarding } label: { Text("home.footer.help") }
+                    .keyboardShortcut("?", modifiers: .command)
             }
-            Button { environment.editorRequest = .onboarding } label: { Text("home.footer.help") }
-                .keyboardShortcut("?", modifiers: .command)
         }
         .buttonStyle(.link)
         .font(metrics.isWebInterface ? metrics.monoFont(size: 10) : metrics.font(.footnote))
@@ -700,5 +785,61 @@ private struct QuickProjectStyle: ViewModifier {
     func body(content: Content) -> some View {
         if metrics.isWebInterface { content.buttonStyle(AletheQuickFieldStyle()) }
         else { content }
+    }
+}
+
+private struct HomeWebNotifications: View {
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: metrics.size(12)) {
+            HStack {
+                HomeSectionHeader(title: "notifications.title", count: environment.notifier.log.entries.isEmpty ? nil : environment.notifier.log.entries.count)
+                Spacer()
+                if !environment.notifier.log.entries.isEmpty {
+                    Button("notifications.clear") { environment.notifier.clear() }.buttonStyle(.plain)
+                }
+            }
+            VStack(spacing: 0) {
+                if environment.notifier.log.entries.isEmpty {
+                    VStack(spacing: metrics.size(10)) {
+                        Image(systemName: "checkmark.circle").font(metrics.font(size: 18))
+                            .foregroundStyle(theme[.statusWorking])
+                            .frame(width: metrics.size(56), height: metrics.size(56))
+                            .background(theme[.statusWorking].opacity(0.14), in: RoundedRectangle(cornerRadius: metrics.size(18)))
+                        Text("home.web.caughtUp").font(metrics.font(size: 14, weight: .semibold))
+                        Text("home.notifications.emptyDetail").font(metrics.font(size: 12))
+                            .foregroundStyle(theme[.textTertiary])
+                    }
+                    .padding(metrics.size(20)).frame(maxWidth: .infinity, minHeight: metrics.size(148))
+                }
+                ForEach(environment.notifier.log.entries.prefix(5)) { entry in
+                    Button {
+                        if let tab = entry.tab { environment.notifier.open(tab) }
+                    } label: {
+                        HStack(alignment: .top, spacing: metrics.size(11)) {
+                            Image(systemName: entry.agent == nil ? "bell" : "sparkles")
+                                .font(metrics.font(size: 14))
+                                .foregroundStyle(theme[entry.agent.map { AgentTokens.accent(for: $0) } ?? .textSecondary])
+                                .frame(width: metrics.size(26), height: metrics.size(26))
+                            VStack(alignment: .leading, spacing: metrics.size(2)) {
+                                Text(verbatim: entry.title).font(metrics.font(size: 12, weight: .medium))
+                                Text(verbatim: entry.body).font(metrics.font(size: 11)).foregroundStyle(theme[.textTertiary])
+                            }
+                            Spacer()
+                            Text(entry.createdAt, format: .relative(presentation: .named)).font(metrics.monoFont(size: 10))
+                        }
+                        .padding(.horizontal, metrics.size(14)).padding(.vertical, metrics.size(12))
+                    }
+                    .buttonStyle(.plain).accessibilityIdentifier("notifications.entry")
+                }
+            }
+            .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg))
+                .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        }
+        .accessibilityElement(children: .contain).accessibilityIdentifier("notifications.list")
     }
 }

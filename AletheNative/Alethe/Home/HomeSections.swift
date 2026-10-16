@@ -8,11 +8,17 @@ import SwiftUI
 /// Home's usage strip (upstream `UsageStrip`): each provider's windows. Providers without a toolbar pill
 /// are only read on request, since reading their sign-in can make macOS ask for Keychain access.
 struct UsageStrip: View {
+    @State private var activityDays: [ActivityDays.Day] = []
+    @State private var contentWidth: CGFloat = 0
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             HStack {
                 HomeSectionHeader(title: "home.usage")
@@ -34,6 +40,91 @@ struct UsageStrip: View {
             }
         }
         .task { await environment.usage.refresh(environment.usage.shownProviders) }
+    }
+
+    private var webBody: some View {
+        VStack(alignment: .leading, spacing: metrics.size(12)) {
+            Button { environment.editorRequest = .aiUsage } label: {
+                HomeSectionHeader(title: "home.web.usageActivity")
+            }
+            .buttonStyle(.plain).accessibilityIdentifier("home.usage.details")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: metrics.size(6)),
+                                     count: contentWidth <= metrics.size(720) ? 1 : contentWidth <= metrics.size(1100) ? 2 : 3),
+                      alignment: .leading, spacing: metrics.size(6)) {
+                ForEach([AgentKind.claude, .codex], id: \.self) { webCard($0) }
+                ActivityGraph(days: $activityDays)
+            }
+            .padding(metrics.size(6))
+            .background(theme[.bgSunken].opacity(0.72), in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg))
+                .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+        .task { await environment.usage.refresh(environment.usage.shownProviders) }
+    }
+
+    private func emptyTitle(_ provider: AgentKind) -> LocalizedStringKey {
+        guard let usage = environment.usage.usage[provider] else {
+            return provider == .claude ? "home.web.noToken" : "home.web.notSignedIn"
+        }
+        switch usage.status {
+        case .noCLI: return "usage.noCLI"
+        case .noAuth: return provider == .claude ? "home.web.noToken" : "home.web.notSignedIn"
+        default: return "home.usage.unavailable"
+        }
+    }
+
+    private func webCard(_ provider: AgentKind) -> some View {
+        VStack(alignment: .leading, spacing: metrics.size(14)) {
+            HStack(spacing: metrics.size(9)) {
+                HomeWebBadge(symbol: provider == .claude ? "ant.fill" : "sparkles",
+                             token: AgentTokens.accent(for: provider.rawValue))
+                Text(verbatim: provider == .claude ? "claude code" : AgentLabels.name(for: provider.rawValue).lowercased())
+                    .font(metrics.font(size: 13.5, weight: .medium))
+                Spacer(minLength: 0)
+                Button { Task { await environment.usage.refresh([provider]) } } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(AletheHomeRefreshStyle())
+                .accessibilityLabel(Text("home.refresh"))
+            }
+            if let usage = environment.usage.usage[provider], usage.status == .ready {
+                ForEach(usage.windows.prefix(3)) { window in
+                    VStack(spacing: metrics.size(7)) {
+                        HStack {
+                            Text(verbatim: window.label).font(metrics.font(size: 11.5))
+                            Spacer()
+                            Text(verbatim: "\(Int(window.usedPercent.rounded()))%")
+                                .font(metrics.monoFont(size: 11))
+                        }
+                        ProgressView(value: min(window.usedPercent, 100), total: 100)
+                            .tint(theme[UsageLevel.token(window.usedPercent)])
+                        if let reset = window.resetsAt {
+                            HStack {
+                                Text("home.usage.resets")
+                                Text(reset, format: .relative(presentation: .named))
+                            }.font(metrics.monoFont(size: 10)).foregroundStyle(theme[.textQuaternary])
+                        }
+                    }
+                }
+                Spacer(minLength: 0)
+            } else {
+                VStack(spacing: metrics.size(6)) {
+                    Text(emptyTitle(provider))
+                        .font(metrics.font(size: 12.5, weight: .medium))
+                    Text(provider == .claude ? "home.web.connectUsage" : "home.web.codexLogin")
+                        .font(metrics.monoFont(size: 11)).foregroundStyle(theme[.textQuaternary])
+                }
+                .foregroundStyle(theme[.textTertiary])
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                    .strokeBorder(theme[.borderStrong], style: StrokeStyle(lineWidth: metrics.size(1), dash: [metrics.size(3)])))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: metrics.size(216), alignment: .topLeading)
+        .modifier(HomeWebCard())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("home.usage.\(provider.rawValue)")
     }
 
     private func card(_ provider: AgentKind) -> some View {
@@ -87,6 +178,10 @@ struct ActivityGraph: View {
     nonisolated static let dayCount = 91
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             HStack(spacing: metrics.space(.m)) {
                 HomeSectionHeader(title: "home.activity")
@@ -129,6 +224,64 @@ struct ActivityGraph: View {
         .accessibilityIdentifier("home.activity")
     }
 
+    private var webBody: some View {
+        VStack(alignment: .leading, spacing: metrics.size(6)) {
+            HStack(spacing: metrics.size(9)) {
+                HomeWebBadge(symbol: "waveform.path", token: .statusWorking)
+                Text("home.activity").textCase(.lowercase).font(metrics.font(size: 13.5, weight: .medium))
+                Text("home.web.range").font(metrics.monoFont(size: 9.5))
+                    .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(2))
+                    .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(5)))
+                Spacer(minLength: 0)
+                AletheStatusDot(.statusWorking, side: 6)
+                Text("home.web.live").font(metrics.monoFont(size: 9.5)).foregroundStyle(theme[.textTertiary])
+                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(AletheHomeRefreshStyle()).accessibilityLabel(Text("home.refresh"))
+            }
+            .padding(.bottom, metrics.size(8))
+            HStack(alignment: .firstTextBaseline, spacing: metrics.size(4)) {
+                Text(verbatim: days.reduce(0) { $0 + $1.count }.formatted())
+                    .font(metrics.monoFont(size: 28, weight: .semibold))
+                Text("home.web.messages").font(metrics.monoFont(size: 16, weight: .medium))
+                    .foregroundStyle(theme[.textQuaternary])
+                Spacer(minLength: 0)
+                if let delta {
+                    Text(verbatim: "\(delta >= 0 ? "▲" : "▼") \(Int(abs(delta).rounded()))%")
+                        .font(metrics.monoFont(size: 10.5, weight: .medium))
+                        .padding(.horizontal, metrics.size(8)).padding(.vertical, metrics.size(4))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.size(7))
+                            .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                }
+            }
+            Text("home.web.lastDays").font(metrics.monoFont(size: 11)).foregroundStyle(theme[.textTertiary])
+            grid.padding(.top, metrics.size(10))
+            HStack(spacing: metrics.size(3)) {
+                Spacer()
+                Text("home.activity.less")
+                ForEach(0..<5) { level in
+                    RoundedRectangle(cornerRadius: metrics.size(2))
+                        .fill(theme[level == 0 ? .bgElevated : .statusWorking].opacity(level == 0 ? 1 : Double(level) * 0.25))
+                        .frame(width: metrics.size(8), height: metrics.size(8))
+                }
+                Text("home.activity.more")
+            }
+            .font(metrics.font(size: 9)).foregroundStyle(theme[.textQuaternary])
+            HStack(spacing: metrics.size(6)) {
+                AletheStatusDot(.statusWorking, side: 6)
+                Text(String(format: String(localized: "home.activity.streak"), ActivityDays.streak(days)))
+                    .accessibilityIdentifier("home.activity.streak")
+                Spacer()
+                Text(String(format: String(localized: "home.activity.total"), days.reduce(0) { $0 + $1.count }))
+            }
+            .font(metrics.monoFont(size: 10.5)).foregroundStyle(theme[.textTertiary])
+            .padding(.top, metrics.size(12)).padding(.top, metrics.size(14))
+            .overlay(alignment: .top) { theme[.borderSubtle].frame(height: metrics.size(1)).padding(.top, metrics.size(14)) }
+        }
+        .modifier(HomeWebCard())
+        .task { await load() }
+        .accessibilityElement(children: .contain).accessibilityIdentifier("home.activity")
+    }
+
     /// Compare the last seven days with the seven days immediately before them, as on the web.
     private var delta: Double? {
         guard days.count >= 14 else { return nil }
@@ -142,7 +295,7 @@ struct ActivityGraph: View {
         return HStack(alignment: .top, spacing: metrics.space(.xxs)) {
             VStack(alignment: .trailing, spacing: metrics.space(.xxs)) {
                 ForEach(0..<7) { weekday in
-                    Text(verbatim: Calendar.current.shortWeekdaySymbols[weekday])
+                    Text(verbatim: metrics.isWebInterface ? (weekday % 2 == 1 ? Calendar.current.shortWeekdaySymbols[weekday].lowercased() : "") : Calendar.current.shortWeekdaySymbols[weekday])
                         .font(metrics.font(size: 8))
                         .foregroundStyle(theme[.textTertiary])
                         .frame(height: metrics.size(11))
@@ -179,8 +332,9 @@ struct ActivityGraph: View {
 
     private func cell(_ level: Int?) -> some View {
         RoundedRectangle(cornerRadius: metrics.size(2))
-            .fill(level.map { $0 == 0 ? theme[.panelHover] : theme[.accent].opacity([0, 0.3, 0.5, 0.75, 1][$0]) } ?? .clear)
-            .frame(width: metrics.size(11), height: metrics.size(11))
+            .fill(level.map { $0 == 0 ? theme[metrics.isWebInterface ? .bgElevated : .panelHover] : theme[metrics.isWebInterface ? .statusWorking : .accent].opacity((metrics.isWebInterface ? [0, 0.25, 0.5, 0.75, 1] : [0, 0.3, 0.5, 0.75, 1])[$0]) } ?? .clear)
+            .frame(width: metrics.isWebInterface ? nil : metrics.size(11), height: metrics.size(11))
+            .frame(maxWidth: metrics.isWebInterface ? .infinity : nil)
     }
 
     static func level(_ count: Int, peak: Int) -> Int {
@@ -223,14 +377,19 @@ struct TimeAnalytics: View {
     @Environment(\.metrics) private var metrics
     @State private var range = Range.today
     @State private var summary = ActivityTotals()
+    @State private var contentWidth: CGFloat = 0
 
     var body: some View {
         let totals = summary.totals
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             HStack {
                 VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
-                    HomeSectionHeader(title: "home.time")
-                    Text("home.time.subtitle").font(metrics.font(.footnote)).foregroundStyle(theme[.textTertiary])
+                    Group {
+                        if metrics.isWebInterface {
+                            Text("home.time").textCase(.lowercase).font(metrics.font(size: 12, weight: .semibold))
+                        } else { HomeSectionHeader(title: "home.time") }
+                    }
+                    Text("home.time.subtitle").font(metrics.isWebInterface ? metrics.font(size: 9) : metrics.font(.footnote)).foregroundStyle(theme[.textTertiary])
                 }
                 Spacer()
                 Button {
@@ -239,26 +398,60 @@ struct TimeAnalytics: View {
                     .buttonStyle(.borderless)
                     .help(Text("home.refresh"))
                     .accessibilityLabel(Text("home.refresh"))
-                Picker("home.time", selection: $range) {
-                    ForEach(Range.allCases) { Text($0.title).tag($0) }
+                if metrics.isWebInterface {
+                    HStack(spacing: metrics.size(2)) {
+                        ForEach(Range.allCases) { option in
+                            Button { range = option } label: {
+                                Text(option.title).font(metrics.monoFont(size: 9))
+                                    .padding(.horizontal, metrics.size(8)).frame(height: metrics.size(26))
+                                    .foregroundStyle(theme[range == option ? .fg : .textTertiary])
+                                    .background(theme[.accentSoft].opacity(range == option ? 1 : 0),
+                                                in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                                        .strokeBorder(theme[.accentBorder].opacity(range == option ? 1 : 0), lineWidth: metrics.size(1)))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    .accessibilityIdentifier("home.time.range")
+                } else {
+                    Picker("home.time", selection: $range) {
+                        ForEach(Range.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .accessibilityIdentifier("home.time.range")
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .accessibilityIdentifier("home.time.range")
             }
-            HStack(alignment: .top, spacing: metrics.space(.m)) {
-                metric("home.time.active", totals.userActiveMs,
-                       detail: String(format: String(localized: "home.time.focused"), HomeFormat.duration(ms: totals.appFocusedMs)))
-                metric("home.time.agents", totals.agentWallMs,
-                       detail: String(format: String(localized: "home.time.agentSum"), HomeFormat.duration(ms: totals.agentSumMs)))
-                metric("home.time.background", totals.agentBackgroundMs,
-                       detail: String(format: String(localized: "home.time.parallel"), HomeFormat.duration(ms: totals.parallelMs), Int(totals.peakConcurrent)))
-                metric("home.time.idle", totals.userIdleMs,
-                       detail: String(format: String(localized: "home.time.noAgent"),
-                                      HomeFormat.duration(ms: totals.appOpenMs &- min(totals.agentWallMs, totals.appOpenMs))))
+            (metrics.isWebInterface
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: metrics.size(7)))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: metrics.space(.m)))) {
+                if metrics.isWebInterface {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: metrics.size(7)), count: contentWidth > metrics.size(900) ? 4 : 2), spacing: metrics.size(7)) {
+                        metric("home.time.active", totals.userActiveMs,
+                               detail: String(format: String(localized: "home.time.focused"), HomeFormat.duration(ms: totals.appFocusedMs)))
+                        metric("home.time.agents", totals.agentWallMs,
+                               detail: String(format: String(localized: "home.time.agentSum"), HomeFormat.duration(ms: totals.agentSumMs)))
+                        metric("home.time.background", totals.agentBackgroundMs,
+                               detail: String(format: String(localized: "home.time.parallel"), HomeFormat.duration(ms: totals.parallelMs), Int(totals.peakConcurrent)))
+                        metric("home.time.idle", totals.userIdleMs,
+                               detail: String(format: String(localized: "home.time.noAgent"), HomeFormat.duration(ms: totals.appOpenMs &- min(totals.agentWallMs, totals.appOpenMs))))
+                    }
+                } else {
+                    metric("home.time.active", totals.userActiveMs,
+                           detail: String(format: String(localized: "home.time.focused"), HomeFormat.duration(ms: totals.appFocusedMs)))
+                    metric("home.time.agents", totals.agentWallMs,
+                           detail: String(format: String(localized: "home.time.agentSum"), HomeFormat.duration(ms: totals.agentSumMs)))
+                    metric("home.time.background", totals.agentBackgroundMs,
+                           detail: String(format: String(localized: "home.time.parallel"), HomeFormat.duration(ms: totals.parallelMs), Int(totals.peakConcurrent)))
+                    metric("home.time.idle", totals.userIdleMs,
+                           detail: String(format: String(localized: "home.time.noAgent"),
+                                          HomeFormat.duration(ms: totals.appOpenMs &- min(totals.agentWallMs, totals.appOpenMs))))
+                }
             }
-            HStack(alignment: .top, spacing: metrics.space(.xxl)) {
+            (metrics.isWebInterface && contentWidth <= metrics.size(900)
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: metrics.size(14)))
+                : AnyLayout(HStackLayout(alignment: .top, spacing: metrics.space(.xxl)))) {
                 breakdown("home.time.byAgent", rows: summary.agents.sorted { $0.value.workingMs > $1.value.workingMs }.map { key, value in
                     (AgentLabels.name(for: key), value.workingMs,
                      String(format: String(localized: "home.time.backgroundShort"), HomeFormat.duration(ms: value.backgroundMs)))
@@ -275,7 +468,8 @@ struct TimeAnalytics: View {
                 .font(metrics.font(.caption)).foregroundStyle(theme[.textTertiary])
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .aletheCard()
+        .modifier(HomeTimeSurface())
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         .task(id: TaskKey(range: range, revision: environment.activity.revision)) {
             while !Task.isCancelled {
                 await refresh()
@@ -299,22 +493,30 @@ struct TimeAnalytics: View {
     }
 
     private func metric(_ title: LocalizedStringKey, _ ms: UInt64, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
-            Text(title).font(metrics.font(.footnote)).foregroundStyle(theme[.textSecondary])
-            Text(verbatim: HomeFormat.duration(ms: ms)).font(metrics.font(.title2).monospacedDigit())
-            Text(verbatim: detail).font(metrics.font(.caption)).foregroundStyle(theme[.textTertiary])
+        VStack(alignment: .leading, spacing: metrics.size(metrics.isWebInterface ? 4 : 2)) {
+            Text(title).textCase(metrics.isWebInterface ? .uppercase : nil).font(metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)).foregroundStyle(theme[.textSecondary])
+            Text(verbatim: HomeFormat.duration(ms: ms)).font(metrics.isWebInterface ? metrics.monoFont(size: 20, weight: .semibold) : metrics.font(.title2).monospacedDigit())
+            Text(verbatim: detail).font(metrics.isWebInterface ? metrics.font(size: 9) : metrics.font(.caption)).foregroundStyle(theme[.textTertiary])
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(metrics.space(.l))
-        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .padding(metrics.size(metrics.isWebInterface ? 10 : 12))
+        .background(theme[metrics.isWebInterface ? .bg : .bgSunken].opacity(metrics.isWebInterface ? 0.72 : 1), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .overlay {
+            if metrics.isWebInterface {
+                RoundedRectangle(cornerRadius: metrics.radius(.md))
+                    .strokeBorder(theme[.borderSubtle], lineWidth: metrics.size(1))
+            }
+        }
         .accessibilityElement(children: .combine)
     }
 
     private func breakdown(_ title: LocalizedStringKey, rows: [(String, UInt64, String)]) -> some View {
         VStack(alignment: .leading, spacing: metrics.space(.s)) {
-            Text(title).font(metrics.font(.footnote).weight(.medium)).foregroundStyle(theme[.textSecondary])
+            Text(title).textCase(metrics.isWebInterface ? .uppercase : nil).font(metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote).weight(.medium)).foregroundStyle(theme[.textSecondary])
             if rows.isEmpty {
-                Text("home.time.empty").font(metrics.font(.footnote)).foregroundStyle(theme[.textTertiary])
+                Text("home.time.empty").font(metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)).foregroundStyle(theme[.textTertiary])
+                    .frame(maxWidth: .infinity, alignment: metrics.isWebInterface ? .center : .leading)
+                    .padding(.vertical, metrics.isWebInterface ? metrics.size(13) : 0)
             }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                 HStack {
@@ -327,5 +529,50 @@ struct TimeAnalytics: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// HomeView.module.css `.usageCard`; kept local so native cards retain their existing style.
+private struct HomeWebCard: ViewModifier {
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, metrics.size(14)).padding(.vertical, metrics.size(13))
+            .frame(maxWidth: .infinity, minHeight: metrics.size(244), alignment: .topLeading)
+            .background(theme[.bg].opacity(0.82), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                .strokeBorder(theme[.borderSubtle], lineWidth: metrics.size(1)))
+    }
+}
+
+private struct HomeWebBadge: View {
+    let symbol: String
+    let token: ThemeToken
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+
+    var body: some View {
+        Image(systemName: symbol).font(metrics.font(size: 16))
+            .foregroundStyle(theme[token])
+            .frame(width: metrics.size(26), height: metrics.size(26))
+            .background(theme[token].opacity(0.14), in: RoundedRectangle(cornerRadius: metrics.size(7)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.size(7))
+                .strokeBorder(theme[token].opacity(0.26), lineWidth: metrics.size(1)))
+    }
+}
+
+private struct HomeTimeSurface: ViewModifier {
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if metrics.isWebInterface {
+            content.padding(.horizontal, metrics.size(14)).padding(.vertical, metrics.size(13))
+                .background(theme[.bgSunken].opacity(0.82), in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg))
+                    .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        } else { content.aletheCard() }
     }
 }
