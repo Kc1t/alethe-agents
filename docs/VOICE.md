@@ -42,6 +42,64 @@ Supporting changes that ride along:
 - The detached orchestration window's read-only `projects.json` reload moved into
   `useReadOnlyProjectsHydration`, now shared with the HUD window.
 
+### 1.1 Before and after this branch
+
+What a person could do on `main` before the branch, and what they can do with it. Before the branch,
+Alethe had local speech-to-text and nothing that spoke.
+
+| Area | Before (`main`, f09c597) | After (this branch) |
+|---|---|---|
+| **Dictation** (`Ctrl+E`) | Local sherpa-onnx models only: Parakeet (25 European languages) and two English-only Zipformers. The model was fixed by `dictationModelId`; Preferences showed only that one model, so the Zipformers could not be picked. | Per-use provider: local models, Apple on-device speech (macOS 12+) or a cloud API (OpenAI, ElevenLabs, Gemini, OpenRouter). The catalog adds Whisper base/small and Moonshine, and Hugging Face search adds Whisper, SenseVoice, Paraformer, NeMo and more. A model table lets you pick any of them. |
+| **Speech-to-text setup** | One model for everything. | Separate choices for dictation and conversation (`voiceStt`). A failed cloud call falls back to a local engine. |
+| **Spoken output (TTS)** | None. | Four kinds of voice: the system voice (`tts` crate), local models (Piper, Kokoro, Kitten via sherpa-onnx), local voice servers (Chatterbox, Kokoro-FastAPI, Fish Speech, any OpenAI-compatible server) and cloud voices (OpenAI, ElevenLabs, Gemini, OpenRouter). Speed, pause, mute and a spoken-word highlight. |
+| **Talking to agents** | None. | Hold a shortcut, speak, and the text goes to the agent in front. Claude Code is narrated from hooks and its permission requests can be answered by voice or click. Codex is narrated from its transcript; other harnesses are read off the screen. |
+| **Read text aloud** | None. | `Ctrl+Shift+L` or the terminal's right-click menu reads the selection or the clipboard. |
+| **Outside the app** | Shortcuts worked only with Alethe focused. | The conversation shortcut is system-wide, with a floating, non-activating HUD while Alethe is in the background. |
+| **Jev command bar** | Opened with `Ctrl+Shift+Space`. Its own plaintext decisions key in preferences, local STT only, and a raw `writePty` to hand a task to an open agent. | Opens with `Ctrl+Shift+J` (changeable). Uses the OpenRouter key from the keychain and the conversation speech-to-text choice. It can also be reached by voice (the trigger word or Alt), and hands tasks over through the guarded submit (§3.2). |
+| **API keys** | One, for Jev, in plaintext preferences. | Every key is in the OS keychain, per profile, and never returned to the webview. |
+| **Model downloads** | Download and SHA-256 check. | Also pause, cancel and resume a `.part` file, with throttled progress. |
+| **macOS microphone permission** | No `Info.plist` usage strings. | `Info.plist` with microphone and speech-recognition usage strings. |
+| **Settings** | A dictation section in Preferences → Integrations. | Preferences → Voice: Dictation · Conversation · Narration tabs, an "In use" summary, and an accounts and models grid. |
+
+**Reused rather than rebuilt.** The branch extends the existing microphone capture
+(`speech_capture.rs`), the transcription pipeline (`speech.rs`, now dispatching to sherpa, Apple or
+cloud through `SttProvider`), the model downloader, `secure_store`, the agent hook listener
+(`agent_events.rs`) and agent relaunch. Code that existed twice before the branch was merged into one:
+- the microphone level meter, now `VoiceSpectrum`, shared by the Jev bar and the voice panel;
+- agent tab restart, now `restartAgentTab`;
+- prompt submission, now `pasteAndSubmit`, shared by first prompts and voice.
+
+**Cleanups made after reviewing the branch against `main`:**
+- **Jev shortcut.** Jev and voice conversation both defaulted to `Ctrl+Shift+Space`. With
+  conversation off the chord opened Jev and asked for a key. With it on, Jev had no keyboard
+  shortcut at all.
+  - Jev now has its own `voiceCommandShortcut`, default `CmdOrCtrl+Shift+J`.
+  - The three voice shortcut recorders refuse each other's chords.
+  - With conversation off, its chord shows a toast explaining that it is off and naming Jev's shortcut.
+- **Jev key.** Two stores held an OpenRouter key: Jev's in plaintext preferences, and the provider's
+  in the keychain.
+  - `jev_decide` now reads the OpenRouter provider key from the keychain itself.
+  - The bar saves a typed key there (`lib/voice/jevKey.ts`).
+  - A legacy plaintext key is moved to the keychain once and cleared.
+- **Jev sends.** The bar handed a task to an open agent with a raw `writePty(prompt + "\r")`. Its
+  Enter could approve an agent's own approval menu.
+  - Agents now go through `agentInputFor(ptyId).submit`, the same guarded path as voice conversation.
+  - Only shells keep the raw write.
+  - `waitForAgentInput` moved into `agentInputRegistry` so both share it.
+- **Capture.** The prepare → open mic → transcribe → clean-up sequence and the press/release race
+  were copied in dictation, the Jev bar and the controller. They now share
+  `lib/speech/capture.ts` (`openCapture`, `transcribeCapture`, `CaptureGate`).
+- **Jev microphone.** The bar's microphone used to require `dictationEnabled` while using the
+  conversation choice. It now works when either dictation or conversation is on.
+
+**Known follow-ups, not done here** (no behavior impact):
+- Two hooks fetch the speech-model inventory (`useModelDownloads`, `useSpeechInventory`).
+- Rust and TypeScript both describe the built-in models (`CATALOG` and `MODEL_INFO`).
+- `speak_local`, `speak_server` and `speak_cloud` are three similar loops. They also differ on a
+  mid-utterance error.
+- Small helpers exist twice: `resample_linear`, `languageName`, and the sentence splitter.
+- Built-in and Hugging Face downloads use two different HTTP clients.
+
 ---
 
 ## 2. Big picture
@@ -106,7 +164,9 @@ to a PTY and never answers a permission by itself.
 3. **Route** (`src/lib/voice/routing.ts`), on the normalised first word(s):
    - the Jev trigger (`voiceJevTrigger`, default `alethe`, matched with STT spelling variants and
      edit distance 1) or the shortcut with `Alt` → the text goes to the Jev command bar
-     (`uiStore.openVoiceCommand`);
+     (`uiStore.openVoiceCommand`). Without an OpenRouter key in the keychain the bar opens empty to
+     ask for one. The bar also opens on its own in-app shortcut, `voiceCommandShortcut`
+     (default `CmdOrCtrl+Shift+J`), whether conversation is on or off;
    - an interrupt word (`voiceInterruptWords`, default `stop`, `espera`, `cancela`) followed by
      punctuation or the end → `Esc` to Claude first, then the rest is sent;
    - otherwise → sent to the target pane.
@@ -150,6 +210,9 @@ agent pane reports `working`/`waiting`:
 - The completion monitor is armed (`AgentCompletionMonitor.armForSubmit`) only once the Enter is
   certain, so a refused submit leaves the pane idle.
 - Entries are removed on exit, suspend and dispose.
+- The Jev command bar uses the same `submit` when it hands a task to an open agent. Only shells get a
+  raw `writePty`, because they register no input. `waitForAgentInput` (here) waits for a pane just
+  brought to front, for both the bar and the controller.
 
 ### 3.3 Narration
 
@@ -674,6 +737,8 @@ file version unchanged (backfill, as earlier preference additions).
 |---|---|---|
 | `voiceConversationEnabled` | `false` | yes |
 | `voiceShortcut` | `CmdOrCtrl+Shift+Space` | yes |
+| `voiceReadAloudShortcut` | `CmdOrCtrl+Shift+L` | yes |
+| `voiceCommandShortcut` | `CmdOrCtrl+Shift+J` (Jev command bar, in-app only) | yes |
 | `voiceCaptureMode` | `push-to-talk` (`toggle`) | yes |
 | `voiceVerbosity` | `normal` | yes |
 | `voiceFillAfterMs` | `8000` (clamped 3000–60000) | yes |
@@ -691,7 +756,10 @@ file version unchanged (backfill, as earlier preference additions).
 | `speechEngineMigrated` | `false` | no |
 
 **Legacy fields** `dictationModelId`, `dictationNativeLocale`, `voiceTtsVoice` and `voiceTtsRate`
-are folded into `voiceStt` / `voiceTts` (`lib/voice/voicePreferences.ts`) and then removed. An
+are folded into `voiceStt` / `voiceTts` (`lib/voice/voicePreferences.ts`) and then removed.
+`voiceCommandApiKey` (Jev's old plaintext key) is moved into the keychain as the OpenRouter key at
+startup (`migrateLegacyJevKey`) and cleared. A keychain that already holds an OpenRouter key wins, and
+a keychain failure keeps the field for the next start. An
 unknown provider, or a cloud provider without a configured key, resets that use to its local
 default.
 
@@ -707,7 +775,8 @@ The local voice server list is not a preference: it lives per profile in `voice-
   address on this computer or the LAN); provider cards say "Audio is sent to …" / "Narration text
   is sent to …".
 - **Keys** live in the OS keychain, are written and tested from Rust, and are never returned to the
-  webview or logged.
+  webview or logged. That includes Jev's: `jev_decide` reads the OpenRouter key in Rust, and the
+  webview no longer holds or sends it.
 - **Local servers are LAN-only.** Local voice server URLs must resolve to loopback or private
   addresses, checked at save and per request with the connection pinned; no redirects, no proxy.
   Their keys are in the keychain like cloud keys.
