@@ -10,6 +10,7 @@ struct SidebarWebProfile: View {
     @Environment(\.metrics) private var metrics
     @State private var switching: ProfileEntry?
     @State private var showingMenu = false
+    @State private var hovering = false
 
     var body: some View {
         Button { showingMenu.toggle() } label: {
@@ -43,10 +44,18 @@ struct SidebarWebProfile: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .aletheRowBackground(isSelected: showingMenu)
+        .onHover { hovering = $0 }
         .frame(maxWidth: .infinity)
         .fixedSize(horizontal: false, vertical: true)
-        .background(theme[.bg])
+        // Flat, full-bleed fill (the web row has no radius): it runs under the bottom safe area so the
+        // window's own rounded corner clips it instead of an inner radius that never lines up.
+        .background {
+            ZStack {
+                theme[.bg]
+                theme[.panelHover].opacity(hovering || showingMenu ? 1 : 0)
+            }
+            .ignoresSafeArea(.container, edges: [.bottom, .horizontal])
+        }
         .overlay(alignment: .top) {
             Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
         }

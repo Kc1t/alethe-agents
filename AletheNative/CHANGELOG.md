@@ -437,6 +437,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   surfaces and the focus-ring color on the focused pane in Normal style.
 
 ### Fixed
+- The sidebar profile row highlights flat and edge to edge, so its pressed state no longer shows an inner
+  rounded corner that disagrees with the window's corner.
 - The app launches on macOS 26 again: orchestrator worker teardown no longer links Swift 6.4's
   task-cancellation shield, whose runtime symbols exist only on macOS 27.
 - The app now has its icon in Finder, Launchpad and the DMG, not only in the Dock while running.
