@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Left sidebar with Home, Projects, Files and left-placement plugin tabs, Search, a project
   organization switch, Now Playing and a local profile menu with Preferences and profile switching.
+- Sidebar group creation and empty-state guidance; hover actions for adding projects and terminals,
+  row action menus, project activity and pause indicators, and multi-tab pane counts.
+- Group actions to open only a group, add it to the current tab, or confirm deletion of the group,
+  its subgroups and their projects (undoable; files stay on disk).
+- Sidebar project layout design and quick rename, plus terminal rename, focus mode, process stop
+  and movement between project grids.
 - Full-window startup console with a themed wordmark card, blinking cursor and staggered progress cells;
   decorative motion stops when Reduce Motion is enabled.
 - Home content styled after the web dashboard: centered greeting and date chip, terminal-style quick

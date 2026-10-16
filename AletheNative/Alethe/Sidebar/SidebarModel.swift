@@ -150,6 +150,32 @@ struct SidebarActions {
         }
     }
 
+    func openGroup(_ group: GroupID, adding: Bool) {
+        workspace.update { doc in
+            let projects = doc.groups.filter { doc.isGroup($0.id, inside: group) }.flatMap(\.projectIDs)
+            guard let first = projects.first else { return }
+            if !adding {
+                doc.openInTab(first)
+                for id in doc.workspace.openProjectIDs where !projects.contains(id) { doc.close(id) }
+            }
+            for id in projects { doc.open(id) }
+        }
+    }
+
+    func deleteGroupAndProjects(_ group: ProjectGroup) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "sidebar.deleteGroupAndProjects")
+        alert.informativeText = String(localized: "sidebar.deleteGroupAndProjects.detail")
+        alert.addButton(withTitle: String(localized: "sidebar.deleteGroupAndProjects"))
+        alert.buttons.first?.hasDestructiveAction = true
+        alert.addButton(withTitle: String(localized: "editor.cancel"))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        workspace.update(undoManager: undoManager, actionName: String(localized: "sidebar.deleteGroupAndProjects")) {
+            $0.deleteGroupAndProjects(group.id)
+        }
+    }
+
     func setProjectDisabled(_ project: ProjectID, _ disabled: Bool) {
         workspace.update(undoManager: undoManager,
                          actionName: String(localized: disabled ? "undo.disableProject" : "undo.enableProject")) {

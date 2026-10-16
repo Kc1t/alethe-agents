@@ -79,6 +79,14 @@ extension WorkspaceDocument {
         groups.removeAll { $0.id == id }
     }
 
+    /// Removes the entire group subtree and its projects through the normal cleanup path.
+    public mutating func deleteGroupAndProjects(_ id: GroupID) {
+        let subtree = groups.filter { isGroup($0.id, inside: id) }
+        for project in subtree.flatMap(\.projectIDs) { removeProject(project) }
+        let ids = Set(subtree.map(\.id))
+        groups.removeAll { ids.contains($0.id) }
+    }
+
     /// Moves a group under `parent` (nil: top level) at `index` among its new siblings. Moving a group
     /// into itself or into one of its descendants is ignored.
     public mutating func moveGroup(_ id: GroupID, toParent parent: GroupID?, at index: Int) {
