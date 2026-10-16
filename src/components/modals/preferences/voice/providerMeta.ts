@@ -5,6 +5,7 @@ import {
   Laptop,
   type LucideIcon,
   Route,
+  Server,
   Sparkle,
   Volume2,
 } from 'lucide-react'
@@ -13,13 +14,13 @@ import type { MessageKey } from '../../../../lib/i18n/messages/en'
 import type { CloudVoiceProviderId, VoiceProviderFlags } from '../../../../lib/types'
 import type { ProviderStatus } from './ProviderCard'
 
-export type VoiceProviderId = 'local' | 'apple' | 'system' | CloudVoiceProviderId
+export type VoiceProviderId = 'local' | 'apple' | 'system' | 'server' | CloudVoiceProviderId
 
 type Meta = {
   icon: LucideIcon
   name: MessageKey
   description: MessageKey
-  group: 'local' | 'cloud'
+  group: 'local' | 'cloud' | 'server'
 }
 
 export const PROVIDER_META: Record<VoiceProviderId, Meta> = {
@@ -40,6 +41,12 @@ export const PROVIDER_META: Record<VoiceProviderId, Meta> = {
     name: 'voice.provider.system',
     description: 'prefs.voiceProviderSystemDesc',
     group: 'local',
+  },
+  server: {
+    icon: Server,
+    name: 'voice.provider.server',
+    description: 'prefs.voiceProviderServerDesc',
+    group: 'server',
   },
   openai: {
     icon: Sparkle,

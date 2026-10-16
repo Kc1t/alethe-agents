@@ -750,7 +750,7 @@ export type VoiceMidTaskDefault = 'queue' | 'interrupt'
 
 export type CloudVoiceProviderId = 'openai' | 'elevenlabs' | 'gemini' | 'openrouter'
 export type SttProviderId = 'local' | 'apple' | CloudVoiceProviderId
-export type TtsProviderId = 'system' | 'local' | CloudVoiceProviderId
+export type TtsProviderId = 'system' | 'local' | 'server' | CloudVoiceProviderId
 export type VoiceUse = 'dictation' | 'conversation'
 export interface SttChoice {
   provider: SttProviderId
@@ -762,7 +762,27 @@ export interface TtsChoice {
   model: string
   voice: string | null
   rate: number
+  /** The local voice server's id; set only when `provider` is `'server'`. */
+  server?: string | null
 }
+export type VoiceServerKind = 'openai' | 'fish'
+export interface VoiceServer {
+  id: string
+  name: string
+  kind: VoiceServerKind
+  baseUrl: string
+  model: string | null
+  hasKey: boolean
+}
+export type VoiceServerErrorKind =
+  | 'policy'
+  | 'network'
+  | 'timeout'
+  | 'auth'
+  | 'badRequest'
+  | 'badAudio'
+  | 'missing'
+  | 'other'
 export type VoiceProviderFlags = Partial<
   Record<CloudVoiceProviderId, { configured: boolean; invalid: boolean }>
 >

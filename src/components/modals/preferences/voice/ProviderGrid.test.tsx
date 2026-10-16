@@ -8,6 +8,7 @@ import { ProviderGrid } from './ProviderGrid'
 const tauri = vi.hoisted(() => ({
   speechListModels: vi.fn(),
   speechModelStates: vi.fn(),
+  voiceServersList: vi.fn().mockResolvedValue([]),
   onSpeechDownloadProgress: vi.fn().mockResolvedValue(() => undefined),
 }))
 vi.mock('../../../../lib/tauri', async (importOriginal) => ({
@@ -37,7 +38,7 @@ describe('ProviderGrid', () => {
   })
 
   it('shows connection status per provider', async () => {
-    render(<ProviderGrid onOpen={() => undefined} />)
+    render(<ProviderGrid onOpen={() => undefined} onOpenServer={() => undefined} />)
     const openai = await screen.findByRole('article', { name: 'voice.provider.openai' })
     expect(openai.textContent).toContain('prefs.voiceStatusConnected')
     const gemini = screen.getByRole('article', { name: 'voice.provider.gemini' })
@@ -51,14 +52,34 @@ describe('ProviderGrid', () => {
     )
   })
 
+  it('is titled Accounts and models', () => {
+    render(<ProviderGrid onOpen={() => undefined} onOpenServer={() => undefined} />)
+    expect(screen.getByRole('heading', { name: 'prefs.voiceAccountsTitle' })).toBeTruthy()
+    expect(screen.getByText('prefs.voiceAccountsDesc')).toBeTruthy()
+  })
+
   it('filters by group and opens a provider', async () => {
     const onOpen = vi.fn()
-    render(<ProviderGrid onOpen={onOpen} />)
+    render(<ProviderGrid onOpen={onOpen} onOpenServer={() => undefined} />)
     fireEvent.click(screen.getByRole('radio', { name: 'prefs.voiceFilterCloud' }))
     expect(screen.queryByRole('article', { name: 'voice.provider.local' })).toBeNull()
     fireEvent.click(
       screen.getByRole('button', { name: 'prefs.voiceActionSetUpKey voice.provider.elevenlabs' }),
     )
     expect(onOpen).toHaveBeenCalledWith('elevenlabs')
+  })
+
+  it('offers to try again when the local models cannot be read', async () => {
+    tauri.speechModelStates.mockRejectedValueOnce('speech states failed')
+    render(<ProviderGrid onOpen={() => undefined} onOpenServer={() => undefined} />)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain('prefs.voiceLoadFailed')
+    fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceRetry' }))
+    await waitFor(() =>
+      expect(screen.getByRole('article', { name: 'voice.provider.local' }).textContent).toContain(
+        'prefs.voiceStatusConnected',
+      ),
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

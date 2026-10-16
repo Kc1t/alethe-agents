@@ -12,6 +12,8 @@ import {
 } from '../../../../lib/voice/voiceLanguages'
 import { withTtsChoice } from '../../../../lib/voice/voicePreferences'
 import { useProjectsStore } from '../../../../stores/projectsStore'
+import { useVoiceConversationStore } from '../../../../stores/voiceConversationStore'
+import { useVoiceServersStore } from '../../../../stores/voiceServersStore'
 import { Dropdown } from '../../../ui/Dropdown'
 import controls from '../../controls.module.css'
 import { CloudUseCard } from './CloudUseCard'
@@ -36,14 +38,20 @@ function voiceListKey(provider: string, model: string): string {
 
 export function NarrationPanel({
   onOpenProvider,
+  onOpenServer,
 }: {
-  onOpenProvider: (id: VoiceProviderId) => void
+  onOpenProvider: (id: VoiceProviderId, filter?: 'stt' | 'tts') => void
+  onOpenServer: (id: string | null) => void
 }) {
   const t = useT()
   const choice = useProjectsStore((s) => s.preferences.voiceTts)
   const narrationPaused = useVoiceConversationStore((s) => s.narrationPaused)
   const language = useProjectsStore((s) => s.preferences.language)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
+  const servers = useVoiceServersStore((s) => s.servers)
+  const health = useVoiceServersStore((s) => s.health)
+  const serversLoaded = useVoiceServersStore((s) => s.loaded)
+  const refreshServers = useVoiceServersStore((s) => s.refresh)
   const { models, states } = useSpeechInventory()
   const { catalog } = useVoiceCatalog()
   const appLocale = intlLocale(language)
@@ -62,13 +70,23 @@ export function NarrationPanel({
     return ids && ids.length > 0 ? ids.map((id) => ({ id, name: id, language: '' })) : null
   }, [catalog, choice.provider, choice.model])
   const fromCatalog = catalogVoices !== null
-  const voicesKey = voiceListKey(choice.provider, choice.model)
+  // A local server's id takes the model's place in the voice-list key.
+  const listModel = choice.provider === 'server' ? (choice.server ?? '') : choice.model
+  const voicesKey = voiceListKey(choice.provider, listModel)
+
+  useEffect(() => {
+    if (!serversLoaded) void refreshServers()
+  }, [serversLoaded, refreshServers])
 
   useEffect(() => {
     if (fromCatalog) return
     let cancelled = false
-    const key = voiceListKey(choice.provider, choice.model)
-    void ttsVoices(choice.provider, choice.model || undefined)
+    const key = voiceListKey(choice.provider, listModel)
+    const request =
+      choice.provider === 'server'
+        ? ttsVoices('server', undefined, listModel)
+        : ttsVoices(choice.provider, choice.model || undefined)
+    void request
       .then((list) => {
         if (!cancelled) setFetched({ key, list })
       })
@@ -107,10 +125,26 @@ export function NarrationPanel({
     if (next) setPreferences(withTtsChoice({ voiceTts: choice }, { voice: next.id }))
   }, [voices, voicesKey, choice, appLocale, setPreferences])
 
+  const freeVoice = choice.provider === 'server' && voices !== null && voices.length === 0
+  const freeVoiceId = useId()
+  const [voiceDraft, setVoiceDraft] = useState(choice.voice ?? '')
+  useEffect(() => setVoiceDraft(choice.voice ?? ''), [choice.voice])
+
+  const pickServer = (id: string) => {
+    if (choice.provider === 'server' && choice.server === id) return
+    wantsDefault.current = voiceListKey('server', id)
+    patch({ provider: 'server', server: id, model: '', voice: null })
+  }
+
   const pick = (provider: TtsChoice['provider'], model: string) => {
     if (provider === choice.provider && model === choice.model) return
     wantsDefault.current = provider === 'system' ? null : voiceListKey(provider, model)
-    patch({ provider, model, voice: provider === choice.provider ? choice.voice : null })
+    patch({
+      provider,
+      model,
+      server: null,
+      voice: provider === choice.provider ? choice.voice : null,
+    })
   }
 
   const readyLocal = models.filter(
@@ -182,6 +216,37 @@ export function NarrationPanel({
             }}
           />
         </ProviderGroup>
+        <ProviderGroup title={t('prefs.voiceGroupServers')}>
+          {servers.map((server) => (
+            <ProviderUseCard
+              key={server.id}
+              icon={PROVIDER_META.server.icon}
+              title={server.name}
+              description={t(
+                server.kind === 'fish'
+                  ? 'prefs.voiceServerKindFish'
+                  : 'prefs.voiceServerKindOpenai',
+              )}
+              status={health[server.id] ?? 'disconnected'}
+              selected={choice.provider === 'server' && choice.server === server.id}
+              onSelect={() => pickServer(server.id)}
+              note={t('prefs.voiceServerSendsText', { server: server.name })}
+              footer={
+                <button
+                  type="button"
+                  className={controls.btn}
+                  aria-label={`${t('prefs.voiceActionManage')} · ${server.name}`}
+                  onClick={() => onOpenServer(server.id)}
+                >
+                  {t('prefs.voiceActionManage')}
+                </button>
+              }
+            />
+          ))}
+          <button type="button" className={controls.btn} onClick={() => onOpenServer(null)}>
+            {t('prefs.voiceServerAdd')}
+          </button>
+        </ProviderGroup>
         <ProviderGroup title={t('prefs.voiceGroupCloud')}>
           {CLOUD_VOICE_PROVIDERS.map((provider) => {
             const entry = catalog.find((item) => item.provider === provider)
@@ -206,26 +271,41 @@ export function NarrationPanel({
       </div>
 
       <div className={styles.controls}>
-        <label className={styles.field}>
-          <span>{t('prefs.voiceConvVoice')}</span>
-          <Dropdown
-            value={choice.voice ?? ''}
-            ariaLabel={t('prefs.voiceConvVoice')}
-            searchable={sortedVoices.length > VOICE_SEARCH_THRESHOLD}
-            searchPlaceholder={t('prefs.voiceSearchVoices')}
-            options={[
-              { value: '', label: t('prefs.voiceDefaultVoice') },
-              ...sortedVoices.map((voice) => voiceOption(voice, appLocale, t)),
-            ]}
-            onChange={(value) => {
-              wantsDefault.current = null
-              patch({ voice: value || null })
-            }}
-          />
-          {multilingual ? (
-            <small className={styles.hint}>{t('prefs.voiceLangMultiHint')}</small>
-          ) : null}
-        </label>
+        {freeVoice ? (
+          <div className={styles.field}>
+            <label htmlFor={freeVoiceId}>{t('prefs.voiceServerVoiceFree')}</label>
+            <input
+              id={freeVoiceId}
+              className={controls.input}
+              spellCheck={false}
+              value={voiceDraft}
+              onChange={(event) => setVoiceDraft(event.target.value)}
+              onBlur={() => patch({ voice: voiceDraft.trim() || null })}
+            />
+            <small className={styles.hint}>{t('prefs.voiceServerVoiceFreeHint')}</small>
+          </div>
+        ) : (
+          <label className={styles.field}>
+            <span>{t('prefs.voiceConvVoice')}</span>
+            <Dropdown
+              value={choice.voice ?? ''}
+              ariaLabel={t('prefs.voiceConvVoice')}
+              searchable={sortedVoices.length > VOICE_SEARCH_THRESHOLD}
+              searchPlaceholder={t('prefs.voiceSearchVoices')}
+              options={[
+                { value: '', label: t('prefs.voiceDefaultVoice') },
+                ...sortedVoices.map((voice) => voiceOption(voice, appLocale, t)),
+              ]}
+              onChange={(value) => {
+                wantsDefault.current = null
+                patch({ voice: value || null })
+              }}
+            />
+            {multilingual ? (
+              <small className={styles.hint}>{t('prefs.voiceLangMultiHint')}</small>
+            ) : null}
+          </label>
+        )}
         <div className={styles.field}>
           <span>{t('prefs.voiceConvRate')}</span>
           <div className={styles.rates} role="radiogroup" aria-label={t('prefs.voiceConvRate')}>

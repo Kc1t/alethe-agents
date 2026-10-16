@@ -333,6 +333,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   panel now list each model-scoped weekly limit, such as Fable, below the Opus row, and the
   orchestrator counts them when it checks Claude's remaining quota
   ([#208](https://github.com/Kc1t/alethe-agents/issues/208)).
+- **Local voice servers for narration.** Narration can speak through a text-to-speech server you
+  run yourself — OpenAI-compatible (Chatterbox, Kokoro-FastAPI, openedai-speech, LocalAI) or Fish
+  Speech — on this computer or your local network. Add servers in Preferences → Voice → Local
+  servers; keys stay in the system keychain, public addresses are refused, and the system voice
+  takes over when a server is unavailable.
 
 ### Changed
 

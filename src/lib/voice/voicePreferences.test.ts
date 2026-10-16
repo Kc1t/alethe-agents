@@ -42,6 +42,7 @@ describe('normalizeVoicePreferences', () => {
       model: '',
       voice: 'com.apple.voice.Luciana',
       rate: 2,
+      server: null,
     })
   })
 
@@ -117,5 +118,47 @@ describe('provider flags', () => {
     expect(next.voiceStt.dictation).toEqual(DEFAULT_STT_CHOICE)
     expect(next.voiceStt.conversation).toEqual(prefs.voiceStt.conversation)
     expect(next.voiceTts).toEqual({ ...DEFAULT_TTS_CHOICE, rate: 1.5 })
+  })
+})
+
+describe('server narration choice', () => {
+  it('keeps a server choice with its server id', () => {
+    const prefs = normalizeVoicePreferences({
+      voiceTts: {
+        provider: 'server',
+        model: 'x',
+        voice: 'pt-ref',
+        rate: 1.25,
+        server: 'V1StGXR8_Z5jdHi6B-myT',
+      },
+    })
+    expect(prefs.voiceTts).toEqual({
+      provider: 'server',
+      model: '',
+      voice: 'pt-ref',
+      rate: 1.25,
+      server: 'V1StGXR8_Z5jdHi6B-myT',
+    })
+  })
+
+  it('drops a server choice without a server id to the default', () => {
+    const prefs = normalizeVoicePreferences({
+      voiceTts: { provider: 'server', model: '', voice: null, rate: 1 },
+    })
+    expect(prefs.voiceTts.provider).toBe('system')
+    expect(prefs.voiceTts.server ?? null).toBeNull()
+  })
+
+  it('clears a stray server id on other providers', () => {
+    const prefs = normalizeVoicePreferences({
+      voiceTts: {
+        provider: 'system',
+        model: '',
+        voice: null,
+        rate: 1,
+        server: 'V1StGXR8_Z5jdHi6B-myT',
+      },
+    })
+    expect(prefs.voiceTts.server).toBeNull()
   })
 })

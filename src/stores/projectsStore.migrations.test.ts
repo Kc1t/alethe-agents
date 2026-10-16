@@ -24,7 +24,7 @@ describe('preference normalization', () => {
       dictation: { provider: 'apple', model: 'apple-speech', locale: 'pt-BR' },
       conversation: { provider: 'apple', model: 'apple-speech', locale: 'pt-BR' },
     })
-    expect(preferences.voiceTts).toEqual({ provider: 'system', model: '', voice: 'v1', rate: 1.5 })
+    expect(preferences.voiceTts).toEqual({ provider: 'system', model: '', voice: 'v1', rate: 1.5, server: null })
     for (const legacy of [
       'dictationModelId',
       'dictationNativeLocale',

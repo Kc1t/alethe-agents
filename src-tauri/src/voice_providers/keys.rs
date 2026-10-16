@@ -170,7 +170,37 @@ pub(crate) async fn read_key_async(
 
 /// Removes every voice key of a profile (profile deletion).
 pub(crate) fn delete_profile_keys(profile: &str) -> Result<(), String> {
-    delete_profile_keys_in(&OsSecretStore, profile)
+    KEYS.delete_profile(&OsSecretStore, profile)
+}
+
+/// A secret of the active profile other than a provider key (a local voice server's key), read on
+/// a blocking thread once per run.
+pub(crate) async fn read_secret_async(
+    app: &AppHandle,
+    kind: SecretKind,
+) -> Result<Option<String>, String> {
+    let app = app.clone();
+    blocking(move || KEYS.read_kind(&OsSecretStore, &active_profile_id(&app)?, kind)).await
+}
+
+pub(crate) async fn write_secret_async(
+    app: &AppHandle,
+    kind: SecretKind,
+    value: String,
+) -> Result<(), String> {
+    let app = app.clone();
+    blocking(move || KEYS.write_kind(&OsSecretStore, &active_profile_id(&app)?, kind, &value))
+        .await
+}
+
+pub(crate) async fn delete_secret_async(app: &AppHandle, kind: SecretKind) -> Result<(), String> {
+    let app = app.clone();
+    blocking(move || KEYS.delete_kind(&OsSecretStore, &active_profile_id(&app)?, kind)).await
+}
+
+/// Removes one secret of `profile` (profile deletion, already on a blocking path).
+pub(crate) fn delete_secret(profile: &str, kind: SecretKind) -> Result<(), String> {
+    KEYS.delete_kind(&OsSecretStore, profile, kind)
 }
 
 #[tauri::command]
@@ -408,8 +438,141 @@ mod tests {
             .inner
             .get("a", SecretKind::VoiceProviderKey(CloudProvider::Openai))
             .unwrap()
-            .iter()
-            .any(|s| s.provider == CloudProvider::Openai && s.configured));
+            .is_none());
+    }
+
+    #[test]
+    fn deleting_a_profile_clears_its_cached_keys_only() {
+        let store = CountingStore::default();
+        let cache = KeyCache::default();
+        cache
+            .write(&store, "a", CloudProvider::Gemini, "k")
+            .unwrap();
+        cache
+            .write(&store, "b", CloudProvider::Gemini, "k")
+            .unwrap();
+        cache.delete_profile(&store, "a").unwrap();
+        assert_eq!(
+            cache.read(&store, "a", CloudProvider::Gemini).unwrap(),
+            None
+        );
+        assert_eq!(
+            cache.read(&store, "b", CloudProvider::Gemini).unwrap(),
+            Some("k".into())
+        );
+        assert_eq!(store.gets.get(), 0);
+    }
+
+    /// A store whose OpenAI read waits until the test releases it, like an open password prompt.
+    struct PromptingStore {
+        started: Mutex<std::sync::mpsc::Sender<()>>,
+        release: Mutex<std::sync::mpsc::Receiver<()>>,
+    }
+
+    impl SecretStore for PromptingStore {
+        fn get(
+            &self,
+            _profile: &str,
+            kind: SecretKind,
+        ) -> Result<Option<String>, SecureStoreError> {
+            if kind == SecretKind::VoiceProviderKey(CloudProvider::Openai) {
+                self.started.lock().unwrap().send(()).unwrap();
+                self.release.lock().unwrap().recv().unwrap();
+                return Ok(Some("slow".into()));
+            }
+            Ok(None)
+        }
+        fn set(&self, _: &str, _: SecretKind, _: &str) -> Result<(), SecureStoreError> {
+            Ok(())
+        }
+        fn delete(&self, _: &str, _: SecretKind) -> Result<(), SecureStoreError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_pending_read_does_not_block_other_providers() {
+        use std::sync::mpsc::channel;
+        use std::time::Duration;
+        let (started_tx, started_rx) = channel();
+        let (release_tx, release_rx) = channel();
+        let store = PromptingStore {
+            started: Mutex::new(started_tx),
+            release: Mutex::new(release_rx),
+        };
+        let cache = KeyCache::default();
+        cache
+            .write(&store, "a", CloudProvider::Gemini, "k")
+            .unwrap();
+        std::thread::scope(|scope| {
+            let slow = scope.spawn(|| cache.read(&store, "a", CloudProvider::Openai));
+            started_rx.recv().unwrap();
+            let (done_tx, done_rx) = channel();
+            let (cache, store) = (&cache, &store);
+            scope.spawn(move || {
+                done_tx
+                    .send(cache.read(store, "a", CloudProvider::Gemini))
+                    .unwrap()
+            });
+            let other = done_rx.recv_timeout(Duration::from_secs(2));
+            // Release the pending read before asserting, so a failure cannot hang the scope.
+            release_tx.send(()).unwrap();
+            assert_eq!(
+                other.expect("blocked by the pending read"),
+                Ok(Some("k".into()))
+            );
+            assert_eq!(slow.join().unwrap(), Ok(Some("slow".into())));
+        });
+    }
+
+    #[test]
+    fn concurrent_reads_of_a_key_share_one_keychain_read() {
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let store = PromptingStore {
+            started: Mutex::new(started_tx),
+            release: Mutex::new(release_rx),
+        };
+        let cache = KeyCache::default();
+        std::thread::scope(|scope| {
+            let first = scope.spawn(|| cache.read(&store, "a", CloudProvider::Openai));
+            started_rx.recv().unwrap();
+            let second = scope.spawn(|| cache.read(&store, "a", CloudProvider::Openai));
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            // Two releases, so a second keychain read would finish (and be counted) instead of hang.
+            release_tx.send(()).unwrap();
+            release_tx.send(()).unwrap();
+            assert_eq!(first.join().unwrap(), Ok(Some("slow".into())));
+            assert_eq!(second.join().unwrap(), Ok(Some("slow".into())));
+        });
+        // A second keychain read would have announced itself here.
+        assert!(started_rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn keychain_work_runs_on_a_blocking_thread() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let caller = std::thread::current().id();
+        let worker = runtime
+            .block_on(blocking(|| Ok(std::thread::current().id())))
+            .unwrap();
+        assert_ne!(worker, caller);
+    }
+
+    #[test]
+    fn server_keys_share_the_cache_and_stay_apart_from_provider_keys() {
+        let store = MemoryStore::default();
+        let cache = KeyCache::default();
+        let id = crate::voice_servers::id::ServerId::parse("V1StGXR8_Z5jdHi6B-myT").unwrap();
+        let kind = SecretKind::VoiceServerKey(id);
+        cache.write_kind(&store, "p", kind, "server-key").unwrap();
+        cache.write(&store, "p", CloudProvider::Openai, "openai-key").unwrap();
+        assert_eq!(cache.read_kind(&store, "p", kind).unwrap().as_deref(), Some("server-key"));
+        assert_eq!(cache.read(&store, "p", CloudProvider::Openai).unwrap().as_deref(), Some("openai-key"));
+        cache.delete_kind(&store, "p", kind).unwrap();
+        assert_eq!(cache.read_kind(&store, "p", kind).unwrap(), None);
     }
 
     #[test]

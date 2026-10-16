@@ -433,6 +433,54 @@ narrates. For Kokoro, the speaker's language sets the engine's `lang` (`en-us`, 
 Frontend: `src/lib/voice/hubModels.test.ts`,
 `src/components/modals/preferences/voice/useHubSearch.test.ts` and `LocalModelsView.test.tsx`.
 
+### Local voice servers
+
+Narration can speak through a text-to-speech server the person runs, on this computer or the local
+network. The PyTorch-based voice models stay outside the app: Alethe only sends text and plays the
+audio back, so there is nothing heavy to bundle. Code: `src-tauri/src/voice_servers/` (`error.rs`,
+`netpolicy.rs`, `id.rs`, `adapter.rs`, `store.rs`, `client.rs`, `commands.rs`).
+
+**Kinds and endpoints.**
+
+| | OpenAI-compatible | Fish Speech |
+| Speed | sent as `speed`, played at 1.0 (some servers ignore it) | not sent, applied at playback |
+| Auth | `Authorization: Bearer {key}` when a key is saved | same |
+
+Voice lists are parsed tolerantly (array of strings, `{ voices }`, objects with `id` / `name` /
+`voice_id`, Fish's `reference_ids`); duplicates are dropped, at most 500 voices of 128 characters.
+Anything else reads as an empty list and the voice field is free text. Audio replies are MP3 or WAV,
+capped at 50 MB.
+
+**Storage.** The list is per profile at `{profile}/voice-servers.json` (version 1, at most 32
+servers, names up to 64 characters, written atomically). Ids are `nanoid`s. The optional API key
+lives in the OS keychain under the account `voice-server-{id}`; the JSON only keeps a `hasKey`
+flag. Deleting a server deletes its key. A corrupt or unknown-version file reads as an empty list
+and is not overwritten until the next save.
+
+**Network policy** (`netpolicy.rs`). A base URL must be `http` or `https` with a host and no
+userinfo, query or fragment. Every address the host resolves to must be loopback, private
+(`10/8`, `172.16/12`, `192.168/16`) or link-local/unique-local IPv6 (`fe80::/10`, `fc00::/7`);
+public, `169.254.0.0/16`, unspecified and multicast addresses are refused, and a host with any
+refused address is refused whole. The check runs when saving and before every request (DNS lookup
+limited to 5 s); each request pins the connection to the checked address, ignores system proxies
+and never follows redirects. Probe replies are capped at 1 MB. The UI warns when the resolved
+address is not loopback, since text then crosses the network, unencrypted over `http`.
+
+**Narration flow.** `tts_speak` with `provider: "server"` looks the server up by id, then speaks in
+400-character chunks (120 s timeout per chunk) through the shared player. The voice is chosen in the
+Narration panel, from `tts_voices` with `provider: "server"` (there is no separate voices command).
+When the server is missing, or fails before any audio played, the whole text goes to the system voice
+under the same utterance id and `voice://fallback` is emitted with `provider: "server"`, the server
+id and a reason; the UI shows a "Local server" toast. A failure mid-utterance stops where it is.
+Errors surface as `voice_server_{kind}` (`policy`, `network`, `timeout`, `auth`, `badRequest`,
+`badAudio`, `missing`, `other`); logs and events carry only the id and kind, never the URL, key,
+response body or narrated text.
+
+**Reviewing.** `cd src-tauri && cargo test voice_servers::` covers the policy (including DNS pins
+and refused ranges), adapters and voice parsing, the store, the client against a local test server
+and the narration routing. Frontend: the `ServerDetail`, `ServerGroup` and Narration panel server
+card tests. Check that no key, URL or text reaches logs or events, that redirects and proxies stay
+off, and that the cloud client is still `https_only`.
 
 ---
 
@@ -459,6 +507,7 @@ file version unchanged (backfill, as earlier preference additions).
 | `voiceStt` | `{ dictation, conversation }`, both local Parakeet | no |
 | `voiceTts` | `{ provider: 'system', model: '', voice: null, rate: 1 }` | no |
 | `voiceProviders` | `{}` — flags only, never a key | no |
+| `voiceTts.server` | `null` (id of the local voice server used when `provider` is `server`) | no |
 | `speechEngineMigrated` | `false` | no |
 
 **Legacy fields** `dictationModelId`, `dictationNativeLocale`, `voiceTtsVoice` and `voiceTtsRate`
@@ -466,14 +515,22 @@ are folded into `voiceStt` / `voiceTts` (`lib/voice/voicePreferences.ts`) and th
 unknown provider, or a cloud provider without a configured key, resets that use to its local
 default.
 
+The local voice server list is not a preference: it lives per profile in `voice-servers.json`
+(see Local voice servers).
+
 ---
 
 ## 9. Security and privacy
 
 - **Local by default.** Audio or text leaves the device only for a use the person set to a cloud
-  provider; provider cards say "Audio is sent to …" / "Narration text is sent to …".
+  provider, or, for narration, to a local voice server they configured (text goes over HTTP to that
+  address on this computer or the LAN); provider cards say "Audio is sent to …" / "Narration text
+  is sent to …".
 - **Keys** live in the OS keychain, are written and tested from Rust, and are never returned to the
   webview or logged.
+- **Local servers are LAN-only.** Local voice server URLs must resolve to loopback or private
+  addresses, checked at save and per request with the connection pinned; no redirects, no proxy.
+  Their keys are in the keychain like cloud keys.
 - **CSP unchanged** (`src/securityPolicy.test.ts` still passes); cloud calls do not go through the
   webview.
 - **Window checks.** Capability files gate only core/plugin permissions (there is no app-command

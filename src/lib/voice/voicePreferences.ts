@@ -90,11 +90,22 @@ function normalizeTtsChoice(
   flags: VoiceProviderFlags,
 ): TtsChoice {
   if (!value || typeof value !== 'object') return fallback
-  const { provider, model, voice, rate } = value as Record<string, unknown>
+  const { provider, model, voice, rate, server } = value as Record<string, unknown>
   if (typeof provider !== 'string' || !(TTS_PROVIDERS as readonly string[]).includes(provider)) {
     return DEFAULT_TTS_CHOICE
   }
   if (!usable(provider, flags)) return DEFAULT_TTS_CHOICE
+  if (provider === 'server') {
+    const serverId = text(server)
+    if (!serverId) return DEFAULT_TTS_CHOICE
+    return {
+      provider,
+      model: '',
+      voice: text(voice),
+      rate: clampRate(rate, DEFAULT_TTS_CHOICE.rate),
+      server: serverId,
+    }
+  }
   const id = text(model) ?? ''
   if (provider !== 'system' && !id) return DEFAULT_TTS_CHOICE
   return {
@@ -102,6 +113,7 @@ function normalizeTtsChoice(
     model: provider === 'system' ? '' : id,
     voice: text(voice),
     rate: clampRate(rate, DEFAULT_TTS_CHOICE.rate),
+    server: null,
   }
 }
 

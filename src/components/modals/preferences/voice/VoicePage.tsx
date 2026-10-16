@@ -10,6 +10,7 @@ import { NarrationPanel } from './NarrationPanel'
 import { ProviderDetail } from './ProviderDetail'
 import { ProviderGrid } from './ProviderGrid'
 import type { VoiceProviderId } from './providerMeta'
+import { ServerDetail } from './ServerDetail'
 import { SttProviderChoices } from './SttProviderChoices'
 import { UsageTabs, type VoiceTab } from './UsageTabs'
 import { VoiceInUseSummary } from './VoiceInUseSummary'
@@ -35,7 +36,10 @@ export function tabForTarget(target: string | null): VoiceTab | null {
 export function VoicePage({ target }: { target: string | null }) {
   const t = useT()
   const [tab, setTab] = useState<VoiceTab>(() => tabForTarget(target) ?? 'dictation')
-  const [detail, setDetail] = useState<VoiceProviderId | null>(null)
+  const [detail, setDetail] = useState<Detail | null>(null)
+  // undefined: no server open; null: a new server; string: a saved server's id.
+  const [serverDetail, setServerDetail] = useState<string | null | undefined>(undefined)
+  const openProvider = (id: VoiceProviderId, filter?: 'stt' | 'tts') => setDetail({ id, filter })
 
   // Layout effect: the modal scrolls to the target on the next frame, after this re-render.
   useLayoutEffect(() => {
@@ -43,8 +47,17 @@ export function VoicePage({ target }: { target: string | null }) {
     if (next) {
       setTab(next)
       setDetail(null)
+      setServerDetail(undefined)
     }
   }, [target])
+
+  if (serverDetail !== undefined) {
+    return (
+      <div className={styles.page}>
+        <ServerDetail serverId={serverDetail} onBack={() => setServerDetail(undefined)} />
+      </div>
+    )
+  }
 
   if (detail) {
     return (
@@ -114,12 +127,12 @@ export function VoicePage({ target }: { target: string | null }) {
         ) : null}
         {tab === 'narration' ? (
           <>
-            <NarrationPanel onOpenProvider={setDetail} />
+            <NarrationPanel onOpenProvider={openProvider} onOpenServer={setServerDetail} />
             <NarrationBehaviorSection />
           </>
         ) : null}
       </div>
-      <ProviderGrid onOpen={setDetail} />
+      <ProviderGrid onOpen={openProvider} onOpenServer={setServerDetail} />
     </div>
   )
 }

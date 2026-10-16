@@ -13,6 +13,8 @@ use tauri::{AppHandle, Emitter};
 use crate::audio_out::AudioOut;
 use crate::voice_providers::http::CloudErrorKind;
 use crate::voice_providers::{catalog, keys, openrouter, tts_cloud, CloudProvider};
+use crate::voice_servers::error::ServerErrorKind;
+use crate::voice_servers::store::VoiceServer;
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +101,7 @@ async fn with_engine<T: Send + 'static>(
 pub enum TtsProvider {
     System,
     Local,
+    Server,
     Openai,
     Elevenlabs,
     Gemini,
@@ -112,7 +115,7 @@ impl TtsProvider {
             Self::Elevenlabs => Some(CloudProvider::Elevenlabs),
             Self::Gemini => Some(CloudProvider::Gemini),
             Self::Openrouter => Some(CloudProvider::Openrouter),
-            Self::System | Self::Local => None,
+            Self::System | Self::Local | Self::Server => None,
         }
     }
 }
@@ -188,6 +191,7 @@ pub async fn tts_speak(
     rate: Option<f32>,
     provider: Option<TtsProvider>,
     model: Option<String>,
+    server: Option<String>,
 ) -> Result<u64, String> {
     // The new id becomes current before anything is stopped or awaited, so a stale utterance can
     // never report or resume over it.
@@ -219,6 +223,13 @@ pub async fn tts_speak(
             return Ok(id);
         }
         // A missing local voice falls back to the system voice below, never to the cloud.
+    }
+    if provider == TtsProvider::Server {
+        stop_all(&app).await;
+        let rate = normalized_rate(rate);
+        let server = server.unwrap_or_default();
+        tauri::async_runtime::spawn(speak_server(app, id, server, voice, rate, text));
+        return Ok(id);
     }
     let Some(cloud) = provider.cloud() else {
         // A cloud or local utterance may still be draining its queued audio.
@@ -430,7 +441,7 @@ async fn system_voices(app: AppHandle) -> Result<Vec<TtsVoice>, String> {
     .await
 }
 
-/// OpenRouter voices carry no name or language of their own: the id is shown as is.
+/// OpenRouter and local server voices carry no name or language of their own: the id is shown as is.
 fn router_voices(ids: Vec<String>) -> Vec<TtsVoice> {
     ids.into_iter()
         .map(|id| TtsVoice {
@@ -469,7 +480,13 @@ pub async fn tts_voices(
     app: AppHandle,
     provider: Option<TtsProvider>,
     model: Option<String>,
+    server: Option<String>,
 ) -> Result<Vec<TtsVoice>, String> {
+    if provider == Some(TtsProvider::Server) {
+        let ids =
+            crate::voice_servers::voices_for(&app, server.as_deref().unwrap_or_default()).await;
+        return Ok(router_voices(ids));
+    }
     match provider.and_then(TtsProvider::cloud) {
         None if provider == Some(TtsProvider::Local) => Ok(Vec::new()),
         None => system_voices(app).await,

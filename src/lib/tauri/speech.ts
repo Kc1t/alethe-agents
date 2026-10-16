@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-import type { CloudVoiceProviderId, SttProviderId } from '../types'
+import type { CloudVoiceProviderId, SttProviderId, VoiceServerErrorKind } from '../types'
 import type { CloudErrorKind } from './voiceProviders'
 
 export const APPLE_SPEECH_MODEL_ID = 'apple-speech'
@@ -204,9 +204,11 @@ export async function speechStopAndTranscribe(
 
 export type VoiceFallbackEvent = {
   usage: string
-  provider: CloudVoiceProviderId | 'system'
-  reason: CloudErrorKind
+  provider: CloudVoiceProviderId | 'system' | 'server'
+  reason: CloudErrorKind | VoiceServerErrorKind
   fallback: string
+  /** The local server's id, on `provider: 'server'`. */
+  server?: string
 }
 
 export async function onVoiceFallback(

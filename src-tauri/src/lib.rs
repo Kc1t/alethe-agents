@@ -90,6 +90,7 @@ mod telemetry;
 mod tts;
 mod tts_local;
 mod voice_providers;
+mod voice_servers;
 mod validation;
 mod voice_hud;
 mod webview_media;
@@ -585,6 +586,10 @@ pub fn run() {
             voice_providers::keys::voice_provider_test,
             voice_providers::catalog::voice_provider_catalog,
             voice_providers::openrouter::voice_openrouter_models,
+            voice_servers::commands::voice_servers_list,
+            voice_servers::commands::voice_servers_save,
+            voice_servers::commands::voice_servers_delete,
+            voice_servers::commands::voice_servers_test,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,

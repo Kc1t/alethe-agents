@@ -20,9 +20,31 @@ export async function ttsStop(): Promise<void> {
   await invoke('tts_stop')
 }
 
-/** Voices of a provider; OpenRouter lists the voices of `model` (or of its default TTS model). */
-export function ttsVoices(provider?: TtsProviderId, model?: string): Promise<TtsVoice[]> {
-  return invoke<TtsVoice[]>('tts_voices', { provider: provider ?? null, model: model || null })
+/** Holds cloud and local narration where it is; the system voice cannot be held (see narrator). */
+export async function ttsPause(): Promise<void> {
+  await invoke('tts_pause')
+}
+
+export async function ttsResume(): Promise<void> {
+  await invoke('tts_resume')
+}
+
+/** Narration keeps its pace with no sound, for the rest of the session. */
+export async function ttsSetMuted(muted: boolean): Promise<void> {
+  await invoke('tts_set_muted', { muted })
+}
+
+/** Voices of a provider; OpenRouter lists the voices of `model`, a local server those of `server`. */
+export function ttsVoices(
+  provider?: TtsProviderId,
+  model?: string,
+  server?: string | null,
+): Promise<TtsVoice[]> {
+  return invoke<TtsVoice[]>('tts_voices', {
+    provider: provider ?? null,
+    model: model || null,
+    server: server ?? null,
+  })
 }
 
 /** Fires when an utterance finishes, on engines that report it; callers keep their own timeout. */

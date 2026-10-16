@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EMPTY_PROJECTS_FILE } from '../../../../lib/types'
 import { useProjectsStore } from '../../../../stores/projectsStore'
+import { useVoiceConversationStore } from '../../../../stores/voiceConversationStore'
+import { useVoiceServersStore } from '../../../../stores/voiceServersStore'
 import { NarrationPanel } from './NarrationPanel'
 
 const tauri = vi.hoisted(() => ({
@@ -12,6 +14,7 @@ const tauri = vi.hoisted(() => ({
   voiceOpenrouterModels: vi.fn(),
   ttsVoices: vi.fn(),
   ttsSpeak: vi.fn(),
+  voiceServersList: vi.fn(),
 }))
 vi.mock('../../../../lib/tauri', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../../lib/tauri')>()),
@@ -23,6 +26,15 @@ vi.mock('../../../../lib/i18n', async (importOriginal) => ({
   useT: () => (key: string, params?: Record<string, unknown>) =>
     params ? `${key}:${JSON.stringify(params)}` : key,
 }))
+
+const server = {
+  id: 'V1StGXR8_Z5jdHi6B-myT',
+  name: 'Chatterbox',
+  kind: 'openai' as const,
+  baseUrl: 'http://localhost:4123',
+  model: null,
+  hasKey: false,
+}
 
 const prefs = () => useProjectsStore.getState().preferences
 const routerVoices = ['Kore', 'af_bella', 'pf_dora']
@@ -69,6 +81,8 @@ describe('NarrationPanel', () => {
           : [{ id: 'sys', name: 'Luciana', language: 'pt-BR' }],
       )
     tauri.ttsSpeak.mockReset().mockResolvedValue(1)
+    tauri.voiceServersList.mockReset().mockResolvedValue([server])
+    useVoiceServersStore.setState({ servers: [], loaded: false, health: {} })
     useProjectsStore.getState().setPreferences({
       voiceProviders: {
         openai: { configured: true, invalid: false },
@@ -81,7 +95,7 @@ describe('NarrationPanel', () => {
     useProjectsStore
       .getState()
       .setPreferences({ voiceTts: { provider: 'system', model: '', voice: 'sys', rate: 1.5 } })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     fireEvent.click(await screen.findByRole('radio', { name: 'voice.provider.openai' }))
     expect(prefs().voiceTts).toMatchObject({
       provider: 'openai',
@@ -94,7 +108,7 @@ describe('NarrationPanel', () => {
 
   it("defaults an OpenRouter model to a voice in the app's language", async () => {
     useProjectsStore.getState().setPreferences({ language: 'pt-BR' })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     await screen.findByText('Kokoro')
     fireEvent.click(screen.getByRole('radio', { name: 'voice.provider.openrouter' }))
     await waitFor(() =>
@@ -112,7 +126,7 @@ describe('NarrationPanel', () => {
       language: 'pt-BR',
       voiceTts: { provider: 'openrouter', model: 'hexgrad/kokoro-82m', voice: 'Kore', rate: 1 },
     })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     await screen.findByText('Kokoro')
     fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceConvVoice' }))
     await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(4))
@@ -123,7 +137,7 @@ describe('NarrationPanel', () => {
   })
 
   it('keeps an explicit provider default after the automatic pick', async () => {
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     fireEvent.click(await screen.findByRole('radio', { name: 'voice.provider.openai' }))
     await waitFor(() => expect(prefs().voiceTts.voice).toBe('nova'))
     fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceConvVoice' }))
@@ -139,7 +153,7 @@ describe('NarrationPanel', () => {
     useProjectsStore.getState().setPreferences({
       voiceTts: { provider: 'openai', model: 'gpt-4o-mini-tts', voice: 'nova', rate: 1 },
     })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     fireEvent.click(await screen.findByRole('radio', { name: 'voice.provider.system' }))
     await waitFor(() => expect(tauri.ttsVoices).toHaveBeenCalledWith('system', undefined))
     await flush()
@@ -150,7 +164,7 @@ describe('NarrationPanel', () => {
     useProjectsStore.getState().setPreferences({
       voiceTts: { provider: 'openrouter', model: 'hexgrad/kokoro-82m', voice: 'Kore', rate: 1 },
     })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     expect(await screen.findByText('prefs.voiceLangMultiHint')).toBeTruthy()
     act(() =>
       useProjectsStore.getState().setPreferences({
@@ -169,7 +183,7 @@ describe('NarrationPanel', () => {
     useProjectsStore.getState().setPreferences({
       voiceTts: { provider: 'openai', model: 'gpt-4o-mini-tts', voice: 'ghost', rate: 1 },
     })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     await waitFor(() => expect(prefs().voiceTts.voice).toBe('nova'))
   })
 
@@ -177,10 +191,74 @@ describe('NarrationPanel', () => {
     useProjectsStore.getState().setPreferences({
       voiceTts: { provider: 'openai', model: 'gpt-4o-mini-tts', voice: null, rate: 1 },
     })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     await waitFor(() => expect(tauri.ttsVoices).toHaveBeenCalledWith('openai', 'gpt-4o-mini-tts'))
     await flush()
     expect(prefs().voiceTts.voice).toBeNull()
+  })
+
+  it('gives an ElevenLabs choice without a voice an account voice in the app language', async () => {
+    useProjectsStore.getState().setPreferences({
+      language: 'pt-BR',
+      voiceProviders: { elevenlabs: { configured: true, invalid: false } },
+      voiceTts: { provider: 'elevenlabs', model: 'eleven_flash_v2_5', voice: null, rate: 1 },
+    })
+    tauri.ttsVoices.mockImplementation(async (provider?: string) =>
+      provider === 'elevenlabs'
+        ? [
+            { id: 'el-rachel', name: 'Rachel', language: 'en' },
+            { id: 'el-camila', name: 'Camila', language: 'pt-BR' },
+          ]
+        : [],
+    )
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+    await waitFor(() =>
+      expect(tauri.ttsVoices).toHaveBeenCalledWith('elevenlabs', 'eleven_flash_v2_5'),
+    )
+    await waitFor(() => expect(prefs().voiceTts.voice).toBe('el-camila'))
+    expect(prefs().voiceTts).toMatchObject({ provider: 'elevenlabs', model: 'eleven_flash_v2_5' })
+  })
+
+  it('keeps a saved OpenRouter provider default when its voices load', async () => {
+    useProjectsStore.getState().setPreferences({
+      language: 'pt-BR',
+      voiceTts: { provider: 'openrouter', model: 'hexgrad/kokoro-82m', voice: null, rate: 1 },
+    })
+    // Before the live catalog arrives the panel asks the backend, which lists the model's voices.
+    tauri.ttsVoices.mockImplementation(async (provider?: string) =>
+      provider === 'openrouter' ? routerVoices.map((id) => ({ id, name: id, language: '' })) : [],
+    )
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+    await waitFor(() =>
+      expect(tauri.ttsVoices).toHaveBeenCalledWith('openrouter', 'hexgrad/kokoro-82m'),
+    )
+    await flush()
+    expect(prefs().voiceTts).toMatchObject({ provider: 'openrouter', voice: null })
+  })
+
+  it('keeps a saved local provider default (single-speaker model)', async () => {
+    useProjectsStore.getState().setPreferences({
+      voiceTts: { provider: 'local', model: 'piper-pt', voice: null, rate: 1 },
+    })
+    tauri.ttsVoices.mockImplementation(async (provider?: string) =>
+      provider === 'local' ? [{ id: 'piper-pt', name: 'Faber', language: 'pt-BR' }] : [],
+    )
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+    await waitFor(() => expect(tauri.ttsVoices).toHaveBeenCalledWith('local', 'piper-pt'))
+    await flush()
+    expect(prefs().voiceTts.voice).toBeNull()
+  })
+
+  it('replaces a saved OpenRouter voice the model does not have', async () => {
+    useProjectsStore.getState().setPreferences({
+      language: 'pt-BR',
+      voiceTts: { provider: 'openrouter', model: 'hexgrad/kokoro-82m', voice: 'ghost', rate: 1 },
+    })
+    tauri.ttsVoices.mockImplementation(async (provider?: string) =>
+      provider === 'openrouter' ? routerVoices.map((id) => ({ id, name: id, language: '' })) : [],
+    )
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+    await waitFor(() => expect(prefs().voiceTts.voice).toBe('pf_dora'))
   })
 
   it('keeps the chosen local model when its card is clicked again', async () => {
@@ -195,10 +273,39 @@ describe('NarrationPanel', () => {
     useProjectsStore.getState().setPreferences({
       voiceTts: { provider: 'local', model: 'piper-b', voice: null, rate: 1 },
     })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     expect(await screen.findByText('Piper B')).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: 'voice.provider.local' }))
     expect(prefs().voiceTts.model).toBe('piper-b')
+  })
+
+  it('sums up the chosen local voice on its card', async () => {
+    tauri.speechListModels.mockResolvedValue([
+      {
+        id: 'piper-pt-br-faber-medium',
+        label: 'Piper Faber',
+        kind: 'download',
+        capability: 'tts',
+        sizeBytes: 1,
+      },
+    ])
+    tauri.speechModelStates.mockResolvedValue([{ id: 'piper-pt-br-faber-medium', status: 'ready' }])
+    useProjectsStore.getState().setPreferences({
+      voiceTts: { provider: 'local', model: 'piper-pt-br-faber-medium', voice: null, rate: 1 },
+    })
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+    const local = await screen.findByRole('article', { name: 'voice.provider.local' })
+    expect(await within(local).findByText(/^Portuguese \(Brazil\)/)).toBeTruthy()
+    expect(
+      within(local).getByRole('img', {
+        name: 'prefs.voiceTierLabel:{"label":"prefs.voiceColSpeed","tier":3}',
+      }),
+    ).toBeTruthy()
+    expect(
+      within(local).getByRole('img', {
+        name: 'prefs.voiceTierLabel:{"label":"prefs.voiceColQuality","tier":2}',
+      }),
+    ).toBeTruthy()
   })
 
   it('offers to manage models when no local voice is downloaded', async () => {
@@ -232,7 +339,7 @@ describe('NarrationPanel', () => {
     useProjectsStore.getState().setPreferences({
       voiceTts: { provider: 'openai', model: 'gpt-4o-mini-tts', voice: 'nova', rate: 1 },
     })
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     expect(
       await screen.findByText('prefs.voiceCloudSendsText:{"provider":"voice.provider.openai"}'),
     ).toBeTruthy()
@@ -240,16 +347,77 @@ describe('NarrationPanel', () => {
   })
 
   it('tests the selected voice with the current settings', async () => {
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceTest' }))
     await waitFor(() =>
       expect(tauri.ttsSpeak).toHaveBeenCalledWith('prefs.voiceTestSentence', prefs().voiceTts),
     )
   })
 
+  // A paused conversation holds the player, so a test would play nothing.
+  it('disables the voice test while the narration is paused, and says why', async () => {
+    useVoiceConversationStore.setState({ narrationPaused: true })
+    try {
+      render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+      const button = screen.getByRole('button', { name: 'prefs.voiceTest' })
+      expect((button as HTMLButtonElement).disabled).toBe(true)
+      expect(button.getAttribute('title')).toBe('prefs.voiceTestPausedHint')
+      expect(screen.getByText('prefs.voiceTestPausedHint')).toBeTruthy()
+      fireEvent.click(button)
+      expect(tauri.ttsSpeak).not.toHaveBeenCalled()
+      act(() => useVoiceConversationStore.setState({ narrationPaused: false }))
+      expect((button as HTMLButtonElement).disabled).toBe(false)
+      expect(screen.queryByText('prefs.voiceTestPausedHint')).toBeNull()
+    } finally {
+      useVoiceConversationStore.setState({ narrationPaused: false })
+    }
+  })
+
   it('sets the narration speed', () => {
-    render(<NarrationPanel onOpenProvider={() => undefined} />)
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
     fireEvent.click(screen.getByRole('radio', { name: 'prefs.voiceConvRateValue:{"rate":1.25}' }))
     expect(prefs().voiceTts.rate).toBe(1.25)
+  })
+
+  it('picks a local server and lists its voices', async () => {
+    tauri.ttsVoices.mockImplementation(async (provider?: string) =>
+      provider === 'server' ? [{ id: 'pt-ref', name: 'pt-ref', language: '' }] : [],
+    )
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+    fireEvent.click(await screen.findByRole('radio', { name: 'Chatterbox' }))
+    expect(prefs().voiceTts).toMatchObject({ provider: 'server', server: server.id, model: '' })
+    await waitFor(() =>
+      expect(tauri.ttsVoices).toHaveBeenCalledWith('server', undefined, server.id),
+    )
+    await waitFor(() => expect(prefs().voiceTts.voice).toBe('pt-ref'))
+  })
+
+  it("shows the server's tested health, not a fixed Connected", async () => {
+    useVoiceServersStore.setState({ health: {} })
+    const { unmount } = render(
+      <NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />,
+    )
+    const card = (await screen.findByRole('radio', { name: 'Chatterbox' })).closest('article')!
+    expect(within(card).getByText('prefs.voiceStatusDisconnected')).toBeTruthy()
+    unmount()
+    useVoiceServersStore.setState({ health: { [server.id]: 'connected' } })
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+    const next = (await screen.findByRole('radio', { name: 'Chatterbox' })).closest('article')!
+    expect(within(next).getByText('prefs.voiceStatusConnected')).toBeTruthy()
+    expect(
+      within(next).getByRole('button', { name: 'prefs.voiceActionManage · Chatterbox' }),
+    ).toBeTruthy()
+  })
+
+  it('offers a free-text voice when the server lists none', async () => {
+    tauri.ttsVoices.mockResolvedValue([])
+    useProjectsStore.getState().setPreferences({
+      voiceTts: { provider: 'server', model: '', voice: null, rate: 1, server: server.id },
+    })
+    render(<NarrationPanel onOpenProvider={() => undefined} onOpenServer={() => undefined} />)
+    const input = await screen.findByLabelText('prefs.voiceServerVoiceFree')
+    fireEvent.change(input, { target: { value: 'narrador' } })
+    fireEvent.blur(input)
+    expect(prefs().voiceTts.voice).toBe('narrador')
   })
 })

@@ -9,11 +9,18 @@ import { ProviderCard, type ProviderStatus } from './ProviderCard'
 import styles from './ProviderGrid.module.css'
 import { ProviderGroup } from './ProviderGroup'
 import { cloudStatus, PROVIDER_META, type VoiceProviderId } from './providerMeta'
+import { ServerGroup } from './ServerGroup'
 import { useSpeechInventory } from './useSpeechInventory'
 
 type Filter = 'all' | 'local' | 'cloud'
 
-export function ProviderGrid({ onOpen }: { onOpen: (id: VoiceProviderId) => void }) {
+export function ProviderGrid({
+  onOpen,
+  onOpenServer,
+}: {
+  onOpen: (id: VoiceProviderId) => void
+  onOpenServer: (id: string | null) => void
+}) {
   const t = useT()
   const flags = useProjectsStore((s) => s.preferences.voiceProviders)
   const { models, states, failed, retry } = useSpeechInventory()
@@ -26,6 +33,8 @@ export function ProviderGrid({ onOpen }: { onOpen: (id: VoiceProviderId) => void
 
   const statusOf = (id: VoiceProviderId): ProviderStatus => {
     if (id === 'system') return 'connected'
+    // Servers are managed in their own section, never listed in this grid.
+    if (id === 'server') return 'connected'
     if (id === 'local') return localReady ? 'connected' : 'disconnected'
     if (id === 'apple')
       return states[APPLE_SPEECH_MODEL_ID]?.status === 'ready' ? 'connected' : 'disconnected'
@@ -87,19 +96,22 @@ export function ProviderGrid({ onOpen }: { onOpen: (id: VoiceProviderId) => void
       {groups
         .filter((group) => filter === 'all' || filter === group.id)
         .map((group) => (
-          <ProviderGroup key={group.id} title={group.title}>
-            {group.ids.map((id) => (
-              <ProviderCard
-                key={id}
-                icon={PROVIDER_META[id].icon}
-                title={t(PROVIDER_META[id].name)}
-                description={t(PROVIDER_META[id].description)}
-                status={statusOf(id)}
-                actionLabel={actionOf(id)}
-                onAction={() => onOpen(id)}
-              />
-            ))}
-          </ProviderGroup>
+          <Fragment key={group.id}>
+            <ProviderGroup title={group.title}>
+              {group.ids.map((id) => (
+                <ProviderCard
+                  key={id}
+                  icon={PROVIDER_META[id].icon}
+                  title={t(PROVIDER_META[id].name)}
+                  description={t(PROVIDER_META[id].description)}
+                  status={statusOf(id)}
+                  actionLabel={actionOf(id)}
+                  onAction={() => onOpen(id)}
+                />
+              ))}
+            </ProviderGroup>
+            {group.id === 'local' ? <ServerGroup onOpen={onOpenServer} /> : null}
+          </Fragment>
         ))}
     </section>
   )

@@ -5,6 +5,7 @@ import type { MessageKey } from '../lib/i18n/messages/en'
 import { onVoiceFallback } from '../lib/tauri'
 import { markKeyInvalid } from '../lib/voice/cloudErrors'
 import { isCloudProvider } from '../lib/voice/providers'
+import { serverErrorKey } from '../lib/voice/serverErrors'
 import { useUiStore } from '../stores/uiStore'
 
 const ENGINE_NAME: Record<string, MessageKey> = {
@@ -21,9 +22,13 @@ export function useVoiceFallbackToasts(): void {
     void onVoiceFallback((event) => {
       const provider = t(`voice.provider.${event.provider}` as MessageKey)
       const engineKey = ENGINE_NAME[event.fallback] ?? 'voice.provider.local'
+      const reason =
+        event.provider === 'server'
+          ? t(serverErrorKey(event.reason))
+          : t(`prefs.voiceTestFailed.${event.reason}` as MessageKey)
       useUiStore.getState().pushToast({
         title: t('voice.fallback.title', { provider }),
-        body: `${t(`prefs.voiceTestFailed.${event.reason}` as MessageKey)} ${t('voice.fallback.used', { engine: t(engineKey) })}`,
+        body: `${reason} ${t('voice.fallback.used', { engine: t(engineKey) })}`,
       })
       if (event.reason === 'auth' && isCloudProvider(event.provider)) markKeyInvalid(event.provider)
     }).then((fn) => {

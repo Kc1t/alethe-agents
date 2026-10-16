@@ -245,6 +245,11 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
   a language set), otherwise the first downloaded local model; narration uses the system voice. A
   toast names the provider that failed and why. A local failure never falls back to the cloud.
 - Downloaded models live in `<app data>/speech-models/<id>` and are managed from the provider page.
+- Local voice servers: Preferences → Voice → Local servers adds a text-to-speech server you run
+  yourself (OpenAI-compatible such as Chatterbox or Kokoro-FastAPI, or Fish Speech), on this
+  computer or your local network, as a narration voice. Optional API keys stay in the system
+  keychain, public addresses are refused, and the system voice takes over if the server is
+  unavailable. See [docs/VOICE.md](VOICE.md#local-voice-servers).
 
 ## Spotify
 

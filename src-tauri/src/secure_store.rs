@@ -10,6 +10,7 @@ pub enum SecretKind {
     SpotifyAccessToken,
     SpotifyRefreshToken,
     VoiceProviderKey(crate::voice_providers::CloudProvider),
+    VoiceServerKey(crate::voice_servers::id::ServerId),
 }
 
 impl SecretKind {
@@ -24,7 +25,8 @@ impl SecretKind {
                 crate::voice_providers::CloudProvider::Elevenlabs => "voice-key-elevenlabs",
                 crate::voice_providers::CloudProvider::Gemini => "voice-key-gemini",
                 crate::voice_providers::CloudProvider::Openrouter => "voice-key-openrouter",
-            },
+            }),
+            Self::VoiceServerKey(id) => Cow::Owned(format!("voice-server-{id}")),
         }
     }
 }
@@ -111,6 +113,15 @@ mod tests {
         assert_ne!(
             account("profile-a", SecretKind::SpotifyRefreshToken),
             account("profile-b", SecretKind::SpotifyRefreshToken)
+        );
+    }
+
+    #[test]
+    fn voice_server_keys_are_per_server() {
+        let id = crate::voice_servers::id::ServerId::parse("V1StGXR8_Z5jdHi6B-myT").unwrap();
+        assert_eq!(
+            account("default", SecretKind::VoiceServerKey(id)),
+            "profile:default:voice-server-V1StGXR8_Z5jdHi6B-myT"
         );
     }
 
