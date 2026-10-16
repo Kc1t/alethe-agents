@@ -696,3 +696,33 @@ private struct WorkspaceActionBody: View {
             .onHover { hovering = $0 }
     }
 }
+
+/// The web sidebar uses unboxed shell and document glyphs in a 15-point lead slot.
+public struct AletheSidebarItemIcon: View {
+    let symbol: String
+    let shell: Bool
+    @Environment(\.metrics) private var metrics
+
+    public init(symbol: String, shell: Bool = false) {
+        self.symbol = symbol
+        self.shell = shell
+    }
+
+    public var body: some View {
+        Group {
+            if shell {
+                HStack(alignment: .bottom, spacing: metrics.size(1)) {
+                    Image(systemName: "chevron.right")
+                    Image(systemName: "minus")
+                        .offset(y: metrics.size(2))
+                }
+                .font(metrics.font(size: 8, weight: .semibold))
+            } else {
+                Image(systemName: symbol)
+                    .font(metrics.font(size: 14))
+            }
+        }
+        .frame(width: metrics.size(15), height: metrics.size(15))
+        .accessibilityHidden(true)
+    }
+}

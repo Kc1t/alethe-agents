@@ -32,7 +32,6 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
     let label: Label
     @State private var expanded = true
     @State private var nativeExpanded = false
-    @State private var hovering = false
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.sidebarGroupDepth) private var depth
@@ -60,20 +59,18 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                     }
                 }
                 .onTapGesture { if isGroup { binding.wrappedValue.toggle() } }
-                .onHover { hovering = $0 }
                 .overlay(alignment: .bottomTrailing) {
                     Button { binding.wrappedValue.toggle() } label: {
                         Image(systemName: "chevron.down")
                             .rotationEffect(.degrees(binding.wrappedValue ? 0 : -90))
-                            .font(metrics.font(size: isGroup ? 14 : 15))
-                            .foregroundStyle(theme[.fgFaint])
-                            .frame(width: metrics.size(isGroup ? 18 : 20), height: metrics.size(20))
+                            .font(metrics.font(size: isGroup ? 14 : 13))
+                            .foregroundStyle(theme[isGroup ? .fgFaint : .fgMuted])
+                            .frame(width: metrics.size(isGroup ? 18 : 20), height: metrics.size(isGroup ? 18 : 20))
                     }
                     .buttonStyle(.plain)
-                    .opacity(isGroup && !hovering ? 0 : 1)
                     .accessibilityLabel(Text("sidebar.disclosure"))
                     .padding(.trailing, metrics.size(isGroup ? 6 : 8))
-                    .padding(.bottom, metrics.size(4))
+                    .padding(.bottom, metrics.size(isGroup ? 5 : 4))
                 }
                 .listRowInsets(EdgeInsets(top: 0, leading: metrics.size(8 + CGFloat(depth) * 10),
                                           bottom: 0, trailing: metrics.size(8)))
@@ -106,9 +103,11 @@ struct SidebarLabelStyle: LabelStyle {
     @ViewBuilder func makeBody(configuration: Configuration) -> some View {
         if metrics.isWebInterface {
             HStack(spacing: metrics.size(isGroup ? 8 : 9)) {
-                configuration.icon
-                    .font(metrics.font(size: 14))
-                    .frame(width: metrics.size(isGroup ? 14 : 15), height: metrics.size(15))
+                if !isGroup {
+                    configuration.icon
+                        .font(metrics.font(size: 14))
+                        .frame(width: metrics.size(15), height: metrics.size(15))
+                }
                 configuration.title
             }
         } else { Label(configuration) }
