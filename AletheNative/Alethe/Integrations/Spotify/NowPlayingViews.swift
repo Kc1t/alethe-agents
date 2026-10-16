@@ -4,12 +4,15 @@ import AppKit
 import SwiftUI
 
 /// Home's Now Playing card (upstream `HomeView/NowPlayingWidget`): art, track, artists, progress and
-/// Open in Spotify; a connect prompt while Spotify is not connected and no track was kept.
+/// Open in Spotify in native mode; the web hero stays empty until a track is known.
 struct NowPlayingCard: View {
+    var homeDockInfoWidth: CGFloat = .infinity
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.openSettings) private var openSettings
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
+
+    @State private var homeDockHovered = false
 
     var body: some View {
         if let model = environment.nowPlaying.model {
@@ -21,13 +24,17 @@ struct NowPlayingCard: View {
 
     @ViewBuilder private func content(_ model: NowPlayingModel) -> some View {
         if let track = model.current {
-            playing(track, model: model)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .aletheCard()
-                .frame(width: metrics.size(320))
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("home.nowPlaying")
-        } else if model.connected == false {
+            if metrics.isWebInterface {
+                webDock(track)
+            } else {
+                playing(track, model: model)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .aletheCard()
+                    .frame(width: metrics.size(320))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("home.nowPlaying")
+            }
+        } else if !metrics.isWebInterface, model.connected == false {
             connectPrompt(model)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .aletheCard()
@@ -38,6 +45,60 @@ struct NowPlayingCard: View {
             // Nothing to show yet; a zero-size view keeps the visibility hooks alive.
             Color.clear.frame(width: 0, height: 0)
         }
+    }
+
+    private func webDock(_ track: SpotifyNowPlaying) -> some View {
+        Button {} label: {
+            HStack(spacing: metrics.size(homeDockHovered ? 6 : 0)) {
+                CoverArt(url: track.coverURL, size: metrics.size(30))
+                    .clipShape(Circle())
+                    .overlay(alignment: .bottomTrailing) {
+                        if track.playing {
+                            Image(systemName: "waveform")
+                                .font(metrics.font(size: 7))
+                                .foregroundStyle(theme[.bg])
+                                .frame(width: metrics.size(14), height: metrics.size(14))
+                                .background(theme[.statusWorking], in: Circle())
+                                .overlay(Circle().strokeBorder(theme[.bgElevated], lineWidth: metrics.size(2)))
+                                .offset(x: metrics.size(5), y: metrics.size(4))
+                        }
+                    }
+                VStack(alignment: .leading, spacing: metrics.size(2)) {
+                    Text(verbatim: track.track)
+                        .font(metrics.font(size: 11, weight: .medium))
+                        .foregroundStyle(theme[.fg])
+                        .accessibilityIdentifier("home.nowPlaying.track")
+                    HStack(spacing: metrics.size(4)) {
+                        Text(verbatim: track.artist)
+                            .font(metrics.font(size: 10))
+                            .foregroundStyle(theme[.fgMuted])
+                            .accessibilityIdentifier("home.nowPlaying.artist")
+                        if track.playing {
+                            Equalizer(barCount: 4, height: metrics.size(9))
+                                .accessibilityIdentifier("home.nowPlaying.status")
+                        } else {
+                            Text("home.nowPlaying.last")
+                                .accessibilityIdentifier("home.nowPlaying.status")
+                                .font(metrics.font(size: 10))
+                                .foregroundStyle(theme[.fgFaint])
+                        }
+                    }
+                }
+                .lineLimit(1)
+                .frame(width: homeDockHovered ? min(metrics.size(126), homeDockInfoWidth) : 0, alignment: .leading)
+                .opacity(homeDockHovered ? 1 : 0)
+                .clipped()
+            }
+            .padding(metrics.size(2))
+            .padding(.trailing, homeDockHovered ? metrics.size(6) : 0)
+            .frame(minWidth: metrics.size(36), minHeight: metrics.size(36))
+            .background(theme[homeDockHovered ? .bgElevated : .bg].opacity(homeDockHovered ? 0.88 : 0.72), in: Capsule())
+            .overlay(Capsule().strokeBorder(theme[homeDockHovered ? .accentBorder : .border], lineWidth: metrics.size(1)))
+        }
+        .buttonStyle(.plain)
+        .onHover { homeDockHovered = $0 }
+        .accessibilityLabel(Text(track.playing ? "nowPlaying.playing" : "nowPlaying.lastTrack"))
+        .accessibilityIdentifier("home.nowPlaying")
     }
 
     private func playing(_ track: SpotifyNowPlaying, model: NowPlayingModel) -> some View {

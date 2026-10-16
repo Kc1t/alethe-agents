@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- Alethe Home centers the avatar, activity streak, greeting and date with web-matched hero spacing;
+  the compact music dock appears only for a known track and no longer covers the greeting.
+- Alethe Home setup uses the web's two-step walkthrough, divided rows, compact progress bar and
+  footer; quick-launch controls wrap at narrow widths and Native macOS mode keeps its existing layout.
 - Alethe interface workspace containers use square borders, project-colored top rules and 32pt
   headers; panes use square focus rings, 10pt split gutters with hover handles, and web terminal padding.
 - Pane actions use compact identity and action chips; sub-tabs keep their add control next to the tabs.
