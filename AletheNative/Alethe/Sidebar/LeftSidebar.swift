@@ -79,7 +79,7 @@ struct LeftSidebar: View {
         VStack(spacing: 0) {
             ScrollView(.horizontal) {
                 HStack(spacing: metrics.size(4)) {
-                    Button { environment.toggleHome() } label: {
+                    Button { environment.showingHome = true } label: {
                         Label("leftSidebar.home", systemImage: "house")
                     }
                     .buttonStyle(AletheSidebarTabStyle(isSelected: environment.showingHome))
@@ -117,8 +117,11 @@ struct LeftSidebar: View {
             .padding(.horizontal, metrics.size(8))
             .padding(.vertical, metrics.size(6))
             .overlay(alignment: .bottom) { rule }
-            content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            webContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(theme[.bg])
             webFooter
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
         }
         .foregroundStyle(theme[.fg])
         .background(theme[.bg])
@@ -131,12 +134,47 @@ struct LeftSidebar: View {
     private func webTab(_ id: String, title: LocalizedStringKey, symbol: String) -> some View {
         Button {
             selectedTab = id
-            environment.showingHome = false
         } label: { Label(title, systemImage: symbol) }
-        .buttonStyle(AletheSidebarTabStyle(isSelected: !environment.showingHome && effectiveTab == id))
+        .buttonStyle(AletheSidebarTabStyle(isSelected: effectiveTab == id))
         .help(Text(title))
         .accessibilityIdentifier("leftSidebar.tab.\(id)")
         .accessibilityAddTraits(effectiveTab == id ? .isSelected : [])
+    }
+
+    // Home and the sidebar tab are independent in NormalProjectSidebar.tsx.
+    @ViewBuilder private var webContent: some View {
+        if effectiveTab == "files" {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: metrics.size(8)) {
+                    AletheSectionLabel(Text("leftSidebar.explorer"))
+                    Spacer(minLength: 0)
+                    Image(systemName: "ellipsis")
+                        .font(metrics.font(size: 14))
+                        .foregroundStyle(theme[.fgMuted])
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, metrics.size(12))
+                .frame(height: metrics.size(34))
+                .background(theme[.bg])
+                .overlay(alignment: .bottom) { rule }
+                if selectedProject != nil {
+                    FilesView()
+                        .scrollContentBackground(.hidden)
+                        .background(theme[.bg])
+                } else {
+                    ContentUnavailableView {
+                        Label("leftSidebar.emptyTitle", systemImage: "folder.badge.plus")
+                    } description: {
+                        Text("leftSidebar.emptyDescription")
+                    } actions: {
+                        Button("leftSidebar.emptyAction") { environment.editorRequest = .newProject(.ungrouped) }
+                            .buttonStyle(AletheButtonStyle())
+                            .disabled(environment.workspace == nil)
+                    }
+                }
+            }
+            .background(theme[.bg])
+        } else { content }
     }
 
     private var webFooter: some View {
@@ -162,7 +200,7 @@ struct LeftSidebar: View {
                         }
                     }
                     .padding(metrics.size(2))
-                    .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                    .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
                         .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 }
