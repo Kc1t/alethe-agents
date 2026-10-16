@@ -106,23 +106,43 @@ private struct SidebarProjectsHeader: View {
             AletheSectionLabel(Text("sidebar.projects.header"))
             Spacer(minLength: metrics.space(.s))
             Button { environment.editorRequest = .newGroup(parent: nil) } label: {
-                Label("menu.file.newGroup", systemImage: "rectangle.stack.badge.plus")
+                Label("menu.file.newGroup", systemImage: metrics.isWebInterface ? "folder.badge.plus" : "rectangle.stack.badge.plus")
             }
             .buttonStyle(AletheIconButtonStyle(side: 20))
             .help(Text("menu.file.newGroup"))
             .accessibilityIdentifier("sidebar.newGroup")
-            Button { actions.chooseFolders() } label: {
-                Label("sidebar.addProject", systemImage: "folder.badge.plus")
+            if !metrics.isWebInterface {
+                Button { actions.chooseFolders() } label: {
+                    Label("sidebar.addProject", systemImage: "folder.badge.plus")
+                }
+                .buttonStyle(AletheIconButtonStyle(side: 20))
+                .help(Text("sidebar.addProject"))
+                .accessibilityIdentifier("sidebar.addProject")
             }
-            .buttonStyle(AletheIconButtonStyle(side: 20))
-            .help(Text("sidebar.addProject"))
-            .accessibilityIdentifier("sidebar.addProject")
-            Button { environment.editorRequest = .newProject(.ungrouped) } label: {
-                Label("menu.file.newProject", systemImage: "plus")
+            if metrics.isWebInterface {
+                Menu {
+                    Button("menu.file.newProject") { environment.editorRequest = .newProject(.ungrouped) }
+                    Button("sidebar.addProject") { actions.chooseFolders() }
+                        .accessibilityIdentifier("sidebar.addProject")
+                } label: {
+                    Label("menu.file.newProject", systemImage: "plus")
+                } primaryAction: {
+                    environment.editorRequest = .newProject(.ungrouped)
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .buttonStyle(AletheIconButtonStyle(side: 20))
+                .frame(width: metrics.size(20), height: metrics.size(20))
+                .help(Text("menu.file.newProject"))
+                .accessibilityIdentifier("sidebar.newProject")
+            } else {
+                Button { environment.editorRequest = .newProject(.ungrouped) } label: {
+                    Label("menu.file.newProject", systemImage: "plus")
+                }
+                .buttonStyle(AletheIconButtonStyle(side: 20))
+                .help(Text("menu.file.newProject"))
+                .accessibilityIdentifier("sidebar.newProject")
             }
-            .buttonStyle(AletheIconButtonStyle(side: 20))
-            .help(Text("menu.file.newProject"))
-            .accessibilityIdentifier("sidebar.newProject")
         }
         .padding(.horizontal, metrics.isWebInterface ? metrics.size(12) : 0)
         .frame(height: metrics.isWebInterface ? metrics.size(34) : nil)
@@ -192,13 +212,13 @@ private struct GroupRow: View {
                     Button { environment.editorRequest = .newProject(.group(group.id)) } label: {
                         Label("sidebar.newProjectHere", systemImage: "plus")
                     }
-                    .buttonStyle(AletheIconButtonStyle(side: 20))
+                    .buttonStyle(AletheIconButtonStyle(side: metrics.isWebInterface ? 18 : 20))
                     .help(Text("sidebar.newProjectHere"))
                     .opacity(hovering ? 1 : 0)
                 }
             } icon: {
                 if metrics.isWebInterface {
-                    AletheMonogram(name: group.name, color: theme[group.color?.token ?? .panelHover], side: 14)
+                    EmptyView()
                 } else if let color = group.color {
                     AletheMonogram(name: group.name, color: theme[color.token], side: 14)
                 } else {
@@ -251,12 +271,20 @@ private struct ProjectRow: View {
         let tabs = project.panes.flatMap(\.tabs)
         let planning = environment.gsdSync.sessions(of: project.id)
         Group {
-            if tabs.isEmpty && merges.sessions.isEmpty && planning.isEmpty {
+            if !metrics.isWebInterface && tabs.isEmpty && merges.sessions.isEmpty && planning.isEmpty {
                 label
             } else {
                 SidebarDisclosure(isGroup: false, item: .project(project.id)) {
-                    ForEach(tabs) { tab in
-                        if !metrics.isWebInterface || actions.workspace.document.paneHolding(tab.id)?.pane.activeTab?.id == tab.id {
+                    if metrics.isWebInterface {
+                        ForEach(project.panes) { pane in
+                            if let tab = pane.activeTab {
+                                SidebarTerminalRow(tab: tab, project: project, actions: actions)
+                            } else if pane.content.filePath != nil {
+                                SidebarFileRow(pane: pane, project: project, actions: actions)
+                            }
+                        }
+                    } else {
+                        ForEach(tabs) { tab in
                             SidebarTerminalRow(tab: tab, project: project, actions: actions)
                         }
                     }
@@ -321,8 +349,16 @@ private struct ProjectRow: View {
                 }
             }
         } icon: {
-            AletheMonogram(name: project.name, color: theme[project.color.token])
-                .opacity(dimmed ? 0.6 : 1)
+            if metrics.isWebInterface {
+                Image(systemName: "folder")
+                    .font(metrics.font(size: 16))
+                    .foregroundStyle(theme[project.color.token])
+                    .saturation(dimmed ? 0 : 1)
+                    .opacity(dimmed ? 0.6 : 1)
+            } else {
+                AletheMonogram(name: project.name, color: theme[project.color.token])
+                    .opacity(dimmed ? 0.6 : 1)
+            }
         }
         .modifier(SidebarLabelAppearance(isGroup: false))
         .modifier(SidebarWebRow(kind: .project))
@@ -346,6 +382,16 @@ private struct SidebarTerminalRow: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var hovering = false
+
+    private var webAgentSymbol: String {
+        switch tab.agent {
+        case "shell": "chevron.right"
+        case "claude": "sun.max.fill"
+        case "codex": "hexagon"
+        case "opencode": "chevron.left.forwardslash.chevron.right"
+        default: "terminal"
+        }
+    }
 
     var body: some View {
         let pane = actions.workspace.document.paneHolding(tab.id)?.pane
@@ -394,12 +440,19 @@ private struct SidebarTerminalRow: View {
                 }
             }
         } icon: {
-            Image(systemName: disabled ? "pause.circle"
-                  : environment.terminals.hibernated.contains(tab.id) ? "moon.zzz"
-                  : tab.agent == "shell" ? "terminal" : "sparkles")
-                .foregroundStyle(theme[disabled ? .statusDisabled : AgentTokens.accent(for: tab.agent)])
-                .saturation(disabled ? 0 : 1)
-                .help(environment.terminals.hibernated.contains(tab.id) ? Text("sidebar.hibernated") : Text(verbatim: ""))
+            if metrics.isWebInterface {
+                AletheSidebarItemIcon(symbol: webAgentSymbol, shell: tab.agent == "shell")
+                    .foregroundStyle(theme[tab.agent == "shell" ? .fgMuted : AgentTokens.accent(for: tab.agent)])
+                    .saturation(disabled ? 0 : 1)
+                    .opacity(disabled ? 0.6 : 1)
+            } else {
+                Image(systemName: disabled ? "pause.circle"
+                      : environment.terminals.hibernated.contains(tab.id) ? "moon.zzz"
+                      : tab.agent == "shell" ? "terminal" : "sparkles")
+                    .foregroundStyle(theme[disabled ? .statusDisabled : AgentTokens.accent(for: tab.agent)])
+                    .saturation(disabled ? 0 : 1)
+                    .help(environment.terminals.hibernated.contains(tab.id) ? Text("sidebar.hibernated") : Text(verbatim: ""))
+            }
         }
         .modifier(SidebarLabelAppearance(isGroup: false))
         .modifier(SidebarWebRow(kind: .terminal,
@@ -408,6 +461,55 @@ private struct SidebarTerminalRow: View {
         .tag(SidebarItem.tab(tab.id))
         .contextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }
         .accessibilityIdentifier("sidebar.tab.\(tab.agent)")
+    }
+}
+
+/// File panes have no terminal sub-tabs, but occupy the same row in the web tree.
+private struct SidebarFileRow: View {
+    let pane: Pane
+    let project: Project
+    let actions: SidebarActions
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @State private var hovering = false
+
+    private var path: String { pane.content.filePath ?? "" }
+
+    var body: some View {
+        HStack(spacing: metrics.size(9)) {
+            AletheSidebarItemIcon(symbol: "doc.text")
+                .foregroundStyle(theme[.fgMuted])
+            Text(verbatim: URL(filePath: path).lastPathComponent)
+                .font(metrics.font(size: 12.5))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Menu {
+                Button("sidebar.revealInFinder") { OpenInActions.revealInFinder(path) }
+                Button("terminal.close") { actions.workspace.update { $0.closePane(pane.id) } }
+            } label: {
+                Label("sidebar.rowMenu", systemImage: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .frame(width: metrics.size(hovering ? 20 : 0))
+            .opacity(hovering ? 1 : 0)
+            .help(Text("sidebar.rowMenu"))
+        }
+        .foregroundStyle(theme[.fg])
+        .contentShape(Rectangle())
+        .onTapGesture {
+            actions.select(.project(project.id))
+            actions.workspace.update {
+                $0.activateGrid(pane.gridID, in: project.id)
+                $0.workspace.focusedPaneID = pane.id
+            }
+        }
+        .modifier(SidebarWebRow(kind: .terminal,
+            focused: actions.workspace.document.workspace.focusedPaneID == pane.id))
+        .onHover { hovering = $0 }
+        .help(Text(verbatim: path))
+        .accessibilityIdentifier("sidebar.file.\(pane.id.rawValue)")
     }
 }
 

@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- Alethe interface sidebar projects use colored folder icons and persistent trailing chevrons;
+  group tags omit monograms and align their names, rules, add actions and chevrons with the web tree.
+- The Projects header shows only New group and New project; Add project folder remains in the
+  New project menu, sidebar context menu and folder drop. Native macOS styling is preserved.
+- Sidebar terminal rows use unboxed shell and distinct agent glyphs; file panes appear alongside
+  terminals in project order with document icons, focus selection and hover actions.
 - Alethe interface title bar spans the window with its left controls aligned to the sidebar width;
   standard macOS traffic lights remain visible and centered after resizing and appearance changes.
 - Alethe interface links and controls inherit the active theme accent throughout the main window.
