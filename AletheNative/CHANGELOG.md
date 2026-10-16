@@ -17,6 +17,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Clean sidebar profiles use the web's 40-point row, 24-point avatar and compact identity fonts.
   Layout switches use the elevated background and hide their label when space is insufficient.
   Native macOS interface styling remains unchanged.
+- Alethe interface right sidebar includes Jev and Plugins tabs with disabled controls and clear
+  macOS availability messages; Markdown empty states, PR headers and states, agent cards, GSD rows
+  and MCP filters follow the web dimensions. MCP filters and server rows use agent brand logos,
+  and narrow panels keep scope controls separate from scrollable agent filters. Native macOS
+  interface layouts remain unchanged.
 - Alethe interface title bar follows the web control order: menu and pressed sidebar toggle after
   the traffic lights, then news, sync, profile, live memory in MB and the right-sidebar toggle.
   Idle Pomodoro, notification and usage-launcher buttons no longer occupy the web title bar.

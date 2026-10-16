@@ -15,6 +15,8 @@ enum PluginViewRegistry {
         case AgentsView.tabID: "rightSidebar.agents"
         case GSDSyncView.tabID: "rightSidebar.gsdSync"
         case McpPanel.tabID: "rightSidebar.mcp"
+        case "jev": "rightSidebar.jev"
+        case "plugins": "rightSidebar.plugins"
         default: LocalizedStringKey(tab.title)
         }
     }
@@ -28,6 +30,8 @@ enum PluginViewRegistry {
         case AgentsView.tabID: AgentsView()
         case GSDSyncView.tabID: GSDSyncView()
         case McpPanel.tabID: McpPanel()
+        case "jev": WebUnavailableSidebar(voice: true)
+        case "plugins": WebUnavailableSidebar(voice: false)
         default: ExtensionOrUnavailable(viewID: viewID)
         }
     }
@@ -79,7 +83,7 @@ struct RightSidebar: View {
     @Environment(\.theme) private var theme
     @State private var droppedMarkdown: [URL] = []
 
-    private var tabs: [SidebarTabContribution] {
+    private var nativeContributions: [SidebarTabContribution] {
         let plugins = environment.plugins.map {
             $0.viewPlacements.arranged($0.contributions.sidebarTabs).right
         } ?? []
@@ -91,6 +95,15 @@ struct RightSidebar: View {
             + (environment.features.isOn(.orchestrator) ? [AgentsView.tab] : [])
             + plugins.filter { $0.viewID == TodosPlugin.viewID }
             + (environment.extensions?.sidebarTabs ?? [])
+    }
+
+    private var tabs: [SidebarTabContribution] {
+        guard metrics.isWebInterface else { return nativeContributions }
+        let native = nativeContributions
+        return native.filter { $0.viewID != TodosPlugin.viewID && $0.viewID != PullRequestsView.tabID && $0.viewID != AgentsView.tabID }
+            + [SidebarTabContribution(id: "jev", title: "Jev", symbol: "mic", side: .right, viewID: "jev")]
+            + native.filter { $0.viewID == PullRequestsView.tabID || $0.viewID == AgentsView.tabID }
+            + [SidebarTabContribution(id: "plugins", title: "Plugins", symbol: "square.3.layers.3d", side: .right, viewID: "plugins")]
     }
 
     private var selectedProject: Project? {
@@ -207,7 +220,7 @@ struct RightSidebar: View {
 
     private func webSymbol(_ tab: SidebarTabContribution) -> String {
         switch tab.viewID {
-        case AgentsView.tabID: "brain.head.profile"
+        case AgentsView.tabID: "cpu"
         case GSDSyncView.tabID: "sparkles"
         default: tab.symbol
         }
@@ -222,13 +235,14 @@ struct RightSidebar: View {
 struct WebSidebarHeader<Content: View>: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
+    var trailing: CGFloat = 10
     @ViewBuilder var content: Content
     var body: some View {
         HStack(spacing: metrics.size(7)) { content }
             .font(metrics.font(size: 12, weight: 650))
             .foregroundStyle(theme[.fg])
             .padding(.leading, metrics.size(12))
-            .padding(.trailing, metrics.size(10))
+            .padding(.trailing, metrics.size(trailing))
             .frame(height: metrics.size(38))
             .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
     }
@@ -239,24 +253,92 @@ struct WebSidebarEmpty: View {
     var detail: LocalizedStringKey? = nil
     var symbol = "doc.text"
     var boxed = false
+    var iconSize: CGFloat = 20
+    var minimumHeight: CGFloat? = nil
+    var gap: CGFloat? = nil
+    var centeredInPanel = true
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     var body: some View {
-        VStack(spacing: metrics.size(8)) {
-            Image(systemName: symbol).font(metrics.font(size: 20))
+        VStack(spacing: metrics.size(gap ?? (boxed ? 7 : 8))) {
+            Image(systemName: symbol).font(metrics.font(size: iconSize))
+                .foregroundStyle(theme[boxed ? .fgFaint : .fgMuted])
                 .frame(width: boxed ? metrics.size(38) : nil, height: boxed ? metrics.size(38) : nil)
                 .background(theme[.bgElevated].opacity(boxed ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
                 .overlay {
                     if boxed { RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)) }
                 }
+                .padding(.bottom, boxed ? metrics.size(3) : 0)
             Text(title).font(metrics.font(size: 12, weight: .bold)).foregroundStyle(theme[.fg])
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             if let detail {
                 Text(detail).font(metrics.font(size: 11))
-                    .multilineTextAlignment(.center).frame(maxWidth: metrics.size(240))
+                    .multilineTextAlignment(.center).lineSpacing(metrics.size(2))
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: metrics.size(boxed ? 210 : 240))
             }
         }
         .foregroundStyle(theme[.fgMuted])
         .padding(metrics.size(24))
-        .frame(maxWidth: .infinity, minHeight: metrics.size(boxed ? 220 : 180), maxHeight: .infinity)
+        .frame(maxWidth: .infinity, minHeight: metrics.size(minimumHeight ?? (boxed ? 220 : 180)), maxHeight: centeredInPanel ? .infinity : nil)
+    }
+}
+
+/// Backend-free tabs retain the web toolbar and explain their platform availability.
+private struct WebUnavailableSidebar: View {
+    let voice: Bool
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: metrics.size(7)) {
+                Image(systemName: voice ? "mic" : "square.3.layers.3d")
+                    .font(metrics.font(size: voice ? 15 : 16))
+                Text((voice ? "rightSidebar.jev" : "rightSidebar.plugins") as LocalizedStringKey)
+                    .font(metrics.font(size: 14, weight: .medium)).lineLimit(1)
+                Spacer(minLength: 0)
+                Button {} label: {
+                    Label((voice ? "rightSidebar.jev.clear" : "rightSidebar.plugins.refresh") as LocalizedStringKey,
+                          systemImage: voice ? "trash" : "arrow.clockwise")
+                        .font(metrics.font(size: voice ? 14 : 13))
+                }
+                .buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
+                .disabled(true)
+                .accessibilityIdentifier(voice ? "jev.clear" : "plugins.refresh")
+            }
+            .foregroundStyle(theme[.fg])
+            .padding(.horizontal, metrics.size(10))
+            .frame(height: metrics.size(44))
+            .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+            if !voice {
+                HStack(spacing: metrics.size(6)) {
+                    Image(systemName: "magnifyingglass").font(metrics.font(size: 13))
+                    TextField("rightSidebar.plugins.search", text: .constant(""))
+                        .textFieldStyle(.plain).font(metrics.font(size: 12))
+                        .padding(.horizontal, metrics.size(8)).frame(height: metrics.size(26))
+                        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                        .disabled(true)
+                }
+                .foregroundStyle(theme[.fgMuted])
+                .padding(.vertical, metrics.size(8)).padding(.horizontal, metrics.size(10))
+                .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+            }
+            ScrollView {
+                if voice {
+                    WebSidebarEmpty(title: "rightSidebar.jev.empty", detail: "rightSidebar.jev.unavailable", symbol: "mic", boxed: true, iconSize: 18)
+                } else {
+                    VStack(spacing: metrics.size(8)) {
+                        Image(systemName: "square.3.layers.3d").font(metrics.font(size: 20))
+                        Text("rightSidebar.plugins.empty").font(metrics.font(size: 12, weight: .bold)).foregroundStyle(theme[.fg])
+                        Text("rightSidebar.plugins.unavailable").font(metrics.font(size: 11))
+                            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .foregroundStyle(theme[.fgMuted]).padding(.vertical, metrics.size(24)).padding(.horizontal, metrics.size(12))
+                    .frame(maxWidth: .infinity)
+                }
+            }.padding(metrics.size(10))
+        }
+        .accessibilityIdentifier(voice ? "jev.panel" : "plugins.panel")
     }
 }

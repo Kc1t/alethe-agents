@@ -29,20 +29,23 @@ struct PullRequestsView: View {
     var body: some View {
         VStack(spacing: 0) {
             if metrics.isWebInterface {
-                WebSidebarHeader {
+                HStack(spacing: metrics.size(7)) {
                     Image(systemName: "arrow.triangle.pull").font(metrics.font(size: 16))
-                    Text("pullRequests.title")
-                    Text("rightSidebar.prScopeAll").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                    Text("rightSidebar.pr.title").font(metrics.font(size: 14, weight: .medium)).lineLimit(1)
+                    Text("rightSidebar.prScopeAll").lineLimit(1).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
                     Spacer(minLength: 0)
                     if phase == .loading { ProgressView().controlSize(.small) }
                     Button {
                         reload += 1
                     } label: {
-                        Label("pullRequests.refresh", systemImage: "arrow.clockwise")
+                        Label("pullRequests.refresh", systemImage: "arrow.clockwise").font(metrics.font(size: 13))
                     }
-                    .buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 24))
+                    .buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
                     .help("pullRequests.refresh").disabled(phase == .loading)
                 }
+                .foregroundStyle(theme[.fg]).padding(.horizontal, metrics.size(10))
+                .frame(height: metrics.size(44))
+                .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
             } else {
             HStack {
                 Text("pullRequests.title").font(metrics.font(.headline))
@@ -72,29 +75,51 @@ struct PullRequestsView: View {
     private var content: some View {
         switch phase {
         case .missing:
+            if metrics.isWebInterface {
+                webError { hint("pullRequests.missing.hint", command: "brew install gh") }
+            } else {
             ContentUnavailableView {
                 Label("pullRequests.missing", systemImage: "terminal")
             } description: {
                 hint("pullRequests.missing.hint", command: "brew install gh")
             }
+            }
         case .signedOut:
+            if metrics.isWebInterface {
+                webError { hint("pullRequests.signedOut.hint", command: "gh auth login") }
+            } else {
             ContentUnavailableView {
                 Label("pullRequests.signedOut", systemImage: "person.crop.circle.badge.xmark")
             } description: {
                 hint("pullRequests.signedOut.hint", command: "gh auth login")
             }
+            }
         case .failed(let message):
+            if metrics.isWebInterface {
+                webError { Text(verbatim: message).textSelection(.enabled) }
+            } else {
             ContentUnavailableView {
                 Label("pullRequests.failed", systemImage: "exclamationmark.triangle")
             } description: {
                 Text(verbatim: message).foregroundStyle(theme[.statusStopped])
             }
+            }
         case .loading where prs.isEmpty:
-            Color.clear
+            if metrics.isWebInterface {
+                HStack(spacing: metrics.size(8)) {
+                    ProgressView().controlSize(.small)
+                    Text("rightSidebar.pr.loading").font(metrics.font(size: 12)).lineLimit(1)
+                }
+                .foregroundStyle(theme[.fgMuted]).padding(metrics.size(16))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(metrics.size(10))
+            } else { Color.clear }
         case .loading, .ready:
             if prs.isEmpty {
                 if metrics.isWebInterface {
-                    WebSidebarEmpty(title: "pullRequests.empty", detail: "rightSidebar.prEmptyDetail", symbol: "arrow.triangle.pull", boxed: true)
+                    ScrollView {
+                        WebSidebarEmpty(title: "rightSidebar.pr.empty", detail: "rightSidebar.prEmptyDetail", symbol: "arrow.triangle.pull", boxed: true)
+                    }.padding(metrics.size(10))
                 } else {
                     ContentUnavailableView("pullRequests.empty", systemImage: "arrow.triangle.pull")
                 }
@@ -115,6 +140,18 @@ struct PullRequestsView: View {
                 .listStyle(.sidebar)
                 }
             }
+        }
+    }
+
+    private func webError<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            content().font(metrics.font(size: 12)).foregroundStyle(theme[.fg])
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(metrics.size(12))
+                .background(theme[.statusOfflineSoft], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.statusOffline], lineWidth: metrics.size(1)))
+                .padding(metrics.size(10))
         }
     }
 
@@ -144,23 +181,31 @@ struct PullRequestsView: View {
             HStack(spacing: metrics.size(4)) {
                 Text(verbatim: pr.author)
                 if let updated = pr.updatedAt { Text(verbatim: "·"); Text(updated, style: .date) }
-            }.font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint])
+            }.font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint]).lineLimit(1)
             HStack(spacing: metrics.size(6)) {
                 Button {
                     if let url = pr.browserURL { NSWorkspace.shared.open(url) }
                 } label: {
-                    Label("pullRequests.open", systemImage: "arrow.up.right.square")
+                    Label("pullRequests.open", systemImage: "arrow.up.right.square").font(metrics.font(size: 13))
                 }.buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                todoButton(pr).buttonStyle(AlethePanelActionStyle(accented: true))
+                Button {
+                    guard let url = pr.browserURL else { return }
+                    _ = TodosPlugin.activeStore?.addPullRequest(number: pr.number, title: pr.title, url: url)
+                } label: {
+                    Text((todoAdded(pr) ? "pullRequests.alreadyAdded" : "pullRequests.sendToTodo") as LocalizedStringKey)
+                        .lineLimit(1).frame(maxWidth: .infinity)
+                }
+                .disabled(todoAdded(pr) || TodosPlugin.activeStore == nil || pr.browserURL == nil)
+                .buttonStyle(AlethePanelActionStyle(accented: !todoAdded(pr)))
             }.padding(.top, metrics.size(10))
         }
         .padding(.vertical, metrics.size(10)).padding(.horizontal, metrics.size(12))
         .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
         .contextMenu {
-            Button("pullRequests.reviewWithAgent") { reviewing = pr }
-            Button("pullRequests.squashMergeMenu") { merging = pr }.disabled(reviews.reviewedHead(pr) == nil)
+            Button { reviewing = pr } label: { Label("pullRequests.reviewWithAgent", systemImage: "cpu") }
+            Button { merging = pr } label: { Label("pullRequests.squashMergeMenu", systemImage: "arrow.triangle.merge") }.disabled(reviews.reviewedHead(pr) == nil)
         }
     }
 
@@ -211,6 +256,10 @@ struct PullRequestsView: View {
             Button("pullRequests.squashMergeMenu") { merging = pr }
                 .disabled(reviews.reviewedHead(pr) == nil)
         }
+    }
+
+    private func todoAdded(_ pr: PullRequestSummary) -> Bool {
+        pr.browserURL.map { url in TodosPlugin.activeStore?.todos.contains { $0.prURL == url } == true } ?? false
     }
 
     private func todoButton(_ pr: PullRequestSummary) -> some View {

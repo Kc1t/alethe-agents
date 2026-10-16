@@ -35,10 +35,11 @@ struct AgentsView: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(spacing: metrics.isWebInterface ? 0 : metrics.space(.s)) {
                 if metrics.isWebInterface {
-                    WebSidebarHeader {
-                        Image(systemName: "brain.head.profile").font(metrics.font(size: 15))
+                    WebSidebarHeader(trailing: 8) {
+                        Image(systemName: "cpu").font(metrics.font(size: 15))
                         Text("rightSidebar.agents").lineLimit(1)
-                        Text((planner == nil ? "agents.scopeAll" : "agents.scopeFocused") as LocalizedStringKey)
+                        Text((planner == nil ? "rightSidebar.agents.scopeAll" : "rightSidebar.agents.scopeFocused") as LocalizedStringKey)
+                            .lineLimit(1).fixedSize()
                             .font(metrics.font(size: 9, weight: .semibold))
                             .foregroundStyle(theme[.fgMuted])
                             .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(1))
@@ -56,7 +57,7 @@ struct AgentsView: View {
                                 $0.addPane(to: project, content: .orchestrator)
                             }
                         } label: {
-                            Label("rightSidebar.maximize", systemImage: "arrow.up.left.and.arrow.down.right")
+                            Label("rightSidebar.maximize", systemImage: "arrow.up.left.and.arrow.down.right").font(metrics.font(size: 13))
                         }
                         .buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 22))
                         .accessibilityIdentifier("agents.maximize")
@@ -65,7 +66,7 @@ struct AgentsView: View {
                 } else { nativeHeader }
                 if jobs.isEmpty {
                     if metrics.isWebInterface {
-                        WebSidebarEmpty(title: "agents.empty", detail: "agents.emptyDetail", symbol: "brain.head.profile")
+                        WebSidebarEmpty(title: "rightSidebar.agents.empty", detail: "rightSidebar.agents.emptyDetail", symbol: "cpu")
                     } else {
                         ContentUnavailableView {
                             Label("agents.empty", systemImage: "person.3")
@@ -73,7 +74,7 @@ struct AgentsView: View {
                     }
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: metrics.space(.s)) {
+                        LazyVStack(spacing: metrics.isWebInterface ? metrics.size(6) : metrics.space(.s)) {
                             ForEach(jobs) { job in AgentSidebarCard(job: job, now: context.date) }
                         }.padding(metrics.isWebInterface ? metrics.size(8) : metrics.space(.s))
                     }
@@ -184,22 +185,26 @@ private struct AgentSidebarCard: View {
                     if let elapsed = BoardFormat.elapsed(
                         job.seconds.map { $0 + (job.status == .running ? max(0, now.timeIntervalSince(snapshotTime)) : 0) })
                     {
-                        Text(verbatim: elapsed).font(metrics.font(size: 10)).foregroundStyle(theme[.fgFaint])
+                        Text(verbatim: elapsed).fixedSize().font(metrics.font(size: 10)).foregroundStyle(theme[.fgFaint])
                     }
                 }
                 HStack(spacing: metrics.size(6)) {
                     Text(verbatim: job.agent).font(metrics.font(size: 10, weight: .semibold)).lineLimit(1)
                         .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(1))
                         .overlay(Capsule().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                    Text(job.status.title).foregroundStyle(
+                    Text(job.status.title).lineLimit(1).foregroundStyle(
                         theme[job.status == .blocked ? .statusWaiting : job.status == .failed ? .statusOffline : .fgMuted])
                     Spacer(minLength: 0)
                     if let cost = job.costUSD { Text(verbatim: cost.formatted(.currency(code: "USD"))).foregroundStyle(theme[.fgFaint]) }
                 }.font(metrics.font(size: 10))
                 if job.pendingApproval != nil && !job.native {
                     HStack(spacing: metrics.size(6)) {
-                        Button("orchestrator.answerAccept") { act(decision: "accept") }
-                        Button("orchestrator.answerDecline") { act(decision: "decline") }
+                        Button { act(decision: "accept") } label: {
+                            Label("orchestrator.answerAccept", systemImage: "checkmark").font(metrics.font(size: 10, weight: .semibold))
+                        }
+                        Button { act(decision: "decline") } label: {
+                            Label("orchestrator.answerDecline", systemImage: "xmark").font(metrics.font(size: 10, weight: .semibold))
+                        }
                     }.buttonStyle(AlethePanelActionStyle(approval: true)).disabled(acting)
                 }
                 if let failure { Text(verbatim: failure).foregroundStyle(theme[.statusOffline]) }
@@ -208,7 +213,7 @@ private struct AgentSidebarCard: View {
                 Button {
                     act(decision: nil)
                 } label: {
-                    Label("orchestrator.cancelAction", systemImage: "stop")
+                    Label("orchestrator.cancelAction", systemImage: "stop").font(metrics.font(size: 11))
                 }
                 .buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 22)).disabled(acting)
             }

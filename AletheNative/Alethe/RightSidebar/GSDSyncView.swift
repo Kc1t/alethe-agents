@@ -26,7 +26,8 @@ struct GSDSyncView: View {
         Group {
             if metrics.isWebInterface {
                 if sessions.isEmpty {
-                    WebSidebarEmpty(title: "gsdSync.empty", detail: "gsdSync.empty.detail", symbol: "sparkles")
+                    WebSidebarEmpty(title: "gsdSync.empty", detail: "rightSidebar.gsd.emptyDetail", symbol: "sparkles", minimumHeight: 220, gap: 7, centeredInPanel: false)
+                        .frame(maxHeight: .infinity, alignment: .top)
                         .accessibilityIdentifier("gsdSync.empty")
                 } else {
                     ScrollView {
@@ -106,13 +107,14 @@ private struct GSDSyncRow: View {
                     Text(verbatim: session.name).font(
                         metrics.font(size: 12, weight: .medium)
                     ).lineLimit(1).truncationMode(.middle)
-                    HStack(spacing: metrics.space(.xs)) {
-                        Text(GSDSyncStateGlyph.label(for: session))
+                    Group {
                         if let progress = GSDPlanningText.progress(session) {
-                            Text(verbatim: "·")
                             Text(verbatim: progress)
+                        } else {
+                            Text(GSDSyncStateGlyph.label(for: session))
                         }
                     }
+                    .lineLimit(1)
                     .font(metrics.font(size: 10))
                     .foregroundStyle(theme[.fgFaint])
                     .textCase(.uppercase).tracking(metrics.size(0.3))
@@ -144,6 +146,16 @@ struct GSDSyncStateGlyph: View {
     }
 
     var body: some View {
+        if metrics.isWebInterface && session.busy && session.error == nil {
+            ProgressView().controlSize(.mini)
+                .frame(width: metrics.size(13), height: metrics.size(13))
+                .help(Text(Self.label(for: session)))
+                .accessibilityLabel(Text(Self.label(for: session)))
+                .accessibilityIdentifier("gsdSync.state")
+        } else { nativeDot }
+    }
+
+    private var nativeDot: some View {
         Circle()
             .fill(theme[session.error != nil ? .statusStopped : session.busy ? .statusWorking : .statusIdle])
             .frame(width: metrics.size(7), height: metrics.size(7))
