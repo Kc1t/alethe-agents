@@ -5,6 +5,7 @@ import SwiftUI
 /// `TitleBar/index.tsx` and `TitleBar.module.css`, with the system traffic lights retained.
 struct WebTitleBar: View {
     @Binding var sidebarVisible: Bool
+    let leftWidth: Double
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -13,9 +14,9 @@ struct WebTitleBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // AppKit owns the traffic lights; reserve their hit region.
-            Color.clear.frame(width: metrics.size(72))
             HStack(spacing: metrics.size(4)) {
+                // The standard AppKit buttons are hosted above this reserved region.
+                Color.clear.frame(width: metrics.size(64))
                 Menu {
                     Button("menu.file.newProject") { environment.editorRequest = .newProject(.ungrouped) }
                     Button("menu.file.newGroup") { environment.editorRequest = .newGroup(parent: nil) }
@@ -58,11 +59,11 @@ struct WebTitleBar: View {
                 .foregroundStyle(theme[.fg])
                 .padding(.leading, metrics.size(6))
             }
-            .padding(.trailing, metrics.size(8))
+            .padding(.horizontal, metrics.size(8))
+            .frame(width: metrics.size(leftWidth), alignment: .leading)
             .overlay(alignment: .trailing) { theme[.border].frame(width: metrics.size(1)) }
             if let workspace = environment.workspace {
                 WorkspaceTabBar(workspace: workspace)
-                    .padding(.leading, metrics.size(2))
                     .layoutPriority(-1)
             } else {
                 Spacer(minLength: metrics.size(12))
@@ -107,10 +108,9 @@ struct WebTitleBar: View {
             .padding(.leading, metrics.size(2))
         }
         .foregroundStyle(theme[.fgMuted])
-        .padding(.horizontal, metrics.size(6))
         .frame(height: metrics.size(32))
-        .background(theme[.bgElevated])
         .background(WindowDragRegion())
+        .background(theme[.bgElevated])
         .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
         .accessibilityIdentifier("chrome.titleBar")
     }

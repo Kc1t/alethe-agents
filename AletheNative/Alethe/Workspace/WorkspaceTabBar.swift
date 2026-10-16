@@ -31,7 +31,7 @@ struct WorkspaceTabBar: View {
                 }
             }
         }
-        .padding(.horizontal, metrics.size(6))
+        .padding(.horizontal, metrics.size(metrics.isWebInterface ? 8 : 6))
         .frame(height: metrics.size(32))
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme[.bgElevated])

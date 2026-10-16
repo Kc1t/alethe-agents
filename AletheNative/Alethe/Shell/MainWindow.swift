@@ -26,7 +26,10 @@ struct MainWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: .aletheToggleWebSidebar)) { _ in
             if metrics.isWebInterface { sidebarVisible.toggle() }
         }
-        .background(WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(32)))
+        .overlay {
+            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(32))
+                .ignoresSafeArea(.container, edges: .top)
+        }
         .accessibilityHidden(!environment.startupFinished)
         .overlay {
             if !environment.startupFinished { StartupLoadingView() }
@@ -40,7 +43,7 @@ struct MainWindow: View {
 
     private var webShell: some View {
         VStack(spacing: 0) {
-            WebTitleBar(sidebarVisible: $sidebarVisible)
+            WebTitleBar(sidebarVisible: $sidebarVisible, leftWidth: webLeftWidth)
             HStack(spacing: 0) {
                 if sidebarVisible {
                     LeftSidebar()

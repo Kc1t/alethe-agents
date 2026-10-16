@@ -23,6 +23,8 @@ struct AletheApp: App {
                 .environment(environment)
                 .environment(\.theme, environment.theme)
                 .environment(\.metrics, environment.metrics)
+                .tint(environment.metrics.isWebInterface ? environment.theme[.accent] : nil)
+                .accentColor(environment.metrics.isWebInterface ? environment.theme[.accent] : nil)
                 .preferredColorScheme(environment.theme.isLight ? .light : .dark)
                 .task {
                     delegate.environment = environment

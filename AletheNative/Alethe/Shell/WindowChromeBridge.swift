@@ -27,15 +27,50 @@ struct WindowChromeBridge: NSViewRepresentable {
         private var savedTransparent = false
         private var savedFullSize = false
         private var savedLightFrames: [NSWindow.ButtonType: NSRect] = [:]
+        private final class LightHost {
+            weak var view: NSView?
+            init(_ view: NSView?) { self.view = view }
+        }
+        private var savedLightHosts: [NSWindow.ButtonType: LightHost] = [:]
+        private var savedLightVisibility: [NSWindow.ButtonType: Bool] = [:]
+        private weak var observedWindow: NSWindow?
+
+        override var isFlipped: Bool { true }
+
+        // This overlay owns only the standard buttons; all other events reach SwiftUI below it.
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard web else { return nil }
+            let hit = super.hitTest(point)
+            return hit === self ? nil : hit
+        }
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            previousWeb = nil
+            if observedWindow !== window {
+                NotificationCenter.default.removeObserver(self)
+                observedWindow = window
+                if let window {
+                    for name in [NSWindow.didResizeNotification, NSWindow.didEnterFullScreenNotification,
+                                 NSWindow.didExitFullScreenNotification, NSWindow.didUpdateNotification] {
+                        NotificationCenter.default.addObserver(self, selector: #selector(windowChanged(_:)),
+                                                               name: name, object: window)
+                    }
+                }
+            }
             apply()
         }
 
         override func layout() {
             super.layout()
+            positionLights()
+        }
+
+        @objc private func windowChanged(_ notification: Notification) {
+            positionLights()
+        }
+
+        override func viewDidChangeEffectiveAppearance() {
+            super.viewDidChangeEffectiveAppearance()
             positionLights()
         }
 
@@ -45,7 +80,11 @@ struct WindowChromeBridge: NSViewRepresentable {
                 if web {
                     savedToolbar = window.toolbar
                     for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-                        savedLightFrames[kind] = window.standardWindowButton(kind)?.frame
+                        if let button = window.standardWindowButton(kind) {
+                            savedLightFrames[kind] = button.frame
+                            savedLightHosts[kind] = LightHost(button.superview)
+                            savedLightVisibility[kind] = button.isHidden
+                        }
                     }
                     savedTitleVisibility = window.titleVisibility
                     savedTransparent = window.titlebarAppearsTransparent
@@ -60,8 +99,14 @@ struct WindowChromeBridge: NSViewRepresentable {
                     if !savedFullSize { window.styleMask.remove(.fullSizeContentView) }
                     if window.toolbar == nil { window.toolbar = savedToolbar }
                     for (kind, frame) in savedLightFrames {
-                        window.standardWindowButton(kind)?.frame = frame
+                        guard let button = window.standardWindowButton(kind) else { continue }
+                        savedLightHosts[kind]?.view?.addSubview(button)
+                        button.frame = frame
+                        button.isHidden = savedLightVisibility[kind] ?? false
                     }
+                    savedLightHosts.removeAll()
+                    savedLightFrames.removeAll()
+                    savedLightVisibility.removeAll()
                 }
                 previousWeb = web
             }
@@ -71,11 +116,15 @@ struct WindowChromeBridge: NSViewRepresentable {
         private func positionLights() {
             guard web, let window else { return }
             for (index, kind) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].enumerated() {
-                guard let button = window.standardWindowButton(kind), let host = button.superview else { continue }
+                guard let button = window.standardWindowButton(kind) else { continue }
+                // SwiftUI hides the system title-bar host when its toolbar is hidden. Keep the
+                // real buttons in our overlay so their target/actions and accessibility survive.
+                if button.superview !== self { addSubview(button) }
+                button.isHidden = false
                 let scale = barHeight / 32
-                let y = host.isFlipped ? (barHeight - button.frame.height) / 2
-                    : host.bounds.height - (barHeight + button.frame.height) / 2
-                button.setFrameOrigin(NSPoint(x: (12 + CGFloat(index) * 20) * scale, y: y))
+                let origin = NSPoint(x: (12 + CGFloat(index) * 20) * scale,
+                                     y: (barHeight - button.frame.height) / 2)
+                if button.frame.origin != origin { button.setFrameOrigin(origin) }
             }
         }
     }
