@@ -5,7 +5,6 @@ import SwiftUI
 /// `TitleBar/index.tsx` and `TitleBar.module.css`, with the system traffic lights retained.
 struct WebTitleBar: View {
     @Binding var sidebarVisible: Bool
-    let leftWidth: Double
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -27,6 +26,7 @@ struct WebTitleBar: View {
                 } label: {
                     Image(systemName: "line.3.horizontal").font(metrics.font(size: 14))
                 }
+                .buttonStyle(AletheIconButtonStyle(side: 28))
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .frame(width: metrics.size(28), height: metrics.size(28))
@@ -35,8 +35,22 @@ struct WebTitleBar: View {
                 icon("sidebar.left", label: "chrome.toggleSidebar", id: "chrome.toggleSidebar", isOn: sidebarVisible) {
                     sidebarVisible.toggle()
                 }
-                icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew") { showsNews.toggle() }
-                    .popover(isPresented: $showsNews) {
+
+            }
+            .padding(.leading, metrics.size(6))
+            .padding(.trailing, metrics.size(8))
+            .fixedSize(horizontal: true, vertical: false)
+            .overlay(alignment: .trailing) { theme[.border].frame(width: metrics.size(1)) }
+            if let workspace = environment.workspace, !workspace.document.workspace.tabs.isEmpty {
+                WorkspaceTabBar(workspace: workspace)
+                    .layoutPriority(-1)
+            } else {
+                Spacer(minLength: metrics.size(12))
+            }
+            HStack(spacing: metrics.size(7)) {
+                HStack(spacing: metrics.size(4)) {
+                    icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
+                        .popover(isPresented: $showsNews) {
                         VStack(alignment: .leading, spacing: metrics.size(8)) {
                             Text("chrome.whatsNew").font(metrics.font(size: 13, weight: .semibold))
                             Text("chrome.news.chrome").font(metrics.font(size: 12))
@@ -45,36 +59,13 @@ struct WebTitleBar: View {
                         .padding(metrics.size(16))
                         .frame(width: metrics.size(300))
                     }
-                HStack(spacing: metrics.size(5)) {
-                    Text(verbatim: "A")
-                        .font(metrics.font(size: 10, weight: .heavy))
-                        .foregroundStyle(theme[.accent])
-                        .frame(width: metrics.size(17), height: metrics.size(17))
-                        .overlay(RoundedRectangle(cornerRadius: metrics.size(5))
-                            .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
-                    Text(verbatim: "Alethe")
-                        .font(metrics.font(size: 12, weight: .semibold))
-                        .tracking(metrics.size(0.24))
-                }
-                .foregroundStyle(theme[.fg])
-                .padding(.leading, metrics.size(6))
-            }
-            .padding(.horizontal, metrics.size(8))
-            .frame(width: metrics.size(leftWidth), alignment: .leading)
-            .overlay(alignment: .trailing) { theme[.border].frame(width: metrics.size(1)) }
-            if let workspace = environment.workspace {
-                WorkspaceTabBar(workspace: workspace)
-                    .layoutPriority(-1)
-            } else {
-                Spacer(minLength: metrics.size(12))
-            }
-            HStack(spacing: metrics.size(7)) {
-                HStack(spacing: metrics.size(4)) {
                     if shown(.sync) {
                         SyncToolbarItem()
                             .labelStyle(.iconOnly)
+                            .font(metrics.font(size: 12))
                             .buttonStyle(AletheTitleBarPillStyle(iconOnly: true))
                     }
+                    PomodoroToolbarPill()
                     if shown(.profile) {
                         ProfileToolbarMenu()
                             .labelStyle(.titleAndIcon)
@@ -88,14 +79,9 @@ struct WebTitleBar: View {
                     if shown(.usageClaude) { UsagePill(provider: .claude) }
                     if shown(.usageCodex) { UsagePill(provider: .codex) }
                     if shown(.usageAntigravity) { UsagePill(provider: .antigravity) }
-                    if shown(.memory) { MemoryIndicator() }
-                    if shown(.pomodoro) { PomodoroToolbarPill() }
-                    if shown(.notifications) {
-                        NotificationsButton().buttonStyle(AletheIconButtonStyle(side: 28))
-                    }
-                    if shown(.remote) { RemoteToolbarItem() }
+                    if shown(.memory) { MemoryIndicator(webTitleBar: true) }
+
                     if shown(.router9) { Router9ToolbarItem() }
-                    if shown(.aiUsage) { AIUsageButton().labelStyle(.iconOnly) }
                 }
                 .buttonStyle(AletheTitleBarPillStyle())
                 .padding(.leading, metrics.size(8))
@@ -106,6 +92,7 @@ struct WebTitleBar: View {
                 environment.rightSidebarVisible.toggle()
             }
             .padding(.leading, metrics.size(2))
+            .padding(.trailing, metrics.size(6))
         }
         .foregroundStyle(theme[.fgMuted])
         .frame(height: metrics.size(32))
@@ -119,9 +106,9 @@ struct WebTitleBar: View {
         (environment.preferences?.document ?? PreferencesDocument()).showsToolbarItem(item)
     }
 
-    private func icon(_ symbol: String, label: LocalizedStringKey, id: String, isOn: Bool = false,
+    private func icon(_ symbol: String, label: LocalizedStringKey, id: String, isOn: Bool = false, size: CGFloat = 14,
                       action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: symbol).font(metrics.font(size: 14)) }
+        Button(action: action) { Image(systemName: symbol).font(metrics.font(size: size)) }
             .buttonStyle(AletheIconButtonStyle(side: 28, isOn: isOn))
             .help(Text(label))
             .accessibilityLabel(Text(label))

@@ -65,6 +65,9 @@ struct WorkspaceView: View {
                 PaneHost(document: doc, terminalStates: environment.terminals.states,
                          terminalGenerations: environment.terminals.generations,
                          focusModePane: environment.focusModePaneID)
+            } else if metrics.isWebInterface {
+                webEmptyState
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let workspace = environment.workspace {
                 WorkspaceLauncher(workspace: workspace)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -73,6 +76,74 @@ struct WorkspaceView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+    }
+
+    private var emptyProject: Project? {
+        guard let document = environment.workspace?.document else { return nil }
+        return document.workspace.selectedProjectID.flatMap(document.project) ?? document.projects.first
+    }
+
+    private var webEmptyState: some View {
+        GeometryReader { geometry in
+            let viewportWidth = (NSApp.keyWindow?.frame.width ?? geometry.size.width) / metrics.scale
+            let markSide: CGFloat = viewportWidth <= 520 ? 104 : min(190, max(112, viewportWidth * 0.18))
+            VStack(spacing: metrics.size(viewportWidth <= 520 ? 16 : 24)) {
+                Image("WorkspaceKnight")
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .foregroundStyle(theme[.fg])
+                    .opacity(0.045)
+                    .frame(width: metrics.size(markSide),
+                           height: metrics.size(markSide))
+                    .accessibilityHidden(true)
+                VStack(spacing: metrics.size(2)) {
+                    if let project = emptyProject, !project.panes.isEmpty {
+                        webEmptyAction("workspace.webEmpty.openPanes", shortcut: nil, id: "launcher.open") {
+                            environment.workspace?.update { $0.openInTab(project.id) }
+                        }
+                    }
+                    webEmptyAction("workspace.webEmpty.newTerminal", shortcut: "⌘T", id: "launcher.newTerminal") {
+                        environment.editorRequest = .newTerminal(emptyProject?.id)
+                    }
+                    webEmptyAction("workspace.webEmpty.addContent", shortcut: "⌘⇧A", id: "launcher.addContent") {
+                        environment.editorRequest = .addContent(emptyProject?.id)
+                    }
+                }
+                .frame(maxWidth: metrics.size(280))
+            }
+            .frame(maxWidth: metrics.size(360))
+            .frame(width: max(0, geometry.size.width - metrics.size(32)))
+            .frame(width: geometry.size.width, height: geometry.size.height)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("workspace.empty")
+    }
+
+    private func webEmptyAction(_ title: LocalizedStringKey, shortcut: String?, id: String,
+                                action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: metrics.size(18)) {
+                Text(title).font(metrics.font(size: 12))
+                Spacer(minLength: 0)
+                if let shortcut {
+                    Text(verbatim: shortcut)
+                        .font(metrics.monoFont(size: 10))
+                        .padding(.horizontal, metrics.size(5))
+                        .frame(minWidth: metrics.size(18), minHeight: metrics.size(18))
+                        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(3)))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.size(3))
+                            .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                        .overlay(alignment: .bottom) { theme[.borderStrong].frame(height: metrics.size(1)) }
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, metrics.size(4))
+            .padding(.vertical, metrics.size(2))
+            .frame(minHeight: metrics.size(26))
+        }
+        .buttonStyle(AletheWorkspaceActionStyle())
+        .accessibilityIdentifier(id)
     }
 
     private var frontTab: TabID? {

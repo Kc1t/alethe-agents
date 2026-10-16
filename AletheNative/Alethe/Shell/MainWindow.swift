@@ -23,6 +23,12 @@ struct MainWindow: View {
                 nativeShell
             }
         }
+        .onAppear {
+            if metrics.isWebInterface, UserDefaults.standard.object(forKey: "main.webRightSidebarInitialized") == nil {
+                environment.rightSidebarVisible = true
+                UserDefaults.standard.set(true, forKey: "main.webRightSidebarInitialized")
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .aletheToggleWebSidebar)) { _ in
             if metrics.isWebInterface { sidebarVisible.toggle() }
         }
@@ -43,7 +49,7 @@ struct MainWindow: View {
 
     private var webShell: some View {
         VStack(spacing: 0) {
-            WebTitleBar(sidebarVisible: $sidebarVisible, leftWidth: webLeftWidth)
+            WebTitleBar(sidebarVisible: $sidebarVisible)
             HStack(spacing: 0) {
                 if sidebarVisible {
                     LeftSidebar()

@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- Alethe interface title bar follows the web control order: menu and pressed sidebar toggle after
+  the traffic lights, then news, sync, profile, live memory in MB and the right-sidebar toggle.
+  Idle Pomodoro, notification and usage-launcher buttons no longer occupy the web title bar.
+- The right sidebar opens on first use of the Alethe interface and remembers subsequent toggles.
+- Empty Alethe workspaces use the original web knight mark and compact Open all panes, New terminal
+  and Add content actions with keyboard hints. Native macOS interface layouts remain unchanged.
 - Alethe interface title bar spans the window with its left controls aligned to the sidebar width;
   standard macOS traffic lights remain visible and centered after resizing and appearance changes.
 - Alethe interface links and controls inherit the active theme accent throughout the main window.

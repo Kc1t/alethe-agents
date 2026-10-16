@@ -672,3 +672,27 @@ private struct AletheHomeActionLabelStyle: LabelStyle {
         }
     }
 }
+
+/// Quiet action row from `WorkspaceEmptyState.module.css`.
+public struct AletheWorkspaceActionStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View {
+        WorkspaceActionBody(configuration: configuration)
+    }
+}
+
+private struct WorkspaceActionBody: View {
+    let configuration: ButtonStyleConfiguration
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @State private var hovering = false
+
+    var body: some View {
+        configuration.label
+            .foregroundStyle(theme[hovering ? .fg : .fgMuted])
+            .background(theme[.panelHover].opacity(hovering ? 1 : 0),
+                        in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+    }
+}

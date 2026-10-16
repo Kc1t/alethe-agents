@@ -6,6 +6,7 @@ import SwiftUI
 /// use, tinted by the system's memory pressure; the popover breaks it down per terminal and holds
 /// the hibernation policy.
 struct MemoryIndicator: View {
+    var webTitleBar = false
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -15,17 +16,23 @@ struct MemoryIndicator: View {
 
     var body: some View {
         Button { showsDetails.toggle() } label: {
-            Label {
-                Text(verbatim: Self.format(monitor.terminalsMB))
+            if webTitleBar {
+                Text(verbatim: String(format: "%.0f MB", monitor.appMB + monitor.terminalsMB))
+                    .font(metrics.monoFont(size: 11))
                     .monospacedDigit()
-            } icon: {
-                Image(systemName: "memorychip")
-                    .foregroundStyle(theme[monitor.pressure.token])
+            } else {
+                Label {
+                    Text(verbatim: Self.format(monitor.terminalsMB))
+                        .monospacedDigit()
+                } icon: {
+                    Image(systemName: "memorychip")
+                        .foregroundStyle(theme[monitor.pressure.token])
+                }
+                .labelStyle(.titleAndIcon)
             }
-            .labelStyle(.titleAndIcon)
         }
         .help(Text("memory.indicator.help"))
-        .accessibilityLabel(Text(String(format: String(localized: "memory.indicator.accessibility"), Self.format(monitor.terminalsMB))))
+        .accessibilityLabel(Text(String(format: String(localized: "memory.indicator.accessibility"), webTitleBar ? String(format: "%.0f MB", monitor.appMB + monitor.terminalsMB) : Self.format(monitor.terminalsMB))))
         .accessibilityIdentifier("memory.indicator")
         .popover(isPresented: $showsDetails, arrowEdge: .bottom) {
             MemoryDetails()

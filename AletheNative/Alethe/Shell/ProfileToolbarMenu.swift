@@ -62,11 +62,15 @@ struct ProfileToolbarMenu: View {
                 Label {
                     Text(verbatim: environment.activeProfileName)
                 } icon: {
-                    Image(systemName: "person.crop.circle")
+                    if metrics.isWebInterface {
+                        Image(systemName: "person.2").font(metrics.font(size: 12))
+                    } else {
+                        Image(systemName: "person.crop.circle")
+                    }
                 }
             }
         }
-        .menuIndicator(sidebar ? .hidden : .automatic)
+        .menuIndicator(sidebar || metrics.isWebInterface ? .hidden : .automatic)
         .menuStyle(.borderlessButton)
         .help(Text(verbatim: String(format: String(localized: "profiles.menu.help"), environment.activeProfileName)))
         .accessibilityIdentifier(sidebar ? "leftSidebar.profile" : "profiles.menu")
