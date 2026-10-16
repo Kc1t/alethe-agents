@@ -153,7 +153,7 @@ private struct McpPanelContent: View {
                 .accessibilityIdentifier("mcp.panel.section")
             }
             Spacer(minLength: 0)
-            if section == .servers, model.healthAvailable {
+            if !metrics.isWebInterface, section == .servers, model.healthAvailable {
                 Button {
                     model.checkAllHealth()
                 } label: {
@@ -168,9 +168,11 @@ private struct McpPanelContent: View {
             Button {
                 if section == .servers { Task { await model.refresh() } } else { Task { await loadSkills() } }
             } label: {
-                Image(systemName: "arrow.clockwise")
+                if metrics.isWebInterface {
+                    Image(systemName: "arrow.clockwise").font(metrics.font(size: 13))
+                } else { Image(systemName: "arrow.clockwise") }
             }
-            .buttonStyle(.borderless)
+            .modifier(McpRefreshPresentation())
             .disabled(model.loading)
             .help(Text("mcp.refresh"))
             .accessibilityLabel(Text("mcp.refresh"))
@@ -185,7 +187,43 @@ private struct McpPanelContent: View {
     }
 
     private var filters: some View {
-        HStack(spacing: metrics.space(.xs)) {
+        HStack(spacing: metrics.isWebInterface ? metrics.size(8) : metrics.space(.xs)) {
+            Group {
+                if metrics.isWebInterface {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: metrics.size(3)) { agentFilters }
+                    }.scrollIndicators(.hidden)
+                } else { agentFilters }
+            }
+            Spacer(minLength: metrics.space(.s))
+            if section == .servers {
+                if metrics.isWebInterface {
+                    HStack(spacing: metrics.size(6)) {
+                        Button("mcp.scope.project") { scope.wrappedValue = .project }
+                            .disabled(folder == nil)
+                            .foregroundStyle(theme[scope.wrappedValue == .project ? .accent : .fgFaint])
+                        Rectangle().fill(theme[.borderStrong]).frame(width: metrics.size(1), height: metrics.size(10))
+                        Button("mcp.scope.global") { scope.wrappedValue = .global }
+                            .foregroundStyle(theme[scope.wrappedValue == .global ? .accent : .fgFaint])
+                    }.font(metrics.font(size: 11)).buttonStyle(.plain).fixedSize()
+                        .accessibilityIdentifier("mcp.panel.scope")
+                } else {
+                    Picker("mcp.scope", selection: scope) {
+                        Text("mcp.scope.project").tag(McpScope.project)
+                        Text("mcp.scope.global").tag(McpScope.global)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .disabled(folder == nil)
+                    .help(Text((folder == nil ? "mcp.scope.projectUnavailable" : "mcp.scope.help") as LocalizedStringKey))
+                    .accessibilityIdentifier("mcp.panel.scope")
+                }
+            }
+        }
+    }
+
+    private var agentFilters: some View {
             ForEach(McpAgent.allCases, id: \.self) { agent in
                 let on = picked.contains(agent)
                 Button {
@@ -193,9 +231,7 @@ private struct McpPanelContent: View {
                 } label: {
                     Group {
                         if metrics.isWebInterface {
-                            Image(systemName: mcpAgentSymbol(agent.rawValue)).font(metrics.font(size: 13)).foregroundStyle(
-                                theme[agent.colorToken]
-                            )
+                            AgentLogo(agent: agent.rawValue, size: 13)
                             .frame(width: metrics.size(24), height: metrics.size(24))
                             .background(theme[.panel].opacity(on ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
                             .overlay(
@@ -219,31 +255,6 @@ private struct McpPanelContent: View {
                 .accessibilityValue(Text((on ? "mcp.filter.on" : "mcp.filter.off") as LocalizedStringKey))
                 .accessibilityIdentifier("mcp.panel.agent.\(agent.rawValue)")
             }
-            Spacer(minLength: metrics.space(.s))
-            if section == .servers {
-                if metrics.isWebInterface {
-                    HStack(spacing: metrics.size(6)) {
-                        Button("mcp.scope.project") { scope.wrappedValue = .project }
-                            .foregroundStyle(theme[scope.wrappedValue == .project ? .accent : .fgFaint])
-                        Rectangle().fill(theme[.borderStrong]).frame(width: metrics.size(1), height: metrics.size(10))
-                        Button("mcp.scope.global") { scope.wrappedValue = .global }
-                            .foregroundStyle(theme[scope.wrappedValue == .global ? .accent : .fgFaint])
-                    }.font(metrics.font(size: 11)).buttonStyle(.plain).disabled(folder == nil)
-                        .accessibilityIdentifier("mcp.panel.scope")
-                } else {
-                    Picker("mcp.scope", selection: scope) {
-                        Text("mcp.scope.project").tag(McpScope.project)
-                        Text("mcp.scope.global").tag(McpScope.global)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
-                    .disabled(folder == nil)
-                    .help(Text((folder == nil ? "mcp.scope.projectUnavailable" : "mcp.scope.help") as LocalizedStringKey))
-                    .accessibilityIdentifier("mcp.panel.scope")
-                }
-            }
-        }
     }
 
     private var scope: Binding<McpScope> {
@@ -279,8 +290,7 @@ private struct McpPanelContent: View {
         } else if empty {
             Group {
                 if metrics.isWebInterface {
-                    WebSidebarEmpty(
-                        title: emptyTitle(none: none), detail: none && section == .servers ? "mcp.empty.detail" : nil, symbol: "powerplug")
+                    WebMcpEmpty(title: emptyTitle(none: none), detail: none && section == .servers ? "mcp.empty.detail" : nil)
                 } else {
                     ContentUnavailableView {
                         Label(emptyTitle(none: none), systemImage: "powerplug")
@@ -318,7 +328,7 @@ private struct McpPanelContent: View {
         } label: {
             VStack(alignment: .leading, spacing: metrics.isWebInterface ? metrics.size(5) : metrics.space(.xxs)) {
                 HStack(spacing: metrics.isWebInterface ? metrics.size(8) : metrics.space(.xs)) {
-                    if let status = model.status(of: group) {
+                    if !metrics.isWebInterface, let status = model.status(of: group) {
                         McpHealthDot(status: status)
                     }
                     Text(verbatim: group.name)
@@ -334,7 +344,7 @@ private struct McpPanelContent: View {
                 }
                 Text(verbatim: group.records.first?.server.transport.summary ?? "")
                     .font(metrics.isWebInterface ? metrics.monoFont(size: 10.5, weight: .regular) : metrics.font(.caption).monospaced())
-                    .foregroundStyle(theme[.textSecondary])
+                    .foregroundStyle(theme[metrics.isWebInterface ? .fgFaint : .textSecondary])
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -373,7 +383,10 @@ private struct McpPanelContent: View {
                     Spacer(minLength: 0)
                     HStack(spacing: metrics.space(.xxs)) {
                         ForEach(group.agents, id: \.self) { agent in
-                            Circle().fill(theme[agent.colorToken]).frame(width: metrics.size(7), height: metrics.size(7))
+                            Group {
+                                if metrics.isWebInterface { AgentLogo(agent: agent.rawValue, size: 13) }
+                                else { Circle().fill(theme[agent.colorToken]).frame(width: metrics.size(7), height: metrics.size(7)) }
+                            }
                         }
                     }
                 }
@@ -432,7 +445,27 @@ private struct McpPanelContent: View {
         .accessibilityIdentifier("mcp.panel.add")
     }
 
-    private var diagnostics: some View {
+    @ViewBuilder private var diagnostics: some View {
+        if metrics.isWebInterface {
+            VStack(alignment: .leading, spacing: metrics.size(6)) {
+                Text("mcp.diag.title").font(metrics.font(size: 10.5))
+                    .tracking(metrics.size(0.42)).textCase(.uppercase).foregroundStyle(theme[.fgFaint])
+                ForEach(model.issues, id: \.agent) { item in
+                    HStack(spacing: metrics.size(7)) {
+                        Text(verbatim: item.agent.label).foregroundStyle(theme[.fg])
+                            .frame(minWidth: metrics.size(76), alignment: .leading).fixedSize(horizontal: true, vertical: false)
+                        Text(item.issue.title).foregroundStyle(theme[.fgFaint]).lineLimit(1)
+                    }.font(metrics.font(size: 11.5))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, metrics.size(8)).padding(.horizontal, metrics.size(12)).padding(.bottom, metrics.size(10))
+            .overlay(alignment: .top) { Rectangle().fill(theme[.borderSubtle]).frame(height: metrics.size(1)) }
+            .accessibilityElement(children: .combine).accessibilityIdentifier("mcp.panel.diagnostics")
+        } else { nativeDiagnostics }
+    }
+
+    private var nativeDiagnostics: some View {
         VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
             Text("mcp.diag.title")
                 .font(metrics.font(.caption).weight(.semibold))
@@ -547,8 +580,7 @@ struct McpAgentDots: View {
         HStack(spacing: metrics.space(.xxs)) {
             ForEach(McpAgent.allCases.filter { present.contains($0) || missing.contains($0) }, id: \.self) { agent in
                 if metrics.isWebInterface {
-                    Image(systemName: mcpAgentSymbol(agent.rawValue))
-                        .font(metrics.font(size: 13)).foregroundStyle(theme[agent.colorToken])
+                    AgentLogo(agent: agent.rawValue, size: 13)
                         .opacity(present.contains(agent) ? 1 : 0.22)
                 } else if present.contains(agent) {
                     Circle().fill(theme[agent.colorToken])
@@ -579,13 +611,43 @@ private struct McpWebRowBackground: ViewModifier {
     }
 }
 
-/// SF Symbol equivalents for the web's branded agent glyphs.
-private func mcpAgentSymbol(_ agent: String) -> String {
-    switch agent {
-    case "claude": "sun.max"
-    case "codex": "curlybraces"
-    case "opencode": "terminal"
-    case "cursor": "cursorarrow"
-    default: "sparkle"
+/// The web MCP panel uses the compact bordered EmptyState component.
+private struct WebMcpEmpty: View {
+    let title: LocalizedStringKey
+    let detail: LocalizedStringKey?
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(spacing: metrics.size(10)) {
+            Image(systemName: "powerplug").font(metrics.font(size: 20))
+                .foregroundStyle(theme[.accent])
+                .frame(width: metrics.size(56), height: metrics.size(56))
+                .background(theme[.accentSoft], in: RoundedRectangle(cornerRadius: metrics.size(18)))
+                .overlay(RoundedRectangle(cornerRadius: metrics.size(18)).strokeBorder(theme[.accentBorder], lineWidth: metrics.size(1)))
+            VStack(spacing: metrics.size(6)) {
+                Text(title).font(metrics.font(size: 15, weight: 650))
+                if let detail {
+                    Text(detail).font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+                        .lineSpacing(metrics.size(3))
+                }
+            }
+            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(theme[.fg])
+        .padding(.vertical, metrics.size(20)).padding(.horizontal, metrics.size(18))
+        .frame(maxWidth: .infinity)
+        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .padding(metrics.size(12))
+    }
+}
+
+private struct McpRefreshPresentation: ViewModifier {
+    @Environment(\.metrics) private var metrics
+    func body(content: Content) -> some View {
+        if metrics.isWebInterface {
+            content.buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
+        } else { content.buttonStyle(.borderless) }
     }
 }

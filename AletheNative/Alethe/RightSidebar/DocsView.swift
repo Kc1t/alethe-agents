@@ -81,34 +81,22 @@ struct DocsView: View {
             VStack(spacing: 0) {
                 WebSidebarHeader {
                     Image(systemName: "doc.text").font(metrics.font(size: 15))
-                    Text(verbatim: file.name).lineLimit(1)
+                    Text(verbatim: file.name).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                     Spacer(minLength: 0)
                     HStack(spacing: metrics.size(2)) {
                         Button {
                             file.reload()
                         } label: {
-                            Label("markdown.refresh", systemImage: "arrow.clockwise")
+                            Label("markdown.refresh", systemImage: "arrow.clockwise").font(metrics.font(size: 15))
                         }
                         .accessibilityIdentifier("docs.refresh")
                         Button {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(file.source, forType: .string)
                         } label: {
-                            Label("markdown.copySource", systemImage: "doc.on.clipboard")
+                            Label("markdown.copySource", systemImage: "doc.on.clipboard").font(metrics.font(size: 15))
                         }
                         .disabled(!file.isLoaded || file.loadError != nil).accessibilityIdentifier("docs.copy")
-                        Button {
-                            selectedPath = nil
-                        } label: {
-                            Label("docs.back", systemImage: "arrow.left")
-                        }
-                        .accessibilityIdentifier("docs.back")
-                        Button {
-                            environment.rightSidebarVisible = false
-                        } label: {
-                            Label("rightSidebar.close", systemImage: "sidebar.right")
-                        }
-                        .accessibilityIdentifier("docs.close")
                     }.buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 24))
                 }
                 if opened.count > 1 {
@@ -169,27 +157,6 @@ struct DocsView: View {
                             .padding(metrics.size(12)).frame(maxWidth: .infinity, alignment: .leading)
                     }.accessibilityIdentifier("markdown.rendered")
                 }
-            }
-        } else if let project, !files.isEmpty {
-            ScrollView {
-                LazyVStack(spacing: metrics.size(4)) {
-                    ForEach(files, id: \.self) { path in
-                        Button {
-                            openInSidebar(path)
-                        } label: {
-                            HStack(spacing: metrics.size(8)) {
-                                Image(systemName: "doc.text").font(metrics.font(size: 13)).foregroundStyle(theme[.accent])
-                                Text(verbatim: relative(path, to: project.folder)).lineLimit(1)
-                                Spacer(minLength: 0)
-                            }
-                            .font(metrics.font(size: 12)).foregroundStyle(theme[.fg])
-                            .padding(.vertical, metrics.size(8)).padding(.horizontal, metrics.size(10))
-                            .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.size(6)))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: metrics.size(6)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                        }.buttonStyle(.plain).help(path)
-                    }
-                }.padding(metrics.size(12))
             }
         } else {
             WebSidebarEmpty(title: "rightSidebar.markdownEmptyTitle", detail: "rightSidebar.markdownEmptyDetail")
