@@ -39,6 +39,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   quick-launch fields, project card borders, section labels and ruled footer. Native macOS styling is preserved.
 
 ### Added
+- The web app's agent and brand logos (Claude Code, Codex, Freebuff, Antigravity, Kiro, OpenCode, shell,
+  VS Code, the Alethe mark and the default profile picture) in the asset catalog, with an `AgentLogo` view.
 - Alethe interface window chrome with a compact 32-point title bar, system traffic lights,
   workspace tabs and history, menu and sidebar controls, profile, sync and live status widgets.
 - Resizable Alethe sidebars with web-matched default widths and limits, one-point separators and
