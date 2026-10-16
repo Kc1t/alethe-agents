@@ -34,7 +34,50 @@ export function listClaudeTargets(
 }
 
 /**
- * The `alive` predicate for voice: the PTY runs, and its Claude was launched with the voice hooks
+ * The projects the sidebar shows, in its order: non-archived groups depth-first (sub-groups before
+ * the group's own projects), then the ungrouped list, then any project no group lists. Hidden
+ * projects and those of an archived group are left out, as the sidebar leaves them out.
+ */
+export function inSidebarOrder(
+  projects: Project[],
+  groups: Group[],
+  ungroupedOrder: string[],
+): Project[] {
+  const byId = new Map(projects.map((project) => [project.id, project]))
+  const visible = groups.filter((group) => !group.archived)
+  const visibleIds = new Set(visible.map((group) => group.id))
+  const children = new Map<string | null, Group[]>()
+  for (const group of visible) {
+    // Orphans of an archived or deleted parent show with the root groups.
+    const parent =
+      group.parentGroupId && visibleIds.has(group.parentGroupId) ? group.parentGroupId : null
+    children.set(parent, [...(children.get(parent) ?? []), group])
+  }
+  const archivedGroupProjects = new Set(
+    groups.filter((group) => group.archived).flatMap((group) => group.projectIds),
+  )
+  const ordered: Project[] = []
+  const seen = new Set<string>()
+  const add = (id: string) => {
+    const project = byId.get(id)
+    if (!project || project.hidden || seen.has(id)) return
+    seen.add(id)
+    ordered.push(project)
+  }
+  const walk = (group: Group) => {
+    for (const child of children.get(group.id) ?? []) walk(child)
+    for (const id of group.projectIds) add(id)
+  }
+  for (const group of children.get(null) ?? []) walk(group)
+  for (const id of ungroupedOrder) add(id)
+  for (const project of projects) {
+    if (!archivedGroupProjects.has(project.id)) add(project.id)
+  }
+  return ordered
+}
+
+/**
+ * The `alive` predicate for voice: the PTY runs, and a Claude was launched with the voice hooks
  * (see `agentVoiceHookedPtys`), without which no permission request or Stop would reach Alethe.
  */
 export function voiceTargetable(
@@ -56,6 +99,7 @@ export function resolveTarget(
 ): VoiceTarget | null {
   const byPty = (id: string | null) =>
     id ? candidates.find((item) => item.ptyId === id) : undefined
+  const front = candidates.filter((item) => item.tabActive)
   return (
     byPty(context.pinnedPtyId) ??
     candidates.find((item) => item.terminalId === context.activeTerminalId) ??

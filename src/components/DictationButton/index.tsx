@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import { sttChoiceFor } from '../../lib/speech/engine'
+import { isSpeechTooShort } from '../../lib/speech/errors'
 import {
   speechPrepare,
   speechStartCapture,
@@ -11,7 +12,7 @@ import {
   speechStopCapture,
   writePty,
 } from '../../lib/tauri'
-import { cloudFailureMessage } from '../../lib/voice/cloudErrors'
+import { cloudFailureMessage, forgetProviderKey } from '../../lib/voice/cloudErrors'
 import { isCloudProvider } from '../../lib/voice/providers'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -101,8 +102,10 @@ export function DictationButton() {
         /* already stopped */
       }
       setError(
-        cloudFailureMessage(cause, engine.provider, t) ??
-          (cause instanceof Error ? cause.message : String(cause)),
+        isSpeechTooShort(cause)
+          ? t('dictation.tooShort')
+          : (cloudFailureMessage(cause, engine.provider, t) ??
+              (cause instanceof Error ? cause.message : String(cause))),
       )
     } finally {
       busyRef.current = false
@@ -123,9 +126,11 @@ export function DictationButton() {
     try {
       // On Apple this also requests the speech-recognition permission before the mic opens.
       if (engine.provider === 'apple' || isCloudProvider(engine.provider)) {
+        // null: the check itself failed (e.g. the keychain), which says nothing about the key.
         const ready = await speechPrepare(engine.modelId, engine.locale, engine.provider).catch(
-          () => false,
+          () => null,
         )
+        if (ready === false && isCloudProvider(engine.provider)) forgetProviderKey(engine.provider)
         if (!ready) {
           setError(t(engine.provider === 'apple' ? 'speech.nativeNotReady' : 'voice.cloud.noKey'))
           return

@@ -13,13 +13,16 @@ import { agentInputFor } from '../agentInputRegistry'
 import { PaneHiddenError, TerminalPromptOpenError } from '../agentPromptDelivery'
 import { getLocale, translate } from '../i18n'
 import { sttChoiceFor } from '../speech/engine'
+import { isSpeechTooShort } from '../speech/errors'
 import {
   agentPermissionDecide,
   agentTranscriptSnapshot,
   agentVoiceHookedPtys,
   onAgentPermissionReleased,
   onTtsEnd,
+  onTtsProgress,
   onTtsStart,
+  readClipboardText,
   speechPrepare,
   speechStartCapture,
   speechStopAndTranscribe,
@@ -28,7 +31,7 @@ import {
   ttsStop,
   voiceSetTargets,
 } from '../tauri'
-import { cloudFailureMessage } from './cloudErrors'
+import { cloudFailureMessage, forgetProviderKey } from './cloudErrors'
 import { estimateSpeechMs, Narrator, newAssistantTexts, type Translate } from './narrator'
 import {
   answerAllowed,
@@ -39,6 +42,7 @@ import {
 } from './permissions'
 import { isCloudProvider } from './providers'
 import { routeTranscript } from './routing'
+import { codePointLength, estimatedSpokenOffset, wordStartIn } from './spokenWords'
 import { nextCapture, nextTurn } from './stateMachine'
 import { listClaudeTargets, resolveTarget, type VoiceTarget, voiceTargetable } from './target'
 
@@ -46,6 +50,11 @@ const TRANSCRIPT_POLL_MS = 700
 /** Claude's TUI needs a moment after Esc before it takes new input. */
 const INTERRUPT_SETTLE_MS = 300
 const SPOKEN_SUBJECT_CHARS = 120
+/** How long a session brought to front gets to mount its terminal before the send gives up. */
+const INPUT_WAIT_MS = 2_000
+const INPUT_POLL_MS = 100
+/** A terminal that just mounted replays its screen; the choice-menu guard reads it after this. */
+const INPUT_SETTLE_MS = 300
 /**
  * Cloud and local voices synthesize after `tts_speak` returns; this bounds the wait for their
  * first audio, so a start event that never comes cannot hold the narration forever.
@@ -53,6 +62,8 @@ const SPOKEN_SUBJECT_CHARS = 120
 const TTS_START_GRACE_MS = 30_000
 /** Starts that arrived before their utterance's waiter was set; only the newest few matter. */
 const EARLY_STARTS_KEPT = 8
+/** How often the spoken word is estimated for an engine that reports no progress. */
+const SPOKEN_ESTIMATE_MS = 100
 /** Main-agent events that mean Claude is past any permission dialog it was showing. */
 const CLEARS_TERMINAL_PROMPT = new Set([
   'PreToolUse',
@@ -103,9 +114,37 @@ export class VoiceConversationController {
   /** The card shown when the person started talking: only that card can take the answer. */
   private pressCardId: string | null = null
   private ttsUnavailable = false
-  private endWaiters = new Map<number, () => void>()
+  /** Why the wait for an utterance ended: its end event, its estimate running out, or a cut. */
+  private endWaiters = new Map<number, (reason: 'end' | 'timer' | 'cut') => void>()
   private startWaiters = new Map<number, () => void>()
   private earlyStarts = new Set<number>()
+  /** Bumped when the wait for an utterance is cut short, so a speak still starting gives up. */
+  private speechToken = 0
+  /** The player holds the utterance in flight (pause); its timer must not run meanwhile. */
+  private speechHeld = false
+  private speechTimer: PausableTimer | null = null
+  /** A mute toggle is on its way to Rust. */
+  private muting = false
+  /** The utterance in flight, when it became audible and how long it is estimated to last. */
+  private speechId: number | null = null
+  private speechStartedAt: number | null = null
+  private speechEstimate = 0
+  /** Time the utterance in flight spent held (paused), and since when it is held now. */
+  private speechHeldMs = 0
+  private speechHeldAt: number | null = null
+  /**
+   * The utterance in flight as the panel shows it: the item shown, split in code points, where
+   * the utterance starts in it (a resumed sentence starts past it) and how long it is. `exact`:
+   * the player reports its progress, so the estimate stands down.
+   */
+  private spokenSpan: {
+    id: number
+    shown: string[]
+    base: number
+    length: number
+    exact: boolean
+  } | null = null
+  private spokenTimer: ReturnType<typeof setInterval> | null = null
   /**
    * PTYs where Claude is showing its own permission dialog. The voice submit ends in one Enter,
    * which would approve that dialog, so nothing is sent to them until Claude moves on.
@@ -116,7 +155,7 @@ export class VoiceConversationController {
 
   constructor() {
     this.narrator = new Narrator({
-      speak: (text) => this.speak(text),
+      speak: (text, shown) => this.speak(text, shown),
       stop: () => this.stopSpeech(),
       t,
       verbosity: () => prefs().voiceVerbosity,
@@ -125,6 +164,10 @@ export class VoiceConversationController {
   }
 
   async start(): Promise<void> {
+    // The store's mute outlives this controller (and Rust's outlives a webview reload): agree.
+    void ttsSetMuted(store().muted).catch(() => undefined)
+    // A pause does not survive the narrator that held it (a webview reload).
+    void ttsResume().catch(() => undefined)
     // Rust keeps the targets across a webview reload; requests would be held for nobody.
     await voiceSetTargets([]).catch(() => undefined)
     if (this.disposed) return
@@ -135,9 +178,10 @@ export class VoiceConversationController {
       () => onAgentPermissionReleased((event) => this.onReleased(event.requestId)),
       () =>
         onTtsEnd((id) => {
-          if (!this.disposed) this.endWaiters.get(id)?.()
+          if (!this.disposed) this.endWaiters.get(id)?.('end')
         }),
       () => onTtsStart((id) => this.onTtsStarted(id)),
+      () => onTtsProgress((id, charOffset) => this.onTtsProgress(id, charOffset)),
     ]
     for (const subscribe of subscriptions) {
       if (this.disposed) return
@@ -152,7 +196,7 @@ export class VoiceConversationController {
       useUiStore.subscribe((ui, previous) => {
         if (ui.activeTerminal?.terminalId === previous.activeTerminal?.terminalId) return
         const active = this.targets().find(
-          (item) => item.terminalId === ui.activeTerminal?.terminalId,
+          (item) => item.tabActive && item.terminalId === ui.activeTerminal?.terminalId,
         )
         if (active) this.lastClaudePtyId = active.ptyId
       }),
@@ -166,11 +210,16 @@ export class VoiceConversationController {
     for (const off of this.unlisteners) off()
     this.unlisteners = []
     this.stopPolling()
+    this.stopSpokenEstimate()
     this.narrator.dispose()
     if (store().capture === 'listening' || this.starting) {
       void speechStopCapture().catch(() => undefined)
     }
-    store().patch({ ...INITIAL_VOICE_CONVERSATION, pinnedPtyId: store().pinnedPtyId })
+    store().patch({
+      ...INITIAL_VOICE_CONVERSATION,
+      pinnedPtyId: store().pinnedPtyId,
+      muted: store().muted,
+    })
     void voiceSetTargets([]).catch(() => undefined)
   }
 
@@ -183,7 +232,9 @@ export class VoiceConversationController {
       return
     }
     if (this.disposed || store().capture !== 'idle' || this.starting) return
-    this.narrator.stop()
+    // Held, not discarded: a press that ends up sending nothing (a stray tap, silence, a failure)
+    // leaves the narration paused to resume. Only a sent transcript drops it (see `release`).
+    this.narrator.pause()
     this.starting = true
     this.releaseAfterStart = false
     this.pressCardId = store().permission?.requestId ?? null
@@ -195,13 +246,15 @@ export class VoiceConversationController {
         return
       }
       // Awaited directly, not through `.catch`, so the mic opens as soon as the model is ready.
-      let ready: boolean
+      // null: the check itself failed (e.g. the keychain), which says nothing about the key.
+      let ready: boolean | null
       try {
         ready = await speechPrepare(engine.modelId, engine.locale, engine.provider)
       } catch {
-        ready = false
+        ready = null
       }
       if (this.disposed) return
+      if (ready === false && isCloudProvider(engine.provider)) forgetProviderKey(engine.provider)
       if (!ready) {
         store().patch({
           notice: {
@@ -257,7 +310,10 @@ export class VoiceConversationController {
       await speechStopCapture().catch(() => undefined)
       store().patch({
         capture: nextCapture('transcribing', 'failed'),
-        notice: failure(cause, engine.provider),
+        // A quick tap of the shortcut, not a failure: say how to use it.
+        notice: isSpeechTooShort(cause)
+          ? { key: 'voice.conv.holdHint' }
+          : failure(cause, engine.provider),
       })
       return
     }
@@ -270,6 +326,7 @@ export class VoiceConversationController {
       return
     }
     store().patch({ capture: nextCapture('transcribing', 'transcribed'), transcript: text })
+    this.narrator.stop()
     try {
       await this.handleTranscript(text)
     } catch (cause) {
@@ -285,16 +342,46 @@ export class VoiceConversationController {
     await this.decide(answer, 'hud')
   }
 
+  /** Talks to `ptyId` from now on and brings it to front; `null` follows the active pane again. */
   pinTarget(ptyId: string | null): void {
     store().patch({ pinnedPtyId: ptyId })
+    const picked = ptyId ? this.targets().find((item) => item.ptyId === ptyId) : undefined
+    // Shown at once, so its terminal is mounted and streaming by the time the person speaks.
+    if (picked) this.showTarget(picked)
   }
 
+  /** Discards the rest of the narration (and any pause). */
   stopSpeaking(): void {
     this.narrator.stop()
   }
 
+  /** Narration goes on at the same pace with no sound, or with sound again. */
+  async toggleMute(): Promise<void> {
+    // One toggle at a time: a second click before Rust answered would flip from a stale value.
+    if (this.muting) return
+    this.muting = true
+    const muted = !store().muted
+    try {
+      await ttsSetMuted(muted)
+    } catch {
+      // Rust did not take it: the button keeps showing what is really heard.
+      return
+    } finally {
+      this.muting = false
+    }
+    store().patch({ muted })
+    // The system voice takes its volume per utterance: say the rest again, from the sentence reached.
+    if (!this.disposed) this.narrator.restartSentence()
+  }
+
+  /** Pause holds narration in progress; with nothing speaking or queued it does nothing. */
+  togglePause(): void {
+    if (this.narrator.isPaused()) this.narrator.resume()
+    else this.narrator.pause()
+  }
+
   dismiss(): void {
-    store().patch({ notice: null, transcript: '', narration: '' })
+    store().patch({ notice: null, transcript: '', narration: '', narrationSpokenOffset: null })
   }
 
   private targets(): VoiceTarget[] {
@@ -317,6 +404,7 @@ export class VoiceConversationController {
   private showTarget(target: VoiceTarget): void {
     const projects = useProjectsStore.getState()
     projects.setActiveProjectOnly(target.projectId)
+    projects.setActiveTab(target.projectId, target.terminalId, target.tabId)
     projects.focusWorkspaceTerminal(target.projectId, target.terminalId)
     const ui = useUiStore.getState()
     ui.setActiveTerminal(target.projectId, target.terminalId)
@@ -388,8 +476,13 @@ export class VoiceConversationController {
       return
     }
     if (!input) {
-      store().patch({ notice: { key: 'voice.conv.targetGone' } })
-      return
+      // A live session with no terminal mounted sits in a background tab or a hidden pane.
+      this.showTarget(target)
+      input = await this.waitForInput(target.ptyId)
+      if (!input) {
+        store().patch({ notice: { key: 'voice.conv.targetHidden' } })
+        return
+      }
     }
     if (this.terminalPrompts.has(target.ptyId)) {
       store().patch({ notice: { key: 'voice.conv.terminalPromptOpen' } })
@@ -401,7 +494,7 @@ export class VoiceConversationController {
     }
     if (!text) {
       store().patch({ transcript: '' })
-      // Claude Code runs no Stop hook after an interrupt, so the turn the Esc cut short ends here.
+      // No Stop hook runs after an interrupt, so the turn the Esc cut short ends here.
       if (interrupt && this.isTurnTarget(target.ptyId)) {
         this.stopPolling()
         this.narrator.endTurn()
@@ -410,7 +503,7 @@ export class VoiceConversationController {
       return
     }
     const midTurn = store().turn !== 'idle' && store().target?.ptyId === target.ptyId
-    if (!midTurn) await this.beginTurn(target)
+    if (!midTurn) await this.beginTurn(target, input, text)
     // Held before the Enter, so a permission request the prompt triggers at once is held too.
     await voiceSetTargets([target.ptyId])
     try {
@@ -432,6 +525,24 @@ export class VoiceConversationController {
     this.startPolling()
   }
 
+  /**
+   * The input of a session just brought to front, once its terminal mounts and settles; null when
+   * it does not within `INPUT_WAIT_MS`, or a turn began or ended meanwhile.
+   */
+  private async waitForInput(ptyId: string): Promise<AgentInput | null> {
+    const generation = this.generation
+    const current = () => !this.disposed && generation === this.generation
+    for (let waited = 0; waited < INPUT_WAIT_MS; waited += INPUT_POLL_MS) {
+      await sleep(INPUT_POLL_MS)
+      if (!current()) return null
+      const input = agentInputFor(ptyId)
+      if (!input) continue
+      await sleep(INPUT_SETTLE_MS)
+      return current() ? agentInputFor(ptyId) : null
+    }
+    return null
+  }
+
   /** Undoes `beginTurn` + targeting for a prompt that was never submitted. */
   private async abandonTurn(): Promise<void> {
     this.generation += 1
@@ -449,7 +560,7 @@ export class VoiceConversationController {
     this.revision = null
     this.cursor = null
     try {
-      const snapshot = await agentTranscriptSnapshot('claude', target.cwd, target.sessionId, null)
+      const snapshot = await agentTranscriptSnapshot(provider, target.cwd, target.sessionId, null)
       if (generation === this.generation) {
         this.cursor = snapshot.firstIndex + snapshot.messages.length
         this.revision = snapshot.revision
@@ -643,7 +754,7 @@ export class VoiceConversationController {
     try {
       const fresh = this.targets().find((item) => item.ptyId === target.ptyId) ?? target
       const snapshot = await agentTranscriptSnapshot(
-        'claude',
+        provider,
         fresh.cwd,
         fresh.sessionId,
         this.revision,
@@ -660,21 +771,55 @@ export class VoiceConversationController {
     }
   }
 
-  private async speak(text: string): Promise<void> {
-    store().patch({ narration: text })
+  /** Speaks `text`; the panel shows `shown`, the whole item a sentence may belong to. */
+  private async speak(text: string, shown = text): Promise<void> {
+    // A resumed sentence is the tail of the item: the highlight starts where it sits in it.
+    const shownChars = Array.from(shown)
+    const base = shown.endsWith(text) ? shownChars.length - codePointLength(text) : 0
+    // No word is highlighted until the utterance is heard.
+    store().patch({ narration: shown, narrationSpokenOffset: null })
     if (this.ttsUnavailable) return
     const choice = prefs().voiceTts
     const estimate = estimateSpeechMs(text, choice.rate)
+    const token = ++this.speechToken
     try {
       const id = await ttsSpeak(text, choice)
+      // Stopped or skipped while the engine was answering: nothing to wait for.
+      if (token !== this.speechToken) return
+      this.speechId = id
+      this.speechStartedAt = Date.now()
+      this.speechEstimate = estimate
+      this.speechHeldMs = 0
+      this.speechHeldAt = this.speechHeld ? Date.now() : null
+      this.spokenSpan = {
+        id,
+        shown: shownChars,
+        base,
+        length: codePointLength(text),
+        exact: false,
+      }
       await new Promise<void>((resolve) => {
-        let timer: ReturnType<typeof setTimeout> | undefined
-        const arm = (ms: number) => {
-          clearTimeout(timer)
-          timer = setTimeout(done, ms)
-        }
-        const done = () => {
-          clearTimeout(timer)
+        // Frozen while the player holds the utterance, so a pause does not run out the estimate.
+        const timer = new PausableTimer(() => done('timer'), this.speechHeld)
+        this.speechTimer = timer
+        const done = (reason: 'end' | 'timer' | 'cut') => {
+          timer.clear()
+          if (this.speechTimer === timer) this.speechTimer = null
+          if (this.speechId === id) {
+            this.speechId = null
+            this.speechStartedAt = null
+          }
+          const span = this.spokenSpan
+          if (span?.id === id) {
+            this.stopSpokenEstimate()
+            this.spokenSpan = null
+            // Said to the end: all of it shows as spoken. Cut short, the highlight stays put. A
+            // player that reports progress may still be playing when the estimate runs out, so
+            // only its end event counts then.
+            if (reason === 'end' || (reason === 'timer' && !span.exact)) {
+              store().patch({ narrationSpokenOffset: span.shown.length })
+            }
+          }
           this.endWaiters.delete(id)
           this.startWaiters.delete(id)
           resolve()
@@ -682,23 +827,34 @@ export class VoiceConversationController {
         this.endWaiters.set(id, done)
         // The system voice speaks as soon as it is asked; the others only once synthesized.
         if (choice.provider === 'system' || this.earlyStarts.delete(id)) {
-          arm(estimate)
+          timer.arm(estimate)
+          this.startSpokenEstimate(choice.rate)
           return
         }
-        arm(estimate + TTS_START_GRACE_MS)
+        timer.arm(estimate + TTS_START_GRACE_MS)
         this.startWaiters.set(id, () => {
           this.startWaiters.delete(id)
-          arm(estimate)
+          timer.arm(estimate)
+          this.startSpokenEstimate(choice.rate)
         })
       })
     } catch {
       this.ttsUnavailable = true
-      store().patch({ notice: { key: 'voice.conv.ttsUnavailable' } })
+      store().patch({
+        notice: { key: 'voice.conv.ttsUnavailable' },
+        narrationSpokenOffset: null,
+      })
     }
   }
 
   private onTtsStarted(id: number): void {
     if (this.disposed) return
+    // Audible from now: the share spoken counts from here, not from the request.
+    if (id === this.speechId) {
+      this.speechStartedAt = Date.now()
+      this.speechHeldMs = 0
+      this.speechHeldAt = this.speechHeld ? Date.now() : null
+    }
     const waiter = this.startWaiters.get(id)
     if (waiter) {
       waiter()
@@ -710,7 +866,37 @@ export class VoiceConversationController {
   }
 
   private stopSpeech(): void {
+    // Rust drops its pause with the audio.
+    this.speechHeld = false
     void ttsStop().catch(() => undefined)
-    for (const done of [...this.endWaiters.values()]) done()
+    this.endSpeechWait()
+  }
+
+  /** Share of the utterance in flight already spoken, by its estimate; 0 when none is. */
+  private speechProgress(): number {
+    if (this.speechStartedAt === null || this.speechEstimate <= 0) return 0
+    return this.speakingMs() / this.speechEstimate
+  }
+
+  /** Releases whoever waits for the utterance in flight, without touching the engine. */
+  private endSpeechWait(): void {
+    this.speechToken += 1
+    for (const done of [...this.endWaiters.values()]) done('cut')
+  }
+
+  private holdSpeech(hold: boolean): void {
+    if (hold && this.speechHeldAt === null) this.speechHeldAt = Date.now()
+    if (!hold && this.speechHeldAt !== null) {
+      this.speechHeldMs += Date.now() - this.speechHeldAt
+      this.speechHeldAt = null
+    }
+    this.speechHeld = hold
+    if (hold) {
+      void ttsPause().catch(() => undefined)
+      this.speechTimer?.pause()
+    } else {
+      void ttsResume().catch(() => undefined)
+      this.speechTimer?.resume()
+    }
   }
 }

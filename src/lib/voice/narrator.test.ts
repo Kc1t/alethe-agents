@@ -4,6 +4,7 @@ import {
   estimateSpeechMs,
   Narrator,
   newAssistantTexts,
+  resumeFrom,
   speakableText,
   statusFill,
   type Translate,
@@ -89,6 +90,28 @@ describe('estimateSpeechMs', () => {
   })
 })
 
+describe('resumeFrom', () => {
+  const text = 'First one. Second one! Third?'
+
+  it('goes back to the start of the sentence the share of the text falls in', () => {
+    expect(resumeFrom(text, 0)).toBe(text)
+    expect(resumeFrom(text, 0.3)).toBe(text)
+    // 0.6 of 29 characters falls inside "Second one!".
+    expect(resumeFrom(text, 0.6)).toBe('Second one! Third?')
+    expect(resumeFrom(text, 0.95)).toBe('Third?')
+  })
+
+  it('keeps the last sentence when the share runs past the end', () => {
+    expect(resumeFrom(text, 1)).toBe('Third?')
+    expect(resumeFrom(text, 7)).toBe('Third?')
+  })
+
+  it('does not split file names, and splits CJK sentences', () => {
+    expect(resumeFrom('Editing auth.ts now. Done.', 0.5)).toBe('Editing auth.ts now. Done.')
+    expect(resumeFrom('好的。完成了！', 0.9)).toBe('完成了！')
+  })
+})
+
 describe('Narrator', () => {
   let spoken: string[]
   let verbosity: 'silent' | 'final' | 'normal' | 'detailed'
@@ -169,6 +192,227 @@ describe('Narrator', () => {
     narrator.onToolStart({ tool_name: 'Read', tool_input: { file_path: '/x/README.md' } })
     await vi.runOnlyPendingTimersAsync()
     expect(spoken).toEqual(['voice.narration.reading:{"file":"README.md"}'])
+  })
+
+  describe('pause and resume', () => {
+    /** Each utterance lasts until `end()`, `stop` or `skip`; `restarts` picks the system-voice mode. */
+    const makeHeld = (restarts: boolean) => {
+      const started: Array<{ text: string; shown: string }> = []
+      let finish: (() => void) | null = null
+      const release = () => {
+        const done = finish
+        finish = null
+        done?.()
+      }
+      const deps = {
+        speak: vi.fn((text: string, shown?: string) => {
+          started.push({ text, shown: shown ?? text })
+          return new Promise<void>((resolve) => (finish = resolve))
+        }),
+        stop: vi.fn(release),
+        skip: vi.fn(release),
+        pauseSpeech: vi.fn(),
+        resumeSpeech: vi.fn(),
+        restartsOnPause: () => restarts,
+        progress: vi.fn(() => 0),
+        onPausedChange: vi.fn(),
+        onActiveChange: vi.fn(),
+        t,
+        verbosity: () => 'normal' as const,
+        fillAfterMs: () => 8000,
+      }
+      const held = new Narrator(deps)
+      held.beginTurn()
+      const end = async () => {
+        release()
+        await vi.advanceTimersByTimeAsync(0)
+      }
+      const texts = () => started.map((item) => item.text)
+      return { held, deps, started, texts, end }
+    }
+
+    it('holds a player utterance where it is and queues new text until resumed', async () => {
+      const { held, deps, texts, end } = makeHeld(false)
+      held.onAssistantText(['One. Two.'])
+      await vi.advanceTimersByTimeAsync(0)
+      held.pause()
+      expect(deps.pauseSpeech).toHaveBeenCalledTimes(1)
+      expect(deps.stop).not.toHaveBeenCalled()
+      expect(deps.onPausedChange).toHaveBeenLastCalledWith(true)
+      held.onAssistantText(['Three.'])
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(texts()).toEqual(['One. Two.'])
+      held.resume()
+      expect(deps.resumeSpeech).toHaveBeenCalledTimes(1)
+      expect(deps.onPausedChange).toHaveBeenLastCalledWith(false)
+      await end()
+      expect(texts()).toEqual(['One. Two.', 'Three.'])
+      held.dispose()
+    })
+
+    it('starts nothing new when a held utterance ends while paused', async () => {
+      const { held, texts, end } = makeHeld(false)
+      held.onAssistantText(['One.', 'Two.'])
+      await vi.advanceTimersByTimeAsync(0)
+      held.pause()
+      await end()
+      expect(texts()).toEqual(['One.'])
+      held.resume()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts()).toEqual(['One.', 'Two.'])
+      held.dispose()
+    })
+
+    it('speaks a system-voice item whole when nothing pauses it', async () => {
+      const { held, started, texts, end } = makeHeld(true)
+      held.onAssistantText(['First one. Second one! Third?', 'Next.'])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts()).toEqual(['First one. Second one! Third?'])
+      expect(started[0].shown).toBe('First one. Second one! Third?')
+      await end()
+      expect(texts()).toEqual(['First one. Second one! Third?', 'Next.'])
+      held.dispose()
+    })
+
+    it('stops the system voice on pause and resumes from the sentence it had reached', async () => {
+      const { held, deps, started, texts, end } = makeHeld(true)
+      held.onAssistantText(['First one. Second one! Third?'])
+      await vi.advanceTimersByTimeAsync(0)
+      deps.progress.mockReturnValue(0.6)
+      held.pause()
+      expect(deps.stop).toHaveBeenCalledTimes(1)
+      expect(deps.pauseSpeech).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(0)
+      held.onAssistantText(['Later.'])
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(texts()).toEqual(['First one. Second one! Third?'])
+      held.resume()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts()).toEqual(['First one. Second one! Third?', 'Second one! Third?'])
+      // The panel keeps showing the whole item.
+      expect(started[1].shown).toBe('First one. Second one! Third?')
+      await end()
+      expect(texts()).toEqual(['First one. Second one! Third?', 'Second one! Third?', 'Later.'])
+      held.dispose()
+    })
+
+    it('says the system-voice item again from the sentence reached, without stopping the engine', async () => {
+      const { held, deps, texts } = makeHeld(true)
+      held.onAssistantText(['A one. B two.'])
+      await vi.advanceTimersByTimeAsync(0)
+      deps.progress.mockReturnValue(0.8)
+      held.restartSentence()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(deps.skip).toHaveBeenCalledTimes(1)
+      expect(deps.stop).not.toHaveBeenCalled()
+      expect(texts()).toEqual(['A one. B two.', 'B two.'])
+      held.dispose()
+    })
+
+    it('does nothing on a restart when the engine cannot skip', async () => {
+      const started: string[] = []
+      const stop = vi.fn()
+      const bare = new Narrator({
+        speak: (text) => {
+          started.push(text)
+          return new Promise<void>(() => undefined)
+        },
+        stop,
+        restartsOnPause: () => true,
+        t,
+        verbosity: () => 'normal',
+        fillAfterMs: () => 8000,
+      })
+      bare.beginTurn()
+      bare.onAssistantText(['A one. B two.'])
+      await vi.advanceTimersByTimeAsync(0)
+      bare.restartSentence()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(started).toEqual(['A one. B two.'])
+      expect(stop).not.toHaveBeenCalled()
+      bare.dispose()
+    })
+
+    it('leaves a player utterance alone when asked to restart a sentence', async () => {
+      const { held, deps, texts } = makeHeld(false)
+      held.onAssistantText(['A one. B two.'])
+      await vi.advanceTimersByTimeAsync(0)
+      held.restartSentence()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(deps.skip).not.toHaveBeenCalled()
+      expect(texts()).toEqual(['A one. B two.'])
+      held.dispose()
+    })
+
+    it('does not end the turn while narration is paused', async () => {
+      const { held, texts, end } = makeHeld(false)
+      held.onAssistantText(['One.'])
+      await vi.advanceTimersByTimeAsync(0)
+      held.pause()
+      let ended = false
+      void held.onStop('Final.').then(() => (ended = true))
+      await end()
+      expect(ended).toBe(false)
+      held.resume()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts()).toEqual(['One.', 'Final.'])
+      await end()
+      expect(ended).toBe(true)
+      held.dispose()
+    })
+
+    it('does not pause when nothing is speaking or queued', async () => {
+      const { held, deps, texts } = makeHeld(false)
+      held.pause()
+      expect(held.isPaused()).toBe(false)
+      expect(deps.onPausedChange).not.toHaveBeenCalled()
+      expect(deps.pauseSpeech).not.toHaveBeenCalled()
+      held.onAssistantText(['Later.'])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts()).toEqual(['Later.'])
+      held.dispose()
+    })
+
+    it('reports when it has something to narrate and when it is done', async () => {
+      const { held, deps, end } = makeHeld(false)
+      held.onAssistantText(['One.'])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(deps.onActiveChange).toHaveBeenLastCalledWith(true)
+      await end()
+      expect(deps.onActiveChange).toHaveBeenLastCalledWith(false)
+      held.dispose()
+    })
+
+    // Nothing is left to resume: a pause kept on would hold the next turn (and the Test buttons).
+    it('lets go of the pause when the held utterance ends with nothing queued', async () => {
+      const { held, deps, end } = makeHeld(false)
+      held.onAssistantText(['One.'])
+      await vi.advanceTimersByTimeAsync(0)
+      held.pause()
+      let ended = false
+      void held.onStop('One.').then(() => (ended = true))
+      await end()
+      expect(held.isPaused()).toBe(false)
+      expect(deps.onPausedChange).toHaveBeenLastCalledWith(false)
+      expect(deps.resumeSpeech).toHaveBeenCalledTimes(1)
+      expect(ended).toBe(true)
+      held.dispose()
+    })
+
+    it('a barge-in drops the queue and the pause', async () => {
+      const { held, deps, texts } = makeHeld(false)
+      held.onAssistantText(['One.'])
+      await vi.advanceTimersByTimeAsync(0)
+      held.pause()
+      held.onAssistantText(['Two.'])
+      held.stop()
+      expect(deps.onPausedChange).toHaveBeenLastCalledWith(false)
+      await vi.advanceTimersByTimeAsync(0)
+      held.onAssistantText(['Three.'])
+      await vi.advanceTimersByTimeAsync(0)
+      expect(texts()).toEqual(['One.', 'Three.'])
+      held.dispose()
+    })
   })
 
   describe('barge-in', () => {

@@ -8,6 +8,8 @@ import { VoiceConversationSection } from './VoiceConversationSection'
 vi.mock('../../../lib/tauri', () => ({
   voiceShortcutSet: vi.fn().mockResolvedValue(undefined),
 }))
+const offerVoiceRestart = vi.hoisted(() => vi.fn(async () => undefined))
+vi.mock('../../../lib/voice/restartSessions', () => ({ offerVoiceRestart }))
 
 const prefs = () => useProjectsStore.getState().preferences
 // The section heading toggle shares the dropdown's name.
@@ -25,6 +27,17 @@ describe('VoiceConversationSection', () => {
     render(<VoiceConversationSection />)
     fireEvent.click(screen.getByRole('button', { name: 'On' }))
     expect(prefs().voiceConversationEnabled).toBe(true)
+  })
+
+  // Claude sessions already running were launched without the voice hooks.
+  it('offers to restart the running sessions when voice is turned on, once', () => {
+    offerVoiceRestart.mockClear()
+    render(<VoiceConversationSection />)
+    fireEvent.click(screen.getByRole('button', { name: 'On' }))
+    expect(offerVoiceRestart).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'On' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Off' }))
+    expect(offerVoiceRestart).toHaveBeenCalledTimes(1)
   })
 
   it('records the shortcut instead of typing it', () => {

@@ -108,14 +108,37 @@ export function newAssistantTexts(
   return { texts, cursor: Math.max(cursor, end) }
 }
 
+/** Ends of sentences: `.`, `!`, `?` or `…` before a space (so `auth.ts` stays whole), CJK marks. */
+const SENTENCE_END = /[.!?…]+(?=\s|$)|[。！？]+/g
+
+/**
+ * Where to pick up an utterance that was cut short: `fraction` (the share of its estimated time
+ * already spoken) is mapped to a character offset, rounded down to the start of the sentence it
+ * falls in, and the text from there is returned. Never empty: past the end it is the last
+ * sentence.
+ */
+export function resumeFrom(text: string, fraction: number): string {
+  const reached = Math.max(0, Math.min(1, fraction)) * text.length
+  let from = 0
+  for (const match of text.matchAll(SENTENCE_END)) {
+    const end = (match.index ?? 0) + match[0].length
+    if (end > reached) break
+    if (text.slice(end).trim()) from = end
+  }
+  return text.slice(from).trim() || text.trim()
+}
+
+/** The pace speech is estimated at, at rate 1. */
+export const SPEECH_MS_PER_CHAR = 75
+
 /** How long an engine without end callbacks gets before the queue moves on. */
 export function estimateSpeechMs(text: string, rate: number): number {
-  return Math.min(60_000, (1_500 + text.length * 75) / Math.max(0.5, rate))
+  return Math.min(60_000, (1_500 + text.length * SPEECH_MS_PER_CHAR) / Math.max(0.5, rate))
 }
 
 export type NarratorDeps = {
-  /** Resolves when the utterance ended or was stopped. */
-  speak: (text: string) => Promise<void>
+  /** Resolves when the utterance ended or was stopped; `shown` is the whole item it belongs to. */
+  speak: (text: string, shown: string) => Promise<void>
   stop: () => void
   t: Translate
   verbosity: () => VoiceVerbosity
@@ -123,9 +146,19 @@ export type NarratorDeps = {
   now?: () => number
 }
 
+/** The item being spoken, and what is left of it after an interruption. */
+type Current = { text: string; remaining: string; restarts: boolean }
+
 export class Narrator {
   private queue: string[] = []
   private speaking = false
+  private current: Current | null = null
+  private paused = false
+  /** The utterance in flight was held through `pauseSpeech`; resume releases it. */
+  private held = false
+  /** The utterance in flight was cut short (pause, restart): what is left is said again. */
+  private interrupted = false
+  private active = false
   private generation = 0
   private tool: ToolCall | null = null
   private lastActivityAt = 0
@@ -167,6 +200,15 @@ export class Narrator {
     this.enqueue(text, true)
   }
 
+  /**
+   * Text the person asked to hear (a terminal selection): read now, in place of anything queued,
+   * whatever the verbosity.
+   */
+  read(parts: string[]): void {
+    this.stop()
+    for (const part of parts) this.enqueue(part)
+  }
+
   onStop(finalText: string): Promise<void> {
     this.tool = null
     this.clearFill()
@@ -181,9 +223,62 @@ export class Narrator {
   stop(): void {
     this.generation += 1
     this.queue = []
+    this.current = null
     this.tool = null
     this.lastActivityAt = this.now()
+    this.held = false
+    this.setPaused(false)
     this.deps.stop()
+    // Paused, nothing is draining to report the queue empty.
+    if (!this.speaking) this.resolveIdle()
+    this.syncActive()
+  }
+
+  /** Holds narration; what arrives meanwhile queues. The turn does not end while paused. */
+  pause(): void {
+    // Nothing to hold: a pause would stay on with nothing to resume.
+    if (this.paused || !this.hasNarration()) return
+    this.setPaused(true)
+    const current = this.current
+    if (!this.speaking || !current) return
+    if (current.restarts) {
+      this.cutShort(current)
+      this.deps.stop()
+    } else {
+      this.held = true
+      this.deps.pauseSpeech?.()
+    }
+  }
+
+  isPaused(): boolean {
+    return this.paused
+  }
+
+  resume(): void {
+    if (!this.paused) return
+    this.setPaused(false)
+    if (this.held) {
+      this.held = false
+      this.deps.resumeSpeech?.()
+    }
+    void this.drain()
+  }
+
+  /**
+   * Speaks the item in flight again from the sentence it had reached, so a new volume is heard
+   * at once on an engine that takes it per utterance. A held (player) utterance needs nothing.
+   */
+  restartSentence(): void {
+    const skip = this.deps.skip
+    if (!skip || this.paused || !this.speaking || !this.current?.restarts) return
+    this.cutShort(this.current)
+    skip()
+  }
+
+  /** Keeps what is left of `current` from the sentence reached; called before it is stopped. */
+  private cutShort(current: Current): void {
+    current.remaining = resumeFrom(current.remaining, this.deps.progress?.() ?? 0)
+    this.interrupted = true
   }
 
   /** The turn ended with no Stop to narrate (an interrupt, a closed pane). */
@@ -204,11 +299,40 @@ export class Narrator {
     else this.queue.push(trimmed)
     if (!front) this.lastQueued = trimmed
     this.lastActivityAt = this.now()
+    this.syncActive()
     void this.drain()
   }
 
+  private hasNarration(): boolean {
+    return this.speaking || this.current !== null || this.queue.length > 0
+  }
+
+  /**
+   * Reports a change in `hasNarration`; a pause left with nothing to resume (the held utterance
+   * ended, nothing queued) is let go, so it never outlives the narration it held.
+   */
+  private syncActive(): void {
+    const active = this.hasNarration()
+    if (!active && this.paused) {
+      this.setPaused(false)
+      if (this.held) {
+        this.held = false
+        this.deps.resumeSpeech?.()
+      }
+    }
+    if (active === this.active) return
+    this.active = active
+    this.deps.onActiveChange?.(active)
+  }
+
+  private setPaused(paused: boolean): void {
+    if (this.paused === paused) return
+    this.paused = paused
+    this.deps.onPausedChange?.(paused)
+  }
+
   private async drain(): Promise<void> {
-    if (this.speaking) return
+    if (this.speaking || this.paused) return
     this.speaking = true
     const generation = this.generation
     try {
@@ -216,16 +340,21 @@ export class Narrator {
         const next = this.queue.shift()!
         await this.deps.speak(next).catch(() => undefined)
         this.lastActivityAt = this.now()
+        if (generation !== this.generation || this.interrupted) continue
+        this.current = null
       }
     } finally {
       this.speaking = false
-      if (this.queue.length > 0) void this.drain()
-      else this.resolveIdle()
+      this.syncActive()
+      if (!this.paused && (this.current || this.queue.length > 0)) void this.drain()
+      else if (!this.paused) this.resolveIdle()
     }
   }
 
   private whenIdle(): Promise<void> {
-    if (!this.speaking && this.queue.length === 0) return Promise.resolve()
+    if (!this.speaking && !this.paused && !this.current && this.queue.length === 0) {
+      return Promise.resolve()
+    }
     return new Promise((resolve) => this.idleWaiters.push(resolve))
   }
 
@@ -237,7 +366,7 @@ export class Narrator {
 
   private maybeFill(): void {
     const level = this.deps.verbosity()
-    if (!this.tool || this.speaking || this.queue.length > 0) return
+    if (!this.tool || this.speaking || this.paused || this.current || this.queue.length > 0) return
     if (level !== 'normal' && level !== 'detailed') return
     if (this.now() - this.lastActivityAt < this.deps.fillAfterMs()) return
     this.enqueue(statusFill(this.tool, this.deps.t))

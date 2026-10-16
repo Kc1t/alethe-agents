@@ -145,4 +145,55 @@ describe('DictationButton native engine', () => {
     expect(screen.getByTitle('voice.fallback.title — prefs.voiceTestFailed.auth')).toBeTruthy()
     expect(useProjectsStore.getState().preferences.voiceProviders.openai?.invalid).toBe(true)
   })
+
+  // Rust reports a too-short recording by its code; the person reads words, not the code.
+  it('explains a recording that was too short in words', async () => {
+    setPrefs({
+      voiceStt: {
+        dictation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+        conversation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+      },
+    })
+    tauri.speechStopAndTranscribe.mockRejectedValue('speech_too_short')
+    render(<DictationButton />)
+    await press()
+    await press()
+    expect(screen.getByTitle('dictation.tooShort')).toBeTruthy()
+  })
+
+  // Flags restored from another machine can say "configured" where no key exists.
+  it('forgets a cloud provider whose key is missing', async () => {
+    setPrefs({
+      voiceStt: {
+        dictation: { provider: 'openai', model: 'gpt-4o-transcribe', locale: null },
+        conversation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+      },
+      voiceProviders: { openai: { configured: true, invalid: false } },
+    })
+    tauri.speechPrepare.mockResolvedValue(false)
+    render(<DictationButton />)
+    await press()
+    expect(tauri.speechStartCapture).not.toHaveBeenCalled()
+    expect(screen.getByTitle('voice.cloud.noKey')).toBeTruthy()
+    const prefs = useProjectsStore.getState().preferences
+    expect(prefs.voiceProviders.openai).toEqual({ configured: false, invalid: false })
+    expect(prefs.voiceStt.dictation.provider).toBe('local')
+  })
+
+  it('keeps the provider when the key could not be checked', async () => {
+    setPrefs({
+      voiceStt: {
+        dictation: { provider: 'openai', model: 'gpt-4o-transcribe', locale: null },
+        conversation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+      },
+      voiceProviders: { openai: { configured: true, invalid: false } },
+    })
+    tauri.speechPrepare.mockRejectedValue('secure_store_unavailable: read')
+    render(<DictationButton />)
+    await press()
+    expect(tauri.speechStartCapture).not.toHaveBeenCalled()
+    const prefs = useProjectsStore.getState().preferences
+    expect(prefs.voiceProviders.openai).toEqual({ configured: true, invalid: false })
+    expect(prefs.voiceStt.dictation.provider).toBe('openai')
+  })
 })

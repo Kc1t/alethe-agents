@@ -10,8 +10,8 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
-use crate::audio_out::AudioOut;
-use crate::voice_providers::http::CloudErrorKind;
+use crate::audio_out::{AudioOut, TextSpan};
+use crate::voice_providers::http::{CloudError, CloudErrorKind};
 use crate::voice_providers::{catalog, keys, openrouter, tts_cloud, CloudProvider};
 use crate::voice_servers::error::ServerErrorKind;
 use crate::voice_servers::store::VoiceServer;
@@ -48,6 +48,26 @@ fn matching_id(latest: Option<&(String, u64)>, key: &str, fallback: u64) -> Opti
 fn callback_id(key: &str) -> Option<u64> {
     let latest = LATEST.lock().unwrap_or_else(|e| e.into_inner());
     matching_id(latest.as_ref(), key, CURRENT_ID.load(Ordering::SeqCst))
+}
+
+/// What muting does to the OS voice, from its volume scale (`Some((min, normal))`, when it has
+/// one). Only a scale that reaches 0 can be silenced; otherwise a muted utterance is skipped and
+/// the caller's estimate keeps the narration's pace.
+#[derive(Debug, PartialEq)]
+enum SystemVolume {
+    Set(f32),
+    Keep,
+    Skip,
+}
+
+fn system_volume(muted: bool, scale: Option<(f32, f32)>) -> SystemVolume {
+    match scale {
+        Some((min, normal)) if min.abs() <= f32::EPSILON => {
+            SystemVolume::Set(if muted { min } else { normal })
+        }
+        _ if muted => SystemVolume::Skip,
+        _ => SystemVolume::Keep,
+    }
 }
 
 fn scaled_rate(normal: f32, min: f32, max: f32, multiplier: f32) -> f32 {
@@ -132,6 +152,38 @@ fn emit_start(app: &AppHandle, id: u64) {
     }
 }
 
+/// How often the player reports where it is in the text (`tts://progress`).
+const PROGRESS_EVERY: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// While utterance `id` plays, reports the character offset reached in its text, in code points,
+/// whenever it moves: it stands still while paused and goes on while muted. Ends with the
+/// utterance.
+fn report_progress(app: AppHandle, out: Arc<AudioOut>, id: u64) {
+    tauri::async_runtime::spawn(async move {
+        let mut last = None;
+        while is_current(id) {
+            let Some(offset) = out.progress(id) else {
+                break;
+            };
+            if last != Some(offset) {
+                last = Some(offset);
+                let _ = app.emit(
+                    "tts://progress",
+                    serde_json::json!({ "id": id, "charOffset": offset }),
+                );
+            }
+            tokio::time::sleep(PROGRESS_EVERY).await;
+        }
+    });
+}
+
+fn span_of(start: usize, chunk: &str) -> TextSpan {
+    TextSpan {
+        start,
+        len: chunk.chars().count(),
+    }
+}
+
 /// The shared cloud/local player, fetched per utterance: it reopens itself after a dead stream.
 fn player(app: &AppHandle) -> Result<Arc<AudioOut>, String> {
     let handle = app.clone();
@@ -175,6 +227,22 @@ async fn speak_system(
             );
             engine.set_rate(next).map_err(|e| e.to_string())?;
         }
+        let scale = features
+            .volume
+            .then(|| (engine.min_volume(), engine.normal_volume()));
+        match system_volume(crate::audio_out::is_muted(), scale) {
+            SystemVolume::Set(volume) => {
+                engine.set_volume(volume).map_err(|e| e.to_string())?;
+            }
+            SystemVolume::Keep => {}
+            SystemVolume::Skip => {
+                // Silenced by not speaking: no end is reported, so the estimate paces the queue.
+                if features.stop {
+                    engine.stop().map_err(|e| e.to_string())?;
+                }
+                return Ok(id);
+            }
+        }
         let utterance = engine.speak(text, true).map_err(|e| e.to_string())?;
         *LATEST.lock().unwrap_or_else(|e| e.into_inner()) =
             utterance.map(|utterance| (format!("{utterance:?}"), id));
@@ -202,7 +270,7 @@ pub async fn tts_speak(
         let found = model
             .as_deref()
             .map(|model_id| crate::speech::local_tts_model(&app, model_id));
-        if let Some(Ok((dir, model_file))) = found {
+        if let Some(Ok((dir, layout))) = found {
             stop_all(&app).await;
             let rate = normalized_rate(rate);
             // A local voice id is the speaker number of a multi-voice model.
@@ -300,15 +368,18 @@ async fn speak_local(app: AppHandle, id: u64, local: LocalVoice, rate: f32, text
             return;
         }
         let dir = dir.clone();
+        let layout = layout.clone();
+        let span = span_of(start, &chunk);
         let result = tokio::task::spawn_blocking(move || {
-            crate::tts_local::synthesize(&dir, model_file, &chunk, rate)
+            crate::tts_local::synthesize(&dir, &layout, &chunk, rate, sid, lang)
         })
         .await;
         match result {
             Ok(Ok((samples, sample_rate))) => {
-                out.push(id, &samples, sample_rate);
+                out.push(id, &samples, sample_rate, span);
                 if index == 0 {
                     emit_start(&app, id);
+                    report_progress(app.clone(), Arc::clone(&out), id);
                 }
             }
             // Nothing played yet: the system voice speaks the whole text instead.
@@ -358,7 +429,7 @@ async fn speak_cloud(
     rate: f32,
     text: String,
 ) {
-    let key = match keys::read_key(&app, cloud) {
+    let key = match keys::read_key_async(&app, cloud).await {
         Ok(Some(key)) => key,
         Ok(None) => return fall_back(app, id, cloud, CloudErrorKind::Auth, text, rate).await,
         Err(_) => return fall_back(app, id, cloud, CloudErrorKind::Other, text, rate).await,
@@ -391,14 +462,13 @@ async fn speak_cloud(
                 out.push(id, &pcm.samples, playback);
                 if index == 0 {
                     emit_start(&app, id);
+                    report_progress(app.clone(), Arc::clone(&out), id);
                 }
             }
             // Nothing played yet: hand the whole text to the system voice under the same id.
             Err(error) if index == 0 => {
                 return fall_back(app, id, cloud, error.kind, text, rate).await
             }
-            // Mid-utterance: stop where we are rather than restart from the top.
-            Err(_) => break,
         }
     }
     out.close(id);
@@ -418,7 +488,34 @@ async fn stop_all(app: &AppHandle) {
 #[tauri::command]
 pub async fn tts_stop(app: AppHandle) -> Result<(), String> {
     CURRENT_ID.store(0, Ordering::SeqCst);
+    // Only a stop (or barge-in) and `tts_resume` release a pause; a new `tts_speak` keeps it.
+    crate::audio_out::stop_and_release();
     stop_all(&app).await;
+    Ok(())
+}
+
+/// Holds cloud and local narration at the sample it reached. The OS voice cannot be held: the
+/// frontend stops it and says the interrupted sentence again on resume.
+#[tauri::command]
+pub fn tts_pause(webview: tauri::WebviewWindow) -> Result<(), String> {
+    crate::voice_hud::require_window(webview.label(), "main")?;
+    crate::audio_out::set_paused(true);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn tts_resume(webview: tauri::WebviewWindow) -> Result<(), String> {
+    crate::voice_hud::require_window(webview.label(), "main")?;
+    crate::audio_out::set_paused(false);
+    Ok(())
+}
+
+/// Narration keeps its pace with no sound, for the rest of the session. The OS voice takes the
+/// new volume from its next utterance.
+#[tauri::command]
+pub fn tts_set_muted(webview: tauri::WebviewWindow, muted: bool) -> Result<(), String> {
+    crate::voice_hud::require_window(webview.label(), "main")?;
+    crate::audio_out::set_muted(muted);
     Ok(())
 }
 
@@ -454,7 +551,7 @@ fn router_voices(ids: Vec<String>) -> Vec<TtsVoice> {
 
 /// The voices of an OpenRouter speech model, from the live list (fetched when not cached).
 /// Empty when the model is unknown or the list cannot be fetched.
-async fn openrouter_voices(app: &AppHandle, model: Option<String>) -> Vec<TtsVoice> {
+async fn openrouter_voices(model: Option<String>) -> Vec<TtsVoice> {
     let Some(model) = model
         .filter(|m| !m.trim().is_empty())
         .or_else(|| catalog::default_model(CloudProvider::Openrouter, "tts").map(str::to_string))
@@ -464,7 +561,7 @@ async fn openrouter_voices(app: &AppHandle, model: Option<String>) -> Vec<TtsVoi
     if let Some(voices) = openrouter::cached_voices(&model) {
         return router_voices(voices);
     }
-    let voices = match openrouter::live_models(app, "tts").await {
+    let voices = match openrouter::live_models("tts").await {
         Ok(models) => models
             .into_iter()
             .find(|entry| entry.id == model)
@@ -488,10 +585,23 @@ pub async fn tts_voices(
         return Ok(router_voices(ids));
     }
     match provider.and_then(TtsProvider::cloud) {
-        None if provider == Some(TtsProvider::Local) => Ok(Vec::new()),
+        None if provider == Some(TtsProvider::Local) => {
+            let Some(id) = model.filter(|m| !m.trim().is_empty()) else {
+                return Ok(Vec::new());
+            };
+            Ok(crate::speech::local_tts_voices(&app, &id)
+                .await
+                .into_iter()
+                .map(|voice| TtsVoice {
+                    id: voice.id.to_string(),
+                    name: voice.name,
+                    language: voice.language,
+                })
+                .collect())
+        }
         None => system_voices(app).await,
         Some(CloudProvider::Elevenlabs) => {
-            let Some(key) = keys::read_key(&app, CloudProvider::Elevenlabs)? else {
+            let Some(key) = keys::read_key_async(&app, CloudProvider::Elevenlabs).await? else {
                 return Ok(Vec::new());
             };
             let list = tts_cloud::fetch_voices(&key)
@@ -506,7 +616,7 @@ pub async fn tts_voices(
                 })
                 .collect())
         }
-        Some(CloudProvider::Openrouter) => Ok(openrouter_voices(&app, model).await),
+        Some(CloudProvider::Openrouter) => Ok(openrouter_voices(model).await),
         Some(cloud) => Ok(catalog::provider_catalog(cloud)
             .voices
             .iter()
@@ -562,6 +672,32 @@ mod tests {
         assert_eq!(matching_id(Some(&latest), "B", 3), Some(7));
         assert_eq!(matching_id(Some(&latest), "A", 3), None);
         assert_eq!(matching_id(None, "A", 3), Some(3));
+    }
+
+    #[test]
+    fn muting_silences_engines_that_reach_zero_and_skips_the_others() {
+        use super::{system_volume, SystemVolume};
+        // AVSpeechSynthesizer and WinRT: 0..1, normal 1.
+        assert_eq!(
+            system_volume(true, Some((0.0, 1.0))),
+            SystemVolume::Set(0.0)
+        );
+        assert_eq!(
+            system_volume(false, Some((0.0, 1.0))),
+            SystemVolume::Set(1.0)
+        );
+        // speech-dispatcher's quietest (-100) is not silence: skip the utterance instead.
+        assert_eq!(
+            system_volume(true, Some((-100.0, 100.0))),
+            SystemVolume::Skip
+        );
+        assert_eq!(
+            system_volume(false, Some((-100.0, 100.0))),
+            SystemVolume::Keep
+        );
+        // No volume control at all.
+        assert_eq!(system_volume(true, None), SystemVolume::Skip);
+        assert_eq!(system_volume(false, None), SystemVolume::Keep);
     }
 
     #[test]

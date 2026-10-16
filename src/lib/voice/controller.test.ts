@@ -9,6 +9,9 @@ const tauri = vi.hoisted(() => ({
   speechStopCapture: vi.fn(async () => ({ samples: [], sampleRate: 16000, peak: 0 })),
   ttsSpeak: vi.fn(async () => 1),
   ttsStop: vi.fn(async () => undefined),
+  ttsPause: vi.fn(async () => undefined),
+  ttsResume: vi.fn(async () => undefined),
+  ttsSetMuted: vi.fn(async (_muted: boolean) => undefined),
   onTtsEnd: vi.fn(async (handler: (id: number) => void) => {
     ttsEnd = handler
     return () => undefined
@@ -17,7 +20,12 @@ const tauri = vi.hoisted(() => ({
     ttsStart = handler
     return () => undefined
   }),
+  onTtsProgress: vi.fn(async (handler: (id: number, charOffset: number) => void) => {
+    ttsProgress = handler
+    return () => undefined
+  }),
   agentPermissionDecide: vi.fn(async () => undefined),
+  readClipboardText: vi.fn(async () => ''),
   voiceSetTargets: vi.fn(async (_ptyIds: string[]) => undefined),
   agentVoiceHookedPtys: vi.fn(async (): Promise<string[]> => ['pty-1', 'pty-2']),
   onAgentPermissionReleased: vi.fn(async (handler: (e: { requestId: string }) => void) => {
@@ -34,6 +42,7 @@ const tauri = vi.hoisted(() => ({
 }))
 let ttsEnd: (id: number) => void = () => undefined
 let ttsStart: (id: number) => void = () => undefined
+let ttsProgress: (id: number, charOffset: number) => void = () => undefined
 let released: (e: { requestId: string }) => void = () => undefined
 let hook: (e: { payload: Record<string, unknown> }) => void = () => undefined
 vi.mock('../tauri', () => tauri)
@@ -109,6 +118,7 @@ const setStt = (provider: 'local' | 'apple' | 'openai', model: string, locale: s
 const workspace = vi.hoisted(() => ({
   setActiveProjectOnly: vi.fn(),
   focusWorkspaceTerminal: vi.fn(),
+  setActiveTab: vi.fn(),
   setActiveTerminal: vi.fn(),
   requestPaneFocus: vi.fn(),
 }))
@@ -119,14 +129,29 @@ vi.mock('../../stores/projectsStore', () => ({
       projects: [],
       setActiveProjectOnly: workspace.setActiveProjectOnly,
       focusWorkspaceTerminal: workspace.focusWorkspaceTerminal,
+      setActiveTab: workspace.setActiveTab,
     }),
     subscribe: vi.fn(() => () => undefined),
   },
 }))
+type Runtime = Record<string, { alive?: boolean; status?: string }>
+const terminals = vi.hoisted(() => ({
+  byPtyId: {} as Record<string, { alive?: boolean; status?: string }>,
+  listener: null as
+    | null
+    | ((
+        next: { byPtyId: Record<string, { alive?: boolean; status?: string }> },
+        previous: { byPtyId: Record<string, { alive?: boolean; status?: string }> },
+      ) => void),
+}))
+const LIVE_RUNTIME: Runtime = { 'pty-1': { alive: true }, 'pty-2': { alive: true } }
 vi.mock('../../stores/terminalsStore', () => ({
   useTerminalsStore: {
-    getState: () => ({ byPtyId: { 'pty-1': { alive: true }, 'pty-2': { alive: true } } }),
-    subscribe: vi.fn(() => () => undefined),
+    getState: () => ({ byPtyId: terminals.byPtyId }),
+    subscribe: vi.fn((listener: typeof terminals.listener) => {
+      terminals.listener = listener
+      return () => undefined
+    }),
   },
 }))
 const openVoiceCommand = vi.fn()
@@ -146,6 +171,7 @@ import {
   INITIAL_VOICE_CONVERSATION,
   useVoiceConversationStore,
 } from '../../stores/voiceConversationStore'
+import { agentInputFor } from '../agentInputRegistry'
 import { PaneHiddenError, TerminalPromptOpenError } from '../agentPromptDelivery'
 import { VoiceConversationController } from './controller'
 
@@ -215,11 +241,6 @@ describe('VoiceConversationController', () => {
     expect(state().capture).toBe('idle')
   })
 
-  it('stops speech when the person starts talking', async () => {
-    await controller.press({ jev: false })
-    expect(tauri.ttsStop).toHaveBeenCalled()
-  })
-
   it('interrupts first when the transcript starts with an interrupt word', async () => {
     await speak('Stop, use pnpm')
     expect(input.interrupt).toHaveBeenCalled()
@@ -270,6 +291,16 @@ describe('VoiceConversationController', () => {
     await speak('   ')
     expect(input.submit).not.toHaveBeenCalled()
     expect(state().notice?.key).toBe('voice.conv.heardNothing')
+  })
+
+  // A tap of the shortcut, not an error: say how to use it and send nothing.
+  it('shows the hold hint, not an error, when the recording was too short', async () => {
+    tauri.speechStopAndTranscribe.mockRejectedValueOnce('speech_too_short')
+    await controller.press({ jev: false })
+    await controller.release()
+    expect(state().notice).toEqual({ key: 'voice.conv.holdHint' })
+    expect(state().capture).toBe('idle')
+    expect(input.submit).not.toHaveBeenCalled()
   })
 
   it('does not capture when the speech model is missing', async () => {
@@ -601,6 +632,336 @@ describe('VoiceConversationController', () => {
     }
   })
 
+  describe('narration controls', () => {
+    const finalAnswer = async (text: string) => {
+      prefs.voiceVerbosity = 'normal'
+      await speak('fix the build')
+      hook({
+        payload: { hook_event_name: 'Stop', plannerId: 'pty-1', last_assistant_message: text },
+      })
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    const useProvider = (provider: 'system' | 'openai') => {
+      prefs.voiceTts =
+        provider === 'system'
+          ? { provider: 'system', model: '', voice: null, rate: 1 }
+          : { provider: 'openai', model: 'gpt-4o-mini-tts', voice: null, rate: 1 }
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      useProvider('system')
+      vi.useRealTimers()
+    })
+
+    it('mutes and unmutes in Rust and mirrors it in the store', async () => {
+      await controller.toggleMute()
+      expect(tauri.ttsSetMuted).toHaveBeenLastCalledWith(true)
+      expect(state().muted).toBe(true)
+      await controller.toggleMute()
+      expect(tauri.ttsSetMuted).toHaveBeenLastCalledWith(false)
+      expect(state().muted).toBe(false)
+    })
+
+    // The store outlives a webview reload of the controller; Rust keeps its own flag.
+    it('tells Rust the mute state when it starts', async () => {
+      useVoiceConversationStore.setState({ muted: true })
+      const next = new VoiceConversationController()
+      await next.start()
+      expect(tauri.ttsSetMuted).toHaveBeenLastCalledWith(true)
+      next.dispose()
+      expect(state().muted).toBe(true)
+    })
+
+    // "First part. Second part." is estimated at 3.3 s; 2 s in is past "First part.".
+    it('says the system-voice item again from the sentence reached, at the new volume', async () => {
+      useProvider('system')
+      await finalAnswer('First part. Second part.')
+      expect(spoken()).toEqual(['First part. Second part.'])
+      await vi.advanceTimersByTimeAsync(2_000)
+      tauri.ttsStop.mockClear()
+      await controller.toggleMute()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spoken()).toEqual(['First part. Second part.', 'Second part.'])
+      expect(tauri.ttsStop).not.toHaveBeenCalled()
+    })
+
+    it('takes one mute toggle at a time', async () => {
+      tauri.ttsSetMuted.mockClear()
+      let finish: () => void = () => undefined
+      tauri.ttsSetMuted.mockImplementationOnce(
+        () => new Promise<undefined>((resolve) => (finish = () => resolve(undefined))),
+      )
+      const first = controller.toggleMute()
+      const second = controller.toggleMute()
+      finish()
+      await first
+      await second
+      expect(tauri.ttsSetMuted).toHaveBeenCalledTimes(1)
+      expect(tauri.ttsSetMuted).toHaveBeenLastCalledWith(true)
+      expect(state().muted).toBe(true)
+    })
+
+    it('ignores pause when nothing is narrated, and mirrors what is', async () => {
+      await controller.togglePause()
+      expect(state().narrationPaused).toBe(false)
+      expect(tauri.ttsPause).not.toHaveBeenCalled()
+      expect(tauri.ttsStop).not.toHaveBeenCalled()
+      useProvider('system')
+      await finalAnswer('Done.')
+      expect(state().narrationActive).toBe(true)
+      ttsEnd(1)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(state().narrationActive).toBe(false)
+      expect(state().turn).toBe('idle')
+    })
+
+    it('keeps the store unmuted when Rust could not mute', async () => {
+      tauri.ttsSetMuted.mockRejectedValueOnce(new Error('no ipc'))
+      await controller.toggleMute()
+      expect(state().muted).toBe(false)
+    })
+
+    it('holds a cloud utterance in the player and its timer until resumed', async () => {
+      useProvider('openai')
+      await finalAnswer('Done.')
+      ttsStart(1)
+      tauri.ttsResume.mockClear()
+      await controller.togglePause()
+      expect(tauri.ttsPause).toHaveBeenCalledTimes(1)
+      expect(state().narrationPaused).toBe(true)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(state().turn).not.toBe('idle')
+      await controller.togglePause()
+      expect(tauri.ttsResume).toHaveBeenCalledTimes(1)
+      expect(state().narrationPaused).toBe(false)
+      await vi.advanceTimersByTimeAsync(3_000)
+      expect(state().turn).toBe('idle')
+    })
+
+    it('pauses the system voice by stopping it and resumes from the sentence reached', async () => {
+      useProvider('system')
+      await finalAnswer('First part. Second part.')
+      await vi.advanceTimersByTimeAsync(2_000)
+      tauri.ttsStop.mockClear()
+      await controller.togglePause()
+      expect(tauri.ttsStop).toHaveBeenCalled()
+      expect(tauri.ttsPause).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(spoken()).toEqual(['First part. Second part.'])
+      expect(state().turn).not.toBe('idle')
+      await controller.togglePause()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spoken()).toEqual(['First part. Second part.', 'Second part.'])
+    })
+
+    it('resumes the system voice from the start when paused right away', async () => {
+      useProvider('system')
+      await finalAnswer('First part. Second part.')
+      await controller.togglePause()
+      await controller.togglePause()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spoken()).toEqual(['First part. Second part.', 'First part. Second part.'])
+    })
+
+    it('stop discards the rest and clears the pause', async () => {
+      useProvider('system')
+      await finalAnswer('First part. Second part.')
+      await controller.togglePause()
+      controller.stopSpeaking()
+      expect(state().narrationPaused).toBe(false)
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(spoken()).toEqual(['First part. Second part.'])
+      expect(state().turn).toBe('idle')
+    })
+
+    describe('spoken-word offset', () => {
+      const offset = () => state().narrationSpokenOffset
+
+      // 75 ms a character at rate 1. The store holds the start of the word reached, so it moves
+      // once a word, not once a character: 300 ms is character 4 ("First"), 800 ms is character
+      // 10, inside "part." (which starts at 6).
+      it('estimates the system voice from its speaking time, frozen while paused', async () => {
+        useProvider('system')
+        await finalAnswer('First part. Second part.')
+        expect(offset()).toBe(0)
+        await vi.advanceTimersByTimeAsync(300)
+        expect(offset()).toBe(0)
+        await vi.advanceTimersByTimeAsync(500)
+        expect(offset()).toBe(6)
+        await controller.togglePause()
+        await vi.advanceTimersByTimeAsync(2_000)
+        expect(offset()).toBe(6)
+      })
+
+      it('follows the player exactly for cloud voices, only for the utterance playing', async () => {
+        useProvider('openai')
+        await finalAnswer('First part. Second part.')
+        // Synthesizing: nothing is heard yet, so no word is highlighted, nor estimated.
+        expect(offset()).toBeNull()
+        await vi.advanceTimersByTimeAsync(2_000)
+        expect(offset()).toBeNull()
+        ttsStart(1)
+        expect(offset()).toBe(0)
+        ttsProgress(1, 8)
+        expect(offset()).toBe(6)
+        ttsProgress(99, 20)
+        expect(offset()).toBe(6)
+        // The player's offset wins over the estimate from then on.
+        await vi.advanceTimersByTimeAsync(1_000)
+        expect(offset()).toBe(6)
+        ttsProgress(1, 500)
+        expect(offset()).toBe(24)
+      })
+
+      // The estimate timer only paces the queue; with the player reporting, the audio may well
+      // still be playing when it runs out.
+      it('marks a cloud item spoken only when the player says it ended', async () => {
+        useProvider('openai')
+        await finalAnswer('First part. Second part.')
+        ttsStart(1)
+        ttsProgress(1, 8)
+        // "First part. Second part." is estimated at 3.3 s.
+        await vi.advanceTimersByTimeAsync(4_000)
+        expect(offset()).toBe(6)
+      })
+
+      it('marks a cloud item spoken when it ends', async () => {
+        useProvider('openai')
+        await finalAnswer('First part. Second part.')
+        ttsStart(1)
+        ttsProgress(1, 8)
+        ttsEnd(1)
+        await vi.advanceTimersByTimeAsync(0)
+        expect(offset()).toBe(24)
+      })
+
+      it('marks the item spoken when it ends', async () => {
+        useProvider('system')
+        await finalAnswer('Done now.')
+        ttsEnd(1)
+        await vi.advanceTimersByTimeAsync(0)
+        expect(state().narration).toBe('Done now.')
+        expect(offset()).toBe(9)
+      })
+
+      // The system voice says the rest again from the sentence reached: the highlight resumes
+      // there, in the whole item still shown.
+      it('counts a resumed sentence from where it sits in the item shown', async () => {
+        useProvider('system')
+        await finalAnswer('First part. Second part.')
+        await vi.advanceTimersByTimeAsync(2_000)
+        await controller.toggleMute()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(spoken()).toEqual(['First part. Second part.', 'Second part.'])
+        expect(state().narration).toBe('First part. Second part.')
+        expect(offset()).toBe(12)
+      })
+
+      it('shows no highlight when speech output is unavailable', async () => {
+        useProvider('system')
+        tauri.ttsSpeak.mockRejectedValueOnce(new Error('no tts'))
+        await finalAnswer('Done.')
+        await vi.advanceTimersByTimeAsync(0)
+        expect(state().narration).toBe('Done.')
+        expect(offset()).toBeNull()
+      })
+    })
+
+    describe('barge-in', () => {
+      // A press holds the narration; only something actually sent discards it.
+      it('a press holds a cloud utterance instead of discarding it', async () => {
+        useProvider('openai')
+        await finalAnswer('Done.')
+        ttsStart(1)
+        tauri.ttsStop.mockClear()
+        await controller.press({ jev: false })
+        expect(tauri.ttsPause).toHaveBeenCalledTimes(1)
+        expect(tauri.ttsStop).not.toHaveBeenCalled()
+        expect(state().narrationPaused).toBe(true)
+      })
+
+      it('a release that sends something discards the held narration', async () => {
+        useProvider('system')
+        await finalAnswer('First part. Second part.')
+        await controller.press({ jev: false })
+        tauri.ttsStop.mockClear()
+        tauri.speechStopAndTranscribe.mockResolvedValueOnce('run the tests')
+        await controller.release()
+        expect(input.submit).toHaveBeenLastCalledWith('run the tests')
+        expect(state().narrationPaused).toBe(false)
+        expect(tauri.ttsStop).toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(30_000)
+        expect(spoken()).toEqual(['First part. Second part.'])
+      })
+
+      it('nothing heard keeps it paused, and resume continues from the sentence reached', async () => {
+        useProvider('system')
+        await finalAnswer('First part. Second part.')
+        await vi.advanceTimersByTimeAsync(2_000)
+        tauri.speechStopAndTranscribe.mockResolvedValueOnce('   ')
+        await controller.press({ jev: false })
+        await controller.release()
+        expect(state().notice?.key).toBe('voice.conv.heardNothing')
+        expect(state().narrationPaused).toBe(true)
+        await vi.advanceTimersByTimeAsync(30_000)
+        expect(spoken()).toEqual(['First part. Second part.'])
+        await controller.togglePause()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(spoken()).toEqual(['First part. Second part.', 'Second part.'])
+      })
+
+      it('a tap too short to transcribe keeps it paused', async () => {
+        useProvider('openai')
+        await finalAnswer('Done.')
+        ttsStart(1)
+        tauri.ttsStop.mockClear()
+        tauri.speechStopAndTranscribe.mockRejectedValueOnce('speech_too_short')
+        await controller.press({ jev: false })
+        await controller.release()
+        expect(state().notice).toEqual({ key: 'voice.conv.holdHint' })
+        expect(state().narrationPaused).toBe(true)
+        expect(tauri.ttsStop).not.toHaveBeenCalled()
+        await controller.togglePause()
+        expect(tauri.ttsResume).toHaveBeenCalled()
+        expect(state().narrationPaused).toBe(false)
+      })
+
+      it('a failed transcription keeps it paused', async () => {
+        useProvider('openai')
+        await finalAnswer('Done.')
+        ttsStart(1)
+        tauri.speechStopAndTranscribe.mockRejectedValueOnce(new Error('decoder crashed'))
+        await controller.press({ jev: false })
+        await controller.release()
+        expect(state().notice?.key).toBe('voice.conv.failed')
+        expect(state().narrationPaused).toBe(true)
+      })
+
+      it('a press that cannot open the speech model keeps it paused', async () => {
+        useProvider('openai')
+        await finalAnswer('Done.')
+        ttsStart(1)
+        tauri.speechPrepare.mockResolvedValueOnce(false)
+        await controller.press({ jev: false })
+        expect(state().notice?.key).toBe('voice.conv.modelMissing')
+        expect(state().narrationPaused).toBe(true)
+      })
+
+      it('a press keeps a pause the person had set', async () => {
+        useProvider('system')
+        await finalAnswer('First part. Second part.')
+        await controller.togglePause()
+        tauri.speechStopAndTranscribe.mockResolvedValueOnce('')
+        await controller.press({ jev: false })
+        await controller.release()
+        expect(state().narrationPaused).toBe(true)
+      })
+    })
+  })
+
   it('keeps the turn and the transcript when the pane shows a choice menu', async () => {
     input.submit.mockRejectedValueOnce(new TerminalPromptOpenError())
     await speak('fix the build')
@@ -635,6 +996,86 @@ describe('VoiceConversationController', () => {
     expect(workspace.focusWorkspaceTerminal).toHaveBeenCalledWith('p', 't')
     expect(workspace.setActiveTerminal).toHaveBeenCalledWith('p', 't')
     expect(workspace.requestPaneFocus).toHaveBeenCalledWith('t')
+  })
+
+  describe('picking a session', () => {
+    beforeEach(() => {
+      realResolve = true
+    })
+
+    const sentTo = () => {
+      const calls = tauri.voiceSetTargets.mock.calls
+      return calls[calls.length - 1]?.[0]
+    }
+
+    it('sends to the picked session, even Claude in a background tab', async () => {
+      controller.pinTarget('pty-2')
+      await speak('fix the build')
+      expect(input.submit).toHaveBeenCalledWith('fix the build')
+      expect(sentTo()).toEqual(['pty-2'])
+      expect(state().target?.ptyId).toBe('pty-2')
+    })
+
+    it('brings the picked session to front: its project, its tab, its pane', () => {
+      controller.pinTarget('pty-2')
+      expect(state().pinnedPtyId).toBe('pty-2')
+      expect(workspace.setActiveProjectOnly).toHaveBeenCalledWith('q')
+      expect(workspace.focusWorkspaceTerminal).toHaveBeenCalledWith('q', 't2')
+      expect(workspace.setActiveTab).toHaveBeenCalledWith('q', 't2', 'b')
+      expect(workspace.setActiveTerminal).toHaveBeenCalledWith('q', 't2')
+      expect(workspace.requestPaneFocus).toHaveBeenCalledWith('t2')
+    })
+
+    it('follows the active pane again after unpinning, without moving the workspace', async () => {
+      controller.pinTarget('pty-2')
+      vi.clearAllMocks()
+      controller.pinTarget(null)
+      expect(state().pinnedPtyId).toBeNull()
+      expect(workspace.setActiveProjectOnly).not.toHaveBeenCalled()
+      await speak('fix the build')
+      expect(sentTo()).toEqual(['pty-1'])
+      expect(state().target?.ptyId).toBe('pty-1')
+    })
+
+    // Only the tab in front mounts a terminal, so a background session has no input until shown.
+    it('shows a session whose pane is not mounted, then sends once its terminal is up', async () => {
+      useVoiceConversationStore.setState({ pinnedPtyId: 'pty-2' })
+      vi.mocked(agentInputFor).mockImplementation((ptyId) =>
+        ptyId === 'pty-2' && workspace.setActiveTab.mock.calls.length === 0 ? null : input,
+      )
+      vi.useFakeTimers()
+      try {
+        const speaking = speak('fix the build')
+        await vi.advanceTimersByTimeAsync(1000)
+        await speaking
+      } finally {
+        vi.useRealTimers()
+        vi.mocked(agentInputFor).mockImplementation(() => input)
+      }
+      expect(workspace.setActiveTab).toHaveBeenCalledWith('q', 't2', 'b')
+      expect(input.submit).toHaveBeenCalledWith('fix the build')
+      expect(sentTo()).toEqual(['pty-2'])
+      expect(state().notice).toBeNull()
+    })
+
+    it('asks to say it again when the shown session never gets a terminal', async () => {
+      useVoiceConversationStore.setState({ pinnedPtyId: 'pty-2' })
+      vi.mocked(agentInputFor).mockImplementation((ptyId) => (ptyId === 'pty-2' ? null : input))
+      vi.useFakeTimers()
+      try {
+        const speaking = speak('fix the build')
+        await vi.advanceTimersByTimeAsync(5000)
+        await speaking
+      } finally {
+        vi.useRealTimers()
+        vi.mocked(agentInputFor).mockImplementation(() => input)
+      }
+      expect(input.submit).not.toHaveBeenCalled()
+      expect(state().notice?.key).toBe('voice.conv.targetHidden')
+      expect(state().transcript).toBe('fix the build')
+      expect(workspace.setActiveTab).toHaveBeenCalledWith('q', 't2', 'b')
+      expect(workspace.requestPaneFocus).toHaveBeenCalledWith('t2')
+    })
   })
 
   // A Claude launched before voice was on has no PermissionRequest/Stop hooks.

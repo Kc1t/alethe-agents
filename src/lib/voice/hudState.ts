@@ -10,6 +10,10 @@ export const SPEECH_RATES = [1, 1.25, 1.5, 2] as const
 export type HudViewState = {
   state: VoiceConversationViewState
   targets: VoiceTarget[]
+  /** The session voice talks to now; absent in a state published before the picker had it. */
+  current?: VoiceTarget | null
+  /** Running sessions launched without the voice hooks, offered a restart in the picker. */
+  restartable?: VoiceTarget[]
   hint: string
   approvalChannel: VoiceApprovalChannel
   destructiveNeedsHud: boolean
@@ -18,6 +22,8 @@ export type HudViewState = {
   language: Locale
   uiTheme: Theme
   visualStyle: VisualStyle
+  /** The app's reduced-motion preference; absent in a state from before it was published. */
+  reducedMotion?: boolean
 }
 
 export function encodeHudState(state: HudViewState): string {
@@ -43,7 +49,22 @@ export function decodeHudState(json: string | null): HudViewState | null {
   if (!Array.isArray(value.targets)) return null
   if (typeof value.language !== 'string' || typeof value.uiTheme !== 'string') return null
   if (typeof value.visualStyle !== 'string') return null
-  return value as unknown as HudViewState
+  // A state published before the narration controls existed reads as unmuted and playing, and
+  // one without a spoken offset shows its narration as plain text.
+  const offset = value.state.narrationSpokenOffset
+  const state = {
+    ...value.state,
+    muted: value.state.muted === true,
+    narrationPaused: value.state.narrationPaused === true,
+    narrationActive: value.state.narrationActive === true,
+    narrationSpokenOffset: typeof offset === 'number' && Number.isFinite(offset) ? offset : null,
+  }
+  const { restartable, ...rest } = value
+  return {
+    ...rest,
+    ...(Array.isArray(restartable) ? { restartable } : {}),
+    state,
+  } as unknown as HudViewState
 }
 
 export function decodeHudAction(json: string): VoiceConversationAction | null {
@@ -70,8 +91,16 @@ export function decodeHudAction(json: string): VoiceConversationAction | null {
       return value.ptyId === null || typeof value.ptyId === 'string'
         ? { kind: 'pin', ptyId: value.ptyId }
         : null
+    case 'restart-session':
+      return typeof value.ptyId === 'string' && value.ptyId
+        ? { kind: 'restart-session', ptyId: value.ptyId }
+        : null
     case 'stop-speaking':
       return { kind: 'stop-speaking' }
+    case 'toggle-mute':
+      return { kind: 'toggle-mute' }
+    case 'toggle-pause':
+      return { kind: 'toggle-pause' }
     case 'dismiss':
       return { kind: 'dismiss' }
     case 'rate':

@@ -1,4 +1,3 @@
-import type { UnlistenFn } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -6,6 +5,7 @@ import { getLocale, translate, useT } from '../../lib/i18n'
 import { formatShortcut, isMacOS } from '../../lib/platform'
 import {
   hudPlacement,
+  listenerCleanup,
   onVoiceHudAction,
   onVoiceHudMoved,
   onVoiceShortcut,
@@ -43,22 +43,6 @@ const inTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in 
 const shortcutLabel = (shortcut: string) =>
   formatShortcut(shortcut.replace(/CmdOrCtrl|CommandOrControl/i, 'Ctrl'))
 
-/** Drops a Tauri listener even when it is obtained after the effect already went away. */
-function listenerCleanup(pending: Promise<UnlistenFn>): () => void {
-  let off: UnlistenFn | null = null
-  let gone = false
-  pending
-    .then((unlisten) => {
-      if (gone) unlisten()
-      else off = unlisten
-    })
-    .catch(() => undefined)
-  return () => {
-    gone = true
-    off?.()
-  }
-}
-
 /** Mounted once in the main window while voice conversation is on. */
 export function VoiceConversation() {
   const enabled = useProjectsStore((s) => s.preferences.voiceConversationEnabled)
@@ -75,7 +59,11 @@ function VoiceConversationSession() {
   const language = useProjectsStore((s) => s.preferences.language)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
   const visualStyle = useProjectsStore((s) => s.preferences.visualStyle ?? 'normal')
+  const reducedMotion = useProjectsStore((s) => s.preferences.motionPreference === 'reduced')
   const projects = useProjectsStore((s) => s.projects)
+  const groups = useProjectsStore((s) => s.groups)
+  const ungroupedOrder = useProjectsStore((s) => s.ungroupedOrder)
+  const activeTerminalId = useUiStore((s) => s.activeTerminal?.terminalId ?? null)
   const runtime = useTerminalsStore((s) => s.byPtyId)
   const capture = useVoiceConversationStore((s) => s.capture)
   const turn = useVoiceConversationStore((s) => s.turn)
@@ -83,11 +71,15 @@ function VoiceConversationSession() {
   const pinnedPtyId = useVoiceConversationStore((s) => s.pinnedPtyId)
   const transcript = useVoiceConversationStore((s) => s.transcript)
   const narration = useVoiceConversationStore((s) => s.narration)
+  const narrationSpokenOffset = useVoiceConversationStore((s) => s.narrationSpokenOffset)
   const permission = useVoiceConversationStore((s) => s.permission)
   const notice = useVoiceConversationStore((s) => s.notice)
   const hookedPtyIds = useVoiceConversationStore((s) => s.voiceHookedPtyIds)
   const hudDismissed = useVoiceConversationStore((s) => s.hudDismissed)
   const idleSince = useVoiceConversationStore((s) => s.idleSince)
+  const muted = useVoiceConversationStore((s) => s.muted)
+  const narrationPaused = useVoiceConversationStore((s) => s.narrationPaused)
+  const narrationActive = useVoiceConversationStore((s) => s.narrationActive)
   const controllerRef = useRef<VoiceConversationController | null>(null)
   const [globalShortcut, setGlobalShortcut] = useState(false)
   const [mainFocused, setMainFocused] = useState(() => document.hasFocus())
@@ -172,6 +164,12 @@ function VoiceConversationSession() {
     }
   }, [accelerator, captureMode, globalShortcut, press, release])
 
+  const targetable = useMemo(() => voiceTargetable(runtime, hookedPtyIds), [runtime, hookedPtyIds])
+  // The picker lists what the sidebar shows, in its order.
+  const sidebarProjects = useMemo(
+    () => inSidebarOrder(projects, groups, ungroupedOrder),
+    [projects, groups, ungroupedOrder],
+  )
   const targets = useMemo(
     () => listClaudeTargets(projects, voiceTargetable(runtime, hookedPtyIds)),
     [projects, runtime, hookedPtyIds],
@@ -183,11 +181,17 @@ function VoiceConversationSession() {
       store.setPreferences(withTtsChoice(store.preferences, { rate: action.rate }))
       return
     }
+    if (action.kind === 'restart-session') {
+      void restartVoiceSession(action.ptyId)
+      return
+    }
     const controller = controllerRef.current
     if (!controller) return
     if (action.kind === 'answer') void controller.answer(action.answer, action.requestId)
     else if (action.kind === 'pin') controller.pinTarget(action.ptyId)
     else if (action.kind === 'stop-speaking') controller.stopSpeaking()
+    else if (action.kind === 'toggle-mute') void controller.toggleMute()
+    else if (action.kind === 'toggle-pause') controller.togglePause()
     else controller.dismiss()
   }, [])
 
@@ -263,8 +267,23 @@ function VoiceConversationSession() {
 
   const hudView = useMemo<HudViewState>(
     () => ({
-      state: { capture, turn, target, pinnedPtyId, transcript, narration, permission, notice },
+      state: {
+        capture,
+        turn,
+        target,
+        pinnedPtyId,
+        transcript,
+        narration,
+        narrationSpokenOffset,
+        permission,
+        notice,
+        muted,
+        narrationPaused,
+        narrationActive,
+      },
       targets,
+      restartable,
+      current,
       hint,
       approvalChannel,
       destructiveNeedsHud,
@@ -272,6 +291,7 @@ function VoiceConversationSession() {
       language,
       uiTheme,
       visualStyle,
+      reducedMotion,
     }),
     [
       capture,
@@ -280,9 +300,15 @@ function VoiceConversationSession() {
       pinnedPtyId,
       transcript,
       narration,
+      narrationSpokenOffset,
       permission,
       notice,
+      muted,
+      narrationPaused,
+      narrationActive,
       targets,
+      restartable,
+      current,
       hint,
       approvalChannel,
       destructiveNeedsHud,
@@ -290,6 +316,7 @@ function VoiceConversationSession() {
       language,
       uiTheme,
       visualStyle,
+      reducedMotion,
     ],
   )
 
@@ -310,7 +337,7 @@ function VoiceConversationSession() {
     }
   }, [publishNow])
 
-  const active = isActive({ capture, turn, permission, notice })
+  const active = isActive({ capture, turn, permission, notice, narrationActive })
   const wanted = voiceSurface({ mainFocused, active, idleSince, now, dismissed: hudDismissed })
   // Without the HUD window, the in-window panel keeps the conversation visible.
   const surface = wanted === 'hud' && !hudAvailable ? 'dock' : wanted
@@ -365,10 +392,13 @@ function VoiceConversationSession() {
     <VoiceConversationView
       state={hudView.state}
       targets={targets}
+      restartable={restartable}
+      current={current}
       hint={hint}
       approvalChannel={approvalChannel}
       destructiveNeedsHud={destructiveNeedsHud}
       rate={speechRate}
+      reducedMotion={reducedMotion}
       onAction={onAction}
     />
   )

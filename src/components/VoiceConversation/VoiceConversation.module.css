@@ -32,8 +32,17 @@
   flex-shrink: 0;
 }
 
-.rates {
+.playback {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rates,
+.controls {
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
 
@@ -87,17 +96,9 @@
 }
 
 .target {
+  min-width: 0;
   margin-left: auto;
   width: min(220px, 40vw);
-}
-
-.targetLabel {
-  margin-left: auto;
-  overflow: hidden;
-  color: var(--fg-muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .iconButton {
@@ -110,9 +111,18 @@
   cursor: pointer;
 }
 
-.iconButton:hover {
+.iconButton:hover:not(:disabled) {
   color: var(--fg);
   background: var(--panel-hover);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.iconButton[data-active='true'] {
+  color: var(--accent);
 }
 
 .transcript {
@@ -124,6 +134,77 @@
   margin: 0;
   color: var(--fg-muted);
   font-size: 13px;
+}
+
+/* Being spoken: what is still to come reads normally, what was said recedes a little, and the
+   word being said carries the accent with a soft glow. Five lines, then it scrolls. */
+.highlighted {
+  position: relative;
+  max-height: calc(1.5em * 5);
+  overflow-y: auto;
+  color: var(--fg);
+  line-height: 1.5;
+  scroll-behavior: smooth;
+}
+
+.spoken {
+  color: color-mix(in srgb, var(--accent) 30%, var(--fg-muted));
+}
+
+.currentWord {
+  color: var(--accent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--accent) 45%, transparent);
+  animation: word-in 140ms ease-out;
+}
+
+@keyframes word-in {
+  from {
+    color: var(--fg);
+    text-shadow: none;
+  }
+}
+
+.highlighted[data-motion='reduced'] {
+  scroll-behavior: auto;
+}
+
+.highlighted[data-motion='reduced'] .currentWord {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .highlighted {
+    scroll-behavior: auto;
+  }
+
+  .currentWord {
+    animation: none;
+  }
+}
+
+.staleOption {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.staleLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staleHint {
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.restartOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 12px;
+  color: var(--accent);
 }
 
 .card {

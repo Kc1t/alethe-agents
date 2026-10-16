@@ -5,6 +5,7 @@ import { agentLabel } from '../../lib/agentProviders'
 import { type TFunction, useT } from '../../lib/i18n'
 import { isMacOS } from '../../lib/platform'
 import { sttChoiceFor } from '../../lib/speech/engine'
+import { isSpeechTooShort } from '../../lib/speech/errors'
 import {
   jevDecide,
   type JevDecision,
@@ -17,7 +18,7 @@ import {
   writePty,
 } from '../../lib/tauri'
 import { type AgentType, isShellAgentType } from '../../lib/types'
-import { cloudFailureMessage } from '../../lib/voice/cloudErrors'
+import { cloudFailureMessage, forgetProviderKey } from '../../lib/voice/cloudErrors'
 import { isCloudProvider } from '../../lib/voice/providers'
 import { matchesAccelerator, parseAccelerator } from '../../lib/voice/shortcut'
 import {
@@ -351,9 +352,11 @@ export function VoiceCommand() {
     try {
       // On Apple this also requests the speech-recognition permission before the mic opens.
       if (engine.provider === 'apple' || isCloudProvider(engine.provider)) {
+        // null: the check itself failed (e.g. the keychain), which says nothing about the key.
         const ready = await speechPrepare(engine.modelId, engine.locale, engine.provider).catch(
-          () => false,
+          () => null,
         )
+        if (ready === false && isCloudProvider(engine.provider)) forgetProviderKey(engine.provider)
         if (!ready) {
           setMessage(t(engine.provider === 'apple' ? 'speech.nativeNotReady' : 'voice.cloud.noKey'))
           return
@@ -422,6 +425,11 @@ export function VoiceCommand() {
         setOpen(true)
       } catch (cause) {
         await speechStopCapture().catch(() => undefined)
+        // A tap too short to record is not a failure: a hint, no failed entry, no toast.
+        if (isSpeechTooShort(cause)) {
+          history.settle(entryId, { status: 'blocked', summary: t('dictation.tooShort') })
+          return
+        }
         const reason =
           cloudFailureMessage(cause, engine.provider, t) ??
           (cause instanceof Error ? cause.message : String(cause))

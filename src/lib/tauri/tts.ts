@@ -59,3 +59,15 @@ export function onTtsEnd(handler: (id: number) => void): Promise<UnlistenFn> {
 export function onTtsStart(handler: (id: number) => void): Promise<UnlistenFn> {
   return listen<{ id: number }>('tts://start', (event) => handler(event.payload.id))
 }
+
+/**
+ * Where the cloud/local player is in an utterance's text, in code points; about ten times a
+ * second while it moves (still while paused, on while muted). The system voice reports none.
+ */
+export function onTtsProgress(
+  handler: (id: number, charOffset: number) => void,
+): Promise<UnlistenFn> {
+  return listen<{ id: number; charOffset: number }>('tts://progress', (event) =>
+    handler(event.payload.id, event.payload.charOffset),
+  )
+}

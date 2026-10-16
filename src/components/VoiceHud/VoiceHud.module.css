@@ -32,3 +32,35 @@
 .drag:active {
   cursor: grabbing;
 }
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 14px 12px;
+}
+
+.placeholderIcon {
+  color: var(--fg-muted);
+}
+
+.placeholderPhase {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.placeholderClose {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 4px;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.placeholderClose:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}

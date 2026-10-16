@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { type MessageKey, useT } from '../../../lib/i18n'
 import { formatShortcut } from '../../../lib/platform'
 import type { HudPreset, VoiceApprovalChannel } from '../../../lib/types'
+import { offerVoiceRestart } from '../../../lib/voice/restartSessions'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { Dropdown } from '../../ui/Dropdown'
 import controls from '../controls.module.css'
@@ -64,7 +65,12 @@ export function VoiceConversationSection() {
             <button
               type="button"
               className={enabled ? styles.segmentActive : undefined}
-              onClick={() => setPreferences({ voiceConversationEnabled: true })}
+              onClick={() => {
+                if (enabled) return
+                setPreferences({ voiceConversationEnabled: true })
+                // Claude sessions already running have no voice hooks until restarted.
+                void offerVoiceRestart().catch(() => undefined)
+              }}
             >
               {t('prefs.voiceConvOn')}
             </button>

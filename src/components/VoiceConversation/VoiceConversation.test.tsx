@@ -1,8 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DEFAULT_PREFERENCES, type Preferences } from '../../lib/types'
+import { DEFAULT_PREFERENCES, type Preferences, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import {
   INITIAL_VOICE_CONVERSATION,
@@ -19,6 +20,8 @@ type Controller = {
   answer: ReturnType<typeof vi.fn>
   pinTarget: ReturnType<typeof vi.fn>
   stopSpeaking: ReturnType<typeof vi.fn>
+  toggleMute: ReturnType<typeof vi.fn>
+  togglePause: ReturnType<typeof vi.fn>
   dismiss: ReturnType<typeof vi.fn>
 }
 
@@ -69,6 +72,8 @@ vi.mock('@tauri-apps/api/window', async (importOriginal) => ({
     },
   }),
 }))
+const restartVoiceSession = vi.hoisted(() => vi.fn(async (_ptyId: string) => true))
+vi.mock('../../lib/voice/restartSessions', () => ({ restartVoiceSession }))
 vi.mock('../../lib/voice/controller', () => ({
   VoiceConversationController: class {
     start = vi.fn(async () => undefined)
@@ -78,6 +83,8 @@ vi.mock('../../lib/voice/controller', () => ({
     answer = vi.fn(async () => undefined)
     pinTarget = vi.fn()
     stopSpeaking = vi.fn()
+    toggleMute = vi.fn(async () => undefined)
+    togglePause = vi.fn(async () => undefined)
     dismiss = vi.fn()
     constructor() {
       mocks.controllers.push(this as unknown as Controller)
@@ -276,6 +283,127 @@ describe('VoiceConversation session', () => {
     expect(last).toMatchObject({ language: 'pt-BR', uiTheme: 'light' })
   })
 
+  // The picker reads like the sidebar and names the session the next utterance goes to.
+  it('lists sessions in sidebar order and shows and publishes the one voice talks to', async () => {
+    vi.useFakeTimers()
+    const pane = (id: string, ptyId: string) => ({
+      id,
+      name: 'Claude',
+      kind: 'terminal',
+      cwd: '/w',
+      activeTabId: `${id}-tab`,
+      tabs: [{ id: `${id}-tab`, type: 'claude', name: 'Claude', cwd: '/w', ptyId }],
+    })
+    const before = useProjectsStore.getState()
+    useProjectsStore.setState({
+      projects: [
+        { id: 'a', name: 'Alpha', terminals: [pane('ta', 'pty-a')] },
+        { id: 'b', name: 'Beta', terminals: [pane('tb', 'pty-b')] },
+      ] as unknown as Project[],
+      groups: [],
+      ungroupedOrder: ['b', 'a'],
+    })
+    useTerminalsStore.setState({
+      byPtyId: { 'pty-a': { alive: true }, 'pty-b': { alive: true } } as never,
+    })
+    useUiStore.setState({ activeTerminal: { projectId: 'a', terminalId: 'ta' } })
+    try {
+      await mount()
+      focus(true)
+      voice({ turn: 'working', voiceHookedPtyIds: ['pty-a', 'pty-b'] })
+      const trigger = screen.getByRole('button', { name: 'voice.conv.target' })
+      expect(trigger.textContent).toBe('Alpha · Claude')
+      fireEvent.click(trigger)
+      expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+        'voice.conv.followActive',
+        'Beta · Claude',
+        'Alpha · Claude',
+      ])
+
+      focus(false)
+      await flush()
+      const calls = mocks.hudPublish.mock.calls
+      const published = JSON.parse(calls[calls.length - 1][0] as string)
+      expect(published.current.ptyId).toBe('pty-a')
+      expect(published.targets.map((item: { ptyId: string }) => item.ptyId)).toEqual([
+        'pty-b',
+        'pty-a',
+      ])
+    } finally {
+      useProjectsStore.setState({
+        projects: before.projects,
+        groups: before.groups,
+        ungroupedOrder: before.ungroupedOrder,
+      })
+      useTerminalsStore.setState({ byPtyId: {} })
+      useUiStore.setState({ activeTerminal: null })
+    }
+  })
+
+  // A Claude launched while voice was off: listed to restart, never talked to.
+  it('lists running sessions without voice hooks for a restart, and restarts one from the HUD', async () => {
+    vi.useFakeTimers()
+    const pane = (id: string, ptyId: string) => ({
+      id,
+      name: 'Claude',
+      kind: 'terminal',
+      cwd: '/w',
+      activeTabId: `${id}-tab`,
+      tabs: [{ id: `${id}-tab`, type: 'claude', name: 'Claude', cwd: '/w', ptyId }],
+    })
+    const before = useProjectsStore.getState()
+    useProjectsStore.setState({
+      projects: [
+        { id: 'a', name: 'Alpha', terminals: [pane('ta', 'pty-a')] },
+        { id: 'b', name: 'Beta', terminals: [pane('tb', 'pty-b')] },
+      ] as unknown as Project[],
+      groups: [],
+      ungroupedOrder: ['a', 'b'],
+    })
+    useTerminalsStore.setState({
+      byPtyId: { 'pty-a': { alive: true }, 'pty-b': { alive: true } } as never,
+    })
+    useUiStore.setState({ activeTerminal: { projectId: 'b', terminalId: 'tb' } })
+    try {
+      await mount()
+      focus(false)
+      voice({ turn: 'working', voiceHookedPtyIds: ['pty-a'] })
+      await flush()
+      act(() => vi.advanceTimersByTime(200))
+      const calls = mocks.hudPublish.mock.calls
+      const published = JSON.parse(calls[calls.length - 1][0] as string)
+      expect(published.targets.map((item: { ptyId: string }) => item.ptyId)).toEqual(['pty-a'])
+      expect(published.restartable.map((item: { ptyId: string }) => item.ptyId)).toEqual(['pty-b'])
+      // The active pane runs the stale session: voice does not resolve to it.
+      expect(published.current?.ptyId ?? null).not.toBe('pty-b')
+
+      // A disabled pane cannot be restarted, so it is not offered.
+      mocks.hudPublish.mockClear()
+      act(() =>
+        useProjectsStore.setState({
+          projects: useProjectsStore.getState().projects.map((project) => ({
+            ...project,
+            terminals: project.terminals.map((terminal) => ({ ...terminal, disabled: true })),
+          })),
+        }),
+      )
+      act(() => vi.advanceTimersByTime(200))
+      const after = mocks.hudPublish.mock.calls
+      expect(JSON.parse(after[after.length - 1][0] as string).restartable).toEqual([])
+
+      act(() => mocks.actionHandler?.('{"kind":"restart-session","ptyId":"pty-b"}'))
+      expect(restartVoiceSession).toHaveBeenCalledWith('pty-b')
+    } finally {
+      useProjectsStore.setState({
+        projects: before.projects,
+        groups: before.groups,
+        ungroupedOrder: before.ungroupedOrder,
+      })
+      useTerminalsStore.setState({ byPtyId: {} })
+      useUiStore.setState({ activeTerminal: null })
+    }
+  })
+
   it('applies decoded HUD actions and drops malformed ones', async () => {
     await mount()
     focus(false)
@@ -301,6 +429,31 @@ describe('VoiceConversation session', () => {
     expect(controller().dismiss).toHaveBeenCalled()
     expect(useVoiceConversationStore.getState().hudDismissed).toBe(true)
     expect(mocks.hudHide).toHaveBeenCalled()
+  })
+
+  it('routes the narration controls from the HUD and publishes their state', async () => {
+    vi.useFakeTimers()
+    await mount()
+    focus(false)
+    voice({ turn: 'working' })
+    await flush()
+
+    act(() => mocks.actionHandler?.('{"kind":"toggle-mute"}'))
+    act(() => mocks.actionHandler?.('{"kind":"toggle-pause"}'))
+    act(() => mocks.actionHandler?.('{"kind":"stop-speaking"}'))
+    expect(controller().toggleMute).toHaveBeenCalledTimes(1)
+    expect(controller().togglePause).toHaveBeenCalledTimes(1)
+    expect(controller().stopSpeaking).toHaveBeenCalledTimes(1)
+
+    act(() => vi.advanceTimersByTime(200))
+    mocks.hudPublish.mockClear()
+    voice({ muted: true, narrationPaused: true, narrationActive: true })
+    act(() => vi.advanceTimersByTime(200))
+    const calls = mocks.hudPublish.mock.calls
+    const last = JSON.parse(calls[calls.length - 1][0] as string)
+    expect(last.state.muted).toBe(true)
+    expect(last.state.narrationPaused).toBe(true)
+    expect(last.state.narrationActive).toBe(true)
   })
 
   it('saves where the HUD was dragged as a custom position', async () => {

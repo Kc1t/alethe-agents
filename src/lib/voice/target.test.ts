@@ -69,7 +69,7 @@ describe('voiceTargetable', () => {
   const runtime = { 'pty-1': { alive: true }, 'pty-3': { alive: true }, 'pty-4': { alive: false } }
 
   // A Claude launched before voice was on has no PermissionRequest/Stop hooks.
-  it('keeps only live panes launched with the voice hooks', () => {
+  it('keeps only live Claude panes launched with the voice hooks', () => {
     const usable = voiceTargetable(runtime, ['pty-1', 'pty-4'])
     expect(listClaudeTargets([project], usable).map((t) => t.ptyId)).toEqual(['pty-1'])
     expect(usable('pty-4')).toBe(false)
@@ -127,3 +127,25 @@ describe('resolveTarget', () => {
     ).toBe('pty-1')
   })
 })
+
+function tabbed2(): Project {
+  return {
+    id: 'p2',
+    name: 'Web',
+    archived: false,
+    terminals: [
+      {
+        id: 'w1',
+        name: 'Main',
+        kind: 'terminal',
+        cwd: '/work/web',
+        activeTabId: 'shell',
+        tabs: [
+          { id: 'shell', type: 'shell', name: 'Shell', cwd: '/work/web', ptyId: 'pty-10' },
+          { id: 'c1', type: 'claude', name: 'Claude', cwd: '/work/web', ptyId: 'pty-11' },
+          { id: 'c2', type: 'claude', name: 'Review', cwd: '/work/web', ptyId: 'pty-12' },
+        ],
+      },
+    ],
+  } as unknown as Project
+}

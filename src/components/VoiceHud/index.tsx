@@ -1,4 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { Mic, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { useReadOnlyProjectsHydration } from '../../hooks/useReadOnlyProjectsHydration'
@@ -7,7 +8,10 @@ import { onVoiceHudState, voiceHudAction, voiceHudMoved, voiceHudSnapshot } from
 import { useAppliedTheme } from '../../lib/themes'
 import { decodeHudState, type HudViewState } from '../../lib/voice/hudState'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { VoiceConversationView } from '../VoiceConversation/VoiceConversationView'
+import {
+  type VoiceConversationAction,
+  VoiceConversationView,
+} from '../VoiceConversation/VoiceConversationView'
 import styles from './VoiceHud.module.css'
 
 const MOVE_DEBOUNCE_MS = 300
@@ -99,29 +103,58 @@ export function VoiceHud() {
     }
   }, [])
 
-  if (!hud) return <div className={styles.root} />
+  const send = (action: VoiceConversationAction) =>
+    void voiceHudAction(JSON.stringify(action)).catch(() => undefined)
+  const drag = (
+    <div
+      className={styles.drag}
+      aria-label={t('voice.hud.drag')}
+      title={t('voice.hud.drag')}
+      onMouseDown={() => {
+        dragging.current = true
+        void getCurrentWindow()
+          .startDragging()
+          .catch(() => undefined)
+      }}
+    />
+  )
+
+  // The window can be shown before the first state arrives: never a blank gray box.
+  if (!hud) {
+    return (
+      <div className={styles.root}>
+        {drag}
+        <section className={styles.placeholder} aria-label={t('voice.conv.title')}>
+          <Mic size={14} aria-hidden className={styles.placeholderIcon} />
+          <span className={styles.placeholderPhase}>{t('voice.conv.phase.idle')}</span>
+          <button
+            type="button"
+            className={styles.placeholderClose}
+            onClick={() => send({ kind: 'dismiss' })}
+            aria-label={t('voice.conv.close')}
+            title={t('voice.conv.close')}
+          >
+            <X size={14} aria-hidden />
+          </button>
+        </section>
+      </div>
+    )
+  }
   return (
     <div className={styles.root}>
-      <div
-        className={styles.drag}
-        aria-label={t('voice.hud.drag')}
-        title={t('voice.hud.drag')}
-        onMouseDown={() => {
-          dragging.current = true
-          void getCurrentWindow()
-            .startDragging()
-            .catch(() => undefined)
-        }}
-      />
+      {drag}
       <VoiceConversationView
         embedded
         state={hud.state}
         targets={hud.targets}
+        restartable={hud.restartable ?? []}
+        current={hud.current ?? null}
         hint={hud.hint}
         approvalChannel={hud.approvalChannel}
         destructiveNeedsHud={hud.destructiveNeedsHud}
         rate={hud.rate}
-        onAction={(action) => void voiceHudAction(JSON.stringify(action)).catch(() => undefined)}
+        reducedMotion={hud.reducedMotion === true}
+        onAction={send}
       />
     </div>
   )

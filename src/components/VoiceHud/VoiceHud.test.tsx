@@ -88,10 +88,16 @@ describe('VoiceHud', () => {
     vi.clearAllMocks()
   })
 
-  it('renders nothing until a snapshot or state arrives', async () => {
+  // The window can show before the first state arrives; it must not be a blank gray box.
+  it('shows a placeholder until a snapshot or state arrives', async () => {
     render(<VoiceHud />)
     await flush()
-    expect(screen.queryByLabelText('voice.hud.drag')).toBeNull()
+    expect(screen.getByLabelText('voice.hud.drag')).toBeTruthy()
+    expect(screen.getByText('voice.conv.phase.idle')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'voice.conv.close' }))
+    expect(mocks.action).toHaveBeenCalledWith('{"kind":"dismiss"}')
+    act(() => mocks.stateHandler?.(hudState({ turn: 'working', transcript: 'live' })))
+    expect(screen.getByText('live')).toBeTruthy()
   })
 
   it('renders the snapshot, then live updates', async () => {

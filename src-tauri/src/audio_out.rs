@@ -9,10 +9,43 @@ use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleFormat;
 
+/// The characters of the utterance's text a chunk speaks, in code points.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextSpan {
+    pub start: usize,
+    pub len: usize,
+}
+
+/// Where the spoken word is: the chunk being played (each mark is the queue position its samples
+/// end at, and its text) plus the share of it already played, mapped onto its characters. Past
+/// the audio queued so far it stays on the last character queued, so a gap while the next chunk
+/// is synthesized keeps the word just said rather than pointing at the next one.
+pub fn spoken_char_offset(marks: &[(u64, TextSpan)], played: u64) -> usize {
+    let mut start = 0;
+    for &(end, span) in marks {
+        if played < end {
+            let share = (played - start) as f64 / (end - start) as f64;
+            return span.start + (share * span.len as f64).floor() as usize;
+        }
+        start = end;
+    }
+    marks
+        .last()
+        .map_or(0, |(_, span)| span.start + span.len.saturating_sub(1))
+}
+
 pub struct PcmQueue {
     samples: VecDeque<f32>,
     current: Option<u64>,
     closed: bool,
+    /// Samples queued and played for the current utterance, and where each chunk's text ends.
+    queued: u64,
+    played: u64,
+    marks: Vec<(u64, TextSpan)>,
+    /// Held where it is: silence goes out and nothing is taken from the queue.
+    paused: bool,
+    /// Plays at the same pace with zero gain, so progress and the finish report go on.
+    muted: bool,
 }
 
 impl PcmQueue {
@@ -21,19 +54,63 @@ impl PcmQueue {
             samples: VecDeque::new(),
             current: None,
             closed: false,
+            queued: 0,
+            played: 0,
+            marks: Vec::new(),
+            paused: false,
+            muted: false,
         }
+    }
+
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+    }
+
+    pub fn set_muted(&mut self, muted: bool) {
+        self.muted = muted;
+    }
+
+    #[cfg(test)]
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    #[cfg(test)]
+    pub fn is_muted(&self) -> bool {
+        self.muted
+    }
+
+    fn forget_progress(&mut self) {
+        self.queued = 0;
+        self.played = 0;
+        self.marks.clear();
     }
 
     pub fn begin(&mut self, id: u64) {
         self.samples.clear();
         self.current = Some(id);
         self.closed = false;
+        self.forget_progress();
     }
 
     pub fn push(&mut self, id: u64, samples: &[f32]) {
         if self.current == Some(id) {
             self.samples.extend(samples.iter().copied());
+            self.queued += samples.len() as u64;
         }
+    }
+
+    /// Queues a chunk and remembers which characters of the utterance it speaks.
+    pub fn push_text(&mut self, id: u64, samples: &[f32], span: TextSpan) {
+        if self.current == Some(id) {
+            self.push(id, samples);
+            self.marks.push((self.queued, span));
+        }
+    }
+
+    /// The character offset reached in utterance `id`'s text; none when it is not playing.
+    pub fn progress(&self, id: u64) -> Option<usize> {
+        (self.current == Some(id)).then(|| spoken_char_offset(&self.marks, self.played))
     }
 
     pub fn close(&mut self, id: u64) {
@@ -42,23 +119,38 @@ impl PcmQueue {
         }
     }
 
+    /// Drops the queued audio. Pause and mute stay: a new utterance clears the queue too, and a
+    /// pause asked for meanwhile must hold it.
     pub fn clear(&mut self) {
         self.samples.clear();
         self.current = None;
         self.closed = false;
+        self.forget_progress();
     }
 
     /// Drops everything and returns the id that was in flight, so a dead stream can release waiters.
     pub fn abort(&mut self) -> Option<u64> {
         self.samples.clear();
         self.closed = false;
+        self.forget_progress();
         self.current.take()
     }
 
     /// Fills `out` (silence past the end) and returns the id that just finished, if any.
     pub fn pull(&mut self, out: &mut [f32]) -> Option<u64> {
+        if self.paused {
+            out.fill(0.0);
+            return None;
+        }
+        let gain = if self.muted { 0.0 } else { 1.0 };
         for sample in out.iter_mut() {
-            *sample = self.samples.pop_front().unwrap_or(0.0);
+            *sample = match self.samples.pop_front() {
+                Some(value) => {
+                    self.played += 1;
+                    value * gain
+                }
+                None => 0.0,
+            };
         }
         if self.closed && self.samples.is_empty() {
             self.closed = false;
@@ -108,9 +200,15 @@ impl AudioOut {
         self.with_queue(|queue| queue.begin(id));
     }
 
-    pub fn push(&self, id: u64, samples: &[f32], rate: u32) {
+    /// Queues a chunk of utterance `id` that speaks `span` of its text.
+    pub fn push(&self, id: u64, samples: &[f32], rate: u32, span: TextSpan) {
         let resampled = resample_linear(samples, rate, self.device_rate);
-        self.with_queue(|queue| queue.push(id, &resampled));
+        self.with_queue(|queue| queue.push_text(id, &resampled, span));
+    }
+
+    pub fn progress(&self, id: u64) -> Option<usize> {
+        let queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
+        queue.progress(id)
     }
 
     pub fn close(&self, id: u64) {
@@ -123,6 +221,38 @@ impl AudioOut {
 }
 
 static OUT: Mutex<Option<Arc<AudioOut>>> = Mutex::new(None);
+/// Player state for the session, kept here so a player reopened after a stream error inherits it.
+static PAUSED: AtomicBool = AtomicBool::new(false);
+static MUTED: AtomicBool = AtomicBool::new(false);
+
+fn running() -> Option<Arc<AudioOut>> {
+    OUT.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+/// Holds (or releases) the utterance playing now at the sample it reached.
+pub fn set_paused(paused: bool) {
+    PAUSED.store(paused, Ordering::Relaxed);
+    if let Some(out) = running() {
+        out.with_queue(|queue| queue.set_paused(paused));
+    }
+}
+
+/// Plays on in silence (or audibly again); applies to this utterance and the next ones.
+pub fn set_muted(muted: bool) {
+    MUTED.store(muted, Ordering::Relaxed);
+    if let Some(out) = running() {
+        out.with_queue(|queue| queue.set_muted(muted));
+    }
+}
+
+pub fn is_muted() -> bool {
+    MUTED.load(Ordering::Relaxed)
+}
+
+#[cfg(test)]
+fn is_paused() -> bool {
+    PAUSED.load(Ordering::Relaxed)
+}
 
 /// The shared player. It is reused while its stream is alive and reopened after a stream error
 /// (for example a headset unplug); a failed open is never cached, so the next call retries.
@@ -141,11 +271,17 @@ pub fn get(on_finished: impl Fn(u64) + Send + 'static) -> Result<Arc<AudioOut>, 
     Ok(out)
 }
 
+/// Drops queued audio, before a new utterance or on a stop. The pause stays.
 pub fn stop_if_running() {
-    let current = OUT.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    if let Some(out) = current {
+    if let Some(out) = running() {
         out.stop();
     }
+}
+
+/// Stop and barge-in: drops queued audio and releases the pause.
+pub fn stop_and_release() {
+    stop_if_running();
+    set_paused(false);
 }
 
 /// Fills one callback period: mono samples fanned out to every channel. Silence when the queue
@@ -176,7 +312,10 @@ fn render<T: Copy>(
 }
 
 fn open(on_finished: impl Fn(u64) + Send + 'static) -> Result<AudioOut, String> {
-    let queue = Arc::new(Mutex::new(PcmQueue::new()));
+    let mut fresh = PcmQueue::new();
+    fresh.set_paused(PAUSED.load(Ordering::Relaxed));
+    fresh.set_muted(MUTED.load(Ordering::Relaxed));
+    let queue = Arc::new(Mutex::new(fresh));
     let dead = Arc::new(AtomicBool::new(false));
     let (finished_tx, finished_rx) = mpsc::channel::<u64>();
     std::thread::spawn(move || {
@@ -375,6 +514,158 @@ mod tests {
     #[test]
     fn upsampling_interpolates_and_holds_the_last_sample() {
         assert_eq!(resample_linear(&[0.0, 1.0], 1, 2), vec![0.0, 0.5, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn a_paused_queue_plays_silence_and_resumes_from_the_same_sample() {
+        let mut queue = PcmQueue::new();
+        queue.begin(1);
+        queue.push(1, &[0.1, 0.2, 0.3]);
+        queue.close(1);
+        queue.set_paused(true);
+        let mut out = [9.0; 2];
+        assert_eq!(queue.pull(&mut out), None);
+        assert_eq!(out, [0.0; 2]);
+        assert_eq!(queue.pull(&mut out), None, "nothing finishes while paused");
+        queue.set_paused(false);
+        assert_eq!(queue.pull(&mut out), None);
+        assert_eq!(out, [0.1, 0.2]);
+        assert_eq!(queue.pull(&mut out), Some(1));
+        assert_eq!(out, [0.3, 0.0]);
+    }
+
+    #[test]
+    fn a_muted_queue_drains_at_the_same_pace_in_silence() {
+        let mut queue = PcmQueue::new();
+        queue.set_muted(true);
+        queue.begin(4);
+        queue.push(4, &[0.5; 3]);
+        queue.close(4);
+        let mut out = [9.0; 2];
+        assert_eq!(queue.pull(&mut out), None);
+        assert_eq!(out, [0.0; 2]);
+        assert_eq!(
+            queue.pull(&mut out),
+            Some(4),
+            "the finish is still reported"
+        );
+        assert_eq!(out, [0.0; 2]);
+        queue.set_muted(false);
+        queue.begin(5);
+        queue.push(5, &[0.5; 2]);
+        assert_eq!(queue.pull(&mut out), None);
+        assert_eq!(out, [0.5; 2]);
+    }
+
+    #[test]
+    fn mute_and_pause_outlive_an_utterance_and_its_queue_being_dropped() {
+        let mut queue = PcmQueue::new();
+        queue.set_muted(true);
+        queue.set_paused(true);
+        queue.begin(1);
+        assert!(queue.is_muted() && queue.is_paused());
+        // A new utterance drops the queued audio; a pause in place must hold it too.
+        queue.clear();
+        assert!(queue.is_muted() && queue.is_paused());
+    }
+
+    // `tts_speak` stops the player before a new utterance: that must not undo a pause asked for
+    // meanwhile. Only `tts_stop` (stop, barge-in) and `tts_resume` release it.
+    #[test]
+    fn stopping_the_player_for_a_new_utterance_keeps_the_pause() {
+        set_paused(true);
+        stop_if_running();
+        assert!(is_paused());
+        stop_and_release();
+        assert!(!is_paused());
+        set_paused(true);
+        set_paused(false);
+        assert!(!is_paused());
+    }
+
+    fn span(start: usize, len: usize) -> TextSpan {
+        TextSpan { start, len }
+    }
+
+    // Chunk 1 speaks characters 0..10 in 100 samples, chunk 2 characters 11..31 in 50.
+    #[test]
+    fn the_spoken_offset_moves_through_each_chunk_by_its_played_share() {
+        let marks = [(100, span(0, 10)), (150, span(11, 20))];
+        assert_eq!(spoken_char_offset(&marks, 0), 0);
+        assert_eq!(spoken_char_offset(&marks, 50), 5);
+        assert_eq!(spoken_char_offset(&marks, 99), 9);
+        assert_eq!(spoken_char_offset(&marks, 100), 11);
+        assert_eq!(spoken_char_offset(&marks, 125), 21);
+        assert_eq!(
+            spoken_char_offset(&marks, 150),
+            30,
+            "the last character queued"
+        );
+        assert_eq!(spoken_char_offset(&marks, 999), 30);
+        assert_eq!(spoken_char_offset(&[], 10), 0, "nothing queued yet");
+    }
+
+    // The next chunk is still being synthesized: the word just said stays the current one,
+    // rather than the gap after it pointing at the next word.
+    #[test]
+    fn between_chunks_the_offset_stays_on_the_last_word_queued() {
+        let marks = [(100, span(0, 10))];
+        assert_eq!(spoken_char_offset(&marks, 100), 9);
+        assert_eq!(spoken_char_offset(&[(0, span(0, 0))], 0), 0);
+    }
+
+    #[test]
+    fn progress_is_reported_only_for_the_utterance_playing() {
+        let mut queue = PcmQueue::new();
+        assert_eq!(queue.progress(1), None);
+        queue.begin(1);
+        queue.push_text(1, &[0.1; 4], span(0, 4));
+        queue.push_text(1, &[0.1; 4], span(5, 8));
+        assert_eq!(queue.progress(1), Some(0));
+        assert_eq!(queue.progress(2), None, "not the current id");
+        let mut out = [0.0; 2];
+        queue.pull(&mut out);
+        assert_eq!(queue.progress(1), Some(2));
+        queue.pull(&mut out);
+        assert_eq!(queue.progress(1), Some(5));
+        queue.pull(&mut out);
+        assert_eq!(queue.progress(1), Some(9));
+        // A new utterance starts again from its own text.
+        queue.begin(2);
+        assert_eq!(queue.progress(1), None);
+        assert_eq!(queue.progress(2), Some(0));
+    }
+
+    #[test]
+    fn progress_freezes_while_paused_and_goes_on_while_muted() {
+        let mut queue = PcmQueue::new();
+        queue.begin(1);
+        queue.push_text(1, &[0.1; 8], span(0, 8));
+        let mut out = [0.0; 2];
+        queue.pull(&mut out);
+        queue.set_paused(true);
+        queue.pull(&mut out);
+        queue.pull(&mut out);
+        assert_eq!(queue.progress(1), Some(2), "frozen while paused");
+        queue.set_paused(false);
+        queue.set_muted(true);
+        queue.pull(&mut out);
+        assert_eq!(queue.progress(1), Some(4), "muted still advances");
+    }
+
+    #[test]
+    fn a_finished_or_dropped_utterance_reports_no_progress() {
+        let mut queue = PcmQueue::new();
+        queue.begin(1);
+        queue.push_text(1, &[0.1; 2], span(0, 2));
+        queue.close(1);
+        let mut out = [0.0; 2];
+        assert_eq!(queue.pull(&mut out), Some(1));
+        assert_eq!(queue.progress(1), None);
+        queue.begin(2);
+        queue.push_text(2, &[0.1; 2], span(0, 2));
+        queue.clear();
+        assert_eq!(queue.progress(2), None);
     }
 
     #[test]

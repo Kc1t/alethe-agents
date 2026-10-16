@@ -98,7 +98,9 @@ to a PTY and never answers a permission by itself.
 ### 3.1 Flow of one turn
 
 1. **Speak.** The shortcut (`voiceShortcut`, default `CmdOrCtrl+Shift+Space`) starts capture.
-   Push-to-talk: hold it. Toggle: press, then press again. Narration stops at once (barge-in).
+   Push-to-talk: hold it. Toggle: press, then press again. Narration pauses at once (barge-in);
+   it is dropped only when a transcript is sent. A press that sends nothing (a stray tap, silence,
+   a failed transcription or engine) leaves it paused, to resume with the pause button.
 2. **Transcribe.** `speech_stop_and_transcribe` with the provider chosen for the *Conversation*
    use. An empty transcript ends the turn.
 3. **Route** (`src/lib/voice/routing.ts`), on the normalised first word(s):
@@ -162,6 +164,18 @@ from `working`, and `listening` reachable from `working` (talking mid-task: queu
 - Holding is selective: only PTYs passed to `voice_set_targets` are held; any other request gets
   an empty 200 immediately (Claude shows its normal prompt). Only PTYs launched with the voice
   hooks can be targets (`agent_voice_hooked_ptys`).
+- A Claude that is running without the hooks (launched while voice was off) is not a target, but it
+  is not hidden either: `voiceRestartable` lists it in the picker, disabled, with "Restart this
+  Claude to use voice" and a **Restart** entry under it. The HUD sends
+  `{kind:'restart-session', ptyId}`; the main window runs `restartVoiceSession`
+  (`src/lib/voice/restartSessions.ts`), which relaunches the tab through `restartAgentTab`
+  (`src/lib/agentTabRestart.ts`, the same path as the pane's restart button: same PTY id, resuming
+  its conversation id) and refreshes the hooked list, so the session becomes selectable. It asks
+  Rust for the hooked list first and does nothing unless the session is still running, still
+  without the hooks and not in a disabled pane, since the picker it came from may be stale. Turning
+  voice on in Preferences (`offerVoiceRestart`) toasts how many running sessions need a restart
+  (`restartNeededOne` for one), with **Restart now**, which reads the list again when clicked.
+  Resolution (`resolveTarget`) only ever sees hooked sessions.
 - `agent_permission_decide(requestId, allow | deny | defer, message?)` answers a held request;
   unknown or already-answered ids are rejected. A spoken "no, use pnpm" becomes a deny with that
   message, which Claude reads as an instruction.
@@ -283,7 +297,7 @@ provider and voice.
 |---|---|
 | `mod.rs` | `CloudProvider` enum (`openai`, `elevenlabs`, `gemini`, `openrouter`). |
 | `catalog.rs` | Curated STT/TTS models and voices per provider; `voice_provider_catalog`. |
-| `keys.rs` | `voice_provider_set_key`, `voice_provider_delete_key`, `voice_providers_status`, `voice_provider_test`; `delete_profile_keys` on profile deletion. **No command returns a key.** |
+| `keys.rs` | `voice_provider_set_key`, `voice_provider_delete_key`, `voice_provider_test`; `read_key_async` for cloud speech and narration; `delete_profile_keys` on profile deletion. **No command returns a key.** |
 | `http.rs` | Request model behind an injectable transport, auth headers, error classification (`Auth`, `Quota`, `Network`, `Timeout`, `BadAudio`, `Other`), `safe_path_id` for ids placed in URLs. |
 | `stt_cloud.rs` / `tts_cloud.rs` | Request building and response parsing per provider. |
 | `openrouter.rs` | Live catalog (`voice_openrouter_models`), filtered to speech models with each model's voices, cached in memory. The list is public, so it shows before a key is saved (locked until one is). |
@@ -362,6 +376,7 @@ error class and HTTP status reach `spawn.log`.
 - Piper archives unpack into a staging folder, are checked for unsafe paths (anything that would
   leave the destination fails the whole archive; links are skipped) and are moved into place only
   when complete.
+
 ### 7.5 Hugging Face models
 
 Local voices and recognizers beyond the built-in catalog can be searched on Hugging Face and
@@ -387,8 +402,18 @@ as is one with the word `test` or `tests` (split on `-`, `_` and `.`, so `latest
 model that is not NeMo. An int8 variant is preferred when both exist; test wavs, READMEs, licenses
 and scripts are never downloaded.
 
+| Family | Use | Repo name | Required files |
+|---|---|---|---|
+| Piper / VITS | TTS | `vits-piper-*`, `vits-*` | `*.onnx`, `tokens.txt`, `espeak-ng-data/` or `lexicon.txt` |
 | Kokoro | TTS | `kokoro-*` | `model*.onnx`, `voices.bin`, `tokens.txt`, `espeak-ng-data/` |
 | Kitten | TTS | `kitten-*` | `model*.onnx`, `voices.bin`, `tokens.txt`, `espeak-ng-data/` |
+| NeMo transducer | STT | `*parakeet*`, `*nemo*` (not CTC) | `encoder*`, `decoder*`, `joiner*`, `tokens.txt` |
+| Transducer | STT | `*zipformer*`, `*conformer*`, `*transducer*` (not CTC) | `encoder*`, `decoder*`, `joiner*`, `tokens.txt` |
+| Whisper | STT | `*whisper-*` | `*-encoder`, `*-decoder`, `*-tokens.txt` |
+| Moonshine | STT | `*moonshine*` | `preprocess`, `encode*`, `uncached_decode*`, `cached_decode*`, `tokens.txt` |
+| SenseVoice | STT | `*sense-voice*` | `model(.int8).onnx`, `tokens.txt` |
+| Paraformer | STT | `*paraformer*` | `model(.int8).onnx`, `tokens.txt` |
+| NeMo CTC | STT | `*ctc*` with `nemo` or `parakeet` | `model(.int8).onnx`, `tokens.txt` |
 | Dolphin | STT | `*dolphin*` | `model(.int8).onnx`, `tokens.txt` |
 
 **Security.**
@@ -443,7 +468,12 @@ audio back, so there is nothing heavy to bundle. Code: `src-tauri/src/voice_serv
 **Kinds and endpoints.**
 
 | | OpenAI-compatible | Fish Speech |
+|---|---|---|
+| Speech | `POST {base}/v1/audio/speech` `{ model, input, voice, response_format: "mp3", speed }` | `POST {base}/v1/tts` `{ text, reference_id, format: "mp3", normalize: true }` |
+| Model | saved `model`, else `"tts-1"` | none |
 | Speed | sent as `speed`, played at 1.0 (some servers ignore it) | not sent, applied at playback |
+| Health | `GET /v1/audio/voices`, then `/voices`, then `/v1/models` | `GET /v1/health` |
+| Voices | `GET /v1/audio/voices`, then `/voices` | `GET /v1/references/list` |
 | Auth | `Authorization: Bearer {key}` when a key is saved | same |
 
 Voice lists are parsed tolerantly (array of strings, `{ voices }`, objects with `id` / `name` /

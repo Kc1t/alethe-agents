@@ -11,6 +11,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ## [Unreleased]
 
 ### Added
+
 - **Hugging Face model search.** Search Hugging Face from Preferences → Voice → Local models and
   download more offline voices (Piper, Kokoro, Kitten) and speech recognition models (Whisper,
   SenseVoice, Paraformer, Zipformer, Parakeet, NeMo CTC, Moonshine, Dolphin), with the same
@@ -19,6 +20,23 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Speaker picker for local voices.** Pick the speaker of multi-voice local models (Kokoro, Kitten,
   multi-speaker Piper) for narration. Kokoro speaks with the pronunciation of the chosen speaker's
   language.
+
+- **Spoken-word highlight.** While narration plays, the voice panel and the HUD highlight the word
+  being spoken and dim what was already said, scrolling to keep it in view. It follows cloud voices
+  and Piper exactly and estimates the system voice; it stops moving while paused and respects
+  reduced motion.
+- **Restart Claude sessions for voice.** A Claude started while voice conversation was off now
+  shows in the session picker as needing a restart, with a **Restart** action that resumes the same
+  conversation with voice. Turning voice on offers to restart every such session at once.
+
+- **Narration controls.** The voice panel and the floating HUD have three buttons next to the speed
+  steps: **Mute** keeps the narration going at the same pace with no sound (for the rest of the
+  session), **Pause** holds it where it is and queues anything new until **Resume**, and **Stop**
+  drops the rest. With the system voice, resume starts again from the sentence it had reached. The HUD
+  no longer turns into an empty gray box after narration stops: it always shows the status, the
+  session picker, the last narration and the shortcut hint. A quick tap of the voice shortcut now
+  says to hold it while speaking instead of reporting an error. While narration is paused, the
+  **Test voice** buttons in Preferences are disabled and say why.
 
 - **Clearer voice settings.** Preferences → Voice opens with an **In use** summary of what each
   feature runs on right now, and warns when something cannot work (model not downloaded, still
@@ -61,6 +79,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   Ctrl (Shift alone works only with F1–F24), one the OS or another app already uses is refused, and
   Alethe's own shortcuts are paused while recording.
   Narration speed goes from 1x to 2x, adjustable from the panel and the HUD.
+
+- **Pick which Claude session voice talks to.** The voice panel and HUD header is now a picker
+  listing every running Claude session of the projects in your sidebar, in any tab, in sidebar
+  order. Picking one sends what you say there and brings it to front in Alethe; *Follow active pane*
+  goes back to the default.
 
 - **Apple's own speech recognition on the Mac.** Preferences → Voice now has
   a model picker: on a Mac, *Apple (native)* is offered next to Parakeet and Zipformer, needs no
@@ -341,6 +364,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **Barge-in pauses narration instead of dropping it.** Pressing the voice shortcut pauses what
+  is being read; it is discarded only when what you said is sent. After a stray tap, silence or a
+  failed transcription the narration stays paused and the resume button continues it.
 - Voice dictation and voice conversation settings moved from Preferences → Integrations to
   Preferences → Voice. Existing model, language, voice and speed choices carry over.
 

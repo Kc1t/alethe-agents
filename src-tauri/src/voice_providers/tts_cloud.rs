@@ -91,17 +91,30 @@ fn fits(text: &str, (start, end): (usize, usize), max: usize) -> bool {
     text[start..end].trim().chars().count() <= max
 }
 
+/// The chunks of `split_for_tts_spans` alone.
+#[cfg(test)]
+pub fn split_for_tts(text: &str, max_chars: usize) -> Vec<String> {
+    split_for_tts_spans(text, max_chars)
+        .into_iter()
+        .map(|(_, chunk)| chunk)
+        .collect()
+}
+
 /// Splits at sentence ends, packing sentences up to `max_chars` characters. Chunks are slices of
 /// the original text (only their ends are trimmed), so no character is dropped or rewritten; a
 /// sentence over the limit is cut between words, and a word over the limit between characters.
-pub fn split_for_tts(text: &str, max_chars: usize) -> Vec<String> {
+/// Each chunk comes with where it starts in `text`, in characters (code points), so the player can
+/// tell which words of the text it is speaking.
+pub fn split_for_tts_spans(text: &str, max_chars: usize) -> Vec<(usize, String)> {
     let max = max_chars.max(1);
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return Vec::new();
     }
+    let char_start = |byte: usize| text[..byte].chars().count();
     if trimmed.chars().count() <= max {
-        return vec![trimmed.to_string()];
+        let lead = text.len() - text.trim_start().len();
+        return vec![(char_start(lead), trimmed.to_string())];
     }
     let mut units = Vec::new();
     for sentence in sentence_ranges(text) {
@@ -119,9 +132,11 @@ pub fn split_for_tts(text: &str, max_chars: usize) -> Vec<String> {
     }
     let mut chunks = Vec::new();
     let mut push = |range: (usize, usize)| {
-        let chunk = text[range.0..range.1].trim();
+        let slice = &text[range.0..range.1];
+        let chunk = slice.trim();
         if !chunk.is_empty() {
-            chunks.push(chunk.to_string());
+            let lead = slice.len() - slice.trim_start().len();
+            chunks.push((char_start(range.0 + lead), chunk.to_string()));
         }
     };
     let mut current: Option<(usize, usize)> = None;
@@ -197,7 +212,7 @@ pub fn speech_request(
             let mut body = json!({
                 "model": model,
                 "input": text,
-                "response_format": "mp3",
+                "response_format": format,
                 "speed": rate.clamp(0.25, 4.0),
             });
             if let Some(voice) = voice {
@@ -661,17 +676,17 @@ mod tests {
     #[test]
     fn replies_decode_to_samples() {
         let raw = [0x00, 0x00, 0xff, 0x7f];
-        let openai = parse_speech(CloudProvider::Openai, &raw).unwrap();
+        let openai = parse_speech(CloudProvider::Openai, &raw, None).unwrap();
         assert_eq!(openai.samples.len(), 2);
         assert_eq!(openai.sample_rate, CLOUD_PCM_RATE);
         let encoded = base64::engine::general_purpose::STANDARD.encode(raw);
         let gemini = format!(
             r#"{{"candidates":[{{"content":{{"parts":[{{"inlineData":{{"mimeType":"audio/L16;rate=24000","data":"{encoded}"}}}}]}}}}]}}"#
         );
-        let gemini = parse_speech(CloudProvider::Gemini, gemini.as_bytes()).unwrap();
+        let gemini = parse_speech(CloudProvider::Gemini, gemini.as_bytes(), None).unwrap();
         assert_eq!(gemini.samples.len(), 2);
         assert_eq!(gemini.sample_rate, CLOUD_PCM_RATE);
-        assert!(parse_speech(CloudProvider::Gemini, b"{}").is_err());
+        assert!(parse_speech(CloudProvider::Gemini, b"{}", None).is_err());
     }
 
     /// 0.25 s of a 440 Hz tone, stereo, 22.05 kHz, 32 kbps (ffmpeg + libmp3lame, no tags).
@@ -679,7 +694,7 @@ mod tests {
 
     #[test]
     fn openrouter_mp3_replies_decode_to_mono_at_their_own_rate() {
-        let pcm = parse_speech(CloudProvider::Openrouter, TONE_MP3).unwrap();
+        let pcm = parse_speech(CloudProvider::Openrouter, TONE_MP3, None).unwrap();
         assert_eq!(pcm.sample_rate, 22_050);
         // Stereo frames are downmixed: about 0.25 s of mono samples (plus encoder padding).
         assert!(
@@ -697,31 +712,47 @@ mod tests {
     #[test]
     fn undecodable_openrouter_replies_are_errors() {
         for body in [&b""[..], b"not audio", br#"{"error":"x"}"#] {
-            let error = parse_speech(CloudProvider::Openrouter, body).unwrap_err();
+            let error = parse_speech(CloudProvider::Openrouter, body, None).unwrap_err();
             assert_eq!(error.kind, CloudErrorKind::Other, "{body:?}");
         }
     }
 
     #[test]
     fn speed_is_native_where_supported_and_resampled_elsewhere() {
-        assert_eq!(playback_rate(CloudProvider::Openai, 1.5, 24_000), 24_000);
-        assert_eq!(playback_rate(CloudProvider::Gemini, 1.5, 24_000), 36_000);
         assert_eq!(
-            playback_rate(CloudProvider::Elevenlabs, 1.0, 24_000),
+            playback_rate(CloudProvider::Openai, "m", 1.5, 24_000),
             24_000
         );
         assert_eq!(
-            playback_rate(CloudProvider::Elevenlabs, 1.5, 24_000),
+            playback_rate(CloudProvider::Gemini, "m", 1.5, 24_000),
+            36_000
+        );
+        assert_eq!(
+            playback_rate(CloudProvider::Elevenlabs, "m", 1.0, 24_000),
+            24_000
+        );
+        assert_eq!(
+            playback_rate(CloudProvider::Elevenlabs, "m", 1.5, 24_000),
             30_000,
             "1.2 native x 1.25 resample"
         );
+        // Gemini behind OpenRouter ignores `speed`: the player makes up for it.
+        assert_eq!(
+            playback_rate(
+                CloudProvider::Openrouter,
+                "google/gemini-3.8-flash-lite-tts",
+                1.5,
+                24_000
+            ),
+            36_000
+        );
         // OpenRouter speaks at native speed; the decoded MP3 plays at its own rate.
         assert_eq!(
-            playback_rate(CloudProvider::Openrouter, 1.5, 22_050),
+            playback_rate(CloudProvider::Openrouter, "m", 1.5, 22_050),
             22_050
         );
         assert_eq!(
-            playback_rate(CloudProvider::Openrouter, 1.0, 44_100),
+            playback_rate(CloudProvider::Openrouter, "m", 1.0, 44_100),
             44_100
         );
     }

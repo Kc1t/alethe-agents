@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useUiStore } from '../../stores/uiStore'
 import { useVoiceConversationStore } from '../../stores/voiceConversationStore'
+import { useVoiceHistoryStore } from '../../stores/voiceHistoryStore'
 import { VoiceCommand } from '.'
 
 const jevDecide = vi.hoisted(() => vi.fn())
@@ -11,8 +12,16 @@ const speechPrepare = vi.hoisted(() => vi.fn())
 const speechStopAndTranscribe = vi.hoisted(() => vi.fn())
 const mockPrefs = vi.hoisted(() => ({
   voiceStt: {
-    dictation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null as string | null },
-    conversation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null as string | null },
+    dictation: {
+      provider: 'local',
+      model: 'parakeet-tdt-0.6b-v3-int8',
+      locale: null as string | null,
+    },
+    conversation: {
+      provider: 'local',
+      model: 'parakeet-tdt-0.6b-v3-int8',
+      locale: null as string | null,
+    },
   },
 }))
 const setStt = (provider: 'local' | 'apple', model: string, locale: string | null) => {
@@ -150,6 +159,32 @@ describe('VoiceCommand request hand-off', () => {
       fallbackLocale: 'pt-BR',
       usage: 'conversation',
     })
+  })
+
+  // A tap too short to record is not a failure: a hint in the history, no failed entry, no toast.
+  it('treats a recording too short to transcribe as a hint, not a failure', async () => {
+    speechStartCapture.mockResolvedValue(undefined)
+    speechStopAndTranscribe.mockRejectedValue('speech_too_short')
+    useUiStore.setState({ notifications: [] })
+    useVoiceHistoryStore.getState().clear()
+    render(<VoiceCommand />)
+    await act(async () => {
+      useUiStore.getState().openVoiceCommand('')
+    })
+    const mic = screen.getByLabelText('Start recording')
+    await act(async () => {
+      fireEvent.click(mic)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Stop recording'))
+    })
+    await act(async () => undefined)
+    expect(speechStopAndTranscribe).toHaveBeenCalled()
+    expect(useUiStore.getState().notifications).toHaveLength(0)
+    const [entry] = useVoiceHistoryStore.getState().entries
+    expect(entry.status).not.toBe('failed')
+    expect(entry.error ?? null).toBeNull()
+    expect(entry.summary).toBe('Recording was too short — hold a bit longer, then release.')
   })
 
   it('does not prepare in the background until a language is chosen', async () => {
