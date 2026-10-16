@@ -165,6 +165,7 @@ export function XTermView({
     command && command !== 'shell' ? (s.cliPaths[command] ?? null) : null,
   )
   const setCliPath = useProjectsStore((s) => s.setCliPath)
+  const readAloudShortcut = useProjectsStore((s) => s.preferences.voiceReadAloudShortcut)
   const wslEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.wsl)
   const wslTarget = wslTargetFor(cwd, wslEnabled)
 
@@ -745,7 +746,9 @@ export function XTermView({
                   type="button"
                   className={styles.linkMenuItem}
                   role="menuitem"
-                  title={t('xterm.readAloudShortcut', { shortcut: readAloudShortcutLabel() })}
+                  title={t('xterm.readAloudShortcut', {
+                    shortcut: readAloudShortcutLabel(readAloudShortcut),
+                  })}
                   onClick={() => {
                     const text = selectionMenu.text
                     if (text) readSelectionAloud(text)
@@ -754,7 +757,9 @@ export function XTermView({
                   }}
                 >
                   <Volume2 size={15} />
-                  <span>{t(selectionMenu.text ? 'xterm.readAloud' : 'xterm.readClipboardAloud')}</span>
+                  <span>
+                    {t(selectionMenu.text ? 'xterm.readAloud' : 'xterm.readClipboardAloud')}
+                  </span>
                 </button>
                 {selectionMenu.text ? (
                   <button

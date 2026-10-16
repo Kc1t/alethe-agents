@@ -21,8 +21,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   Codex and OpenCode now also show the working indicator and the "agent done" notification.
 - **Read terminal text aloud.** With voice conversation on, right-clicking a terminal opens a menu:
   with a selection, **Read aloud** and **Copy**; without one, **Read copied text aloud** and
-  **Paste**. Ctrl+Shift+L (⌘⇧L on macOS) reads the focused terminal's selection, or the clipboard
-  when nothing is selected. Agents that draw their own selection (Claude Code in full screen,
+  **Paste**. Ctrl+Shift+L (⌘⇧L on macOS, changeable in Preferences → Voice conversation) reads
+  the focused terminal's selection, or the clipboard when nothing is selected. Agents that draw their own selection (Claude Code in full screen,
   OpenCode) work too: what they copy is read, and Option+drag (Shift+drag on Windows and Linux)
   still makes a terminal selection over them. Text is spoken with the narration voice and shown on
   the voice panel or the HUD with its narration controls. With voice conversation off, right-click
@@ -473,6 +473,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   (shorter chunks, silence around each chunk trimmed). A slow voice is no longer cut off mid-text
   by the next item, and a chunk that fails mid-text is retried once and otherwise skipped instead
   of ending the narration.
+- **OpenRouter provisioning keys are refused with a clear message.** Testing or saving an
+  OpenRouter key now says when it is a provisioning key, which manages keys but cannot use models,
+  instead of accepting it and failing every narration.
 - **Google Gemini voices through OpenRouter narrate again.** They only answer in PCM, so asking for
   MP3 failed and narration fell back to the system voice. Alethe now asks them for PCM, plays it at
   the rate the reply declares, and applies the narration speed itself, since they ignore it.

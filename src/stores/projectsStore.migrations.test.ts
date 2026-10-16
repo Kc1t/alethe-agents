@@ -82,6 +82,7 @@ describe('preference normalization', () => {
     expect(preferences).toMatchObject({
       voiceConversationEnabled: false,
       voiceShortcut: 'CmdOrCtrl+Shift+Space',
+      voiceReadAloudShortcut: 'CmdOrCtrl+Shift+L',
       voiceCaptureMode: 'push-to-talk',
       voiceVerbosity: 'normal',
       voiceFillAfterMs: 8000,
@@ -103,6 +104,7 @@ describe('preference normalization', () => {
       voiceInterruptWords: [' STOP ', '', 42, 'Espera'],
       voiceJevTrigger: '  ',
       voiceShortcut: '',
+      voiceReadAloudShortcut: ' ',
     } as unknown as Partial<Preferences>)
     expect(preferences).toMatchObject({
       voiceCaptureMode: 'push-to-talk',
@@ -113,6 +115,7 @@ describe('preference normalization', () => {
       voiceInterruptWords: ['stop', 'espera'],
       voiceJevTrigger: 'alethe',
       voiceShortcut: 'CmdOrCtrl+Shift+Space',
+      voiceReadAloudShortcut: 'CmdOrCtrl+Shift+L',
     })
   })
 

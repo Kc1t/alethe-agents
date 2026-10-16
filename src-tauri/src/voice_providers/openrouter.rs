@@ -83,6 +83,15 @@ pub fn format_price(pricing: &Value) -> Option<String> {
     }
 }
 
+/// True when `/api/v1/key` describes a provisioning key: it manages API keys and cannot call any
+/// model, so it is no use for speech.
+pub fn is_provisioning_key(body: &[u8]) -> bool {
+    serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| value["data"]["is_provisioning_key"].as_bool())
+        .unwrap_or(false)
+}
+
 pub fn parse_models(body: &[u8], capability: &'static str) -> Result<Vec<LiveModel>, CloudError> {
     let value: Value =
         serde_json::from_slice(body).map_err(|_| CloudError::of(CloudErrorKind::Other))?;
@@ -193,6 +202,18 @@ pub async fn live_models(kind: &str) -> Result<Vec<LiveModel>, String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn provisioning_keys_are_told_apart_from_api_keys() {
+        assert!(is_provisioning_key(
+            br#"{"data":{"label":"x","is_provisioning_key":true,"limit":null}}"#
+        ));
+        assert!(!is_provisioning_key(
+            br#"{"data":{"label":"x","is_provisioning_key":false,"limit":4}}"#
+        ));
+        assert!(!is_provisioning_key(br#"{"data":{"label":"x"}}"#));
+        assert!(!is_provisioning_key(b"not json"));
+    }
     use super::*;
 
     #[test]

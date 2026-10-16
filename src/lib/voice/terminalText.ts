@@ -13,7 +13,16 @@ const CHROME_LINES = [
   /\?\s*for shortcuts/i,
   /\b\d+(?:[.,]\d+)?\s*k?\s*tokens?\b/i,
   /\bcontext\b.*\d+\s*%|\d+\s*%\s*(?:context|left|used)/i,
+  // A status bar with a duration: "Build · Big Pickle · 37.6s", "Working (12s | esc)".
+  /[·•|].*\b\d+(?:\.\d+)?\s?(?:ms|s)\b|\b\d+(?:\.\d+)?\s?(?:ms|s)\b.*[·•|]/,
+  // How long it thought: "Thought: 6.3s", "Thought: 814ms".
+  /^\W*(?:thought|thinking|reasoning)\b[^.!?]*\d+(?:\.\d+)?\s?m?s$/i,
 ]
+/**
+ * Blank rows in a row that end the reply: a full-screen TUI leaves its empty transcript area
+ * between the last line said and the input box and footer at the bottom.
+ */
+const FOOTER_GAP_LINES = 4
 /** Fewer letters than this and a line is a frame, a spinner or a stray symbol. */
 const MIN_LETTERS = 2
 /** The screen reply is cut to its last part: a long one is better read in the terminal. */
@@ -54,24 +63,50 @@ export function readableTerminalText(raw: string): string {
 }
 
 /**
+ * Where the reply starts: past the new echo of `prompt` (its first line not already on screen
+ * before, through the line that ends the prompt when it wraps), or 0 when there is no echo. The
+ * first echo, not the last: a reply may well repeat the prompt's words.
+ */
+function afterEcho(lines: string[], prompt: string, seen: Set<string>): number {
+  const key = normalize(prompt)
+  // Short enough to sit on one row of the echo even when the prompt wraps.
+  const head = key.slice(0, 30)
+  const tail = key.slice(-16)
+  if (head.length < 4) return 0
+  const echo = lines.findIndex((line) => {
+    const text = normalize(line)
+    return text.includes(head) && !seen.has(text)
+  })
+  if (echo < 0) return 0
+  // A wrapped prompt runs over about one line per 20 characters at the narrowest panes.
+  const span = Math.ceil(key.length / 20) + 2
+  for (let index = echo; index < Math.min(lines.length, echo + span); index++) {
+    if (normalize(lines[index]).includes(tail)) return index + 1
+  }
+  return echo + 1
+}
+
+/**
  * What the agent printed for `prompt`: the lines of `after` that follow the prompt's echo and
- * were not on `before`, chrome left out. A long reply keeps its end, from a sentence start.
+ * were not on `before`, chrome left out, up to the empty rows a full-screen TUI leaves above its
+ * input box. A long reply keeps its end, from a sentence start.
  */
 export function screenReply(before: string, after: string, prompt: string): string {
   const seen = new Set(before.split('\n').map(normalize).filter(Boolean))
-  const key = normalize(prompt)
-  const keys = [key.slice(0, 40), key.slice(-30)].filter((part) => part.length >= 4)
   const lines = after.split('\n')
-  let start = 0
-  lines.forEach((line, index) => {
-    const text = normalize(line)
-    if (keys.some((part) => text.includes(part))) start = index + 1
-  })
-  const reply = lines
-    .slice(start)
-    .map(cleanTerminalLine)
-    .filter((line) => line && !seen.has(line.toLowerCase()) && !isChrome(line))
-    .join('\n')
+  const kept: string[] = []
+  let blankRun = 0
+  for (const raw of lines.slice(afterEcho(lines, prompt, seen))) {
+    const line = cleanTerminalLine(raw)
+    if (!line) {
+      blankRun += 1
+      if (kept.length > 0 && blankRun >= FOOTER_GAP_LINES) break
+      continue
+    }
+    blankRun = 0
+    if (!seen.has(line.toLowerCase()) && !isChrome(line)) kept.push(line)
+  }
+  const reply = kept.join('\n')
   if (reply.length <= MAX_REPLY_CHARS) return reply
   const tail = reply.slice(-MAX_REPLY_CHARS)
   const sentence = tail.search(/[.!?…。！？]\s+\S/)

@@ -54,6 +54,24 @@ describe('CloudKeyForm', () => {
     expect(screen.getByRole('status').textContent).toContain('prefs.voiceTestFailed.auth')
   })
 
+  // OpenRouter accepts a provisioning key on its key endpoint, but no model answers it.
+  it('says why an OpenRouter provisioning key cannot be used', async () => {
+    tauri.voiceProviderTest.mockResolvedValue({
+      ok: false,
+      reason: 'auth',
+      hint: 'provisioningKey',
+    })
+    render(<CloudKeyForm provider="openrouter" keyUrl="https://openrouter.ai/settings/keys" />)
+    fireEvent.change(screen.getByLabelText('prefs.voiceKeyLabel'), {
+      target: { value: 'sk-or-v1-x' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'prefs.voiceKeySave' }))
+    await waitFor(() =>
+      expect(prefs().voiceProviders.openrouter).toEqual({ configured: true, invalid: true }),
+    )
+    expect(screen.getByRole('status').textContent).toContain('prefs.voiceKeyProvisioning')
+  })
+
   // Only the provider can say a key is bad; an unreachable provider says nothing about it.
   it('keeps an invalid key invalid when the connection test cannot reach the provider', async () => {
     useProjectsStore.getState().setPreferences({

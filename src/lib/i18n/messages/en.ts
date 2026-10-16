@@ -822,6 +822,10 @@ export const en = {
   'prefs.voiceShortcutNeedsModifier': 'Add ⌘ or Ctrl (Shift alone works only with F1–F24).',
   'prefs.voiceShortcutAltReserved': 'Alt is used to send to Jev; pick a shortcut without it.',
   'prefs.voiceShortcutUnsupported': 'Use a letter, a number, Space or F1–F24.',
+  'prefs.voiceShortcutInUse': 'Another voice shortcut already uses that combination.',
+  'prefs.voiceReadAloudShortcut': 'Read aloud shortcut',
+  'prefs.voiceReadAloudShortcutDesc':
+    'Reads the focused terminal\'s selection aloud, or what is on the clipboard when nothing is selected. Works inside Alethe.',
   'prefs.voiceShortcutTaken': 'That shortcut is taken by another app or by the system.',
   'prefs.voiceShortcutReset': 'Reset to default',
   'prefs.voiceHudPosition': 'HUD position',
@@ -3743,6 +3747,8 @@ export const en = {
   'prefs.voiceKeyRemove': 'Remove key',
   'prefs.voiceKeyRejected': 'That key has an invalid format.',
   'prefs.voiceTestOk': 'Connected.',
+  'prefs.voiceKeyProvisioning':
+    'This is an OpenRouter provisioning key: it manages keys but cannot use models. Create an API key under Settings → API Keys and paste it here.',
   'prefs.voiceTestFailed.auth': 'The provider rejected this key.',
   'prefs.voiceTestFailed.quota': 'The account is out of credit or rate limited.',
   'prefs.voiceTestFailed.network': 'Could not reach the provider. Check your connection.',

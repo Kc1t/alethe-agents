@@ -19,7 +19,12 @@ export type VoiceProviderCatalog = {
   models: VoiceCatalogModel[]
   voices: VoiceCatalogVoice[]
 }
-export type VoiceTestResult = { ok: boolean; reason: CloudErrorKind | null }
+export type VoiceTestResult = {
+  ok: boolean
+  reason: CloudErrorKind | null
+  /** A key the provider accepted that still cannot be used (an OpenRouter provisioning key). */
+  hint?: 'provisioningKey'
+}
 
 export async function voiceProviderSetKey(
   provider: CloudVoiceProviderId,

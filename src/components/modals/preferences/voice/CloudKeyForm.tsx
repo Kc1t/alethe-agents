@@ -56,7 +56,13 @@ export function CloudKeyForm({
       setFeedback(
         result.ok
           ? { tone: 'ok', text: t('prefs.voiceTestOk') }
-          : { tone: 'error', text: failure(result.reason) },
+          : {
+              tone: 'error',
+              text:
+                result.hint === 'provisioningKey'
+                  ? t('prefs.voiceKeyProvisioning')
+                  : failure(result.reason),
+            },
       )
     } catch {
       setFeedback({ tone: 'error', text: failure('other') })

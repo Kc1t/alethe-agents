@@ -50,6 +50,50 @@ describe('screenReply', () => {
     )
   })
 
+  // OpenCode 1.18, recorded live: the reply repeats the prompt's last words, a status bar with
+  // the time taken follows it, and the input box and footer sit below a run of empty rows.
+  it('reads an OpenCode reply that repeats the prompt, without its status bar and footer', () => {
+    const prompt =
+      'Answer with exactly this sentence and nothing else: The build passes and all tests are green.'
+    const opencodeBefore = [
+      '  ┃  Ask anything... "Fix a TODO in the codebase"',
+      '  ┃  Build · Big Pickle OpenCode',
+      '  /work/oc-project                    1.18.18',
+    ].join('\n')
+    const opencodeAfter = [
+      '  ┃',
+      `  ┃  ${prompt}`,
+      '  ┃',
+      '',
+      '     + Thought: 6.3s',
+      '     + Thought: 814ms',
+      '',
+      '     The build passes and all tests are green.',
+      '',
+      '     ▣  Build · Big Pickle · 37.6s',
+      ...Array.from({ length: 12 }, () => ''),
+      '  ┃  Build · Big Pickle OpenCode',
+      '  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀',
+      '   /work/oc-proj   11.7K (6%)ctrl+p',
+      '   ect                     commands',
+    ].join('\n')
+    expect(screenReply(opencodeBefore, opencodeAfter, prompt)).toBe(
+      'The build passes and all tests are green.',
+    )
+  })
+
+  it('takes the end of a prompt that wraps over several rows as the end of its echo', () => {
+    const prompt = 'please look at the failing integration tests and tell me why they fail now'
+    const after = [
+      '> please look at the failing integration tests and',
+      '  tell me why they fail now',
+      'They fail because the fixture database is missing.',
+    ].join('\n')
+    expect(screenReply('', after, prompt)).toBe(
+      'They fail because the fixture database is missing.',
+    )
+  })
+
   // An alt-screen TUI redraws everything: there is no echo to anchor on, only what is new.
   it('falls back to the lines that are new when the prompt is not on screen', () => {
     expect(screenReply(before, 'opencode v1\nAll tests pass.', 'run the tests please')).toBe(

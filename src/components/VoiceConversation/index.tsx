@@ -67,6 +67,7 @@ export function VoiceConversation() {
 function VoiceConversationSession() {
   const t = useT()
   const shortcut = useProjectsStore((s) => s.preferences.voiceShortcut)
+  const readAloudShortcut = useProjectsStore((s) => s.preferences.voiceReadAloudShortcut)
   const captureMode = useProjectsStore((s) => s.preferences.voiceCaptureMode)
   const approvalChannel = useProjectsStore((s) => s.preferences.voiceApprovalChannel)
   const destructiveNeedsHud = useProjectsStore((s) => s.preferences.voiceDestructiveNeedsHud)
@@ -146,17 +147,18 @@ function VoiceConversationSession() {
     }
   }, [shortcut])
 
-  // Captured ahead of xterm, which would send Ctrl+Shift+L to the PTY as Ctrl+L (clear screen).
+  // Captured ahead of xterm, which would send a Ctrl chord to the PTY (Ctrl+Shift+L is Ctrl+L,
+  // clear screen).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (voiceStore().shortcutRecording || !isReadAloudShortcut(event)) return
+      if (voiceStore().shortcutRecording || !isReadAloudShortcut(event, readAloudShortcut)) return
       event.preventDefault()
       event.stopPropagation()
       if (!event.repeat) void controllerRef.current?.readSelectionAloud()
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [])
+  }, [readAloudShortcut])
 
   const accelerator = useMemo(() => parseAccelerator(shortcut), [shortcut])
 

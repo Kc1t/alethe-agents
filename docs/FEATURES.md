@@ -218,7 +218,8 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
   restart all of them at once.
 - Read aloud: right-clicking a terminal offers **Read aloud** and **Copy** for a selection, or
   **Read copied text aloud** and **Paste** without one; Ctrl+Shift+L (⌘⇧L) reads the focused
-  terminal's selection, else the clipboard. Agents that draw their own selection (Claude Code full
+  terminal's selection, else the clipboard (the shortcut is changeable in Preferences; it works
+  inside Alethe and cannot take the voice shortcut's chord). Agents that draw their own selection (Claude Code full
   screen, OpenCode) are covered through what they copy (OSC 52 or the clipboard); Option+drag
   (Shift+drag elsewhere) forces a terminal selection over them. Text is spoken with the narration
   voice and shown on the panel or the HUD with the narration controls. Only while voice conversation

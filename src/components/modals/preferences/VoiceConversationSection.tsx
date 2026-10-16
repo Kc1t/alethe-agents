@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { type MessageKey, useT } from '../../../lib/i18n'
 import { formatShortcut } from '../../../lib/platform'
-import type { HudPreset, VoiceApprovalChannel } from '../../../lib/types'
+import { DEFAULT_PREFERENCES, type HudPreset, type VoiceApprovalChannel } from '../../../lib/types'
 import { offerVoiceRestart } from '../../../lib/voice/restartSessions'
+import { type Accelerator, parseAccelerator } from '../../../lib/voice/shortcut'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { Dropdown } from '../../ui/Dropdown'
 import controls from '../controls.module.css'
@@ -19,6 +20,16 @@ const HUD_PRESETS = [
   ['top-left', 'prefs.voiceHudTopLeft'],
   ['top-right', 'prefs.voiceHudTopRight'],
 ] as const satisfies readonly (readonly [HudPreset, MessageKey])[]
+
+const inAppOnly = () => Promise.resolve()
+
+/** The same chord, however the accelerator was spelled. */
+function sameShortcut(a: string, b: string): boolean {
+  const first = parseAccelerator(a)
+  const second = parseAccelerator(b)
+  if (!first || !second) return false
+  return (Object.keys(first) as (keyof Accelerator)[]).every((key) => first[key] === second[key])
+}
 
 export function VoiceConversationSection() {
   const t = useT()
@@ -111,6 +122,31 @@ export function VoiceConversationSection() {
             value={preferences.voiceShortcut}
             onSaved={(voiceShortcut) => setPreferences({ voiceShortcut })}
             disabled={!enabled}
+            reject={(accelerator) =>
+              sameShortcut(accelerator, preferences.voiceReadAloudShortcut)
+                ? 'prefs.voiceShortcutInUse'
+                : null
+            }
+          />
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-read-aloud-shortcut"
+          title={t('prefs.voiceReadAloudShortcut')}
+          description={t('prefs.voiceReadAloudShortcutDesc')}
+        >
+          <ShortcutRecorder
+            value={preferences.voiceReadAloudShortcut}
+            defaultValue={DEFAULT_PREFERENCES.voiceReadAloudShortcut}
+            onSaved={(voiceReadAloudShortcut) => setPreferences({ voiceReadAloudShortcut })}
+            disabled={!enabled}
+            // Works inside Alethe only: there is nothing to register with the OS.
+            register={inAppOnly}
+            reject={(accelerator) =>
+              sameShortcut(accelerator, preferences.voiceShortcut)
+                ? 'prefs.voiceShortcutInUse'
+                : null
+            }
           />
         </SettingsSection>
 

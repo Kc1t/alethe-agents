@@ -1,4 +1,5 @@
 import { formatShortcut, isMacOS } from '../platform'
+import { matchesAccelerator, parseAccelerator } from './shortcut'
 
 /**
  * How a pane asks the voice conversation to read text aloud. The controller registers itself
@@ -43,15 +44,22 @@ export function currentSelection(): string {
   return focusedSelection?.() ?? ''
 }
 
-/** Reads the focused terminal's selection, or else the clipboard, from anywhere in the app. */
-export const READ_ALOUD_SHORTCUT = 'Ctrl+Shift+L'
-
-export function readAloudShortcutLabel(): string {
-  return formatShortcut(READ_ALOUD_SHORTCUT)
+/** The read-aloud accelerator (`voiceReadAloudShortcut`) as the person reads it: ⌘⇧L, Ctrl+Shift+L. */
+export function readAloudShortcutLabel(shortcut: string): string {
+  return formatShortcut(shortcut.replace(/CmdOrCtrl|CommandOrControl/i, 'Ctrl'))
 }
 
-/** ⌘⇧L on macOS (Ctrl+Shift+L there is left to the terminal), Ctrl+Shift+L elsewhere. */
-export function isReadAloudShortcut(event: KeyboardEvent, mac: boolean = isMacOS()): boolean {
-  const primary = mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey
-  return primary && event.shiftKey && !event.altKey && event.key.toLowerCase() === 'l'
+/**
+ * The read-aloud shortcut was pressed: `shortcut` is an accelerator (`CmdOrCtrl+Shift+L` is ⌘⇧L
+ * on macOS, Ctrl+Shift+L elsewhere). An unparsable one never matches.
+ */
+export function isReadAloudShortcut(
+  event: KeyboardEvent,
+  shortcut: string,
+  mac: boolean = isMacOS(),
+): boolean {
+  const accelerator = parseAccelerator(shortcut)
+  return (
+    accelerator !== null && !event.altKey && matchesAccelerator(event, accelerator, mac).matched
+  )
 }

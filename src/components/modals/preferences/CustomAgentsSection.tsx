@@ -99,7 +99,7 @@ function baseFromDefinition(definition: CustomAgentDefinition) {
 }
 
 function fileNameOf(path: string): string {
-  return path.split(/[\\/]/).at(-1) ?? path
+  return path.split(/[\\/]/).pop() ?? path
 }
 
 function PickedFilePreview({ path }: { path: string }) {

@@ -735,6 +735,10 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.voiceShortcutNeedsModifier': '请加上 ⌘ 或 Ctrl（仅 F1–F24 可以只用 Shift）。',
   'prefs.voiceShortcutAltReserved': 'Alt 用于发送给 Jev，请选择不含 Alt 的快捷键。',
   'prefs.voiceShortcutUnsupported': '请使用字母、数字、空格或 F1–F24。',
+  'prefs.voiceShortcutInUse': '另一个语音快捷键已在使用该组合。',
+  'prefs.voiceReadAloudShortcut': '朗读快捷键',
+  'prefs.voiceReadAloudShortcutDesc':
+    '朗读当前终端中选中的文本；未选择时朗读剪贴板中的内容。仅在 Alethe 内有效。',
   'prefs.voiceShortcutTaken': '该快捷键已被其他应用或系统占用。',
   'prefs.voiceShortcutReset': '恢复默认',
   'prefs.voiceHudPosition': '悬浮窗位置',
@@ -3521,6 +3525,8 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.voiceKeyRemove': '移除密钥',
   'prefs.voiceKeyRejected': '密钥格式无效。',
   'prefs.voiceTestOk': '已连接。',
+  'prefs.voiceKeyProvisioning':
+    '这是 OpenRouter 的预配密钥：它只能管理密钥，不能调用模型。请在 Settings → API Keys 中创建 API 密钥并粘贴到这里。',
   'prefs.voiceTestFailed.auth': '提供方拒绝了此密钥。',
   'prefs.voiceTestFailed.quota': '账户额度不足或受到速率限制。',
   'prefs.voiceTestFailed.network': '无法连接提供方，请检查网络。',

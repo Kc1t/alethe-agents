@@ -48,14 +48,28 @@ function acceleratorCaps(value: string, mac: boolean): string[] {
   return [...modifierCaps(accelerator, mac), keyLabel(accelerator.code)]
 }
 
+/**
+ * Records a shortcut by pressing it. By default it is the system-wide voice shortcut, registered
+ * with the OS (released while recording, so the chord reaches the page); `register` swaps that
+ * for another registration, or for none when the shortcut only works inside the app.
+ */
 export function ShortcutRecorder({
   value,
   onSaved,
   disabled = false,
+  defaultValue = DEFAULT_PREFERENCES.voiceShortcut,
+  register = voiceShortcutSet,
+  reject,
 }: {
   value: string
   onSaved: (accelerator: string) => void
   disabled?: boolean
+  /** What Reset goes back to. */
+  defaultValue?: string
+  /** Registers the accelerator (`null` releases it); a rejection means another app holds it. */
+  register?: (accelerator: string | null) => Promise<unknown>
+  /** Refuses a recorded accelerator, e.g. one another of the app's shortcuts already uses. */
+  reject?: (accelerator: string) => MessageKey | null
 }) {
   const t = useT()
   const mac = isMacOS()
@@ -63,26 +77,33 @@ export function ShortcutRecorder({
   const [saving, setSaving] = useState(false)
   const [held, setHeld] = useState<Held | null>(null)
   const [error, setError] = useState<MessageKey | null>(null)
-  const latest = useRef({ value, onSaved, disabled, recording, saving })
-  latest.current = { value, onSaved, disabled, recording, saving }
+  const latest = useRef({ value, onSaved, disabled, recording, saving, register, reject })
+  latest.current = { value, onSaved, disabled, recording, saving, register, reject }
 
   const stopRecording = (restore: boolean) => {
     latest.current.recording = false
     setRecording(false)
     setHeld(null)
     setRecordingFlag(false)
-    if (restore) void voiceShortcutSet(latest.current.value).catch(() => undefined)
+    if (restore) void latest.current.register(latest.current.value).catch(() => undefined)
   }
 
   const commit = (accelerator: string) => {
+    const refused = latest.current.reject?.(accelerator) ?? null
+    if (refused) {
+      setHeld(null)
+      setError(refused)
+      return
+    }
     latest.current.saving = true
     setSaving(true)
     setError(null)
-    voiceShortcutSet(accelerator)
+    latest.current
+      .register(accelerator)
       .then(() => {
         stopRecording(false)
         // Voice was turned off while the OS was registering it.
-        if (latest.current.disabled) void voiceShortcutSet(null).catch(() => undefined)
+        if (latest.current.disabled) void latest.current.register(null).catch(() => undefined)
         latest.current.onSaved(accelerator)
       })
       .catch(() => {
@@ -102,7 +123,7 @@ export function ShortcutRecorder({
     setHeld(null)
     setRecording(true)
     setRecordingFlag(true)
-    void voiceShortcutSet(null).catch(() => undefined)
+    void latest.current.register(null).catch(() => undefined)
   }
 
   // A disabled voice feature must never re-register its global shortcut.
@@ -162,7 +183,7 @@ export function ShortcutRecorder({
       const { recording, saving, disabled } = latest.current
       if (!recording || saving) return
       setRecordingFlag(false)
-      if (!disabled) void voiceShortcutSet(latest.current.value).catch(() => undefined)
+      if (!disabled) void latest.current.register(latest.current.value).catch(() => undefined)
     },
     [],
   )
@@ -193,8 +214,8 @@ export function ShortcutRecorder({
         <button
           type="button"
           className={`${controls.btn} ${controls.btnSm}`}
-          disabled={disabled || saving || value === DEFAULT_PREFERENCES.voiceShortcut}
-          onClick={() => commit(DEFAULT_PREFERENCES.voiceShortcut)}
+          disabled={disabled || saving || value === defaultValue}
+          onClick={() => commit(defaultValue)}
         >
           {t('prefs.voiceShortcutReset')}
         </button>

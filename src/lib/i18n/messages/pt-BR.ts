@@ -836,6 +836,10 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceShortcutNeedsModifier': 'Adicione ⌘ ou Ctrl (Shift sozinho só funciona com F1–F24).',
   'prefs.voiceShortcutAltReserved': 'O Alt é usado para mandar ao Jev; escolha um atalho sem ele.',
   'prefs.voiceShortcutUnsupported': 'Use uma letra, um número, Espaço ou F1–F24.',
+  'prefs.voiceShortcutInUse': 'Outro atalho de voz já usa essa combinação.',
+  'prefs.voiceReadAloudShortcut': 'Atalho de leitura em voz alta',
+  'prefs.voiceReadAloudShortcutDesc':
+    'Lê em voz alta a seleção do terminal em foco, ou o que está na área de transferência quando nada está selecionado. Funciona dentro do Alethe.',
   'prefs.voiceShortcutTaken': 'Esse atalho já é usado por outro app ou pelo sistema.',
   'prefs.voiceShortcutReset': 'Restaurar padrão',
   'prefs.voiceHudPosition': 'Posição do HUD',
@@ -3782,6 +3786,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceKeyRemove': 'Remover chave',
   'prefs.voiceKeyRejected': 'A chave tem formato inválido.',
   'prefs.voiceTestOk': 'Conectado.',
+  'prefs.voiceKeyProvisioning':
+    'Esta é uma chave de provisionamento da OpenRouter: ela gerencia chaves, mas não usa modelos. Crie uma API key em Settings → API Keys e cole aqui.',
   'prefs.voiceTestFailed.auth': 'O provedor recusou esta chave.',
   'prefs.voiceTestFailed.quota': 'A conta está sem crédito ou com limite atingido.',
   'prefs.voiceTestFailed.network': 'Não foi possível alcançar o provedor. Verifique sua conexão.',

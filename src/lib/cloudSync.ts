@@ -39,6 +39,7 @@ const SYNCED_PREFERENCE_KEYS = [
   'dictationEnabled',
   'voiceConversationEnabled',
   'voiceShortcut',
+  'voiceReadAloudShortcut',
   'voiceCaptureMode',
   'voiceVerbosity',
   'voiceFillAfterMs',

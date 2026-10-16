@@ -44,13 +44,43 @@ describe('VoiceConversationSection', () => {
     useProjectsStore.getState().setPreferences({ voiceConversationEnabled: true })
     render(<VoiceConversationSection />)
     expect(screen.queryByLabelText('Shortcut')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Change' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: 'Change' })).toHaveLength(2)
     expect(screen.getByText('Space')).toBeTruthy()
     expect(
       screen.getByText(
         'Hold it to talk, or press it to start and stop in toggle mode. Works system-wide; hold Alt with it to send to Jev.',
       ),
     ).toBeTruthy()
+  })
+
+  // Read aloud works inside Alethe only, and never takes the voice shortcut's chord.
+  it('records the read-aloud shortcut without registering it with the system', async () => {
+    useProjectsStore.getState().setPreferences({ voiceConversationEnabled: true })
+    const { voiceShortcutSet } = await import('../../../lib/tauri')
+    vi.mocked(voiceShortcutSet).mockClear()
+    render(<VoiceConversationSection />)
+    expect(screen.getByText('L')).toBeTruthy()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Change' })[1])
+    fireEvent.keyDown(window, {
+      key: ' ',
+      code: 'Space',
+      ctrlKey: true,
+      metaKey: true,
+      shiftKey: true,
+    })
+    fireEvent.keyDown(window, { key: 'r', code: 'KeyR', metaKey: true, shiftKey: true })
+    await act(async () => undefined)
+    expect(prefs().voiceReadAloudShortcut).toBe('CmdOrCtrl+Shift+R')
+    expect(voiceShortcutSet).not.toHaveBeenCalled()
+  })
+
+  it('refuses the voice shortcut as the read-aloud shortcut', () => {
+    useProjectsStore.getState().setPreferences({ voiceConversationEnabled: true })
+    render(<VoiceConversationSection />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Change' })[1])
+    fireEvent.keyDown(window, { key: ' ', code: 'Space', metaKey: true, shiftKey: true })
+    expect(screen.getByText('Another voice shortcut already uses that combination.')).toBeTruthy()
+    expect(prefs().voiceReadAloudShortcut).toBe('CmdOrCtrl+Shift+L')
   })
 
   it('lists the six HUD positions and saves the picked one', () => {

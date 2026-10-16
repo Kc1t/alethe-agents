@@ -918,6 +918,8 @@ export type Preferences = {
   voiceConversationEnabled: boolean
   /** Accelerator for voice conversation, e.g. `CmdOrCtrl+Shift+Space`. */
   voiceShortcut: string
+  /** In-app accelerator that reads the focused terminal's selection (or the clipboard) aloud. */
+  voiceReadAloudShortcut: string
   voiceCaptureMode: VoiceCaptureMode
   /** Speech-to-text provider per use. Device-specific; not synced. */
   voiceStt: Record<VoiceUse, SttChoice>
@@ -1139,6 +1141,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   voiceCommandApiKey: '',
   voiceConversationEnabled: false,
   voiceShortcut: 'CmdOrCtrl+Shift+Space',
+  voiceReadAloudShortcut: 'CmdOrCtrl+Shift+L',
   voiceCaptureMode: 'push-to-talk',
   voiceStt: {
     dictation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },

@@ -101,6 +101,45 @@ describe('ShortcutRecorder', () => {
     expect(recordingFlag()).toBe(false)
   })
 
+  // The read-aloud shortcut lives in the app: nothing is registered with or released from the OS.
+  it('uses the registration it is given, and Reset goes to its own default', async () => {
+    const register = vi.fn().mockResolvedValue(undefined)
+    const onSaved = vi.fn()
+    render(
+      <ShortcutRecorder
+        value="CmdOrCtrl+K"
+        defaultValue="CmdOrCtrl+Shift+L"
+        register={register}
+        onSaved={onSaved}
+      />,
+    )
+    startRecording()
+    fireEvent.keyDown(window, { key: 'j', code: 'KeyJ', metaKey: true })
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith('CmdOrCtrl+J'))
+    expect(register.mock.calls).toEqual([[null], ['CmdOrCtrl+J']])
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to default' }))
+    await waitFor(() => expect(onSaved).toHaveBeenLastCalledWith('CmdOrCtrl+Shift+L'))
+    expect(setShortcut).not.toHaveBeenCalled()
+  })
+
+  it('refuses what the caller rejects and keeps recording', () => {
+    const onSaved = vi.fn()
+    render(
+      <ShortcutRecorder
+        value="CmdOrCtrl+K"
+        onSaved={onSaved}
+        reject={(accelerator) =>
+          accelerator === 'CmdOrCtrl+Shift+Space' ? 'prefs.voiceShortcutInUse' : null
+        }
+      />,
+    )
+    startRecording()
+    fireEvent.keyDown(window, { key: ' ', code: 'Space', metaKey: true, shiftKey: true })
+    expect(screen.getByText('Another voice shortcut already uses that combination.')).toBeTruthy()
+    expect(screen.getByText(RECORDING)).toBeTruthy()
+    expect(onSaved).not.toHaveBeenCalled()
+  })
+
   it('refuses Alt and keeps recording', () => {
     setup()
     startRecording()

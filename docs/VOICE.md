@@ -305,8 +305,12 @@ drives it through its terminal:
   (`agent_transcript_snapshot('codex', …)`) and its last assistant text is the final answer. For
   every other harness (or a Codex whose transcript gave nothing), `beginTurn` keeps
   `readScreen()` and the prompt; at the end, `screenReply` (`lib/voice/terminalText.ts`) takes the
-  lines after the prompt's echo that were not on screen before, drops frames, spinners, key hints
-  and token/context meters, and keeps the last 1500 characters from a sentence start. That text is
+  lines after the prompt's first new echo (through the row that ends a wrapped prompt; the first,
+  as a reply may repeat the prompt's words) that were not on screen before, drops frames, spinners,
+  key hints, token/context meters, status bars with a duration ("Build · Big Pickle · 37.6s") and
+  "Thought: 6.3s" lines, stops at four empty rows in a row (a full-screen TUI's gap above its input
+  box and footer), and keeps the last 1500 characters from a sentence start. Checked live against
+  OpenCode 1.18 in a real PTY rendered by a headless xterm. That text is
   spoken through `onStop` at every verbosity but `silent`.
 - **Its own approval menu.** When the screen ends on a choice menu, voice says
   `voice.conv.agentAsksInTerminal` ("OpenCode is asking something in the terminal…") instead of
@@ -328,8 +332,12 @@ drives it through its terminal:
   reads the clipboard (`read_clipboard_text`), for TUIs that copy natively; and
   `macOptionClickForcesSelection` makes Option+drag an xterm selection on macOS (Shift+drag
   elsewhere, xterm's default).
-- **Shortcut** `Ctrl+Shift+L` (`⌘⇧L` on macOS, `isReadAloudShortcut`), caught on `window` in the
-  capture phase by `VoiceConversation` so xterm never sends it as Ctrl+L.
+- **Shortcut** `voiceReadAloudShortcut` (default `CmdOrCtrl+Shift+L`: `⌘⇧L` on macOS, `Ctrl+Shift+L`
+  elsewhere; matched by `isReadAloudShortcut` through `parseAccelerator`/`matchesAccelerator`),
+  caught on `window` in the capture phase by `VoiceConversation` so xterm never sends it to the PTY.
+  It is recorded in Preferences with the same `ShortcutRecorder` as the voice shortcut, given a
+  no-op `register` (in-app only, nothing is registered with the OS) and a `reject` that refuses the
+  voice shortcut's chord, and the other way round.
   `controller.readSelectionAloud` reads the selection of the terminal that last took focus
   (`setFocusedSelection`/`currentSelection`: its xterm selection, else its OSC 52 one), else the
   clipboard, else shows `voice.conv.nothingToRead`.
@@ -439,7 +447,7 @@ provider and voice.
 |---|---|
 | `mod.rs` | `CloudProvider` enum (`openai`, `elevenlabs`, `gemini`, `openrouter`). |
 | `catalog.rs` | Curated STT/TTS models and voices per provider; `voice_provider_catalog`. |
-| `keys.rs` | `voice_provider_set_key`, `voice_provider_delete_key`, `voice_provider_test`; `read_key_async` for cloud speech and narration; `delete_profile_keys` on profile deletion. **No command returns a key.** |
+| `keys.rs` | `voice_provider_set_key`, `voice_provider_delete_key`, `voice_provider_test` (for OpenRouter it also reads `is_provisioning_key` off `/api/v1/key`: a provisioning key fails with `hint: "provisioningKey"`, since it cannot call models); `read_key_async` for cloud speech and narration; `delete_profile_keys` on profile deletion. **No command returns a key.** |
 | `http.rs` | Request model behind an injectable transport, auth headers, error classification (`Auth`, `Quota`, `Network`, `Timeout`, `BadAudio`, `Other`), `safe_path_id` for ids placed in URLs. |
 | `stt_cloud.rs` / `tts_cloud.rs` | Request building and response parsing per provider. |
 | `openrouter.rs` | Live catalog (`voice_openrouter_models`), filtered to speech models with each model's voices, cached in memory. The list is public, so it shows before a key is saved (locked until one is). |

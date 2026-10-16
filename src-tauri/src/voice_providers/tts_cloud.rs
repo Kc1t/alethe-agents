@@ -548,6 +548,65 @@ pub async fn synthesize(
 
 #[cfg(test)]
 mod tests {
+
+    /// Live check of the cloud narration pipeline against OpenRouter (costs a few cents):
+    /// `ALETHE_OPENROUTER_KEY=… ALETHE_OPENROUTER_TTS_MODEL=google/… cargo test --lib
+    /// live_openrouter -- --ignored --nocapture`. Every chunk must synthesize, and each one after
+    /// the first must be ready before the chunk before it finishes playing (no gap).
+    #[tokio::test]
+    #[ignore = "calls OpenRouter with a real key"]
+    async fn live_openrouter_narration_keeps_ahead_of_playback() {
+        let key = std::env::var("ALETHE_OPENROUTER_KEY").expect("ALETHE_OPENROUTER_KEY");
+        let model = std::env::var("ALETHE_OPENROUTER_TTS_MODEL")
+            .unwrap_or_else(|_| "google/gemini-3.8-flash-lite-tts".to_string());
+        let voice = std::env::var("ALETHE_OPENROUTER_TTS_VOICE").ok();
+        let text = "O controller roda na janela principal, porque é lá que estão os stores e os \
+            ids de PTY. O resto gira em volta dele. O Rust cuida do microfone, da transcrição, da \
+            voz e dos hooks do Claude. O HUD é só uma tela: mostra o estado que recebe da janela \
+            principal e devolve as ações do usuário. Ele nunca escreve num PTY e nunca aprova uma \
+            permissão sozinho. Numa volta da conversa, o atalho global começa a captura, a fala é \
+            transcrita, roteada pela primeira palavra e enviada ao painel do agente. Enquanto o \
+            agente trabalha, o narrador lê o que ele escreve, preenche os silêncios com o que está \
+            fazendo e, no fim, lê a resposta final. Com uma voz de nuvem, o próximo trecho é \
+            sintetizado enquanto o atual toca, para não haver pausa entre eles.";
+        let chunks = split_for_speech(text);
+        let mut previous_audio = None::<f64>;
+        let mut gaps = Vec::new();
+        println!("chunk | chars | synth s | audio s (trimmed) | chars/s");
+        for (index, (_, chunk)) in chunks.iter().enumerate() {
+            let started = std::time::Instant::now();
+            let raw = synthesize(
+                CloudProvider::Openrouter,
+                &model,
+                voice.as_deref(),
+                &key,
+                chunk,
+                1.0,
+            )
+            .await
+            .unwrap_or_else(|error| panic!("chunk {index} failed: {error}"));
+            let synth = started.elapsed().as_secs_f64();
+            let raw_secs = raw.samples.len() as f64 / raw.sample_rate as f64;
+            let pcm = trim_silence(raw);
+            let audio = pcm.samples.len() as f64 / pcm.sample_rate as f64;
+            println!(
+                "{index:>5} | {:>5} | {synth:>7.2} | {audio:>6.2} ({:.2} trimmed) | {:>6.1}",
+                chunk.chars().count(),
+                raw_secs - audio,
+                chunk.chars().count() as f64 / audio,
+            );
+            if let Some(previous) = previous_audio {
+                if synth > previous {
+                    gaps.push((index, synth - previous));
+                }
+            }
+            previous_audio = Some(audio);
+        }
+        assert!(
+            gaps.is_empty(),
+            "chunks not ready before the previous one ended: {gaps:?}"
+        );
+    }
     use super::*;
     use crate::voice_providers::http::HttpBody;
 

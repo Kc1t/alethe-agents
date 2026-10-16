@@ -226,6 +226,10 @@ pub async fn voice_provider_delete_key(
 pub struct VoiceTestResult {
     pub ok: bool,
     pub reason: Option<super::http::CloudErrorKind>,
+    /// Why a key the provider accepted still cannot be used: `provisioningKey` for an OpenRouter
+    /// provisioning key, which manages keys but cannot call models.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<&'static str>,
 }
 
 #[tauri::command]
@@ -238,6 +242,7 @@ pub async fn voice_provider_test(
         return Ok(VoiceTestResult {
             ok: false,
             reason: Some(CloudErrorKind::Auth),
+            hint: None,
         });
     };
     Ok(
@@ -247,13 +252,26 @@ pub async fn voice_provider_test(
         )
         .await
         {
+            // `/api/v1/key` answers for a provisioning key too, but speech then fails with 401.
+            Ok(body)
+                if provider == CloudProvider::Openrouter
+                    && super::openrouter::is_provisioning_key(&body) =>
+            {
+                VoiceTestResult {
+                    ok: false,
+                    reason: Some(CloudErrorKind::Auth),
+                    hint: Some("provisioningKey"),
+                }
+            }
             Ok(_) => VoiceTestResult {
                 ok: true,
                 reason: None,
+                hint: None,
             },
             Err(error) => VoiceTestResult {
                 ok: false,
                 reason: Some(error.kind),
+                hint: None,
             },
         },
     )

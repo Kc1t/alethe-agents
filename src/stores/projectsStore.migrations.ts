@@ -273,6 +273,10 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     ...normalizeVoicePreferences(raw),
     voiceConversationEnabled: Boolean(preferences.voiceConversationEnabled),
     voiceShortcut: trimmedOr(preferences.voiceShortcut, DEFAULT_PREFERENCES.voiceShortcut),
+    voiceReadAloudShortcut: trimmedOr(
+      preferences.voiceReadAloudShortcut,
+      DEFAULT_PREFERENCES.voiceReadAloudShortcut,
+    ),
     voiceCaptureMode: preferences.voiceCaptureMode === 'toggle' ? 'toggle' : 'push-to-talk',
     voiceVerbosity: oneOf(preferences.voiceVerbosity, VOICE_VERBOSITIES, 'normal'),
     voiceFillAfterMs: Math.round(
