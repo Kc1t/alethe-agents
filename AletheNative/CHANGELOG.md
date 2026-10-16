@@ -14,6 +14,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   its subgroups and their projects (undoable; files stay on disk).
 - Sidebar project layout design and quick rename, plus terminal rename, focus mode, process stop
   and movement between project grids.
+- Right sidebar Agents tab with focused/all scope, sorted worker and native subagent cards,
+  running counts, elapsed time, cost, approval answers, Stop, and an action to open the board.
+- Markdown viewing inside the right sidebar, with closable document tabs, file drops, refresh,
+  source copying, file paths, back-to-list navigation, and Open in pane.
 - Full-window startup console with a themed wordmark card, blinking cursor and staggered progress cells;
   decorative motion stops when Reduce Motion is enabled.
 - Home content styled after the web dashboard: centered greeting and date chip, terminal-style quick
@@ -357,6 +361,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The DMG opens a branded install window: drag Alethe onto the Applications shortcut to install.
 
 ### Changed
+- Right sidebar follows the web tab order, with Mac-only Todos and extensions last; Files is no
+  longer shown there. The strip includes Close and an MCP-only action to open its manager.
+- Pull request rows show Send to Todo directly and Already added for linked Todos, including in
+  the context menu.
+
+
 - Sidebar rows follow the web app: project monograms, 12.5 pt rows, agent icons tinted by agent,
   faint group tags with a hairline rule, and a `PROJECTS` header with add-folder and new-project
   buttons (the footer button moved there). Working terminals show the dot-matrix spinner and unseen

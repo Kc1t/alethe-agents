@@ -19,7 +19,7 @@ struct MarkdownPaneView: View {
         VStack(spacing: 0) {
             ContentPaneHeader(symbol: "doc.richtext", url: file.url, isFocused: isFocused,
                               onClose: onClose, onDrag: onDrag) { actions }
-            content
+            MarkdownFileContent(file: file)
         }
         .background(theme[.bg])
         .accessibilityElement(children: .contain)
@@ -50,10 +50,26 @@ struct MarkdownPaneView: View {
         }
     }
 
+    private func copySource() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(file.source, forType: .string)
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+    }
+}
+
+/// Shared file rendering and editing, used by panes and the Markdown inspector.
+struct MarkdownFileContent: View {
+    let file: MarkdownFile
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
     // MARK: - Content
 
     @ViewBuilder
-    private var content: some View {
+    var body: some View {
         if file.isEditing {
             VStack(spacing: 0) {
                 if let error = file.saveError {
@@ -93,13 +109,4 @@ struct MarkdownPaneView: View {
         }
     }
 
-    private func copySource() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(file.source, forType: .string)
-        copied = true
-        Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            copied = false
-        }
-    }
 }

@@ -9,6 +9,7 @@ import SwiftUI
 struct PullRequestsView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
     @State private var phase: Phase = .loading
     @State private var prs: [PullRequestSummary] = []
     @State private var detailed: Set<String> = []
@@ -28,7 +29,7 @@ struct PullRequestsView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("pullRequests.title").font(.headline)
+                Text("pullRequests.title").font(metrics.font(.headline))
                 Spacer()
                 if phase == .loading { ProgressView().controlSize(.small) }
                 Button { reload += 1 } label: { Image(systemName: "arrow.clockwise") }
@@ -36,8 +37,8 @@ struct PullRequestsView: View {
                     .help("pullRequests.refresh")
                     .disabled(phase == .loading)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, metrics.size(10))
+            .padding(.vertical, metrics.size(6))
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -69,7 +70,7 @@ struct PullRequestsView: View {
             ContentUnavailableView {
                 Label("pullRequests.failed", systemImage: "exclamationmark.triangle")
             } description: {
-                Text(message).foregroundStyle(theme[.statusStopped])
+                Text(verbatim: message).foregroundStyle(theme[.statusStopped])
             }
         case .loading where prs.isEmpty:
             Color.clear
@@ -87,43 +88,46 @@ struct PullRequestsView: View {
     }
 
     private func hint(_ key: LocalizedStringKey, command: String) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: metrics.size(6)) {
             Text(key)
             Text(verbatim: command)
-                .font(.body.monospaced())
+                .font(metrics.font(.body).monospaced())
                 .textSelection(.enabled)
         }
     }
 
     private func row(_ pr: PullRequestSummary) -> some View {
-        Button {
-            if let url = pr.browserURL { NSWorkspace.shared.open(url) }
-        } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
-                    Text(verbatim: "\(pr.repo) #\(pr.number)")
-                        .font(.caption)
-                        .foregroundStyle(theme[.textSecondary])
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 4)
-                    badges(pr)
-                }
-                Text(pr.title).lineLimit(2)
-                HStack(spacing: 4) {
-                    Text(verbatim: pr.author)
-                    if let updated = pr.updatedAt {
-                        Text(verbatim: "·")
-                        Text(updated, format: .relative(presentation: .named))
+        VStack(alignment: .leading, spacing: metrics.space(.xs)) {
+            Button {
+                if let url = pr.browserURL { NSWorkspace.shared.open(url) }
+            } label: {
+                VStack(alignment: .leading, spacing: metrics.size(2)) {
+                    HStack(spacing: metrics.size(4)) {
+                        Text(verbatim: "\(pr.repo) #\(pr.number)")
+                            .font(metrics.font(.caption))
+                            .foregroundStyle(theme[.textSecondary])
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: metrics.size(4))
+                        badges(pr)
                     }
+                    Text(verbatim: pr.title).lineLimit(2)
+                    HStack(spacing: metrics.size(4)) {
+                        Text(verbatim: pr.author)
+                        if let updated = pr.updatedAt {
+                            Text(verbatim: "·")
+                            Text(updated, format: .relative(presentation: .named))
+                        }
+                    }
+                    .font(metrics.font(.caption))
+                    .foregroundStyle(theme[.textSecondary])
                 }
-                .font(.caption)
-                .foregroundStyle(theme[.textSecondary])
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .help(pr.browserURL?.absoluteString ?? "")
+            todoButton(pr)
         }
-        .buttonStyle(.plain)
-        .help(pr.browserURL?.absoluteString ?? "")
         .contextMenu {
             Button("pullRequests.open") { if let url = pr.browserURL { NSWorkspace.shared.open(url) } }
                 .disabled(pr.browserURL == nil)
@@ -133,11 +137,7 @@ struct PullRequestsView: View {
                 NSPasteboard.general.setString(url.absoluteString, forType: .string)
             }
             .disabled(pr.browserURL == nil)
-            Button("pullRequests.sendToTodo") {
-                guard let url = pr.browserURL else { return }
-                _ = TodosPlugin.activeStore?.addPullRequest(number: pr.number, title: pr.title, url: url)
-            }
-            .disabled(TodosPlugin.activeStore == nil || pr.browserURL == nil)
+            todoButton(pr)
             Divider()
             Button("pullRequests.reviewWithAgent") { reviewing = pr }
             Button("pullRequests.squashMergeMenu") { merging = pr }
@@ -145,11 +145,20 @@ struct PullRequestsView: View {
         }
     }
 
+    private func todoButton(_ pr: PullRequestSummary) -> some View {
+        let added = pr.browserURL.map { url in TodosPlugin.activeStore?.todos.contains { $0.prURL == url } == true } ?? false
+        return Button(added ? LocalizedStringKey("pullRequests.alreadyAdded") : "pullRequests.sendToTodo") {
+            guard let url = pr.browserURL else { return }
+            _ = TodosPlugin.activeStore?.addPullRequest(number: pr.number, title: pr.title, url: url)
+        }
+        .disabled(added || TodosPlugin.activeStore == nil || pr.browserURL == nil)
+    }
+
     @ViewBuilder
     private func badges(_ pr: PullRequestSummary) -> some View {
         if pr.isDraft {
             Text("pullRequests.draft")
-                .font(.caption2)
+                .font(metrics.font(.caption2))
                 .foregroundStyle(theme[.statusDisabled])
         }
         switch pr.reviewDecision {
