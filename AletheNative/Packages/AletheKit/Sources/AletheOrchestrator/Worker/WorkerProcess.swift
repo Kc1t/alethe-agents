@@ -131,12 +131,11 @@ public actor WorkerProcess {
             return
         }
         stopping = true
-        if #available(macOS 27, *) {
-            await withTaskCancellationShield { await self.teardown() }
-        } else {
-            // An unstructured task does not inherit the caller's cancellation.
-            await Task { await self.teardown() }.value
-        }
+        // An unstructured task does not inherit the caller's cancellation. Not
+        // `withTaskCancellationShield`: the compiler references its runtime entry points
+        // (`swift_task_cancellationShieldPush/Pop`) strongly, so even behind `#available` the app
+        // fails to launch on macOS 26, whose Swift runtime lacks them.
+        await Task { await self.teardown() }.value
         stopped = true
         let pending = waiters
         waiters.removeAll()
