@@ -67,11 +67,13 @@ private func toolNames(_ response: OrderedJSONObject) -> [String] {
         #expect(!description.contains("%"))
     }
 
-    @Test func theResourceHoldsTheNineUpstreamToolsInOrder() {
+    @Test func theResourceHoldsUpstreamAndQueueToolsInOrder() {
         let names = OrchestratorMCP.tools.arrayValue?.compactMap { $0.objectValue?["name"]?.stringValue }
         #expect(names == [
             "alethe_delegate", "alethe_check", "alethe_status", "alethe_steer", "alethe_send",
             "alethe_answer", "alethe_cancel", "alethe_release", "alethe_diff",
+            "alethe_queue_add", "alethe_queue_list", "alethe_queue_cancel",
+            "alethe_queue_run_now", "alethe_queue_reorder",
         ])
         for tool in OrchestratorMCP.tools.arrayValue ?? [] {
             let object = tool.objectValue

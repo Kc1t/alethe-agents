@@ -5,6 +5,7 @@
         "inputSchema": {
             "type": "object",
             "properties": {
+                "queue": { "type": "boolean", "description": "When the agent is strained or rate-limited, persist tasks until it has room. Returns queueIds and resetsAt." },
                 "tasks": {
                     "type": "array",
                     "items": { "type": "string" },
@@ -121,6 +122,111 @@
             "type": "object",
             "properties": { "jobId": { "type": "string" } },
             "required": ["jobId"]
+        }
+    },
+    {
+        "name": "alethe_queue_add",
+        "description": "Persist a deferred prompt. Defaults to Codex, current directory, and release when the agent has room. Uses the normal delegate worker path.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string"
+                },
+                "agent": {
+                    "type": "string",
+                    "enum": [
+                        "codex",
+                        "claude"
+                    ]
+                },
+                "cwd": {
+                    "type": "string"
+                },
+                "isolate": {
+                    "type": "boolean"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "priority": {
+                    "type": "integer",
+                    "description": "Higher values run first; creation order breaks ties."
+                },
+                "at": {
+                    "type": "string",
+                    "description": "ISO 8601 release date; mutually exclusive with afterJob."
+                },
+                "afterJob": {
+                    "type": "string",
+                    "description": "Release after this existing job settles; still respects agent headroom."
+                }
+            },
+            "required": [
+                "prompt"
+            ]
+        }
+    },
+    {
+        "name": "alethe_queue_list",
+        "description": "List persisted prompt queue items in dispatch order.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {}
+        }
+    },
+    {
+        "name": "alethe_queue_cancel",
+        "description": "Cancel queue items and their running jobs.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "ids"
+            ]
+        }
+    },
+    {
+        "name": "alethe_queue_run_now",
+        "description": "Bypass release and fitness conditions for selected pending items, while respecting concurrency slots.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "ids"
+            ]
+        }
+    },
+    {
+        "name": "alethe_queue_reorder",
+        "description": "Put these items first in the supplied order; clears priorities and preserves relative order of unspecified items.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "ids"
+            ]
         }
     }
 ]

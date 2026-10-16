@@ -13,6 +13,7 @@ enum PluginViewRegistry {
         case DocsView.tabID: "rightSidebar.docs"
         case PullRequestsView.tabID: "rightSidebar.pullRequests"
         case AgentsView.tabID: "rightSidebar.agents"
+        case QueueView.tabID: "queue.title"
         case GSDSyncView.tabID: "rightSidebar.gsdSync"
         case McpPanel.tabID: "rightSidebar.mcp"
         case "jev": "rightSidebar.jev"
@@ -28,6 +29,7 @@ enum PluginViewRegistry {
         case DocsView.tabID: DocsView()
         case PullRequestsView.tabID: PullRequestsView()
         case AgentsView.tabID: AgentsView()
+        case QueueView.tabID: QueueView()
         case GSDSyncView.tabID: GSDSyncView()
         case McpPanel.tabID: McpPanel()
         case "jev": WebUnavailableSidebar(voice: true)
@@ -92,7 +94,7 @@ struct RightSidebar: View {
             + plugins.filter { $0.viewID != TodosPlugin.viewID && $0.viewID != FilesView.tabID }
             + (environment.features.isOn(.mcp) ? [McpPanel.tab] : [])
             + (environment.features.isOn(.prs) ? [PullRequestsView.tab] : [])
-            + (environment.features.isOn(.orchestrator) ? [AgentsView.tab] : [])
+            + (environment.features.isOn(.orchestrator) ? [AgentsView.tab, QueueView.tab] : [])
             + plugins.filter { $0.viewID == TodosPlugin.viewID }
             + (environment.extensions?.sidebarTabs ?? [])
     }

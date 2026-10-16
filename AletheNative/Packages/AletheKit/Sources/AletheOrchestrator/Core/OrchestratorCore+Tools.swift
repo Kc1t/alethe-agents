@@ -67,7 +67,13 @@ extension OrchestratorCore: OrchestratorToolHandler {
     func dispatchTool(name: String, arguments: OrderedJSONObject, planner: String?) async throws(OrchestratorToolError) -> OrderedJSON {
         switch name {
         case "alethe_delegate":
-            return try await delegate(DelegateRequest(arguments: arguments), planner: planner)
+            let request = try DelegateRequest(arguments: arguments)
+            if arguments["queue"]?.boolValue == true, fitnessReadings[request.agent]?.isStrained == true {
+                return try await enqueueDelegate(request, planner: planner)
+            }
+            return try await delegate(request, planner: planner)
+        case "alethe_queue_add", "alethe_queue_list", "alethe_queue_cancel", "alethe_queue_run_now", "alethe_queue_reorder":
+            return try await queueTool(name: name, arguments: arguments, planner: planner)
         case "alethe_check":
             return await check(
                 wait: arguments["wait"]?.boolValue ?? false,

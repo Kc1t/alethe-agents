@@ -7,6 +7,7 @@ extension OrchestratorCore {
     /// planner and the person read the same numbers (upstream `set_agent_fitness`).
     public func setAgentFitness(_ agent: String, _ fitness: AgentFitness) {
         fitnessReadings[agent] = fitness
+        if let deferredPrompts { Task { await deferredPrompts.tick() } }
     }
 
     /// Pushes a P3-13 usage reading; one without windows leaves the previous reading in place, as
@@ -14,7 +15,7 @@ extension OrchestratorCore {
     @discardableResult
     public func setAgentFitness(from usage: ProviderUsage) -> AgentFitness? {
         guard let reading = AgentFitness(usage) else { return nil }
-        fitnessReadings[usage.agent.rawValue] = reading
+        setAgentFitness(usage.agent.rawValue, reading)
         return reading
     }
 

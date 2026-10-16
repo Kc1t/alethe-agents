@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Persistent prompt queue in the right sidebar for Codex and Claude, with priority ordering,
+  drag reordering, Run now and Cancel actions. Prompts release when an agent has capacity, at a
+  scheduled time or after a job settles; usage-limit failures wait for the reset before retrying.
+- Queue MCP tools and `/queue` skill; `alethe_delegate` accepts `queue: true` to defer work when
+  the requested agent is strained or rate-limited, preserving its worktree and approval options.
+
 ### Fixed
 - Removed the unsupported sidebar list-spacing modifier to restore macOS API compatibility.
 

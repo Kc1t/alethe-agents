@@ -89,6 +89,7 @@ public actor OrchestratorCore {
     var isShutDown = false
     /// Per-agent usage fitness (P6-8, `OrchestratorCore+Fitness`).
     var fitnessReadings: [String: AgentFitness] = [:]
+    var deferredPrompts: PromptQueue?
 
     private var observers: [UInt64: AsyncStream<OrchestratorSnapshot>.Continuation] = [:]
     private var observerCounter: UInt64 = 0
@@ -122,6 +123,8 @@ public actor OrchestratorCore {
         for planner in restored.planners { upsert(planner) }
         jobCounter = max(jobCounter, restored.jobCounter)
         runCounter = max(runCounter, restored.runCounter)
+        let prompts = promptQueue()
+        Task { await prompts.tick() }
         notify()
         return restored.outcome
     }
@@ -197,6 +200,7 @@ public actor OrchestratorCore {
     }
 
     func notify() {
+        if let deferredPrompts { Task { await deferredPrompts.tick() } }
         guard !observers.isEmpty else { return }
         let current = snapshot()
         for continuation in observers.values { continuation.yield(current) }
@@ -357,6 +361,10 @@ public actor OrchestratorCore {
     /// One line of a worker's stdout, in order (the pump awaits each before the next).
     private func receive(_ message: OrderedJSON, jobID: String, generation: UInt64) async {
         guard let handle = workers[jobID], handle.generation == generation, jobs[jobID] != nil else { return }
+        if let limit = QueueLimit.workerMessage(message) {
+            finishTurn(jobID, status: .failed, outcome: "failed", text: limit, terminal: true)
+            return
+        }
         if handle.codex != nil {
             receiveCodex(message, jobID: jobID, handle: handle)
         } else {
@@ -504,6 +512,12 @@ public actor OrchestratorCore {
     ) {
         guard var job = jobs[jobID], !job.settled else { return }
         job.status = status
+        if status == .failed, QueueLimit.detected(in: text + "\n" + job.reply) {
+            var fitness = fitnessReadings[job.agent] ?? AgentFitness(worst: "limit", used: 100)
+            fitness.rateLimited = true
+            fitness.resetsAt = QueueLimit.reset(in: text + "\n" + job.reply) ?? fitness.resetsAt.flatMap { $0 > Date() ? $0 : nil }
+            fitnessReadings[job.agent] = fitness
+        }
         job.pending = nil
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { job.report = trimmed }
@@ -558,6 +572,7 @@ public actor OrchestratorCore {
     /// new work starts afterwards.
     public func shutdown() async {
         isShutDown = true
+        await deferredPrompts?.shutdown()
         for jobID in queue { jobs[jobID]?.status = .interrupted }
         queue.removeAll()
         let live = Set(workers.keys).union(spawning.keys).union(slots)
