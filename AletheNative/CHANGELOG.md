@@ -6,6 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Kimi, Grok and Codewhale agent color tokens in all built-in and theme-pack themes, matching the web palette.
 - Native macOS app skeleton (Swift, macOS 26+), bundle id `com.kc1t.alethe.mac`.
 - Main window with a sidebar and toolbar, a Settings window (⌘,) and UI zoom in the View menu
   (⌘+ / ⌘− / ⌘0); the zoom level and sidebar visibility are restored on relaunch.

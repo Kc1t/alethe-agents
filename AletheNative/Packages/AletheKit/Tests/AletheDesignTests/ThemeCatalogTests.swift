@@ -15,9 +15,9 @@ import Testing
         #expect(theme.validationErrors.isEmpty, "\(id): \(theme.validationErrors)")
     }
 
-    /// The token set converted from `theme.css` at baseline 75083e2 (71 color tokens).
+    /// The converted token set includes the Kimi, Grok and Codewhale colors from `origin/main`.
     @Test func tokenSetMatchesUpstreamConversion() {
-        #expect(ThemeToken.allCases.count == 71)
+        #expect(ThemeToken.allCases.count == 77)
     }
 
     @Test func defaultAndFallbackMatchUpstream() {

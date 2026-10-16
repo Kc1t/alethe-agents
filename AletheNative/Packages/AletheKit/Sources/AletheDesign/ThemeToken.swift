@@ -14,12 +14,18 @@ public enum ThemeToken: String, CaseIterable, Codable, Sendable {
     case agentAntigravitySoft
     case agentClaude
     case agentClaudeSoft
+    case agentCodewhale
+    case agentCodewhaleSoft
     case agentCodex
     case agentCodexSoft
     case agentCursor
     case agentCursorSoft
     case agentFreebuff
     case agentFreebuffSoft
+    case agentGrok
+    case agentGrokSoft
+    case agentKimi
+    case agentKimiSoft
     case agentKiro
     case agentKiroSoft
     case agentMimo
