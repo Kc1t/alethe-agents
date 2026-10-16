@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Alethe interface workspace containers use square borders, project-colored top rules and 32pt
+  headers; panes use square focus rings, 10pt split gutters with hover handles, and web terminal padding.
+- Pane actions use compact identity and action chips; sub-tabs keep their add control next to the tabs.
+- Alethe Home uses the web composition's compact avatar, stacked project and action sections,
+  quick-launch fields, project card borders, section labels and ruled footer. Native macOS styling is preserved.
+
 ### Added
 - Settings › Appearance › Interface: "Alethe" (the same interface as on Windows and Linux, the default)
   or "Native macOS" (system toolbar, sidebar and inspector).

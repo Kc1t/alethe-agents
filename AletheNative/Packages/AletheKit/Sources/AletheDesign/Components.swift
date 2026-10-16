@@ -387,3 +387,32 @@ public struct AletheActivitySpinner: View {
         }
     }
 }
+
+/// Compact Home quick-launch field, matching `.quickProject` and `.quickMode summary`.
+public struct AletheQuickFieldStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View {
+        AletheQuickFieldBody(configuration: configuration)
+    }
+}
+
+private struct AletheQuickFieldBody: View {
+    let configuration: ButtonStyleConfiguration
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+    @State private var hovering = false
+
+    var body: some View {
+        configuration.label
+            .font(metrics.monoFont(size: 10))
+            .foregroundStyle(theme[.fgMuted])
+            .padding(.horizontal, metrics.size(8))
+            .frame(height: metrics.size(30))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme[hovering ? .panelHover : .bgSunken].opacity(hovering ? 1 : 0.72),
+                        in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                .strokeBorder(theme[hovering ? .accentBorder : .border], lineWidth: metrics.size(1)))
+            .onHover { hovering = $0 }
+    }
+}

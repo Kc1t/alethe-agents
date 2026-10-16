@@ -15,15 +15,16 @@ struct HomeView: View {
     @State private var activityDays: [ActivityDays.Day] = []
 
     var body: some View {
+        GeometryReader { geometry in
         ScrollView {
             VStack(alignment: .leading, spacing: metrics.size(24)) {
-                VStack(alignment: .leading, spacing: metrics.space(.xxl)) {
+                VStack(alignment: .leading, spacing: metrics.isWebInterface ? metrics.size(18) : metrics.space(.xxl)) {
                     Spacer(minLength: metrics.size(28))
                     HomeHero(streak: ActivityDays.streak(activityDays))
                         .frame(maxWidth: .infinity)
                     QuickLaunch(workspace: workspace)
                         .frame(maxWidth: .infinity)
-                    HStack(spacing: metrics.space(.xl)) {
+                    HStack(spacing: metrics.isWebInterface ? metrics.size(8) : metrics.space(.xl)) {
                         Button { environment.editorRequest = .newTerminal(nil) } label: {
                             Label("home.action.newTerminal", systemImage: "terminal")
                         }
@@ -37,12 +38,16 @@ struct HomeView: View {
                     Spacer(minLength: metrics.size(42))
                     SetupWalkthroughView(workspace: workspace)
                 }
-                .frame(minHeight: metrics.size(430))
+                .frame(minHeight: metrics.isWebInterface
+                       ? min(metrics.size(610), max(metrics.size(430), geometry.size.height * 0.56))
+                       : metrics.size(430))
                 .entrance(appeared, step: 0, reduced: metrics.reducesMotion, rise: metrics.size(8))
-                HStack(alignment: .top, spacing: metrics.space(.xxl)) {
+                (metrics.isWebInterface
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: metrics.size(20)))
+                    : AnyLayout(HStackLayout(alignment: .top, spacing: metrics.space(.xxl)))) {
                     RecentProjects(workspace: workspace)
                     HomeActions()
-                        .frame(width: metrics.size(240))
+                        .frame(width: metrics.isWebInterface ? nil : metrics.size(240))
                 }
                 .entrance(appeared, step: 1, reduced: metrics.reducesMotion, rise: metrics.size(8))
                 VStack(alignment: .leading, spacing: metrics.size(24)) {
@@ -57,7 +62,9 @@ struct HomeView: View {
                 .entrance(appeared, step: 2, reduced: metrics.reducesMotion, rise: metrics.size(8))
             }
             .frame(maxWidth: metrics.size(940), alignment: .leading)
-            .padding(.horizontal, metrics.size(28))
+            .padding(.horizontal, metrics.isWebInterface
+                     ? min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03))
+                     : metrics.size(28))
             .padding(.bottom, metrics.size(18))
             .frame(maxWidth: .infinity)
         }
@@ -65,6 +72,7 @@ struct HomeView: View {
         .onAppear { appeared = true }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home")
+        }
     }
 }
 
@@ -88,8 +96,21 @@ struct HomeSectionHeader: View {
 
     var body: some View {
         HStack(spacing: metrics.space(.s)) {
-            AletheSectionLabel(Text(title), tracking: 1.4, color: .textTertiary)
-            if let count { AletheCountPill(count, monospaced: true) }
+            if metrics.isWebInterface {
+                Text(title).textCase(.uppercase)
+                    .font(metrics.font(size: 11, weight: .medium))
+                    .tracking(metrics.size(1.4)).foregroundStyle(theme[.textTertiary])
+                if let count {
+                    Text(verbatim: "\(count)").font(metrics.monoFont(size: 10))
+                        .foregroundStyle(theme[.textTertiary])
+                        .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(1))
+                        .background(theme[.bgElevated], in: Capsule())
+                        .overlay(Capsule().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                }
+            } else {
+                AletheSectionLabel(Text(title), tracking: 1.4, color: .textTertiary)
+                if let count { AletheCountPill(count, monospaced: true) }
+            }
         }
         .accessibilityAddTraits(.isHeader)
     }
@@ -114,7 +135,14 @@ private struct HomeHero: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             VStack(spacing: metrics.size(7)) {
-                ViewThatFits(in: .horizontal) {
+                if metrics.isWebInterface {
+                    avatar
+                        .frame(width: metrics.size(116), height: metrics.size(46))
+                        .overlay(alignment: .trailing) {
+                            NowPlayingCard().fixedSize().offset(x: metrics.size(21))
+                        }
+                        .padding(.bottom, metrics.size(4))
+                } else { ViewThatFits(in: .horizontal) {
                     HStack(spacing: metrics.space(.xl)) {
                         avatar
                         NowPlayingCard()
@@ -124,7 +152,8 @@ private struct HomeHero: View {
                         NowPlayingCard()
                     }
                 }
-                Text(verbatim: "\(greeting(context.date)), \(firstName).")
+                }
+                Text(verbatim: "\(greeting(context.date)), \(metrics.isWebInterface ? firstName.lowercased() : firstName).")
                     .font(metrics.font(size: 34, weight: .medium))
                     .minimumScaleFactor(25.0 / 34.0)
                     .lineLimit(1)
@@ -149,15 +178,16 @@ private struct HomeHero: View {
 
     private var avatar: some View {
         Text(verbatim: String(firstName.prefix(1)).uppercased())
-            .font(metrics.font(size: 28, weight: .medium))
+            .font(metrics.font(size: metrics.isWebInterface ? 16 : 28, weight: .medium))
             .foregroundStyle(theme[.accent])
-            .frame(width: metrics.size(64), height: metrics.size(64))
+            .frame(width: metrics.size(metrics.isWebInterface ? 44 : 64), height: metrics.size(metrics.isWebInterface ? 44 : 64))
             .background(theme[.bgSunken], in: Circle())
-            .overlay(alignment: .bottomTrailing) {
+            .overlay(alignment: metrics.isWebInterface ? .leading : .bottomTrailing) {
                 Label { Text(verbatim: "\(streak)") } icon: { Image(systemName: "flame.fill") }
                     .font(metrics.font(.caption))
                     .padding(metrics.space(.xs))
                     .background(theme[.panel], in: Capsule())
+                    .offset(x: metrics.isWebInterface ? -metrics.size(30) : 0)
                     .accessibilityLabel(Text(String(format: String(localized: "home.activity.streak"), streak)))
             }
     }
@@ -242,12 +272,21 @@ private struct QuickLaunch: View {
                         }
                     } icon: { Image(systemName: "folder") }
                 }
+                .modifier(QuickProjectStyle())
                 .accessibilityLabel(Text("home.quick.project"))
                 .accessibilityIdentifier("home.quick.project")
                 if descriptor?.unrestrictedFlag != nil {
-                    Picker("home.quick.mode", selection: $unrestricted) {
-                        Text("home.quick.normal").tag(false)
-                        Text("home.quick.unrestricted").tag(true)
+                    Group {
+                        if metrics.isWebInterface {
+                            AletheSelect(selection: $unrestricted, options: [false, true]) {
+                                Text($0 ? "home.quick.unrestricted" : "home.quick.normal")
+                            }.frame(width: metrics.size(132))
+                        } else {
+                            Picker("home.quick.mode", selection: $unrestricted) {
+                                Text("home.quick.normal").tag(false)
+                                Text("home.quick.unrestricted").tag(true)
+                            }
+                        }
                     }
                     .fixedSize()
                     .accessibilityLabel(Text("home.quick.mode"))
@@ -387,7 +426,13 @@ private struct RecentProjects: View {
             .padding(.vertical, metrics.size(7))
             .padding(.horizontal, metrics.size(10))
             .frame(minHeight: metrics.size(44))
-            .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .background(theme[.bgSunken].opacity(metrics.isWebInterface ? 0.86 : 1), in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .overlay {
+                if metrics.isWebInterface {
+                    RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                        .strokeBorder(theme[hoveredProject == project.id ? .borderStrong : .border].opacity(0.82), lineWidth: metrics.size(1))
+                }
+            }
         }
         .buttonStyle(.plain)
         .onHover { hoveredProject = $0 ? project.id : nil }
@@ -401,9 +446,35 @@ private struct HomeActions: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             HomeSectionHeader(title: "home.start")
             VStack(spacing: metrics.space(.xs)) {
+                row("home.action.newTerminal", icon: "terminal", keys: "⌘T", id: "home.action.newTerminal") {
+                    environment.editorRequest = .newTerminal(nil)
+                }
+                row("home.action.newProject", icon: "folder.badge.plus", keys: "⌘N", id: "home.action.newProject") {
+                    environment.editorRequest = .newProject(.ungrouped)
+                }
+                row("home.action.newGroup", icon: "square.stack.3d.up", keys: "⇧⌘N", id: "home.action.newGroup") {
+                    environment.editorRequest = .newGroup(parent: nil)
+                }
+                row("home.action.findJump", icon: "magnifyingglass", keys: "⌘K", id: "home.action.findJump") {
+                    environment.editorRequest = .findJump
+                }
+            }
+        }
+    }
+
+    private var webBody: some View {
+        VStack(alignment: .leading, spacing: metrics.space(.m)) {
+            HomeSectionHeader(title: "home.start")
+            LazyVGrid(columns: metrics.isWebInterface
+                      ? [GridItem(.adaptive(minimum: metrics.size(150)), spacing: metrics.size(8))]
+                      : [GridItem(.flexible())], spacing: metrics.isWebInterface ? metrics.size(8) : metrics.space(.xs)) {
                 row("home.action.newTerminal", icon: "terminal", keys: "⌘T", id: "home.action.newTerminal") {
                     environment.editorRequest = .newTerminal(nil)
                 }
@@ -431,7 +502,8 @@ private struct HomeActions: View {
             .padding(.horizontal, metrics.space(.l))
             .padding(.vertical, metrics.space(.m))
             .contentShape(Rectangle())
-            .background(theme[.surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .frame(minHeight: metrics.isWebInterface ? metrics.size(44) : nil)
+            .background(theme[metrics.isWebInterface ? .bgSunken : .surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(id)
@@ -459,8 +531,12 @@ private struct HomeFooter: View {
                 .keyboardShortcut("?", modifiers: .command)
         }
         .buttonStyle(.link)
-        .font(metrics.font(.footnote))
+        .font(metrics.isWebInterface ? metrics.monoFont(size: 10) : metrics.font(.footnote))
         .foregroundStyle(theme[.textTertiary])
+        .padding(.top, metrics.isWebInterface ? metrics.size(14) : 0)
+        .overlay(alignment: .top) {
+            if metrics.isWebInterface { theme[.borderSubtle].frame(height: metrics.size(1)) }
+        }
     }
 }
 
@@ -515,4 +591,12 @@ struct HomeButton: View {
 // Shared by the toolbar and left sidebar Home controls.
 extension AppEnvironment {
     func toggleHome() { showingHome.toggle() }
+}
+
+private struct QuickProjectStyle: ViewModifier {
+    @Environment(\.metrics) private var metrics
+    func body(content: Content) -> some View {
+        if metrics.isWebInterface { content.buttonStyle(AletheQuickFieldStyle()) }
+        else { content }
+    }
 }
