@@ -117,8 +117,15 @@ private struct SubTabItem: View {
 
     var body: some View {
         Button(action: onActivate) {
-            Image(systemName: tab.agent == "shell" ? "terminal" : "sparkles")
-                .font(metrics.font(.footnote))
+            Group {
+                if metrics.isWebInterface {
+                    AgentLogo(agent: tab.agent, size: 14,
+                              templateColor: theme[isActive || isHovered ? AgentTokens.accent(for: tab.agent) : .fgMuted])
+                } else {
+                    Image(systemName: tab.agent == "shell" ? "terminal" : "sparkles")
+                        .font(metrics.font(.footnote))
+                }
+            }
                 .foregroundStyle(theme[isActive || isHovered ? AgentTokens.accent(for: tab.agent) : .fgMuted])
                 .frame(width: metrics.size(26), height: metrics.size(26))
                 // Upstream: accent-soft on hover; the active item a selected card with an inset border.
@@ -166,10 +173,18 @@ private struct SubTabItem: View {
         .onHover { isHovered = $0 }
         .help(Text(verbatim: name))
         .contextMenu {
-            Button("terminal.restart", action: onRestart)
-            if canClose {
-                Divider()
-                Button("subtabs.close", action: onClose)
+            if metrics.isWebInterface {
+                Button(action: onRestart) { Label("terminal.restart", systemImage: "arrow.clockwise") }
+                if canClose {
+                    Divider()
+                    Button(action: onClose) { Label("subtabs.close", systemImage: "xmark") }
+                }
+            } else {
+                Button("terminal.restart", action: onRestart)
+                if canClose {
+                    Divider()
+                    Button("subtabs.close", action: onClose)
+                }
             }
         }
         .accessibilityElement(children: .contain)

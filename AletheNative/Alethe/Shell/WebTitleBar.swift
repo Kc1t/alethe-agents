@@ -10,6 +10,7 @@ struct WebTitleBar: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.openSettings) private var openSettings
     @State private var showsNews = false
+    @State private var accessoryWidth: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 0) {
@@ -17,12 +18,12 @@ struct WebTitleBar: View {
                 // The standard AppKit buttons are hosted above this reserved region.
                 Color.clear.frame(width: metrics.size(64))
                 Menu {
-                    Button("menu.file.newProject") { environment.editorRequest = .newProject(.ungrouped) }
-                    Button("menu.file.newGroup") { environment.editorRequest = .newGroup(parent: nil) }
-                    Button("menu.file.newTerminal") { environment.editorRequest = .newTerminal(nil) }
+                    Button { environment.editorRequest = .newProject(.ungrouped) } label: { Label("menu.file.newProject", systemImage: "folder.badge.plus") }
+                    Button { environment.editorRequest = .newGroup(parent: nil) } label: { Label("menu.file.newGroup", systemImage: "square.3.layers.3d") }
+                    Button { environment.editorRequest = .newTerminal(nil) } label: { Label("menu.file.newTerminal", systemImage: "terminal") }
                     Divider()
-                    Button("menu.view.showHome") { environment.showingHome = true }
-                    Button("leftSidebar.preferences") { openSettings() }
+                    Button { environment.showingHome = true } label: { Label("menu.view.showHome", systemImage: "house") }
+                    Button { openSettings() } label: { Label("leftSidebar.preferences", systemImage: "gearshape") }
                 } label: {
                     Image(systemName: "line.3.horizontal").font(metrics.font(size: 14))
                 }
@@ -47,47 +48,53 @@ struct WebTitleBar: View {
             } else {
                 Spacer(minLength: metrics.size(12))
             }
-            HStack(spacing: metrics.size(7)) {
-                HStack(spacing: metrics.size(4)) {
-                    icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
-                        .popover(isPresented: $showsNews) {
-                        VStack(alignment: .leading, spacing: metrics.size(8)) {
-                            Text("chrome.whatsNew").font(metrics.font(size: 13, weight: .semibold))
-                            Text("chrome.news.chrome").font(metrics.font(size: 12))
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: metrics.size(7)) {
+                    HStack(spacing: metrics.size(4)) {
+                        icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
+                            .popover(isPresented: $showsNews) {
+                            VStack(alignment: .leading, spacing: metrics.size(8)) {
+                                Text("chrome.whatsNew").font(metrics.font(size: 13, weight: .semibold))
+                                Text("chrome.news.chrome").font(metrics.font(size: 12))
+                            }
+                            .foregroundStyle(theme[.fg])
+                            .padding(metrics.size(16))
+                            .frame(width: metrics.size(300))
                         }
-                        .foregroundStyle(theme[.fg])
-                        .padding(metrics.size(16))
-                        .frame(width: metrics.size(300))
+                        if shown(.sync) {
+                            SyncToolbarItem()
+                                .labelStyle(.iconOnly)
+                                .font(metrics.font(size: 12))
+                                .buttonStyle(AletheTitleBarPillStyle(iconOnly: true))
+                        }
+                        PomodoroToolbarPill()
+                        if shown(.profile) {
+                            ProfileToolbarMenu()
+                                .labelStyle(.titleAndIcon)
+                                .font(metrics.monoFont(size: 11, weight: .regular))
+                                .padding(.horizontal, metrics.size(8))
+                                .frame(maxWidth: metrics.size(180), minHeight: metrics.size(22))
+                                .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.size(8)))
+                        }
                     }
-                    if shown(.sync) {
-                        SyncToolbarItem()
-                            .labelStyle(.iconOnly)
-                            .font(metrics.font(size: 12))
-                            .buttonStyle(AletheTitleBarPillStyle(iconOnly: true))
-                    }
-                    PomodoroToolbarPill()
-                    if shown(.profile) {
-                        ProfileToolbarMenu()
-                            .labelStyle(.titleAndIcon)
-                            .font(metrics.monoFont(size: 11, weight: .regular))
-                            .padding(.horizontal, metrics.size(8))
-                            .frame(maxWidth: metrics.size(180), minHeight: metrics.size(22))
-                            .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.size(8)))
-                    }
-                }
-                HStack(spacing: metrics.size(4)) {
-                    if shown(.usageClaude) { UsagePill(provider: .claude) }
-                    if shown(.usageCodex) { UsagePill(provider: .codex) }
-                    if shown(.usageAntigravity) { UsagePill(provider: .antigravity) }
-                    if shown(.memory) { MemoryIndicator(webTitleBar: true) }
+                    HStack(spacing: metrics.size(4)) {
+                        if shown(.usageClaude) { UsagePill(provider: .claude) }
+                        if shown(.usageCodex) { UsagePill(provider: .codex) }
+                        if shown(.usageAntigravity) { UsagePill(provider: .antigravity) }
+                        if shown(.memory) { MemoryIndicator(webTitleBar: true) }
 
-                    if shown(.router9) { Router9ToolbarItem() }
+                        if shown(.router9) { Router9ToolbarItem() }
+                    }
+                    .buttonStyle(AletheTitleBarPillStyle())
+                    .padding(.leading, metrics.size(8))
+                    .overlay(alignment: .leading) { theme[.border].frame(width: metrics.size(1), height: metrics.size(24)) }
                 }
-                .buttonStyle(AletheTitleBarPillStyle())
-                .padding(.leading, metrics.size(8))
-                .overlay(alignment: .leading) { theme[.border].frame(width: metrics.size(1), height: metrics.size(24)) }
+                .fixedSize(horizontal: true, vertical: false)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { accessoryWidth = $0 }
             }
-            .fixedSize(horizontal: true, vertical: false)
+            .defaultScrollAnchor(.trailing)
+            .frame(maxWidth: accessoryWidth > 0 ? accessoryWidth : nil)
+            .layoutPriority(1)
             icon("sidebar.right", label: "menu.view.showRightSidebar", id: "chrome.toggleRightSidebar", isOn: environment.rightSidebarVisible) {
                 environment.rightSidebarVisible.toggle()
             }
