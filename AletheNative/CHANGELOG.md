@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Left sidebar with Home, Projects, Files and left-placement plugin tabs, Search, a project
+  organization switch, Now Playing and a local profile menu with Preferences and profile switching.
 - Full-window startup console with a themed wordmark card, blinking cursor and staggered progress cells;
   decorative motion stops when Reduce Motion is enabled.
 - Home content styled after the web dashboard: centered greeting and date chip, terminal-style quick

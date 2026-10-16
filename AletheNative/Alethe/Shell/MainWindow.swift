@@ -15,7 +15,7 @@ struct MainWindow: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: columnVisibility) {
-            SidebarView()
+            LeftSidebar()
                 .navigationSplitViewColumnWidth(min: metrics.size(200), ideal: metrics.size(240), max: metrics.size(360))
         } detail: {
             WorkspaceView()

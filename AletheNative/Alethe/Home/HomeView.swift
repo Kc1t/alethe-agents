@@ -390,7 +390,7 @@ struct HomeButton: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Button { environment.showingHome.toggle() } label: {
+        Button { environment.toggleHome() } label: {
             // The label's content never changes; only its tint marks Home as shown (see `icon`).
             Image(nsImage: Self.icon)
                 .foregroundStyle(environment.showingHome ? theme[.accent] : theme[.textSecondary])
@@ -430,4 +430,9 @@ struct HomeButton: View {
         image.isTemplate = true
         return image
     }
+}
+
+// Shared by the toolbar and left sidebar Home controls.
+extension AppEnvironment {
+    func toggleHome() { showingHome.toggle() }
 }

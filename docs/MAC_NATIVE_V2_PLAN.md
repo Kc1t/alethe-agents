@@ -3564,7 +3564,8 @@ user outcome), **Won't port** (with reason). All rows start at the baseline `750
 | SB-5 | Live chat title + busy/done glyph | P3 | Done | P3-10; titles from transcripts, working / needs-input / unread-done glyphs |
 | SB-6 | Open in VS Code / Finder / browser | P5 | Done | P5-7; VS Code/Insiders/VSCodium, Finder, repository page |
 | SB-7 | Right sidebar | P4 | Done | P4-3; ⌥⌘0, plugin tabs + Files, Docs, Pull Requests; extension tabs (P4-19) |
-| SB-8 | View placement | P4 | Partial | P4-2 model + persistence; no drag UI between sidebars yet |
+| SB-8 | View placement | P4 | Partial | P4-2 model + persistence; left-placement tabs now render in the left sidebar shell; no drag UI between sidebars yet |
+| SB-9 | Left sidebar shell | Native polish | Done | Home/Projects/Files + left plugin tabs, Find/Jump, selected-project organization, Now Playing and shared profile menu; Files removal from the right sidebar is owned by the separate right-sidebar task |
 | AG-1 | 11 agent types | P1 (5), P3 | Done | P3-1; ten agents; `wsl`: Won't port (Windows-only) |
 | AG-2 | Unrestricted flags | P1 | Done | Launch support (P1-8); per-terminal toggle in the New Terminal sheet (P1-9) |
 | AG-3 | New-terminal modal | P1, P3 | Done | Basic sheet + first prompt (P1-9); repeat last ⌥⌘T and grid picker (P3-4); planner → Phase 6, 9router → Phase 5 |
@@ -3692,3 +3693,20 @@ Resolved (2026-09-22):
    extension inside its own signed app, runs out of process and sandboxed, and renders UI remotely.
    Built-ins (Git, Todos, Theme-pack) stay in-process on the same `AlethePluginKit` API. The P4 spike
    validates the ExtensionKit flow; in-process bundles are rejected unless the spike fails.
+
+### Left sidebar shell parity — 2026-10-16
+
+- `LeftSidebar` wraps the unchanged project list and reuses `FilesView` and the plugin view registry.
+  Selected tabs use scene restoration; Home and profile actions are shared with the toolbar controls.
+- Organization uses the same `WorkspaceDocument.setLayoutMode` mutation as the container header and
+  appears only for a selected project with at least two panes. Now Playing lives in the shared footer.
+- Files shows an Explorer heading and the upstream empty-state copy with a Create project action when
+  no project is selected. Native Files continues to browse the project folder, independently of PTY state.
+- The project rows, menus and existing accessibility identifiers remain unchanged. The only project-list
+  embedding change removes its Now Playing inset; `RightSidebar.swift` is untouched. Follow-up: the
+  separate right-sidebar task must remove Files from its tab list.
+- Validation: the string gate and Swift syntax parsing pass. Debug build and hit-target UI validation
+  cannot resolve packages in this sandbox because Xcode cannot write its user module/manifest caches;
+  full compilation and interaction validation remain required outside the sandbox.
+- AI memory could not be recorded: this session exposes neither an ai-memory tool/CLI nor its skill.
+  This note preserves the outcome and follow-up for the reviewer.

@@ -57,9 +57,6 @@ struct SidebarView: View {
             Button("sidebar.addProject") { actions.chooseFolders() }
             Button("menu.file.newGroup") { environment.editorRequest = .newGroup(parent: nil) }
         }
-        .safeAreaInset(edge: .bottom) {
-            SidebarNowPlaying()
-        }
     }
 
     private func selection(_ workspace: WorkspaceModel, _ actions: SidebarActions) -> Binding<SidebarItem?> {
