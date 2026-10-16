@@ -15,35 +15,39 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: metrics.space(.huge)) {
+            VStack(alignment: .leading, spacing: metrics.size(24)) {
                 VStack(alignment: .leading, spacing: metrics.space(.xxl)) {
-                    HStack(alignment: .top, spacing: metrics.space(.xxl)) {
-                        HomeHero()
-                        Spacer(minLength: 0)
-                        NowPlayingCard()
-                    }
+                    Spacer(minLength: metrics.size(28))
+                    HomeHero()
+                        .frame(maxWidth: .infinity)
                     QuickLaunch(workspace: workspace)
+                        .frame(maxWidth: .infinity)
+                    Spacer(minLength: metrics.size(42))
+                    NowPlayingCard()
                     SetupWalkthroughView(workspace: workspace)
                 }
-                .entrance(appeared, step: 0, reduced: environment.reducesMotion)
+                .frame(minHeight: metrics.size(430))
+                .entrance(appeared, step: 0, reduced: metrics.reducesMotion, rise: metrics.size(8))
                 HStack(alignment: .top, spacing: metrics.space(.xxl)) {
                     RecentProjects(workspace: workspace)
                     HomeActions()
                         .frame(width: metrics.size(240))
                 }
-                .entrance(appeared, step: 1, reduced: environment.reducesMotion)
-                VStack(alignment: .leading, spacing: metrics.space(.huge)) {
+                .entrance(appeared, step: 1, reduced: metrics.reducesMotion, rise: metrics.size(8))
+                VStack(alignment: .leading, spacing: metrics.size(24)) {
                     UsageStrip()
                     ActivityGraph()
                     TimeAnalytics()
                     NotificationList()
-                        .homeCard()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .aletheCard()
                     HomeFooter()
                 }
-                .entrance(appeared, step: 2, reduced: environment.reducesMotion)
+                .entrance(appeared, step: 2, reduced: metrics.reducesMotion, rise: metrics.size(8))
             }
-            .frame(maxWidth: metrics.size(960), alignment: .leading)
-            .padding(metrics.space(.huge))
+            .frame(maxWidth: metrics.size(940), alignment: .leading)
+            .padding(.horizontal, metrics.size(28))
+            .padding(.bottom, metrics.size(18))
             .frame(maxWidth: .infinity)
         }
         .background(theme[.bg])
@@ -57,26 +61,12 @@ struct HomeView: View {
 
 extension View {
     /// Home's staggered entrance: three steps at most, none under reduced motion.
-    func entrance(_ appeared: Bool, step: Int, reduced: Bool) -> some View {
+    func entrance(_ appeared: Bool, step: Int, reduced: Bool, rise: CGFloat) -> some View {
         opacity(appeared || reduced ? 1 : 0)
-            .offset(y: appeared || reduced ? 0 : 8)
+            .offset(y: appeared || reduced ? 0 : rise)
             .animation(reduced ? nil : .easeOut(duration: 0.28).delay(Double(step) * 0.06), value: appeared)
     }
 
-    func homeCard() -> some View { modifier(HomeCard()) }
-}
-
-private struct HomeCard: ViewModifier {
-    @Environment(\.theme) private var theme
-    @Environment(\.metrics) private var metrics
-
-    func body(content: Content) -> some View {
-        content
-            .padding(metrics.space(.xl))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(theme[.surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
-            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(theme[.borderSubtle]))
-    }
 }
 
 struct HomeSectionHeader: View {
@@ -87,10 +77,8 @@ struct HomeSectionHeader: View {
 
     var body: some View {
         HStack(spacing: metrics.space(.s)) {
-            Text(title).font(metrics.font(.headline))
-            if let count {
-                Text(verbatim: "\(count)").font(metrics.font(.caption).monospacedDigit()).foregroundStyle(theme[.textTertiary])
-            }
+            AletheSectionLabel(Text(title), tracking: 1.4, color: .textTertiary)
+            if let count { AletheCountPill(count, monospaced: true) }
         }
         .accessibilityAddTraits(.isHeader)
     }
@@ -113,13 +101,18 @@ private struct HomeHero: View {
 
     var body: some View {
         TimelineView(.everyMinute) { context in
-            VStack(alignment: .leading, spacing: metrics.space(.xs)) {
+            VStack(spacing: metrics.size(7)) {
                 Text(verbatim: "\(greeting(context.date)), \(firstName).")
-                    .font(metrics.font(.largeTitle))
+                    .font(metrics.font(size: 34, weight: .medium))
+                    .minimumScaleFactor(25.0 / 34.0)
+                    .lineLimit(1)
                     .foregroundStyle(theme[.textPrimary])
                 Text(context.date, format: .dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute())
-                    .font(metrics.font(.body))
-                    .foregroundStyle(theme[.textTertiary])
+                    .font(metrics.font(size: 11, weight: .medium))
+                    .foregroundStyle(theme[.fg])
+                    .padding(.vertical, metrics.size(3))
+                    .padding(.horizontal, metrics.size(8))
+                    .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
             }
         }
         .accessibilityElement(children: .combine)
@@ -165,27 +158,54 @@ private struct QuickLaunch: View {
     private var descriptor: AgentDescriptor? { AgentRegistry.builtin.descriptor(for: agent) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: metrics.space(.m)) {
-            HStack(spacing: metrics.space(.s)) {
-                Text(verbatim: "›").font(metrics.monoFont(size: 15)).foregroundStyle(theme[.accent])
+        VStack(alignment: .leading, spacing: metrics.size(4)) {
+            HStack(spacing: metrics.size(6)) {
+                AletheStatusDot(.statusOffline, side: 7)
+                AletheStatusDot(.statusWaiting, side: 7)
+                AletheStatusDot(.statusWorking, side: 7)
+                Text("home.quick.title")
+                    .font(metrics.monoFont(size: 9))
+                    .foregroundStyle(theme[.textTertiary])
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, metrics.size(11))
+            .frame(height: metrics.size(27))
+            .background(theme[.bgSunken])
+            .padding(.horizontal, -metrics.size(7))
+            .padding(.top, -metrics.size(7))
+            .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
+            HStack(spacing: metrics.size(8)) {
+                Text(verbatim: "›").font(metrics.monoFont(size: 17)).foregroundStyle(theme[.accent])
                 TextField("home.quick.placeholder", text: $prompt, axis: .vertical)
                     .textFieldStyle(.plain)
-                    .font(metrics.monoFont(size: 14))
+                    .font(metrics.monoFont(size: 12))
                     .lineLimit(1...(focused ? 6 : 1))
                     .focused($focused)
                     .onSubmit(send)
                     .accessibilityIdentifier("home.quick.prompt")
             }
-            HStack(spacing: metrics.space(.m)) {
-                Picker("home.quick.agent", selection: $agent) {
-                    ForEach(agents, id: \.self) { Text(verbatim: AgentLabels.name(for: $0.rawValue)).tag($0) }
+            .padding(.horizontal, metrics.size(9))
+            .frame(minHeight: metrics.size(42))
+            .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
+            HStack(spacing: metrics.size(5)) {
+                AletheSelect(selection: $agent, options: agents) {
+                    Text(verbatim: AgentLabels.name(for: $0.rawValue))
                 }
-                .fixedSize()
+                .frame(width: metrics.size(145))
+                .accessibilityLabel(Text("home.quick.agent"))
                 .accessibilityIdentifier("home.quick.agent")
-                Picker("home.quick.project", selection: Binding { project?.id } set: { projectID = $0 }) {
-                    ForEach(workspace.document.projects) { Text(verbatim: $0.name).tag(Optional($0.id)) }
+                AletheSelect(selection: Binding { project?.id } set: { projectID = $0 },
+                             options: workspace.document.projects.map { Optional($0.id) }) { id in
+                    Label {
+                        if let selected = id.flatMap(workspace.document.project) {
+                            Text(verbatim: (selected.folder as NSString).abbreviatingWithTildeInPath)
+                                .font(metrics.monoFont(size: 10))
+                        } else {
+                            Text("home.quick.project").font(metrics.monoFont(size: 10))
+                        }
+                    } icon: { Image(systemName: "folder") }
                 }
-                .fixedSize()
+                .accessibilityLabel(Text("home.quick.project"))
                 .accessibilityIdentifier("home.quick.project")
                 if descriptor?.unrestrictedFlag != nil {
                     Picker("home.quick.mode", selection: $unrestricted) {
@@ -193,19 +213,30 @@ private struct QuickLaunch: View {
                         Text("home.quick.unrestricted").tag(true)
                     }
                     .fixedSize()
+                    .accessibilityLabel(Text("home.quick.mode"))
                     .accessibilityIdentifier("home.quick.mode")
                 }
-                Spacer()
-                Button(action: send) { Label("home.quick.send", systemImage: "arrow.up") }
-                    .buttonStyle(.borderedProminent)
+                Button(action: send) { Label("home.quick.send", systemImage: "paperplane")
+                    .labelStyle(.iconOnly)
+                    .frame(width: metrics.size(38), height: metrics.size(30))
+                    .background(theme[.accent], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                    .foregroundStyle(theme[.accentOn]) }
+                    .buttonStyle(.plain)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(project == nil || agents.isEmpty || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity(project == nil || agents.isEmpty || prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1)
+                    .accessibilityLabel(Text("home.quick.send"))
                     .accessibilityIdentifier("home.quick.send")
             }
             .labelsHidden()
             .controlSize(.small)
         }
-        .homeCard()
+        .padding(metrics.size(7))
+        .frame(maxWidth: metrics.size(620))
+        .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .shadow(color: theme.shadow(.lg).color.color, radius: metrics.size(theme.shadow(.lg).blur),
+                x: metrics.size(theme.shadow(.lg).x), y: metrics.size(theme.shadow(.lg).y))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(focused ? theme[.accentBorder] : .clear))
         .onAppear {
             let last = AgentRegistry.builtin.parse(environment.preferences?.document.lastAgent)
@@ -238,6 +269,8 @@ private struct RecentProjects: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
+    @State private var hoveredProject: ProjectID?
+
     var body: some View {
         let recent = workspace.document.recentProjectIDs().compactMap(workspace.document.project)
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
@@ -246,11 +279,13 @@ private struct RecentProjects: View {
                 VStack(alignment: .leading, spacing: metrics.space(.s)) {
                     Text("home.recent.empty").foregroundStyle(theme[.textSecondary])
                     Button("home.recent.create") { environment.editorRequest = .newProject(.ungrouped) }
+                        .buttonStyle(AletheButtonStyle(size: .small))
                 }
-                .homeCard()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .aletheCard()
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(200)), spacing: metrics.space(.m))],
-                          spacing: metrics.space(.m)) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: metrics.size(8)), count: 2),
+                          spacing: metrics.size(5)) {
                     ForEach(recent) { project in card(project) }
                 }
             }
@@ -265,23 +300,25 @@ private struct RecentProjects: View {
             environment.showingHome = false
         } label: {
             HStack(spacing: metrics.space(.m)) {
-                Text(verbatim: String(project.name.trimmingCharacters(in: .whitespaces).first ?? "·").uppercased())
-                    .font(metrics.font(.headline))
-                    .foregroundStyle(theme[.accentOn])
-                    .frame(width: metrics.size(28), height: metrics.size(28))
-                    .background(theme[project.color.token], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                AletheMonogram(name: project.name, color: theme[project.color.token], side: 28)
                 VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
-                    Text(verbatim: project.name).font(metrics.font(.body).weight(.medium)).lineLimit(1)
+                    Text(verbatim: project.name).font(metrics.font(size: 11, weight: .semibold)).lineLimit(1)
                     Text(String(format: String(localized: "home.recent.terminals"), terminals))
-                        .font(metrics.font(.footnote)).foregroundStyle(theme[.textTertiary])
+                        .font(metrics.monoFont(size: 9)).foregroundStyle(theme[.textTertiary])
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.right").foregroundStyle(theme[.textTertiary])
+                    .offset(x: hoveredProject == project.id && !metrics.reducesMotion ? metrics.size(2) : 0)
+                    .animation(Motion.animation(Motion.quick, reduceMotion: metrics.reducesMotion), value: hoveredProject)
             }
             .contentShape(Rectangle())
-            .homeCard()
+            .padding(.vertical, metrics.size(7))
+            .padding(.horizontal, metrics.size(10))
+            .frame(minHeight: metrics.size(44))
+            .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
         }
         .buttonStyle(.plain)
+        .onHover { hoveredProject = $0 ? project.id : nil }
         .accessibilityIdentifier("home.recent.\(project.name)")
     }
 }

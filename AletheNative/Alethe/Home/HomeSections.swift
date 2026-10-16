@@ -54,7 +54,8 @@ struct UsageStrip: View {
                     .font(metrics.font(.footnote))
             }
         }
-        .homeCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .aletheCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.usage.\(provider.rawValue)")
     }
@@ -100,7 +101,8 @@ struct ActivityGraph: View {
             .font(metrics.font(.caption))
             .foregroundStyle(theme[.textTertiary])
         }
-        .homeCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .aletheCard()
         .task { await load() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.activity")
@@ -229,7 +231,8 @@ struct TimeAnalytics: View {
             Text(String(format: String(localized: "home.time.localNote"), TimeZone.current.identifier))
                 .font(metrics.font(.caption)).foregroundStyle(theme[.textTertiary])
         }
-        .homeCard()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .aletheCard()
         .task(id: TaskKey(range: range, revision: environment.activity.revision)) {
             while !Task.isCancelled {
                 summary = await environment.activity.currentSummary(

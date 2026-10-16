@@ -185,7 +185,10 @@ final class AppEnvironment {
         AgentLauncher(launchers: launchers, overrides: preferences?.document.cliPaths ?? [:])
     }
 
+    private(set) var startupFinished = false
+
     func load() async {
+        defer { startupFinished = true }
         guard !isLoaded, let locations = try? Self.dataLocations() else { return }
         self.locations = locations
         // An import, reset or erase confirmed before the relaunch (P5-10) applies before anything loads.

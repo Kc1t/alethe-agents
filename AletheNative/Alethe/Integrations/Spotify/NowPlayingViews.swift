@@ -22,13 +22,15 @@ struct NowPlayingCard: View {
     @ViewBuilder private func content(_ model: NowPlayingModel) -> some View {
         if let track = model.current {
             playing(track, model: model)
-                .homeCard()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .aletheCard()
                 .frame(width: metrics.size(320))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("home.nowPlaying")
         } else if model.connected == false {
             connectPrompt(model)
-                .homeCard()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .aletheCard()
                 .frame(width: metrics.size(320))
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("home.nowPlaying.prompt")
