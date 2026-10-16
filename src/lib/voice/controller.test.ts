@@ -65,7 +65,16 @@ const input = {
   interrupt: vi.fn(async () => undefined),
   readScreen: vi.fn(() => ''),
 }
-vi.mock('../agentInputRegistry', () => ({ agentInputFor: vi.fn(() => input) }))
+vi.mock('../agentInputRegistry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../agentInputRegistry')>()
+  const agentInputFor = vi.fn(() => input)
+  return {
+    agentInputFor,
+    // The real wait, polling the mocked registry.
+    waitForAgentInput: (ptyId: string, current?: () => boolean) =>
+      actual.waitForAgentInput(ptyId, current, agentInputFor),
+  }
+})
 
 const target = {
   ptyId: 'pty-1',
@@ -133,7 +142,7 @@ const prefs = {
   voiceTts: { provider: 'system', model: '', voice: null as string | null, rate: 1 },
   voiceApprovalChannel: 'both',
   voiceDestructiveNeedsHud: true,
-  voiceCommandApiKey: '',
+  voiceProviders: {} as Record<string, { configured: boolean; invalid: boolean }>,
 }
 const setStt = (provider: 'local' | 'apple' | 'openai', model: string, locale: string | null) => {
   prefs.voiceStt = {
@@ -371,10 +380,21 @@ describe('VoiceConversationController', () => {
     })
   })
 
-  it('says Jev is not configured when there is no API key', async () => {
+  it('says Jev is not configured when there is no OpenRouter key', async () => {
     await speak('Alethe, open Claude in billing')
     expect(openVoiceCommand).toHaveBeenCalledWith('')
     expect(state().notice?.key).toBe('voice.conv.jevNotConfigured')
+  })
+
+  it('hands the request to Jev once the OpenRouter key is in the keychain', async () => {
+    prefs.voiceProviders = { openrouter: { configured: true, invalid: false } }
+    try {
+      await speak('Alethe, open Claude in billing')
+    } finally {
+      prefs.voiceProviders = {}
+    }
+    expect(openVoiceCommand).toHaveBeenCalledWith('open Claude in billing')
+    expect(state().notice?.key).not.toBe('voice.conv.jevNotConfigured')
   })
 
   describe('permissions', () => {
@@ -1367,9 +1387,12 @@ describe('VoiceConversationController', () => {
       input.readScreen.mockReturnValue(before)
       await speak('fix the build')
       input.readScreen.mockReturnValue(
-        [before, '> fix the build', 'Fixed the build: the import was wrong.', 'esc to interrupt'].join(
-          '\n',
-        ),
+        [
+          before,
+          '> fix the build',
+          'Fixed the build: the import was wrong.',
+          'esc to interrupt',
+        ].join('\n'),
       )
       quiet('pty-5')
       await vi.waitFor(() =>
@@ -1385,7 +1408,9 @@ describe('VoiceConversationController', () => {
     it('says the harness is asking in its terminal when it stops on a choice menu', async () => {
       currentTarget = opencode
       await speak('delete the cache')
-      input.readScreen.mockReturnValue(['Permission required', 'Allow once   Allow always   Reject'].join('\n'))
+      input.readScreen.mockReturnValue(
+        ['Permission required', 'Allow once   Allow always   Reject'].join('\n'),
+      )
       quiet('pty-5')
       await vi.waitFor(() =>
         expect(tauri.ttsSpeak).toHaveBeenCalledWith(
@@ -1438,7 +1463,10 @@ describe('VoiceConversationController', () => {
     it('the shortcut reads the focused selection, else the clipboard', async () => {
       const release = setFocusedSelection(() => 'Selected in the terminal.')
       await controller.readSelectionAloud()
-      expect(tauri.ttsSpeak).toHaveBeenLastCalledWith('Selected in the terminal.', expect.anything())
+      expect(tauri.ttsSpeak).toHaveBeenLastCalledWith(
+        'Selected in the terminal.',
+        expect.anything(),
+      )
       release()
       tauri.readClipboardText.mockResolvedValueOnce('Copied by the TUI.')
       controller.stopSpeaking()

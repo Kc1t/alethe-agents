@@ -736,6 +736,9 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.voiceShortcutAltReserved': 'Alt 用于发送给 Jev，请选择不含 Alt 的快捷键。',
   'prefs.voiceShortcutUnsupported': '请使用字母、数字、空格或 F1–F24。',
   'prefs.voiceShortcutInUse': '另一个语音快捷键已在使用该组合。',
+  'prefs.voiceCommandShortcut': 'Jev 命令栏快捷键',
+  'prefs.voiceCommandShortcutDesc':
+    '打开 Jev 命令栏，输入或说出工作区命令。仅在 Alethe 内有效，无论语音对话是否开启。',
   'prefs.voiceReadAloudShortcut': '朗读快捷键',
   'prefs.voiceReadAloudShortcutDesc':
     '朗读当前终端中选中的文本；未选择时朗读剪贴板中的内容。仅在 Alethe 内有效。',
@@ -3184,10 +3187,10 @@ export const zhCN: Record<MessageKey, string> = {
   /* ---- voice command ---- */
   'voice.bar.title': '语音命令',
   'voice.bar.inputLabel': '语音命令',
-  'voice.bar.keyInputLabel': '决策 API 密钥',
+  'voice.bar.keyInputLabel': 'OpenRouter API 密钥',
   'voice.bar.speakPlaceholder': '说出你希望工作区做什么',
   'voice.bar.listeningPlaceholder': '正在聆听...',
-  'voice.bar.keyPlaceholder': '粘贴你的 Decisions API 密钥',
+  'voice.bar.keyPlaceholder': '粘贴你的 OpenRouter API 密钥并按 Enter',
   'voice.bar.startRecording': '开始录制',
   'voice.bar.startRecordingTitle': '开始录制，或按住 F9',
   'voice.bar.stopRecording': '停止录制',
@@ -3196,7 +3199,9 @@ export const zhCN: Record<MessageKey, string> = {
   'voice.bar.decidingHint': '问Jev该做什么',
   'voice.bar.runnableHint': '回车执行此计划 | Esc取消',
   'voice.bar.idleHint': '点击麦克风或按住 F9 说话 | 回车确认 | Esc 取消',
-  'voice.bar.noKeyHint': '密钥存储在偏好设置中，这个栏就不再提示',
+  'voice.bar.noKeyHint':
+    'Jev 通过 OpenRouter 做决策。密钥保存在系统钥匙串中，并与 OpenRouter 语音共用',
+  'voice.bar.paneHidden': '该智能体面板未能及时显示。请重试。',
   'voice.bar.micSilent': '此麦克风没有信号。',
   'voice.bar.micLabel': '麦克风',
   'voice.bar.micDefault': '系统默认',
@@ -3234,7 +3239,7 @@ export const zhCN: Record<MessageKey, string> = {
   'voice.history.tabTitle': 'Jev 历史',
   'voice.history.clear': '清除历史记录',
   'voice.history.emptyTitle': '还没有命令',
-  'voice.history.emptyBody': '按 Ctrl+Shift+空格，说出你想说的内容，它会显示在这里。',
+  'voice.history.emptyBody': '按 {shortcut}，说出你想说的内容，它会显示在这里。',
   'voice.history.silence': '（沉默）',
   'voice.history.status.deciding': '决定',
   'voice.history.status.ran': '跑',
@@ -3283,7 +3288,10 @@ export const zhCN: Record<MessageKey, string> = {
   'speech.nativeNotReady':
     'Apple 语音识别尚未就绪：请在 系统设置 → 隐私与安全性 → 语音识别 中允许，并在偏好设置中安装该语言。',
   'voice.conv.heardNothing': '没有听到声音。',
-  'voice.conv.jevNotConfigured': 'Jev 需要 API 密钥。请打开语音命令栏添加。',
+  'voice.conv.jevNotConfigured':
+    'Jev 需要 OpenRouter 密钥。请在命令栏或“偏好设置 → 语音 → 账户和模型”中添加。',
+  'voice.conv.offTitle': '语音对话已关闭',
+  'voice.conv.offBody': '请在“偏好设置 → 语音 → 对话”中开启。Jev 命令栏可用 {shortcut} 打开。',
   'voice.conv.ttsUnavailable': '此系统不支持语音输出；旁白将以文字显示。',
   'voice.conv.permissionAsk': 'Claude 想使用 {tool}：{subject}。允许吗？',
   'voice.conv.permissionDestructive': '此操作需要点击确认。',

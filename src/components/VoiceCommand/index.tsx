@@ -1,9 +1,17 @@
 import { Loader2, Mic, Play, Square } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { agentInputFor, waitForAgentInput } from '../../lib/agentInputRegistry'
+import { PaneHiddenError, TerminalPromptOpenError } from '../../lib/agentPromptDelivery'
 import { agentLabel } from '../../lib/agentProviders'
 import { type TFunction, useT } from '../../lib/i18n'
 import { isMacOS } from '../../lib/platform'
+import {
+  CaptureGate,
+  openCapture,
+  transcribeCapture,
+  transcriptionFailureText,
+} from '../../lib/speech/capture'
 import { sttChoiceFor } from '../../lib/speech/engine'
 import { isSpeechTooShort } from '../../lib/speech/errors'
 import {
@@ -12,15 +20,12 @@ import {
   type SpeechInputDevice,
   speechListInputDevices,
   speechPrepare,
-  speechStartCapture,
-  speechStopAndTranscribe,
   speechStopCapture,
   writePty,
 } from '../../lib/tauri'
 import { type AgentType, isShellAgentType } from '../../lib/types'
-import { cloudFailureMessage, forgetProviderKey } from '../../lib/voice/cloudErrors'
-import { isCloudProvider } from '../../lib/voice/providers'
-import { matchesAccelerator, parseAccelerator } from '../../lib/voice/shortcut'
+import { isJevKeyConfigured, migrateLegacyJevKey, saveJevKey } from '../../lib/voice/jevKey'
+import { acceleratorLabel, matchesAccelerator, parseAccelerator } from '../../lib/voice/shortcut'
 import {
   BLOCK_REASONS,
   needsConfirmation,
@@ -54,11 +59,6 @@ function withTimeout<T>(work: Promise<T>, timeoutMessage: string): Promise<T> {
       window.setTimeout(() => reject(new Error(timeoutMessage)), DECIDE_TIMEOUT_MS),
     ),
   ])
-}
-
-function isOpenChord(e: KeyboardEvent): boolean {
-  const ctrl = e.ctrlKey || e.metaKey
-  return ctrl && e.shiftKey && !e.altKey && (e.code === 'Space' || e.key === ' ')
 }
 
 function readWorkspace(): VoiceWorkspace {
@@ -113,6 +113,35 @@ function focusTerminal(projectId: string, terminalId: string) {
   ui.requestPaneFocus(terminalId)
 }
 
+/** Why the pane refused a submit, as the person reads it; null for any other failure. */
+function refusalText(cause: unknown, t: TFunction): string | null {
+  if (cause instanceof TerminalPromptOpenError) return t('voice.conv.terminalPromptOpen')
+  if (cause instanceof PaneHiddenError) return t('voice.bar.paneHidden')
+  return null
+}
+
+/**
+ * Types a prompt into an agent through its pane's guarded submit: bracketed paste, the completion
+ * monitor, and a refusal while the agent's own approval menu is open, where an Enter approves.
+ * Resolves to the refusal text, or null once sent.
+ */
+async function submitToAgent(ptyId: string, prompt: string, t: TFunction): Promise<string | null> {
+  let input = agentInputFor(ptyId) ?? (await waitForAgentInput(ptyId))
+  for (let attempt = 0; input; attempt++) {
+    try {
+      await input.submit(prompt)
+      return null
+    } catch (cause) {
+      const refusal = refusalText(cause, t)
+      if (refusal === null) throw cause
+      // Just brought to front: the pane reports itself visible once it renders. Once only.
+      if (!(cause instanceof PaneHiddenError) || attempt > 0) return refusal
+      input = await waitForAgentInput(ptyId)
+    }
+  }
+  return t('voice.bar.paneHidden')
+}
+
 async function runPlan(plan: VoicePlan, t: TFunction): Promise<string[]> {
   const projects = useProjectsStore.getState()
 
@@ -125,8 +154,13 @@ async function runPlan(plan: VoicePlan, t: TFunction): Promise<string[]> {
     return [t('voice.action.stopped', { terminal: plan.terminalName })]
   }
   if (plan.kind === 'reuse') {
-    await writePty(plan.ptyId, `${plan.prompt}\r`)
+    // Focused first: a hidden pane has no live screen for the approval-menu guard to read.
     focusTerminal(plan.projectId, plan.terminalId)
+    if (isShellAgentType(plan.agent)) await writePty(plan.ptyId, `${plan.prompt}\r`)
+    else {
+      const refusal = await submitToAgent(plan.ptyId, plan.prompt, t)
+      if (refusal) throw new Error(refusal)
+    }
     return [t('voice.action.sent', { terminal: plan.terminalName })]
   }
   if (plan.kind !== 'spawn') return []
@@ -193,7 +227,8 @@ function summarize(plan: VoicePlan, t: TFunction): string {
 
 export function VoiceCommand() {
   const t = useT()
-  const apiKey = useProjectsStore((s) => s.preferences.voiceCommandApiKey)
+  const keyReady = useProjectsStore((s) => isJevKeyConfigured(s.preferences.voiceProviders))
+  const legacyKey = useProjectsStore((s) => s.preferences.voiceCommandApiKey)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const dictationEnabled = useProjectsStore((s) => s.preferences.dictationEnabled)
   const voiceStt = useProjectsStore((s) => s.preferences.voiceStt)
@@ -201,6 +236,9 @@ export function VoiceCommand() {
   const micId = useProjectsStore((s) => s.preferences.dictationMicrophoneId)
   const conversationEnabled = useProjectsStore((s) => s.preferences.voiceConversationEnabled)
   const conversationShortcut = useProjectsStore((s) => s.preferences.voiceShortcut)
+  const commandShortcut = useProjectsStore((s) => s.preferences.voiceCommandShortcut)
+  // Either voice feature means the mic and an engine are set up; the bar uses the conversation one.
+  const voiceInput = keyReady && (dictationEnabled || conversationEnabled)
   const voiceCommandRequest = useUiStore((s) => s.voiceCommandRequest)
   const handledNonce = useRef<number | null>(null)
 
@@ -214,13 +252,11 @@ export function VoiceCommand() {
   const [pendingEntryId, setPendingEntryId] = useState<string | null>(null)
   const [mics, setMics] = useState<SpeechInputDevice[]>([])
   const [micSilent, setMicSilent] = useState(false)
+  const [keyDraft, setKeyDraft] = useState('')
 
   const inputRef = useRef<HTMLInputElement>(null)
-  const recordingRef = useRef(false)
+  const gateRef = useRef(new CaptureGate())
   const busyRef = useRef(false)
-  // Covers prepare + mic open; a stop during it must transcribe once the capture starts.
-  const startingRef = useRef(false)
-  const stopAfterStartRef = useRef(false)
   const transcribeRef = useRef<() => void>(() => undefined)
 
   const recording = phase === 'listening'
@@ -236,11 +272,9 @@ export function VoiceCommand() {
     setWarnings([])
     setPendingEntryId(null)
     setMicSilent(false)
+    setKeyDraft('')
     setPhase('idle')
-    if (recordingRef.current) {
-      recordingRef.current = false
-      void speechStopCapture().catch(() => undefined)
-    }
+    if (gateRef.current.abandon()) void speechStopCapture().catch(() => undefined)
   }, [])
 
   const execute = useCallback(
@@ -268,7 +302,7 @@ export function VoiceCommand() {
       const workspace = readWorkspace()
       const startedAt = performance.now()
       const answer = await withTimeout(
-        jevDecide(spoken, toJevContext(workspace), apiKey),
+        jevDecide(spoken, toJevContext(workspace)),
         t('voice.error.timeout'),
       )
       const decideMs = Math.round(performance.now() - startedAt)
@@ -289,7 +323,7 @@ export function VoiceCommand() {
       }
       return { answer, next, nextWarnings, entryId }
     },
-    [apiKey, execute, t],
+    [execute, t],
   )
 
   const decide = useCallback(
@@ -341,50 +375,30 @@ export function VoiceCommand() {
   }, [voiceCommandRequest, decide])
 
   const listen = useCallback(async () => {
-    if (recordingRef.current || busyRef.current || startingRef.current) return
-    if (engine.needsLocale) {
-      setMessage(t('speech.nativeLocaleRequired'))
-      return
-    }
-    startingRef.current = true
-    stopAfterStartRef.current = false
-    let stopNow = false
+    if (gateRef.current.active || busyRef.current) return
     try {
-      // On Apple this also requests the speech-recognition permission before the mic opens.
-      if (engine.provider === 'apple' || isCloudProvider(engine.provider)) {
-        // null: the check itself failed (e.g. the keychain), which says nothing about the key.
-        const ready = await speechPrepare(engine.modelId, engine.locale, engine.provider).catch(
-          () => null,
-        )
-        if (ready === false && isCloudProvider(engine.provider)) forgetProviderKey(engine.provider)
-        if (!ready) {
-          setMessage(t(engine.provider === 'apple' ? 'speech.nativeNotReady' : 'voice.cloud.noKey'))
-          return
-        }
-      }
-      await speechStartCapture(micId)
-      recordingRef.current = true
-      setMicSilent(false)
-      setMessage(null)
-      setPhase('listening')
-      stopNow = stopAfterStartRef.current
+      await gateRef.current.start(
+        async () => {
+          const block = await openCapture(engine, micId)
+          if (block) {
+            if (block !== 'cancelled') setMessage(t(block))
+            return false
+          }
+          setMicSilent(false)
+          setMessage(null)
+          setPhase('listening')
+          return true
+        },
+        () => transcribeRef.current(),
+      )
     } catch (cause) {
-      recordingRef.current = false
       setPhase('idle')
       setMessage(cause instanceof Error ? cause.message : String(cause))
-    } finally {
-      startingRef.current = false
-      stopAfterStartRef.current = false
     }
-    if (stopNow) transcribeRef.current()
   }, [engine, micId, t])
 
   const transcribe = useCallback(() => {
-    if (!recordingRef.current) {
-      if (startingRef.current) stopAfterStartRef.current = true
-      return
-    }
-    recordingRef.current = false
+    if (!gateRef.current.takeStop()) return
     const history = useVoiceHistoryStore.getState()
     const entryId = history.start('', 'voice', t('voice.lifecycle.transcribing'))
     history.settle(entryId, { summary: t('voice.lifecycle.transcribing') })
@@ -394,13 +408,7 @@ export function VoiceCommand() {
     void (async () => {
       try {
         const startedAt = performance.now()
-        const transcript = (
-          await speechStopAndTranscribe(engine.modelId, engine.locale, {
-            provider: engine.provider,
-            fallbackLocale: engine.fallbackLocale,
-            usage: 'conversation',
-          })
-        ).trim()
+        const transcript = await transcribeCapture(engine, 'conversation')
         const transcribeMs = Math.round(performance.now() - startedAt)
         if (!transcript) {
           history.settle(entryId, {
@@ -424,15 +432,12 @@ export function VoiceCommand() {
         setWarnings(held.nextWarnings)
         setOpen(true)
       } catch (cause) {
-        await speechStopCapture().catch(() => undefined)
         // A tap too short to record is not a failure: a hint, no failed entry, no toast.
         if (isSpeechTooShort(cause)) {
           history.settle(entryId, { status: 'blocked', summary: t('dictation.tooShort') })
           return
         }
-        const reason =
-          cloudFailureMessage(cause, engine.provider, t) ??
-          (cause instanceof Error ? cause.message : String(cause))
+        const reason = transcriptionFailureText(cause, engine.provider, t)
         history.settle(entryId, {
           status: 'failed',
           summary: t('voice.lifecycle.failed'),
@@ -448,9 +453,26 @@ export function VoiceCommand() {
   }, [transcribe])
 
   const toggleRecording = useCallback(() => {
-    if (recordingRef.current || startingRef.current) transcribe()
+    if (gateRef.current.active) transcribe()
     else void listen()
   }, [listen, transcribe])
+
+  const saveKey = useCallback(async () => {
+    const draft = keyDraft.trim()
+    if (!draft) return
+    setMessage(null)
+    try {
+      await saveJevKey(draft)
+      setKeyDraft('')
+    } catch {
+      setMessage(t('prefs.voiceKeyRejected'))
+    }
+  }, [keyDraft, t])
+
+  // Older versions kept the key in plaintext preferences; it moves to the keychain once.
+  useEffect(() => {
+    if (legacyKey) void migrateLegacyJevKey().catch(() => undefined)
+  }, [legacyKey])
 
   const confirm = useCallback(() => {
     if (!plan || plan.kind === 'blocked') return
@@ -459,7 +481,7 @@ export function VoiceCommand() {
   }, [execute, plan, pendingEntryId])
 
   useEffect(() => {
-    if (!open || !dictationEnabled) return
+    if (!open || !(dictationEnabled || conversationEnabled)) return
     let cancelled = false
     void speechListInputDevices()
       .then((devices) => {
@@ -473,22 +495,36 @@ export function VoiceCommand() {
     return () => {
       cancelled = true
     }
-  }, [open, dictationEnabled, engine])
+  }, [open, dictationEnabled, conversationEnabled, engine])
 
   useEffect(() => {
+    const own = parseAccelerator(commandShortcut)
+    const conversation = parseAccelerator(conversationShortcut)
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!isOpenChord(e) || e.repeat || isRecordingShortcut()) return
-      if (conversationEnabled) {
-        const accelerator = parseAccelerator(conversationShortcut)
-        if (accelerator && matchesAccelerator(e, accelerator, isMacOS()).matched) return
+      if (e.repeat || isRecordingShortcut()) return
+      const mac = isMacOS()
+      const isConversationChord = !!conversation && matchesAccelerator(e, conversation, mac).matched
+      if (own && matchesAccelerator(e, own, mac).matched) {
+        // Voice conversation keeps its chord while it is on, should both ever be the same.
+        if (conversationEnabled && isConversationChord) return
+        e.preventDefault()
+        e.stopPropagation()
+        setOpen((current) => !current)
+        return
       }
-      e.preventDefault()
-      e.stopPropagation()
-      setOpen((current) => !current)
+      // While off, the conversation chord would otherwise do nothing at all: say why.
+      if (!conversationEnabled && isConversationChord) {
+        e.preventDefault()
+        e.stopPropagation()
+        useUiStore.getState().pushToast({
+          title: t('voice.conv.offTitle'),
+          body: t('voice.conv.offBody', { shortcut: acceleratorLabel(commandShortcut) }),
+        })
+      }
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [conversationEnabled, conversationShortcut])
+  }, [commandShortcut, conversationEnabled, conversationShortcut, t])
 
   useEffect(() => {
     if (!open) return
@@ -497,7 +533,7 @@ export function VoiceCommand() {
   }, [open])
 
   useEffect(() => {
-    if (!open || !dictationEnabled || !apiKey) return
+    if (!open || !voiceInput) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'F9' || e.repeat || isRecordingShortcut()) return
       e.preventDefault()
@@ -514,13 +550,11 @@ export function VoiceCommand() {
       window.removeEventListener('keydown', onKeyDown, true)
       window.removeEventListener('keyup', onKeyUp, true)
     }
-  }, [open, dictationEnabled, apiKey, listen, transcribe])
+  }, [open, voiceInput, listen, transcribe])
 
   useEffect(
     () => () => {
-      if (!recordingRef.current) return
-      recordingRef.current = false
-      void speechStopCapture().catch(() => undefined)
+      if (gateRef.current.abandon()) void speechStopCapture().catch(() => undefined)
     },
     [],
   )
@@ -535,7 +569,7 @@ export function VoiceCommand() {
         ? t('voice.bar.decidingHint')
         : runnable
           ? t('voice.bar.runnableHint')
-          : apiKey
+          : keyReady
             ? t('voice.bar.idleHint')
             : t('voice.bar.noKeyHint')
 
@@ -549,7 +583,7 @@ export function VoiceCommand() {
     >
       <div className={styles.panel} role="dialog" aria-label={t('voice.bar.title')}>
         <div className={styles.inputRow}>
-          {apiKey && dictationEnabled ? (
+          {voiceInput ? (
             <button
               type="button"
               className={`${styles.micButton} ${recording ? styles.micButtonLive : ''}`}
@@ -572,20 +606,20 @@ export function VoiceCommand() {
           <input
             ref={inputRef}
             className={styles.input}
-            type={apiKey ? 'text' : 'password'}
-            value={apiKey ? text : ''}
+            type={keyReady ? 'text' : 'password'}
+            value={keyReady ? text : keyDraft}
             spellCheck={false}
             placeholder={
-              apiKey
+              keyReady
                 ? recording
                   ? t('voice.bar.listeningPlaceholder')
                   : t('voice.bar.speakPlaceholder')
                 : t('voice.bar.keyPlaceholder')
             }
-            aria-label={apiKey ? t('voice.bar.inputLabel') : t('voice.bar.keyInputLabel')}
+            aria-label={keyReady ? t('voice.bar.inputLabel') : t('voice.bar.keyInputLabel')}
             onChange={(event) => {
-              if (!apiKey) {
-                setPreferences({ voiceCommandApiKey: event.target.value.trim() })
+              if (!keyReady) {
+                setKeyDraft(event.target.value)
                 return
               }
               setText(event.target.value)
@@ -601,15 +635,16 @@ export function VoiceCommand() {
                 close()
                 return
               }
-              if (event.key !== 'Enter' || !apiKey) return
+              if (event.key !== 'Enter') return
               event.preventDefault()
-              if (runnable) confirm()
+              if (!keyReady) void saveKey()
+              else if (runnable) confirm()
               else void decide(text)
             }}
           />
         </div>
 
-        {apiKey && dictationEnabled ? (
+        {voiceInput ? (
           <div className={styles.spectrumRow}>
             <VoiceSpectrum live={recording} onSilent={setMicSilent} />
             {mics.length > 1 ? (

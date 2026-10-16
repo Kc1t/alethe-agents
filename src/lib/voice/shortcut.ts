@@ -1,3 +1,5 @@
+import { formatShortcut } from '../platform'
+
 export type Accelerator = {
   /** CmdOrCtrl: Cmd on macOS, Ctrl elsewhere. */
   mod: boolean
@@ -136,4 +138,9 @@ export function acceleratorFromKeyEvent(
   if (event.shiftKey) parts.push('Shift')
   if (needsCmdOrCtrl) return { error: 'needs-modifier' }
   return { accelerator: [...parts, key].join('+') }
+}
+
+/** An accelerator as the person reads it: `CmdOrCtrl+Shift+J` is ⌘⇧J on macOS, Ctrl+Shift+J elsewhere. */
+export function acceleratorLabel(shortcut: string): string {
+  return formatShortcut(shortcut.replace(/CmdOrCtrl|CommandOrControl/i, 'Ctrl'))
 }

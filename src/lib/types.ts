@@ -910,9 +910,14 @@ export type Preferences = {
   dictationMicrophoneId: string | null
   /** Cached microphone label when the preferred device is unplugged. */
   dictationMicrophoneLabel: string | null
+  /** In-app accelerator that opens the Jev command bar, e.g. `CmdOrCtrl+Shift+J`. */
+  voiceCommandShortcut: string
   /** The one-time switch of a Mac profile to the Apple engine has run. */
   speechEngineMigrated: boolean
-  /** Decisions API key for voice commands. Empty disables the command bar. */
+  /**
+   * Legacy plaintext Jev key. Jev now uses the OpenRouter key in the OS keychain; a value left
+   * here is moved there once at startup and then cleared.
+   */
   voiceCommandApiKey: string
   /** Talk to the active Claude pane and hear it narrate. Uses the dictation model and mic. */
   voiceConversationEnabled: boolean
@@ -1132,6 +1137,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   rightSidebarVisible: true,
   leftSidebarWidth: 286,
   rightSidebarWidth: 300,
+  voiceCommandShortcut: 'CmdOrCtrl+Shift+J',
   notifyOnLimitReset: true,
   dictationEnabled: false,
   dictationMode: 'toggle',

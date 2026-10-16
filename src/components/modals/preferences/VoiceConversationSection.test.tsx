@@ -44,7 +44,7 @@ describe('VoiceConversationSection', () => {
     useProjectsStore.getState().setPreferences({ voiceConversationEnabled: true })
     render(<VoiceConversationSection />)
     expect(screen.queryByLabelText('Shortcut')).toBeNull()
-    expect(screen.getAllByRole('button', { name: 'Change' })).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Change' })).toHaveLength(3)
     expect(screen.getByText('Space')).toBeTruthy()
     expect(
       screen.getByText(
@@ -81,6 +81,23 @@ describe('VoiceConversationSection', () => {
     fireEvent.keyDown(window, { key: ' ', code: 'Space', metaKey: true, shiftKey: true })
     expect(screen.getByText('Another voice shortcut already uses that combination.')).toBeTruthy()
     expect(prefs().voiceReadAloudShortcut).toBe('CmdOrCtrl+Shift+L')
+  })
+
+  // Jev works with voice conversation off, so its chord stays editable and never takes another.
+  it('records the Jev shortcut with voice conversation off, refusing a taken chord', async () => {
+    const { voiceShortcutSet } = await import('../../../lib/tauri')
+    vi.mocked(voiceShortcutSet).mockClear()
+    render(<VoiceConversationSection />)
+    const jev = screen.getAllByRole('button', { name: 'Change' })[2]
+    expect(jev.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(jev)
+    fireEvent.keyDown(window, { key: 'l', code: 'KeyL', metaKey: true, shiftKey: true })
+    expect(screen.getByText('Another voice shortcut already uses that combination.')).toBeTruthy()
+    expect(prefs().voiceCommandShortcut).toBe('CmdOrCtrl+Shift+J')
+    fireEvent.keyDown(window, { key: 'k', code: 'KeyK', metaKey: true, shiftKey: true })
+    await act(async () => undefined)
+    expect(prefs().voiceCommandShortcut).toBe('CmdOrCtrl+Shift+K')
+    expect(voiceShortcutSet).not.toHaveBeenCalled()
   })
 
   it('lists the six HUD positions and saves the picked one', () => {

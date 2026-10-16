@@ -3,17 +3,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
+import {
+  CaptureGate,
+  openCapture,
+  transcribeCapture,
+  transcriptionFailureText,
+} from '../../lib/speech/capture'
 import { sttChoiceFor } from '../../lib/speech/engine'
 import { isSpeechTooShort } from '../../lib/speech/errors'
-import {
-  speechPrepare,
-  speechStartCapture,
-  speechStopAndTranscribe,
-  speechStopCapture,
-  writePty,
-} from '../../lib/tauri'
-import { cloudFailureMessage, forgetProviderKey } from '../../lib/voice/cloudErrors'
-import { isCloudProvider } from '../../lib/voice/providers'
+import { speechStopCapture, writePty } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { isRecordingShortcut } from '../../stores/voiceConversationStore'
@@ -53,12 +51,9 @@ export function DictationButton() {
   const [listening, setListening] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const recordingRef = useRef(false)
+  const gateRef = useRef(new CaptureGate())
   const holdActiveRef = useRef(false)
   const busyRef = useRef(false)
-  // Covers prepare + mic open; a release during it must stop the capture once it starts.
-  const startingRef = useRef(false)
-  const stopAfterStartRef = useRef(false)
 
   const insertTranscript = useCallback(
     async (text: string) => {
@@ -74,38 +69,23 @@ export function DictationButton() {
   )
 
   const stopCapture = useCallback(async () => {
-    if (!recordingRef.current) {
-      if (startingRef.current) stopAfterStartRef.current = true
-      return
-    }
-    recordingRef.current = false
+    if (!gateRef.current.takeStop()) return
     setListening(false)
     busyRef.current = true
     setBusy(true)
     setError(null)
     try {
-      const text = await speechStopAndTranscribe(engine.modelId, engine.locale, {
-        provider: engine.provider,
-        fallbackLocale: engine.fallbackLocale,
-        usage: 'dictation',
-      })
-      if (!text.trim()) {
+      const text = await transcribeCapture(engine, 'dictation')
+      if (!text) {
         setError(t('dictation.emptyTranscript'))
         return
       }
       await insertTranscript(text)
     } catch (cause) {
-      // If stop+transcribe failed mid-flight, make sure the native stream is dropped.
-      try {
-        await speechStopCapture()
-      } catch {
-        /* already stopped */
-      }
       setError(
         isSpeechTooShort(cause)
           ? t('dictation.tooShort')
-          : (cloudFailureMessage(cause, engine.provider, t) ??
-              (cause instanceof Error ? cause.message : String(cause))),
+          : transcriptionFailureText(cause, engine.provider, t),
       )
     } finally {
       busyRef.current = false
@@ -114,45 +94,26 @@ export function DictationButton() {
   }, [insertTranscript, engine, t])
 
   const startCapture = useCallback(async () => {
-    if (recordingRef.current || busyRef.current || startingRef.current) return
+    if (gateRef.current.active || busyRef.current) return
     setError(null)
-    if (engine.needsLocale) {
-      setError(t('speech.nativeLocaleRequired'))
-      return
-    }
-    startingRef.current = true
-    stopAfterStartRef.current = false
-    let stopNow = false
     try {
-      // On Apple this also requests the speech-recognition permission before the mic opens.
-      if (engine.provider === 'apple' || isCloudProvider(engine.provider)) {
-        // null: the check itself failed (e.g. the keychain), which says nothing about the key.
-        const ready = await speechPrepare(engine.modelId, engine.locale, engine.provider).catch(
-          () => null,
-        )
-        if (ready === false && isCloudProvider(engine.provider)) forgetProviderKey(engine.provider)
-        if (!ready) {
-          setError(t(engine.provider === 'apple' ? 'speech.nativeNotReady' : 'voice.cloud.noKey'))
-          return
+      await gateRef.current.start(async () => {
+        const block = await openCapture(engine, micId)
+        if (block) {
+          if (block !== 'cancelled') setError(t(block))
+          return false
         }
-      }
-      await speechStartCapture(micId)
-      recordingRef.current = true
-      setListening(true)
-      stopNow = stopAfterStartRef.current
+        setListening(true)
+        return true
+      }, stopCapture)
     } catch (cause) {
-      recordingRef.current = false
       setError(cause instanceof Error ? cause.message : String(cause))
       setListening(false)
-    } finally {
-      startingRef.current = false
-      stopAfterStartRef.current = false
     }
-    if (stopNow) await stopCapture()
   }, [engine, micId, stopCapture, t])
 
   const toggle = useCallback(() => {
-    if (recordingRef.current || startingRef.current) void stopCapture()
+    if (gateRef.current.active) void stopCapture()
     else void startCapture()
   }, [startCapture, stopCapture])
 
@@ -192,9 +153,7 @@ export function DictationButton() {
 
   useEffect(
     () => () => {
-      if (!recordingRef.current) return
-      recordingRef.current = false
-      void speechStopCapture().catch(() => undefined)
+      if (gateRef.current.abandon()) void speechStopCapture().catch(() => undefined)
     },
     [],
   )

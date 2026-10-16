@@ -328,14 +328,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Memory-aware terminal startup feedback.** When system memory is below the safe spawn
   threshold, terminal panes now show the available memory and elapsed wait instead of an opaque
   loading state; the wait is also recorded separately in diagnostics.
-- **Voice commands into the workspace.** `Ctrl+Shift+Space` opens a command bar where you say or
+- **Voice commands into the workspace.** `Ctrl+Shift+J` (⌘⇧J on macOS, changeable in Preferences →
+  Voice → Conversation) opens a command bar where you say or
   type what you want, and Alethe routes it into a real action: launching one or more agents in a
   project, handing the task to a terminal that is already open, bringing one up, or stopping one.
   Routing runs on TypeSafe Jev, a model that only picks between options built from live workspace
   state, so the prompt handed over is a verbatim span of what you said, never text the model wrote.
   The plan, its confidences, latency and cost are shown before anything runs, and nothing runs
-  without confirmation. The first time the bar opens it asks for a decisions API key and remembers
-  it. A mic button starts and stops recording by click, F9 still works as push to talk, and a live
+  without confirmation. The first time the bar opens it asks for an OpenRouter API key and keeps it
+  in the system keychain, shared with OpenRouter voices. A mic button starts and stops recording by click, F9 still works as push to talk, and a live
   spectrum shows the audio actually coming in, so a dead microphone is visible immediately rather
   than after the fact. Plans now run the moment they are decided; the bar only stops to ask when the
   request looks destructive, when it would stop a running agent, or when the task would be handed to
@@ -381,6 +382,18 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **Jev has its own shortcut and no longer asks for a key it already has.**
+  - The command bar opens with `Ctrl+Shift+J` (⌘⇧J), which can be changed under Preferences →
+    Voice → Conversation even with voice conversation off. `Ctrl+Shift+Space` belongs to voice
+    conversation; while conversation is off, that shortcut now says so and points to the setting,
+    instead of opening the bar.
+  - Jev uses the OpenRouter key from the system keychain, the same one OpenRouter voices use. A key
+    saved by an earlier build in plain preferences moves to the keychain on the next start, unless
+    the keychain already holds an OpenRouter key.
+  - A task Jev hands to an open agent goes through the same guarded send as voice conversation.
+    It is refused while the agent shows its own approval menu, where the Enter would have approved
+    it.
+  - The bar's microphone works when either dictation or voice conversation is on.
 - **Barge-in pauses narration instead of dropping it.** Pressing the voice shortcut pauses what
   is being read; it is discarded only when what you said is sent. After a stray tap, silence or a
   failed transcription the narration stays paused and the resume button continues it.

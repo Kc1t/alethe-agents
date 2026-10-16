@@ -823,6 +823,9 @@ export const en = {
   'prefs.voiceShortcutAltReserved': 'Alt is used to send to Jev; pick a shortcut without it.',
   'prefs.voiceShortcutUnsupported': 'Use a letter, a number, Space or F1–F24.',
   'prefs.voiceShortcutInUse': 'Another voice shortcut already uses that combination.',
+  'prefs.voiceCommandShortcut': 'Jev command bar shortcut',
+  'prefs.voiceCommandShortcutDesc':
+    'Opens the Jev command bar to type or say a workspace command. Works inside Alethe, whether voice conversation is on or off.',
   'prefs.voiceReadAloudShortcut': 'Read aloud shortcut',
   'prefs.voiceReadAloudShortcutDesc':
     'Reads the focused terminal\'s selection aloud, or what is on the clipboard when nothing is selected. Works inside Alethe.',
@@ -3540,10 +3543,10 @@ export const en = {
   /* ---- voice command ---- */
   'voice.bar.title': 'Voice command',
   'voice.bar.inputLabel': 'Voice command',
-  'voice.bar.keyInputLabel': 'Decisions API key',
+  'voice.bar.keyInputLabel': 'OpenRouter API key',
   'voice.bar.speakPlaceholder': 'Say what you want the workspace to do',
   'voice.bar.listeningPlaceholder': 'Listening...',
-  'voice.bar.keyPlaceholder': 'Paste your decisions API key',
+  'voice.bar.keyPlaceholder': 'Paste your OpenRouter API key and press Enter',
   'voice.bar.startRecording': 'Start recording',
   'voice.bar.startRecordingTitle': 'Start recording, or hold F9',
   'voice.bar.stopRecording': 'Stop recording',
@@ -3552,7 +3555,9 @@ export const en = {
   'voice.bar.decidingHint': 'Asking Jev what to do',
   'voice.bar.runnableHint': 'Enter runs this plan | Esc cancels',
   'voice.bar.idleHint': 'Click the mic or hold F9 to speak | Enter decides | Esc cancels',
-  'voice.bar.noKeyHint': 'The key is stored in preferences and this bar stops asking',
+  'voice.bar.noKeyHint':
+    'Jev decides through OpenRouter. The key is saved in the system keychain and shared with OpenRouter voices',
+  'voice.bar.paneHidden': 'That agent pane did not come into view in time. Try again.',
   'voice.bar.micSilent': 'No signal from this microphone.',
   'voice.bar.micLabel': 'Microphone',
   'voice.bar.micDefault': 'System default',
@@ -3590,7 +3595,7 @@ export const en = {
   'voice.history.tabTitle': 'Jev history',
   'voice.history.clear': 'Clear history',
   'voice.history.emptyTitle': 'No commands yet',
-  'voice.history.emptyBody': 'Press Ctrl+Shift+Space, say what you want, and it shows up here.',
+  'voice.history.emptyBody': 'Press {shortcut}, say what you want, and it shows up here.',
   'voice.history.silence': '(silence)',
   'voice.history.status.deciding': 'deciding',
   'voice.history.status.ran': 'ran',
@@ -3640,7 +3645,11 @@ export const en = {
   'speech.nativeNotReady':
     'Apple speech recognition is not ready: allow it in System Settings → Privacy & Security → Speech Recognition, and install the language in Preferences.',
   'voice.conv.heardNothing': 'Heard nothing.',
-  'voice.conv.jevNotConfigured': 'Jev needs an API key. Open the voice command bar to add one.',
+  'voice.conv.jevNotConfigured':
+    'Jev needs an OpenRouter key. Add it in the command bar or in Preferences → Voice → Accounts and models.',
+  'voice.conv.offTitle': 'Voice conversation is off',
+  'voice.conv.offBody':
+    'Turn it on in Preferences → Voice → Conversation. The Jev command bar opens with {shortcut}.',
   'voice.conv.ttsUnavailable':
     'Speech output is not available on this system; narration is shown as text.',
   'voice.conv.permissionAsk': 'Claude wants to use {tool}: {subject}. Allow?',

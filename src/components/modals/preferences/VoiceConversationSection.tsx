@@ -31,6 +31,13 @@ function sameShortcut(a: string, b: string): boolean {
   return (Object.keys(first) as (keyof Accelerator)[]).every((key) => first[key] === second[key])
 }
 
+/** Refuses a chord another voice shortcut already uses. */
+function takenBy(accelerator: string, others: string[]): MessageKey | null {
+  return others.some((other) => sameShortcut(accelerator, other))
+    ? 'prefs.voiceShortcutInUse'
+    : null
+}
+
 export function VoiceConversationSection() {
   const t = useT()
   const preferences = useProjectsStore((s) => s.preferences)
@@ -123,9 +130,10 @@ export function VoiceConversationSection() {
             onSaved={(voiceShortcut) => setPreferences({ voiceShortcut })}
             disabled={!enabled}
             reject={(accelerator) =>
-              sameShortcut(accelerator, preferences.voiceReadAloudShortcut)
-                ? 'prefs.voiceShortcutInUse'
-                : null
+              takenBy(accelerator, [
+                preferences.voiceReadAloudShortcut,
+                preferences.voiceCommandShortcut,
+              ])
             }
           />
         </SettingsSection>
@@ -143,9 +151,24 @@ export function VoiceConversationSection() {
             // Works inside Alethe only: there is nothing to register with the OS.
             register={inAppOnly}
             reject={(accelerator) =>
-              sameShortcut(accelerator, preferences.voiceShortcut)
-                ? 'prefs.voiceShortcutInUse'
-                : null
+              takenBy(accelerator, [preferences.voiceShortcut, preferences.voiceCommandShortcut])
+            }
+          />
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-command-shortcut"
+          title={t('prefs.voiceCommandShortcut')}
+          description={t('prefs.voiceCommandShortcutDesc')}
+        >
+          <ShortcutRecorder
+            value={preferences.voiceCommandShortcut}
+            defaultValue={DEFAULT_PREFERENCES.voiceCommandShortcut}
+            onSaved={(voiceCommandShortcut) => setPreferences({ voiceCommandShortcut })}
+            // Jev works with voice conversation off, so its chord stays editable.
+            register={inAppOnly}
+            reject={(accelerator) =>
+              takenBy(accelerator, [preferences.voiceShortcut, preferences.voiceReadAloudShortcut])
             }
           />
         </SettingsSection>

@@ -837,6 +837,9 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceShortcutAltReserved': 'O Alt é usado para mandar ao Jev; escolha um atalho sem ele.',
   'prefs.voiceShortcutUnsupported': 'Use uma letra, um número, Espaço ou F1–F24.',
   'prefs.voiceShortcutInUse': 'Outro atalho de voz já usa essa combinação.',
+  'prefs.voiceCommandShortcut': 'Atalho da barra de comandos do Jev',
+  'prefs.voiceCommandShortcutDesc':
+    'Abre a barra de comandos do Jev para digitar ou falar um comando do workspace. Funciona dentro do Alethe, com a conversa por voz ligada ou desligada.',
   'prefs.voiceReadAloudShortcut': 'Atalho de leitura em voz alta',
   'prefs.voiceReadAloudShortcutDesc':
     'Lê em voz alta a seleção do terminal em foco, ou o que está na área de transferência quando nada está selecionado. Funciona dentro do Alethe.',
@@ -3576,10 +3579,10 @@ export const ptBR: Record<MessageKey, string> = {
   /* ---- voice command ---- */
   'voice.bar.title': 'Comando de voz',
   'voice.bar.inputLabel': 'Comando de voz',
-  'voice.bar.keyInputLabel': 'Chave da decisions API',
+  'voice.bar.keyInputLabel': 'Chave de API do OpenRouter',
   'voice.bar.speakPlaceholder': 'Diga o que você quer que o workspace faça',
   'voice.bar.listeningPlaceholder': 'Ouvindo...',
-  'voice.bar.keyPlaceholder': 'Cole a chave da decisions API',
+  'voice.bar.keyPlaceholder': 'Cole sua chave de API do OpenRouter e aperte Enter',
   'voice.bar.startRecording': 'Começar a gravar',
   'voice.bar.startRecordingTitle': 'Começar a gravar, ou segure o F9',
   'voice.bar.stopRecording': 'Parar a gravação',
@@ -3589,7 +3592,9 @@ export const ptBR: Record<MessageKey, string> = {
   'voice.bar.runnableHint': 'Enter executa esse plano | Esc cancela',
   'voice.bar.idleHint':
     'Clique no microfone ou segure o F9 para falar | Enter decide | Esc cancela',
-  'voice.bar.noKeyHint': 'A chave fica guardada nas preferências e esta barra para de pedir',
+  'voice.bar.noKeyHint':
+    'O Jev decide pelo OpenRouter. A chave fica no chaveiro do sistema e é compartilhada com as vozes do OpenRouter',
+  'voice.bar.paneHidden': 'O painel desse agente não apareceu a tempo. Tente de novo.',
   'voice.bar.micSilent': 'Sem sinal deste microfone.',
   'voice.bar.micLabel': 'Microfone',
   'voice.bar.micDefault': 'Padrão do sistema',
@@ -3627,7 +3632,7 @@ export const ptBR: Record<MessageKey, string> = {
   'voice.history.tabTitle': 'Histórico do Jev',
   'voice.history.clear': 'Limpar histórico',
   'voice.history.emptyTitle': 'Nenhum comando ainda',
-  'voice.history.emptyBody': 'Aperte Ctrl+Shift+Espaço, diga o que você quer, e isso aparece aqui.',
+  'voice.history.emptyBody': 'Aperte {shortcut}, diga o que você quer, e isso aparece aqui.',
   'voice.history.silence': '(silêncio)',
   'voice.history.status.deciding': 'decidindo',
   'voice.history.status.ran': 'executado',
@@ -3680,7 +3685,10 @@ export const ptBR: Record<MessageKey, string> = {
     'O reconhecimento de fala da Apple não está pronto: permita em Ajustes do Sistema → Privacidade e Segurança → Reconhecimento de Fala e instale o idioma nas Preferências.',
   'voice.conv.heardNothing': 'Não ouvi nada.',
   'voice.conv.jevNotConfigured':
-    'O Jev precisa de uma chave de API. Abra a barra de comandos de voz para adicionar.',
+    'O Jev precisa de uma chave do OpenRouter. Adicione na barra de comandos ou em Preferências → Voz → Contas e modelos.',
+  'voice.conv.offTitle': 'A conversa por voz está desligada',
+  'voice.conv.offBody':
+    'Ligue em Preferências → Voz → Conversa. A barra de comandos do Jev abre com {shortcut}.',
   'voice.conv.ttsUnavailable':
     'A saída de voz não está disponível neste sistema; a narração aparece como texto.',
   'voice.conv.permissionAsk': 'O Claude quer usar {tool}: {subject}. Permitir?',

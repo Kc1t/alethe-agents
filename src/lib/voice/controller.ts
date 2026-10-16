@@ -9,7 +9,7 @@ import {
   useVoiceConversationStore,
   type VoiceNotice,
 } from '../../stores/voiceConversationStore'
-import { type AgentInput, agentInputFor } from '../agentInputRegistry'
+import { type AgentInput, agentInputFor, waitForAgentInput } from '../agentInputRegistry'
 import {
   looksLikeChoicePrompt,
   PaneHiddenError,
@@ -17,6 +17,7 @@ import {
 } from '../agentPromptDelivery'
 import { agentLabel } from '../agentProviders'
 import { getLocale, translate } from '../i18n'
+import { openCapture, transcribeCapture } from '../speech/capture'
 import { sttChoiceFor } from '../speech/engine'
 import { isSpeechTooShort } from '../speech/errors'
 import {
@@ -28,21 +29,18 @@ import {
   onTtsProgress,
   onTtsStart,
   readClipboardText,
-  speechPrepare,
-  speechStartCapture,
-  speechStopAndTranscribe,
   speechStopCapture,
   ttsPause,
+  ttsPrefetch,
   ttsResume,
   ttsSetMuted,
-  ttsPrefetch,
   ttsSpeak,
   ttsStop,
   voiceSetTargets,
 } from '../tauri'
-import { cloudFailureMessage, forgetProviderKey } from './cloudErrors'
+import { cloudFailureMessage } from './cloudErrors'
+import { isJevKeyConfigured } from './jevKey'
 import { estimateSpeechMs, Narrator, newAssistantTexts, type Translate } from './narrator'
-import { currentSelection, registerReadAloud } from './readAloud'
 import { PausableTimer } from './pausableTimer'
 import {
   answerAllowed,
@@ -52,6 +50,7 @@ import {
   type PermissionAnswer,
 } from './permissions'
 import { isCloudProvider } from './providers'
+import { currentSelection, registerReadAloud } from './readAloud'
 import { routeTranscript } from './routing'
 import { codePointLength, estimatedSpokenOffset, wordStartIn } from './spokenWords'
 import { nextCapture, nextTurn } from './stateMachine'
@@ -71,11 +70,6 @@ const transcriptAgent = (agent: string): 'claude' | 'codex' | null =>
 /** An agent's TUI needs a moment after Esc before it takes new input. */
 const INTERRUPT_SETTLE_MS = 300
 const SPOKEN_SUBJECT_CHARS = 120
-/** How long a session brought to front gets to mount its terminal before the send gives up. */
-const INPUT_WAIT_MS = 2_000
-const INPUT_POLL_MS = 100
-/** A terminal that just mounted replays its screen; the choice-menu guard reads it after this. */
-const INPUT_SETTLE_MS = 300
 /**
  * Cloud and local voices synthesize after `tts_speak` returns; this bounds the wait for their
  * first audio (and for a later chunk while the player reports progress), so an event that never
@@ -282,37 +276,13 @@ export class VoiceConversationController {
     try {
       const p = prefs()
       const engine = sttChoiceFor(p, 'conversation')
-      if (engine.needsLocale) {
-        store().patch({ notice: { key: 'speech.nativeLocaleRequired' } })
-        return
-      }
-      // Awaited directly, not through `.catch`, so the mic opens as soon as the model is ready.
-      // null: the check itself failed (e.g. the keychain), which says nothing about the key.
-      let ready: boolean | null
-      try {
-        ready = await speechPrepare(engine.modelId, engine.locale, engine.provider)
-      } catch {
-        ready = null
-      }
-      if (this.disposed) return
-      if (ready === false && isCloudProvider(engine.provider)) forgetProviderKey(engine.provider)
-      if (!ready) {
-        store().patch({
-          notice: {
-            key:
-              engine.provider === 'apple'
-                ? 'speech.nativeNotReady'
-                : isCloudProvider(engine.provider)
-                  ? 'voice.cloud.noKey'
-                  : 'voice.conv.modelMissing',
-          },
-        })
-        return
-      }
-      await speechStartCapture(p.dictationMicrophoneId)
-      if (this.disposed) {
-        // The controller went away while the mic was opening; nobody would ever close it.
-        void speechStopCapture().catch(() => undefined)
+      const block = await openCapture(engine, p.dictationMicrophoneId, {
+        prepareLocal: true,
+        // The controller may go away while the mic is opening; nobody would ever close it.
+        cancelled: () => this.disposed,
+      })
+      if (block) {
+        if (block !== 'cancelled') store().patch({ notice: { key: block } })
         return
       }
       this.jevPending = options.jev
@@ -340,15 +310,8 @@ export class VoiceConversationController {
     let text: string
     const engine = sttChoiceFor(prefs(), 'conversation')
     try {
-      text = (
-        await speechStopAndTranscribe(engine.modelId, engine.locale, {
-          provider: engine.provider,
-          fallbackLocale: engine.fallbackLocale,
-          usage: 'conversation',
-        })
-      ).trim()
+      text = await transcribeCapture(engine, 'conversation')
     } catch (cause) {
-      await speechStopCapture().catch(() => undefined)
       store().patch({
         capture: nextCapture('transcribing', 'failed'),
         // A quick tap of the shortcut, not a failure: say how to use it.
@@ -491,7 +454,7 @@ export class VoiceConversationController {
     })
     if (route.kind === 'empty') return
     if (route.kind === 'jev') {
-      if (!p.voiceCommandApiKey) {
+      if (!isJevKeyConfigured(p.voiceProviders)) {
         store().patch({ notice: { key: 'voice.conv.jevNotConfigured' } })
         // The bar is where the key is entered.
         useUiStore.getState().openVoiceCommand('')
@@ -570,22 +533,10 @@ export class VoiceConversationController {
     this.startPolling()
   }
 
-  /**
-   * The input of a session just brought to front, once its terminal mounts and settles; null when
-   * it does not within `INPUT_WAIT_MS`, or a turn began or ended meanwhile.
-   */
-  private async waitForInput(ptyId: string): Promise<AgentInput | null> {
+  /** The input of a session just brought to front; null when a turn began or ended meanwhile. */
+  private waitForInput(ptyId: string): Promise<AgentInput | null> {
     const generation = this.generation
-    const current = () => !this.disposed && generation === this.generation
-    for (let waited = 0; waited < INPUT_WAIT_MS; waited += INPUT_POLL_MS) {
-      await sleep(INPUT_POLL_MS)
-      if (!current()) return null
-      const input = agentInputFor(ptyId)
-      if (!input) continue
-      await sleep(INPUT_SETTLE_MS)
-      return current() ? agentInputFor(ptyId) : null
-    }
-    return null
+    return waitForAgentInput(ptyId, () => !this.disposed && generation === this.generation)
   }
 
   /** Undoes `beginTurn` + targeting for a prompt that was never submitted. */

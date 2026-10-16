@@ -7,10 +7,22 @@ import { useVoiceHistoryStore } from '../../stores/voiceHistoryStore'
 import { VoiceCommand } from '.'
 
 const jevDecide = vi.hoisted(() => vi.fn())
+const writePty = vi.hoisted(() => vi.fn())
+const saveJevKey = vi.hoisted(() => vi.fn())
+const agentInput = vi.hoisted(() => ({
+  submit: vi.fn(),
+  interrupt: vi.fn(),
+  readScreen: () => '',
+}))
 const speechStartCapture = vi.hoisted(() => vi.fn())
 const speechPrepare = vi.hoisted(() => vi.fn())
 const speechStopAndTranscribe = vi.hoisted(() => vi.fn())
 const mockPrefs = vi.hoisted(() => ({
+  voiceProviders: { openrouter: { configured: true, invalid: false } } as Record<
+    string,
+    { configured: boolean; invalid: boolean }
+  >,
+  voiceConversationEnabled: false,
   voiceStt: {
     dictation: {
       provider: 'local',
@@ -39,6 +51,16 @@ vi.mock('../../lib/tauri', async (importOriginal) => ({
   speechStopAndTranscribe,
   speechStartCapture,
   speechStopCapture: vi.fn().mockResolvedValue(undefined),
+  writePty,
+}))
+vi.mock('../../lib/voice/jevKey', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/voice/jevKey')>()),
+  saveJevKey,
+  migrateLegacyJevKey: vi.fn().mockResolvedValue(undefined),
+}))
+vi.mock('../../lib/agentInputRegistry', () => ({
+  agentInputFor: (ptyId: string) => (ptyId === 'pty-agent' ? agentInput : null),
+  waitForAgentInput: vi.fn().mockResolvedValue(null),
 }))
 vi.mock('../../stores/projectsStore', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../stores/projectsStore')>()
@@ -49,7 +71,6 @@ vi.mock('../../stores/projectsStore', async (importOriginal) => {
     get preferences() {
       return {
         ...base.preferences,
-        voiceCommandApiKey: 'key',
         dictationEnabled: true,
         ...mockPrefs,
       }
@@ -74,6 +95,15 @@ describe('VoiceCommand request hand-off', () => {
     speechStopAndTranscribe.mockResolvedValue('')
     jevDecide.mockReset()
     jevDecide.mockImplementation(() => new Promise(() => undefined))
+    writePty.mockReset()
+    writePty.mockResolvedValue(undefined)
+    saveJevKey.mockReset()
+    saveJevKey.mockResolvedValue(undefined)
+    agentInput.submit.mockReset()
+    agentInput.submit.mockResolvedValue(undefined)
+    mockPrefs.voiceProviders = { openrouter: { configured: true, invalid: false } }
+    mockPrefs.voiceConversationEnabled = false
+    useUiStore.setState({ notifications: [] })
   })
 
   it('consumes a request once, however often it re-renders, and can be closed', async () => {
@@ -94,7 +124,7 @@ describe('VoiceCommand request hand-off', () => {
 
   it('leaves its chord to the voice shortcut recorder while it is capturing', async () => {
     render(<VoiceCommand />)
-    const chord = { key: ' ', code: 'Space', ctrlKey: true, shiftKey: true }
+    const chord = { key: 'J', code: 'KeyJ', ctrlKey: true, shiftKey: true }
     useVoiceConversationStore.setState({ shortcutRecording: true })
     await act(async () => {
       fireEvent.keyDown(window, chord)
@@ -211,5 +241,121 @@ describe('VoiceCommand request hand-off', () => {
       useUiStore.getState().openVoiceCommand('')
     })
     expect(speechPrepare).toHaveBeenCalledWith('parakeet-tdt-0.6b-v3-int8', null, 'local')
+  })
+
+  it('says voice conversation is off instead of asking for a key on its chord', async () => {
+    render(<VoiceCommand />)
+    await act(async () => {
+      fireEvent.keyDown(window, {
+        key: ' ',
+        code: 'Space',
+        ctrlKey: true,
+        shiftKey: true,
+      })
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(useUiStore.getState().notifications.at(-1)?.title).toBe('Voice conversation is off')
+  })
+
+  it('asks for the OpenRouter key and saves it to the keychain on Enter', async () => {
+    mockPrefs.voiceProviders = {}
+    render(<VoiceCommand />)
+    await act(async () => {
+      useUiStore.getState().openVoiceCommand('')
+    })
+    const field = screen.getByLabelText('OpenRouter API key')
+    expect(field.getAttribute('type')).toBe('password')
+    fireEvent.change(field, { target: { value: ' sk-or-1 ' } })
+    expect(saveJevKey).not.toHaveBeenCalled()
+    await act(async () => {
+      fireEvent.keyDown(field, { key: 'Enter', code: 'Enter' })
+    })
+    expect(saveJevKey).toHaveBeenCalledWith('sk-or-1')
+  })
+
+  describe('sending a task to an open pane', () => {
+    const decision = (terminal: string) => ({
+      addressed: { choice: 'yes', confidence: 0.9 },
+      action: { choice: 'send_prompt', confidence: 0.9 },
+      project: { choice: 'none', confidence: 0 },
+      terminal: { choice: terminal, confidence: 0.9 },
+      agents: [],
+      prompt: { choice: 'span_0', confidence: 0.9, spans: ['fix the build'] },
+      destructive: { choice: 'no', confidence: 0.9 },
+      latencyMs: 1,
+      costUsd: 0,
+    })
+
+    it('goes through the agent pane guarded submit, never a raw write', async () => {
+      const plan = await import('../../lib/voiceCommand')
+      vi.spyOn(plan, 'planFromDecision').mockReturnValue({
+        kind: 'reuse',
+        projectId: 'p',
+        terminalId: 't',
+        terminalName: 'claude · p',
+        ptyId: 'pty-agent',
+        agent: 'claude',
+        prompt: 'fix the build',
+      })
+      vi.spyOn(plan, 'planWarnings').mockReturnValue([])
+      jevDecide.mockResolvedValue(decision('t'))
+      render(<VoiceCommand />)
+      await act(async () => {
+        useUiStore.getState().openVoiceCommand('tell claude to fix the build')
+      })
+      await act(async () => undefined)
+      expect(agentInput.submit).toHaveBeenCalledWith('fix the build')
+      expect(writePty).not.toHaveBeenCalled()
+      vi.restoreAllMocks()
+    })
+
+    it('refuses while the agent shows its own approval menu', async () => {
+      const { TerminalPromptOpenError } = await import('../../lib/agentPromptDelivery')
+      agentInput.submit.mockRejectedValue(new TerminalPromptOpenError())
+      const plan = await import('../../lib/voiceCommand')
+      vi.spyOn(plan, 'planFromDecision').mockReturnValue({
+        kind: 'reuse',
+        projectId: 'p',
+        terminalId: 't',
+        terminalName: 'claude · p',
+        ptyId: 'pty-agent',
+        agent: 'claude',
+        prompt: 'yes',
+      })
+      vi.spyOn(plan, 'planWarnings').mockReturnValue([])
+      jevDecide.mockResolvedValue(decision('t'))
+      render(<VoiceCommand />)
+      await act(async () => {
+        useUiStore.getState().openVoiceCommand('tell claude yes')
+      })
+      await act(async () => undefined)
+      expect(writePty).not.toHaveBeenCalled()
+      expect(useUiStore.getState().notifications.at(-1)?.body).toBe(
+        'The agent is asking in the terminal. Answer there first.',
+      )
+      vi.restoreAllMocks()
+    })
+
+    it('still types into a shell, which has no guarded submit', async () => {
+      const plan = await import('../../lib/voiceCommand')
+      vi.spyOn(plan, 'planFromDecision').mockReturnValue({
+        kind: 'reuse',
+        projectId: 'p',
+        terminalId: 't',
+        terminalName: 'shell · p',
+        ptyId: 'pty-shell',
+        agent: 'shell',
+        prompt: 'ls',
+      })
+      vi.spyOn(plan, 'planWarnings').mockReturnValue([])
+      jevDecide.mockResolvedValue(decision('t'))
+      render(<VoiceCommand />)
+      await act(async () => {
+        useUiStore.getState().openVoiceCommand('run ls in the shell')
+      })
+      await act(async () => undefined)
+      expect(writePty).toHaveBeenCalledWith('pty-shell', 'ls\r')
+      vi.restoreAllMocks()
+    })
   })
 })

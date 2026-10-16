@@ -1,5 +1,5 @@
-import { formatShortcut, isMacOS } from '../platform'
-import { matchesAccelerator, parseAccelerator } from './shortcut'
+import { isMacOS } from '../platform'
+import { acceleratorLabel, matchesAccelerator, parseAccelerator } from './shortcut'
 
 /**
  * How a pane asks the voice conversation to read text aloud. The controller registers itself
@@ -46,7 +46,7 @@ export function currentSelection(): string {
 
 /** The read-aloud accelerator (`voiceReadAloudShortcut`) as the person reads it: ⌘⇧L, Ctrl+Shift+L. */
 export function readAloudShortcutLabel(shortcut: string): string {
-  return formatShortcut(shortcut.replace(/CmdOrCtrl|CommandOrControl/i, 'Ctrl'))
+  return acceleratorLabel(shortcut)
 }
 
 /**
