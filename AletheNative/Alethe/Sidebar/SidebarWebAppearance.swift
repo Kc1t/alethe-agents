@@ -63,7 +63,7 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                     Button { binding.wrappedValue.toggle() } label: {
                         Image(systemName: "chevron.down")
                             .rotationEffect(.degrees(binding.wrappedValue ? 0 : -90))
-                            .font(metrics.font(size: isGroup ? 14 : 13))
+                            .font(metrics.font(size: isGroup ? 14 : 15))
                             .foregroundStyle(theme[isGroup ? .fgFaint : .fgMuted])
                             .frame(width: metrics.size(isGroup ? 18 : 20), height: metrics.size(isGroup ? 18 : 20))
                     }
@@ -106,9 +106,11 @@ struct SidebarLabelStyle: LabelStyle {
                 if !isGroup {
                     configuration.icon
                         .font(metrics.font(size: 14))
-                        .frame(width: metrics.size(15), height: metrics.size(15))
+                        .fixedSize()
+                        .frame(minWidth: metrics.size(15))
                 }
                 configuration.title
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else { Label(configuration) }
     }
@@ -163,5 +165,31 @@ struct SidebarNativeDragSource: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface { content }
         else { content.itemProvider { NSItemProvider(object: payload as NSString) } }
+    }
+}
+
+struct SidebarWebGroupEmpty: View {
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @Environment(\.sidebarGroupDepth) private var depth
+
+    var body: some View {
+        Text("sidebar.group.empty")
+            .font(metrics.font(size: 11))
+            .foregroundStyle(theme[.fgFaint])
+            .padding(.horizontal, metrics.size(10))
+            .padding(.vertical, metrics.size(7))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) {
+                ForEach(0..<depth, id: \.self) { level in
+                    Rectangle().fill(theme[.border].opacity(0.55))
+                        .frame(width: metrics.size(1))
+                        .offset(x: -metrics.size(7 + CGFloat(level) * 10))
+                }
+            }
+            .listRowInsets(EdgeInsets(top: 0, leading: metrics.size(8 + CGFloat(depth) * 10),
+                                      bottom: 0, trailing: metrics.size(8)))
+            .listRowSeparator(.hidden)
+            .listRowBackground(theme[.bg])
     }
 }

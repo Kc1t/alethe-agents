@@ -3721,3 +3721,12 @@ Resolved (2026-09-22):
   full compilation and interaction validation remain required outside the sandbox.
 - AI memory could not be recorded: this session exposes neither an ai-memory tool/CLI nor its skill.
   This note preserves the outcome and follow-up for the reviewer.
+
+### Sidebar compilation follow-up — 2026-10-16
+
+- Removed `listRowSpacing(0)` from `SidebarWebAppearance.swift`: the modifier is unavailable on macOS.
+  Existing row insets, heights and padding continue to control sidebar layout.
+- Validation: `check-strings.py` and `git diff --check` pass; no sidebar references to
+  `listRowSpacing` remain. No build was attempted, as requested; the reviewer must compile externally.
+- AI memory remains unavailable in this session (no tool or skill); this note records the outcome.
+- A checkpoint commit cannot be written under the current read-only Git metadata permissions.

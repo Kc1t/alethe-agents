@@ -104,6 +104,7 @@ struct LeftSidebar: View {
                         .font(metrics.font(size: 15))
                         .foregroundStyle(theme[.textTertiary])
                     Text("leftSidebar.search").font(metrics.font(size: 13, weight: .medium))
+                        .lineLimit(1)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, metrics.size(8))
@@ -162,15 +163,7 @@ struct LeftSidebar: View {
                         .scrollContentBackground(.hidden)
                         .background(theme[.bg])
                 } else {
-                    ContentUnavailableView {
-                        Label("leftSidebar.emptyTitle", systemImage: "folder.badge.plus")
-                    } description: {
-                        Text("leftSidebar.emptyDescription")
-                    } actions: {
-                        Button("leftSidebar.emptyAction") { environment.editorRequest = .newProject(.ungrouped) }
-                            .buttonStyle(AletheButtonStyle())
-                            .disabled(environment.workspace == nil)
-                    }
+                    ScrollView { SidebarWebEmptyState() }
                 }
             }
             .background(theme[.bg])
@@ -181,11 +174,15 @@ struct LeftSidebar: View {
         VStack(spacing: 0) {
             if let project = selectedProject, project.panes.count >= 2 {
                 HStack(spacing: metrics.size(8)) {
-                    Text("leftSidebar.organization")
-                        .textCase(.uppercase)
-                        .font(metrics.font(size: 10, weight: .semibold))
-                        .tracking(metrics.size(0.6))
-                        .foregroundStyle(theme[.fgFaint])
+                    ViewThatFits(in: .horizontal) {
+                        Text("leftSidebar.organization")
+                            .textCase(.uppercase)
+                            .font(metrics.font(size: 10, weight: .semibold))
+                            .tracking(metrics.size(0.6))
+                            .foregroundStyle(theme[.fgFaint])
+                            .fixedSize()
+                        theme[.bg].opacity(0).frame(width: metrics.size(0), height: metrics.size(0))
+                    }
                     Spacer(minLength: 0)
                     HStack(spacing: metrics.size(2)) {
                         ForEach(PaneLayoutMode.allCases, id: \.self) { mode in
@@ -199,8 +196,9 @@ struct LeftSidebar: View {
                             .accessibilityAddTraits(project.layout == mode ? .isSelected : [])
                         }
                     }
+                    .fixedSize()
                     .padding(metrics.size(2))
-                    .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                    .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
                         .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 }

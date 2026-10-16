@@ -5,7 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Removed the unsupported sidebar list-spacing modifier to restore macOS API compatibility.
+
 ### Changed
+- The Alethe sidebar uses bundled agent logos (including mixed-agent terminal stacks), the default
+  profile image, icon-only row menus and labeled context-menu icons. Long names yield to fixed
+  controls; count chips, album art and playback indicators retain their dimensions when zoomed.
+- Empty project lists show the web's centered No projects yet card and accent Create project action;
+  Explorer uses the same compact card. Group empty rows and drag targets follow web tree spacing.
+- Clean sidebar profiles use the web's 40-point row, 24-point avatar and compact identity fonts.
+  Layout switches use the elevated background and hide their label when space is insufficient.
+  Native macOS interface styling remains unchanged.
 - Alethe interface title bar follows the web control order: menu and pressed sidebar toggle after
   the traffic lights, then news, sync, profile, live memory in MB and the right-sidebar toggle.
   Idle Pomodoro, notification and usage-launcher buttons no longer occupy the web title bar.

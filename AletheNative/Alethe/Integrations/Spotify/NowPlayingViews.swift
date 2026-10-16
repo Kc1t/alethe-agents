@@ -202,6 +202,7 @@ struct SidebarNowPlaying: View {
     private func row(_ track: SpotifyNowPlaying) -> some View {
         HStack(spacing: metrics.space(.m)) {
             CoverArt(url: track.coverURL, size: metrics.size(metrics.isWebInterface ? 24 : 28), sidebarWeb: metrics.isWebInterface)
+                .fixedSize(horizontal: metrics.isWebInterface, vertical: metrics.isWebInterface)
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: track.track)
                     .font(metrics.isWebInterface ? metrics.font(size: 11, weight: .medium) : metrics.font(.footnote).weight(.medium))
@@ -212,10 +213,19 @@ struct SidebarNowPlaying: View {
                     .foregroundStyle(theme[metrics.isWebInterface ? .fgFaint : .textSecondary])
                     .lineLimit(1)
             }
+            .frame(maxWidth: metrics.isWebInterface ? .infinity : nil, alignment: .leading)
             Spacer(minLength: 0)
             if track.playing {
                 Equalizer(barCount: 3, height: metrics.size(metrics.isWebInterface ? 12 : 10),
                           sidebarWeb: metrics.isWebInterface)
+                    .fixedSize(horizontal: metrics.isWebInterface, vertical: metrics.isWebInterface)
+            } else if metrics.isWebInterface {
+                Text(verbatim: "‖")
+                    .font(metrics.font(size: 14))
+                    .tracking(metrics.size(-1))
+                    .foregroundStyle(theme[.fgFaint])
+                    .fixedSize()
+                    .accessibilityHidden(true)
             } else {
                 Image(systemName: "pause.fill")
                     .font(metrics.isWebInterface ? metrics.font(size: 14) : metrics.font(.caption))

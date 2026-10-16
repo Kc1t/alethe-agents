@@ -14,32 +14,35 @@ struct SidebarWebProfile: View {
 
     var body: some View {
         Button { showingMenu.toggle() } label: {
-            HStack(spacing: metrics.size(10)) {
-                Text(verbatim: String(environment.activeProfileName.prefix(1)).uppercased())
-                    .font(metrics.font(size: 13, weight: .bold))
-                    .foregroundStyle(theme[.fg])
-                    .frame(width: metrics.size(34), height: metrics.size(34))
-                    .background(theme[.bgSunken], in: Circle())
+            HStack(spacing: metrics.size(metrics.style == .clean ? 8 : 10)) {
+                Image("DefaultProfile")
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: metrics.size(metrics.style == .clean ? 24 : 34),
+                           height: metrics.size(metrics.style == .clean ? 24 : 34))
+                    .clipShape(Circle())
                     .overlay(Circle().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                    .fixedSize()
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(verbatim: environment.activeProfileName)
-                        .font(metrics.font(size: 13, weight: .semibold))
+                        .font(metrics.font(size: metrics.style == .clean ? 11 : 13, weight: .semibold))
                         .foregroundStyle(theme[.fg])
                     Text(verbatim: String(format: String(localized: "leftSidebar.localAccount"),
                                          environment.activeProfileName))
-                        .font(metrics.font(size: 11))
+                        .font(metrics.font(size: metrics.style == .clean ? 10 : 11))
                         .foregroundStyle(theme[.fgFaint])
                 }
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "gearshape")
                     .font(metrics.font(size: 13))
-                    .foregroundStyle(theme[.fgFaint])
+                    .foregroundStyle(theme[hovering ? .fg : .fgFaint])
                     .fixedSize()
             }
-            .padding(.horizontal, metrics.size(12))
-            .padding(.vertical, metrics.size(14))
+            .padding(.horizontal, metrics.size(metrics.style == .clean ? 10 : 12))
+            .padding(.vertical, metrics.size(metrics.style == .clean ? 0 : 14))
+            .frame(height: metrics.style == .clean ? metrics.size(40) : nil)
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
@@ -63,7 +66,7 @@ struct SidebarWebProfile: View {
         .accessibilityIdentifier("leftSidebar.profile")
         .popover(isPresented: $showingMenu, arrowEdge: .top) {
             VStack(alignment: .leading, spacing: metrics.size(2)) {
-                Button("leftSidebar.preferences") {
+                SidebarMenuButton("leftSidebar.preferences", symbol: "gearshape") {
                     showingMenu = false
                     openSettings()
                 }
@@ -81,7 +84,7 @@ struct SidebarWebProfile: View {
                     }
                 }
                 Divider()
-                Button("profiles.menu.manage") {
+                SidebarMenuButton("profiles.menu.manage", symbol: "person.2") {
                     showingMenu = false
                     environment.settingsTab = .profiles
                     openSettings()
