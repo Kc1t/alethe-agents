@@ -17,6 +17,12 @@ struct UsageStrip: View {
             HStack {
                 HomeSectionHeader(title: "home.usage")
                 Spacer()
+                Button {
+                    Task { await environment.usage.refresh(UsageMonitor.providers) }
+                } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless)
+                    .help(Text("home.refresh"))
+                    .accessibilityLabel(Text("home.refresh"))
                 Button("home.usage.details") { environment.editorRequest = .aiUsage }
                     .buttonStyle(.link)
                     .accessibilityIdentifier("home.usage.details")
@@ -42,6 +48,14 @@ struct UsageStrip: View {
                     }
                     ProgressView(value: min(window.usedPercent, 100), total: 100)
                         .tint(theme[UsageLevel.token(window.usedPercent)])
+                    if let reset = window.resetsAt {
+                        HStack(spacing: metrics.space(.xs)) {
+                            Text("home.usage.resets")
+                            Text(reset, format: .relative(presentation: .named))
+                        }
+                        .font(metrics.font(.caption))
+                        .foregroundStyle(theme[.textTertiary])
+                    }
                 }
             } else if environment.usage.refreshing.contains(provider) {
                 ProgressView().controlSize(.small)
@@ -68,7 +82,7 @@ struct ActivityGraph: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
-    @State private var days: [ActivityDays.Day] = []
+    @Binding var days: [ActivityDays.Day]
     @State private var loading = true
     nonisolated static let dayCount = 91
 
@@ -80,6 +94,13 @@ struct ActivityGraph: View {
                     Text(String(format: String(localized: "home.activity.total"), days.reduce(0) { $0 + $1.count }))
                     Label(String(format: String(localized: "home.activity.streak"), ActivityDays.streak(days)), systemImage: "flame")
                         .accessibilityIdentifier("home.activity.streak")
+                }
+                if let delta {
+                    Text(verbatim: "\(delta >= 0 ? "▲" : "▼") \(Int(abs(delta).rounded()))%")
+                        .padding(.horizontal, metrics.space(.s))
+                        .padding(.vertical, metrics.space(.xxs))
+                        .background(theme[.bgSunken], in: Capsule())
+                        .help(Text("home.activity.delta"))
                 }
                 Spacer()
                 if loading { ProgressView().controlSize(.small) }
@@ -108,9 +129,25 @@ struct ActivityGraph: View {
         .accessibilityIdentifier("home.activity")
     }
 
+    /// Compare the last seven days with the seven days immediately before them, as on the web.
+    private var delta: Double? {
+        guard days.count >= 14 else { return nil }
+        let recent = days.suffix(7).reduce(0) { $0 + $1.count }
+        let previous = days.dropLast(7).suffix(7).reduce(0) { $0 + $1.count }
+        return previous == 0 ? (recent > 0 ? 100 : 0) : Double(recent - previous) / Double(previous) * 100
+    }
+
     private var grid: some View {
         let peak = days.map(\.count).max() ?? 0
         return HStack(alignment: .top, spacing: metrics.space(.xxs)) {
+            VStack(alignment: .trailing, spacing: metrics.space(.xxs)) {
+                ForEach(0..<7) { weekday in
+                    Text(verbatim: Calendar.current.shortWeekdaySymbols[weekday])
+                        .font(metrics.font(size: 8))
+                        .foregroundStyle(theme[.textTertiary])
+                        .frame(height: metrics.size(11))
+                }
+            }
             ForEach(Array(columns.enumerated()), id: \.offset) { _, column in
                 VStack(spacing: metrics.space(.xxs)) {
                     ForEach(Array(column.enumerated()), id: \.offset) { _, day in
@@ -196,6 +233,12 @@ struct TimeAnalytics: View {
                     Text("home.time.subtitle").font(metrics.font(.footnote)).foregroundStyle(theme[.textTertiary])
                 }
                 Spacer()
+                Button {
+                    Task { await refresh() }
+                } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless)
+                    .help(Text("home.refresh"))
+                    .accessibilityLabel(Text("home.refresh"))
                 Picker("home.time", selection: $range) {
                     ForEach(Range.allCases) { Text($0.title).tag($0) }
                 }
@@ -235,13 +278,17 @@ struct TimeAnalytics: View {
         .aletheCard()
         .task(id: TaskKey(range: range, revision: environment.activity.revision)) {
             while !Task.isCancelled {
-                summary = await environment.activity.currentSummary(
-                    dates: range.days.map { ActivityStats.lastDays($0) } ?? [])
+                await refresh()
                 try? await Task.sleep(for: .seconds(30))
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.time")
+    }
+
+    private func refresh() async {
+        summary = await environment.activity.currentSummary(
+            dates: range.days.map { ActivityStats.lastDays($0) } ?? [])
     }
 
     private struct TaskKey: Hashable { var range: Range; var revision: Int }

@@ -12,18 +12,29 @@ struct HomeView: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var appeared = false
+    @State private var activityDays: [ActivityDays.Day] = []
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: metrics.size(24)) {
                 VStack(alignment: .leading, spacing: metrics.space(.xxl)) {
                     Spacer(minLength: metrics.size(28))
-                    HomeHero()
+                    HomeHero(streak: ActivityDays.streak(activityDays))
                         .frame(maxWidth: .infinity)
                     QuickLaunch(workspace: workspace)
                         .frame(maxWidth: .infinity)
+                    HStack(spacing: metrics.space(.xl)) {
+                        Button { environment.editorRequest = .newTerminal(nil) } label: {
+                            Label("home.action.newTerminal", systemImage: "terminal")
+                        }
+                        Button { environment.editorRequest = .newProject(.ungrouped) } label: {
+                            Label("home.action.newProject", systemImage: "folder.badge.plus")
+                        }
+                    }
+                    .buttonStyle(.link)
+                    .font(metrics.font(.footnote))
+                    .frame(maxWidth: .infinity)
                     Spacer(minLength: metrics.size(42))
-                    NowPlayingCard()
                     SetupWalkthroughView(workspace: workspace)
                 }
                 .frame(minHeight: metrics.size(430))
@@ -36,9 +47,9 @@ struct HomeView: View {
                 .entrance(appeared, step: 1, reduced: metrics.reducesMotion, rise: metrics.size(8))
                 VStack(alignment: .leading, spacing: metrics.size(24)) {
                     UsageStrip()
-                    ActivityGraph()
+                    ActivityGraph(days: $activityDays)
                     TimeAnalytics()
-                    NotificationList()
+                    NotificationList(isHome: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .aletheCard()
                     HomeFooter()
@@ -95,6 +106,7 @@ enum HomeFormat {
 // MARK: - Hero
 
 private struct HomeHero: View {
+    let streak: Int
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -102,6 +114,16 @@ private struct HomeHero: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             VStack(spacing: metrics.size(7)) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: metrics.space(.xl)) {
+                        avatar
+                        NowPlayingCard()
+                    }
+                    VStack(spacing: metrics.space(.m)) {
+                        avatar
+                        NowPlayingCard()
+                    }
+                }
                 Text(verbatim: "\(greeting(context.date)), \(firstName).")
                     .font(metrics.font(size: 34, weight: .medium))
                     .minimumScaleFactor(25.0 / 34.0)
@@ -115,13 +137,29 @@ private struct HomeHero: View {
                     .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.greeting")
     }
 
     private var firstName: String {
-        let full = NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
-        return full.lowercased()
+        let profile = environment.activeProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !profile.isEmpty { return profile }
+        return NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
+    }
+
+    private var avatar: some View {
+        Text(verbatim: String(firstName.prefix(1)).uppercased())
+            .font(metrics.font(size: 28, weight: .medium))
+            .foregroundStyle(theme[.accent])
+            .frame(width: metrics.size(64), height: metrics.size(64))
+            .background(theme[.bgSunken], in: Circle())
+            .overlay(alignment: .bottomTrailing) {
+                Label { Text(verbatim: "\(streak)") } icon: { Image(systemName: "flame.fill") }
+                    .font(metrics.font(.caption))
+                    .padding(metrics.space(.xs))
+                    .background(theme[.panel], in: Capsule())
+                    .accessibilityLabel(Text(String(format: String(localized: "home.activity.streak"), streak)))
+            }
     }
 
     private func greeting(_ date: Date) -> String {
@@ -145,7 +183,7 @@ private struct QuickLaunch: View {
     @Environment(\.undoManager) private var undoManager
     @State private var prompt = ""
     @State private var agent: AgentKind = .claude
-    @State private var projectID: ProjectID?
+    @State private var workingDirectory: String?
     @State private var unrestricted = false
     @FocusState private var focused: Bool
 
@@ -153,7 +191,7 @@ private struct QuickLaunch: View {
         AgentRegistry.builtin.enabledKinds(environment.preferences?.document.enabledAgents).filter { $0 != .shell }
     }
     private var project: Project? {
-        projectID.flatMap(workspace.document.project) ?? workspace.document.recentProjectIDs(limit: 1).first.flatMap(workspace.document.project)
+        workspace.document.recentProjectIDs(limit: 1).first.flatMap(workspace.document.project)
     }
     private var descriptor: AgentDescriptor? { AgentRegistry.builtin.descriptor(for: agent) }
 
@@ -194,14 +232,13 @@ private struct QuickLaunch: View {
                 .frame(width: metrics.size(145))
                 .accessibilityLabel(Text("home.quick.agent"))
                 .accessibilityIdentifier("home.quick.agent")
-                AletheSelect(selection: Binding { project?.id } set: { projectID = $0 },
-                             options: workspace.document.projects.map { Optional($0.id) }) { id in
+                Button(action: chooseFolder) {
                     Label {
-                        if let selected = id.flatMap(workspace.document.project) {
-                            Text(verbatim: (selected.folder as NSString).abbreviatingWithTildeInPath)
-                                .font(metrics.monoFont(size: 10))
+                        if let folder = workingDirectory ?? project?.folder {
+                            Text(verbatim: (folder as NSString).abbreviatingWithTildeInPath)
+                                .lineLimit(1).truncationMode(.middle)
                         } else {
-                            Text("home.quick.project").font(metrics.monoFont(size: 10))
+                            Text("home.quick.project")
                         }
                     } icon: { Image(systemName: "folder") }
                 }
@@ -247,10 +284,22 @@ private struct QuickLaunch: View {
         .accessibilityIdentifier("home.quick")
     }
 
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = (workingDirectory ?? project?.folder).map { URL(fileURLWithPath: $0) }
+        panel.begin { response in
+            if response == .OK, let url = panel.url { workingDirectory = url.path }
+        }
+    }
+
     private func send() {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let project, !text.isEmpty, agents.contains(agent) else { return }
-        let tab = PaneTab(agent: agent.rawValue, unrestricted: descriptor?.unrestrictedFlag != nil && unrestricted, initialPrompt: text)
+        let tab = PaneTab(agent: agent.rawValue, workingDirectory: workingDirectory ?? project.folder,
+                          unrestricted: descriptor?.unrestrictedFlag != nil && unrestricted, initialPrompt: text)
         workspace.update(undoManager: undoManager, actionName: String(localized: "undo.newTerminal")) {
             $0.openInTab(project.id)
             $0.addPane(to: project.id, tab: tab)
@@ -272,9 +321,14 @@ private struct RecentProjects: View {
     @State private var hoveredProject: ProjectID?
 
     var body: some View {
-        let recent = workspace.document.recentProjectIDs().compactMap(workspace.document.project)
+        let recent = workspace.document.recentProjectIDs(limit: 6).compactMap(workspace.document.project)
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
-            HomeSectionHeader(title: "home.recent", count: recent.isEmpty ? nil : recent.count)
+            HStack {
+                HomeSectionHeader(title: "home.recent", count: recent.isEmpty ? nil : recent.count)
+                Spacer()
+                Button("home.recent.viewAll") { environment.editorRequest = .findJump }
+                    .buttonStyle(.link)
+            }
             if recent.isEmpty {
                 VStack(alignment: .leading, spacing: metrics.space(.s)) {
                     Text("home.recent.empty").foregroundStyle(theme[.textSecondary])
@@ -293,6 +347,16 @@ private struct RecentProjects: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func lastUsed(_ id: ProjectID) -> Date? {
+        let history = workspace.document.workspace.history.filter {
+            $0.snapshot.selectedProjectID == id || $0.snapshot.openProjectIDs.contains(id)
+        }.map(\.visitedAt)
+        let tabs = workspace.document.workspace.tabs.filter {
+            $0.projectID == id || $0.snapshot.openProjectIDs.contains(id)
+        }.map(\.updatedAt)
+        return (history + tabs).max()
+    }
+
     private func card(_ project: Project) -> some View {
         let terminals = project.panes.filter { $0.content.isTerminal }.count
         return Button {
@@ -303,8 +367,16 @@ private struct RecentProjects: View {
                 AletheMonogram(name: project.name, color: theme[project.color.token], side: 28)
                 VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
                     Text(verbatim: project.name).font(metrics.font(size: 11, weight: .semibold)).lineLimit(1)
-                    Text(String(format: String(localized: "home.recent.terminals"), terminals))
+                    TimelineView(.everyMinute) { _ in
+                        HStack(spacing: metrics.space(.xxs)) {
+                            Text(String(format: String(localized: "home.recent.terminals"), terminals))
+                            if let lastUsed = lastUsed(project.id) {
+                                Text(verbatim: "·")
+                                Text(lastUsed, format: .relative(presentation: .named))
+                            }
+                        }
                         .font(metrics.monoFont(size: 9)).foregroundStyle(theme[.textTertiary])
+                    }
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.right").foregroundStyle(theme[.textTertiary])
@@ -338,7 +410,7 @@ private struct HomeActions: View {
                 row("home.action.newProject", icon: "folder.badge.plus", keys: "⌘N", id: "home.action.newProject") {
                     environment.editorRequest = .newProject(.ungrouped)
                 }
-                row("home.action.newGroup", icon: "square.stack.3d.up", keys: nil, id: "home.action.newGroup") {
+                row("home.action.newGroup", icon: "square.stack.3d.up", keys: "⇧⌘N", id: "home.action.newGroup") {
                     environment.editorRequest = .newGroup(parent: nil)
                 }
                 row("home.action.findJump", icon: "magnifyingglass", keys: "⌘K", id: "home.action.findJump") {
@@ -369,6 +441,7 @@ private struct HomeActions: View {
 // MARK: - Footer
 
 private struct HomeFooter: View {
+    @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     private static let repository = URL(string: "https://github.com/Kc1t/alethe-agents")!
@@ -378,7 +451,14 @@ private struct HomeFooter: View {
             Link(destination: Self.repository) { Label("home.repository", systemImage: "chevron.left.forwardslash.chevron.right") }
             Link(destination: Self.repository.appending(path: "issues")) { Label("home.issues", systemImage: "smallcircle.filled.circle") }
             Link(destination: Self.repository.appending(path: "releases")) { Label("home.releases", systemImage: "shippingbox") }
+            Spacer(minLength: 0)
+            Button { environment.editorRequest = .findJump } label: {
+                Text("home.footer.search")
+            }
+            Button { environment.editorRequest = .onboarding } label: { Text("home.footer.help") }
+                .keyboardShortcut("?", modifiers: .command)
         }
+        .buttonStyle(.link)
         .font(metrics.font(.footnote))
         .foregroundStyle(theme[.textTertiary])
     }

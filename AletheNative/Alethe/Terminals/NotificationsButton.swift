@@ -35,6 +35,7 @@ struct NotificationsButton: View {
 
 /// The recent notifications, newest first; also shown on Home (P3-15).
 struct NotificationList: View {
+    var isHome = false
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -45,6 +46,7 @@ struct NotificationList: View {
         VStack(alignment: .leading, spacing: metrics.space(.s)) {
             HStack {
                 Text("notifications.title").font(metrics.font(.headline))
+                if !entries.isEmpty { AletheCountPill(entries.count) }
                 Spacer()
                 if !entries.isEmpty {
                     Button("notifications.clear") { environment.notifier.clear() }
@@ -52,27 +54,35 @@ struct NotificationList: View {
                 }
             }
             if entries.isEmpty {
-                Text("notifications.none")
+                Label("notifications.none", systemImage: "checkmark.circle.fill")
+                    .font(metrics.font(.footnote))
+                    .foregroundStyle(theme[.statusActive])
+                Text("home.notifications.emptyDetail")
                     .font(metrics.font(.footnote))
                     .foregroundStyle(theme[.textTertiary])
             }
-            ForEach(entries) { entry in
+            ForEach(entries.prefix(isHome ? 5 : entries.count)) { entry in
                 Button {
                     if let tab = entry.tab { environment.notifier.open(tab) }
                     dismiss()
                 } label: {
-                    VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
-                        HStack {
-                            Text(verbatim: entry.title).font(metrics.font(.body).weight(.medium))
-                            Spacer()
-                            Text(entry.createdAt, format: .relative(presentation: .named))
-                                .font(metrics.font(.caption))
-                                .foregroundStyle(theme[.textTertiary])
+                    HStack(alignment: .top, spacing: metrics.space(.s)) {
+                        Image(systemName: entry.agent == nil ? "bell" : "sparkles")
+                            .foregroundStyle(theme[entry.agent.map { AgentTokens.accent(for: $0) } ?? .textTertiary])
+                            .frame(width: metrics.size(20))
+                        VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
+                            HStack {
+                                Text(verbatim: entry.title).font(metrics.font(.body).weight(.medium))
+                                Spacer()
+                                Text(entry.createdAt, format: .relative(presentation: .named))
+                                    .font(metrics.font(.caption))
+                                    .foregroundStyle(theme[.textTertiary])
+                            }
+                            Text(verbatim: entry.body)
+                                .font(metrics.font(.footnote))
+                                .foregroundStyle(theme[.textSecondary])
+                                .lineLimit(2)
                         }
-                        Text(verbatim: entry.body)
-                            .font(metrics.font(.footnote))
-                            .foregroundStyle(theme[.textSecondary])
-                            .lineLimit(2)
                     }
                     .padding(metrics.space(.s))
                     .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
@@ -83,7 +93,8 @@ struct NotificationList: View {
             }
         }
         .padding(metrics.space(.l))
-        .frame(width: metrics.size(340))
+        .frame(width: isHome ? nil : metrics.size(340))
+        .frame(maxWidth: isHome ? .infinity : nil)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("notifications.list")
     }
