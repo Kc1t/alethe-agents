@@ -494,7 +494,7 @@ error class and HTTP status reach `spawn.log`.
   accuracy tiers via `TierDots`, size, status, "Used in", "Selected for", expandable details with
   "Use for …"): `LocalModelsView` for local models (download, pause, resume, cancel, remove; removing
   an in-use model resets that use to its default) and `CloudModelsView` for cloud ones (voices by
-  language; OpenRouter's raw prices with a unit hint). `BuiltInProviderView` covers Apple Speech
+  language; OpenRouter's `pricing` per unit × 1M, written as on its site: `$0.50 / $6 per 1M`). `BuiltInProviderView` covers Apple Speech
   (languages, permission) and the system voice (voices per language with Test). **Compare models**
   on a use tab opens the table for that use. Speed/accuracy tiers are curated catalog data from
   published benchmarks; size, languages, status and prices are real data, and missing values show

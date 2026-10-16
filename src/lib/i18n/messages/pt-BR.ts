@@ -3843,7 +3843,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceColSize': 'Tamanho',
   'prefs.voiceColStatus': 'Status',
   'prefs.voiceColVoices': 'Vozes',
-  'prefs.voiceColPrice': 'Preço',
+  'prefs.voiceColPrice': 'Preço entrada / saída',
+  'prefs.voicePricePerMillion': 'por 1M',
   'prefs.voiceTierSource': 'Com base nos benchmarks publicados do modelo',
   'prefs.voiceTierLabel': '{label}: {tier} de 3',
   'prefs.voiceLocalModeInstalled': 'Instalados',
@@ -3966,7 +3967,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceSystemVoicesByLanguage': 'Vozes por idioma',
   'prefs.voiceSystemTest': 'Testar',
   'prefs.voicePriceHint':
-    'Preço por unidade do OpenRouter: entrada e, quando cobrada, saída. O OpenRouter não informa se a unidade é token, caractere ou segundo.',
+    'Preços do OpenRouter em dólares por milhão de unidades, como no site dele: entrada e, quando cobrada, saída. A unidade costuma ser o token; algumas vozes cobram por caractere.',
   'voice.model.parakeet.summary': 'A melhor precisão geral; detecta o idioma sozinho.',
   'voice.model.parakeet.details':
     '25 idiomas europeus, com pontuação e maiúsculas. Download grande; leva alguns segundos para carregar na primeira vez.',

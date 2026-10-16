@@ -66,8 +66,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   speaks and **Use for …** buttons; the recommended voice follows the app language, and each use tab
   has **Compare models**. Removing a model that is in use switches that use to another downloaded
   model of the same kind, or to its default. Cloud provider pages list their models in the same
-  table, with voices by language and OpenRouter's raw prices (it does not state the unit, so a hint
-  says so). The Apple Speech page shows the recognition permission and splits installed languages
+  table, with voices by language and OpenRouter's input / output prices per million units, as its
+  site shows them (e.g. "$0.50 / $6 per 1M"). The Apple Speech page shows the recognition permission and splits installed languages
   from those available to install; the system voice page lists voices per language and has a single
   **Test** button.
 - **Pause and resume model downloads.** A download can be paused and resumed later, even after

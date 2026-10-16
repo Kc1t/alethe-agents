@@ -118,7 +118,10 @@ export function CloudModelsView({
         languages: languagesCell(voices, t, locale),
         voices: voices.length > 0 ? voices.length : undefined,
         price: model.price ? (
-          <span title={t('prefs.voicePriceHint')}>{model.price}</span>
+          <span title={t('prefs.voicePriceHint')}>
+            {model.price}{' '}
+            <span className={styles.priceUnit}>{t('prefs.voicePricePerMillion')}</span>
+          </span>
         ) : undefined,
       },
       details: (

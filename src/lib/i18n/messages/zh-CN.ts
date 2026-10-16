@@ -3581,7 +3581,8 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.voiceColSize': '大小',
   'prefs.voiceColStatus': '状态',
   'prefs.voiceColVoices': '语音',
-  'prefs.voiceColPrice': '价格',
+  'prefs.voiceColPrice': '输入 / 输出价格',
+  'prefs.voicePricePerMillion': '每 1M',
   'prefs.voiceTierSource': '基于模型公开的基准测试',
   'prefs.voiceTierLabel': '{label}：{tier} / 3',
   'prefs.voiceLocalModeInstalled': '已安装',
@@ -3689,7 +3690,7 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.voiceSystemVoicesByLanguage': '按语言分类的语音',
   'prefs.voiceSystemTest': '试听',
   'prefs.voicePriceHint':
-    'OpenRouter 的单位价格：输入价格，若输出也计费则随后为输出价格。OpenRouter 未说明单位是 token、字符还是秒。',
+    'OpenRouter 的价格，以美元计每百万单位，与其网站一致：输入价格，若输出也计费则随后为输出价格。单位通常是 token；部分语音按字符计费。',
   'voice.model.parakeet.summary': '整体准确度最高；自动识别语言。',
   'voice.model.parakeet.details':
     '支持 25 种欧洲语言，带标点和大小写。体积较大，首次加载需要几秒。',

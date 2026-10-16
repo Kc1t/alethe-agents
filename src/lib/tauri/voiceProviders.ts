@@ -9,7 +9,7 @@ export type VoiceCatalogModel = {
   capability: 'stt' | 'tts'
   /** Voices the model speaks; only OpenRouter's live list carries them. */
   voices?: string[]
-  /** OpenRouter's per-unit price (`$input` or `$input · $output`); the unit is not published. */
+  /** OpenRouter's price in dollars per million units: `$input` or `$input / $output`. */
   price?: string
 }
 export type VoiceCatalogVoice = { id: string; label: string }

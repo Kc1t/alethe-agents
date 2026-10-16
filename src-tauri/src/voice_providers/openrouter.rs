@@ -18,7 +18,8 @@ pub struct LiveModel {
     pub capability: &'static str,
     /// The model's `supported_voices`; empty when OpenRouter lists none.
     pub voices: Vec<String>,
-    /// OpenRouter's per-unit price (see [`format_price`]); absent when unknown or free.
+    /// OpenRouter's price in dollars per million units (see [`format_price`]); absent when
+    /// unknown or free.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub price: Option<String>,
 }
@@ -53,22 +54,31 @@ fn price_of(value: &Value) -> Option<f64> {
     (amount.is_finite() && amount > 0.0).then_some(amount)
 }
 
-/// `$` plus four significant digits, trailing zeros trimmed (`0.00003055…` → `$0.00003056`).
-fn dollars(amount: f64) -> String {
-    let decimals = (3 - amount.log10().floor() as i32).clamp(0, 12) as usize;
-    let text = format!("{amount:.decimals$}");
-    let text = if text.contains('.') {
-        text.trim_end_matches('0').trim_end_matches('.')
+/// OpenRouter's API prices one unit (a token, for some voices a character); its site, and people,
+/// compare them per million.
+const UNITS_PER_PRICE: f64 = 1_000_000.0;
+
+/// A per-unit price as dollars per million units, written as OpenRouter's site writes it: whole
+/// dollars bare (`$6`, `$2500`), cents with two decimals (`$0.50`), smaller amounts with two
+/// significant digits (`$0.0025`).
+fn dollars(per_unit: f64) -> String {
+    // Rounded to a millionth first, so 0.000006 × 1M reads 6 and not 5.999999…
+    let amount = (per_unit * UNITS_PER_PRICE * 1e6).round() / 1e6;
+    let text = if amount.fract() == 0.0 || amount >= 100.0 {
+        format!("{amount:.0}")
+    } else if amount >= 0.01 {
+        format!("{amount:.2}")
     } else {
-        text.as_str()
+        let decimals = (1 - amount.log10().floor() as i32).clamp(2, 12) as usize;
+        let text = format!("{amount:.decimals$}");
+        text.trim_end_matches('0').to_string()
     };
     format!("${text}")
 }
 
-/// Short price of a model from OpenRouter's `pricing`: the `prompt` (input) amount, plus
-/// ` · <completion>` when the output is billed too. OpenRouter does not name the unit of audio
-/// models (it varies between tokens, characters and seconds), so none is added here.
-/// `None` when both amounts are missing or zero.
+/// Short price of a model from OpenRouter's `pricing`, in dollars per million units: the `prompt`
+/// (input) amount, plus ` / <completion>` when the output is billed too (`$0.50 / $6`). The
+/// frontend adds "per 1M". `None` when both amounts are missing or zero.
 pub fn format_price(pricing: &Value) -> Option<String> {
     let prompt = price_of(&pricing["prompt"]);
     let completion = price_of(&pricing["completion"]);
@@ -76,7 +86,7 @@ pub fn format_price(pricing: &Value) -> Option<String> {
         (None, None) => None,
         (Some(input), None) => Some(dollars(input)),
         (input, Some(output)) => Some(format!(
-            "{} · {}",
+            "{} / {}",
             input.map_or_else(|| "$0".to_string(), dollars),
             dollars(output)
         )),
@@ -334,39 +344,41 @@ mod tests {
         assert_eq!(format_price(&json!({"prompt": "-1"})), None);
     }
 
+    // As OpenRouter's site shows them: Gemini 3.8 Flash Lite TTS is "$0.50 / $6 per 1M".
     #[test]
-    fn prices_show_openrouter_per_unit_amounts_without_inventing_a_unit() {
+    fn prices_read_per_million_units_as_openrouter_shows_them() {
         use serde_json::json;
         assert_eq!(
-            format_price(&json!({"prompt": "0.0001", "completion": "0"})),
-            Some("$0.0001".to_string())
+            format_price(&json!({"prompt": "0.0000005", "completion": "0.000006"})),
+            Some("$0.50 / $6".to_string()),
+            "input / output when the output is billed"
         );
         assert_eq!(
             format_price(&json!({"prompt": "0.00000062", "completion": "0"})),
-            Some("$0.00000062".to_string())
+            Some("$0.62".to_string())
         );
         assert_eq!(
-            format_price(&json!({"prompt": "0.00003055555555555", "completion": "0"})),
-            Some("$0.00003056".to_string()),
-            "four significant digits"
+            format_price(&json!({"prompt": "0.000015"})),
+            Some("$15".to_string())
         );
         assert_eq!(
-            format_price(&json!({"prompt": "0.36"})),
-            Some("$0.36".to_string())
+            format_price(&json!({"prompt": "0.00003055555555555"})),
+            Some("$30.56".to_string()),
+            "cents with two decimals"
         );
         assert_eq!(
-            format_price(&json!({"prompt": 0.1, "completion": 0})),
-            Some("$0.1".to_string()),
+            format_price(&json!({"prompt": "0.0000000025"})),
+            Some("$0.0025".to_string()),
+            "under a cent: two significant digits"
+        );
+        assert_eq!(
+            format_price(&json!({"prompt": 0.000001, "completion": 0})),
+            Some("$1".to_string()),
             "numbers are read as well as strings"
         );
         assert_eq!(
-            format_price(&json!({"prompt": "0.0000005", "completion": "0.000009"})),
-            Some("$0.0000005 · $0.000009".to_string()),
-            "input · output when the output is billed"
-        );
-        assert_eq!(
             format_price(&json!({"prompt": "0", "completion": "0.0025"})),
-            Some("$0 · $0.0025".to_string()),
+            Some("$0 / $2500".to_string()),
             "output-only billing keeps the input slot"
         );
     }
@@ -379,11 +391,11 @@ mod tests {
             {"id":"x/no-pricing"}
         ]}"#;
         let models = parse_models(body, "stt").unwrap();
-        assert_eq!(models[0].price.as_deref(), Some("$0.0001"));
+        assert_eq!(models[0].price.as_deref(), Some("$100"));
         assert_eq!(models[1].price, None);
         assert_eq!(models[2].price, None);
         let value = serde_json::to_value(&models[0]).unwrap();
-        assert_eq!(value["price"], "$0.0001");
+        assert_eq!(value["price"], "$100");
         let value = serde_json::to_value(&models[2]).unwrap();
         assert!(
             value.get("price").is_none(),

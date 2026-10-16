@@ -3804,7 +3804,8 @@ export const en = {
   'prefs.voiceColSize': 'Size',
   'prefs.voiceColStatus': 'Status',
   'prefs.voiceColVoices': 'Voices',
-  'prefs.voiceColPrice': 'Price',
+  'prefs.voiceColPrice': 'In / out price',
+  'prefs.voicePricePerMillion': 'per 1M',
   'prefs.voiceTierSource': "Based on the model's published benchmarks",
   'prefs.voiceTierLabel': '{label}: {tier} of 3',
   'prefs.voiceLocalModeInstalled': 'Installed',
@@ -3924,7 +3925,7 @@ export const en = {
   'prefs.voiceSystemVoicesByLanguage': 'Voices by language',
   'prefs.voiceSystemTest': 'Test',
   'prefs.voicePriceHint':
-    "OpenRouter's price per unit: input, then output when it is billed. OpenRouter does not say whether the unit is a token, a character or a second.",
+    "OpenRouter's prices in US dollars per million units, as its site shows them: input, then output when it is billed. The unit is usually a token; some voices charge per character.",
   'voice.model.parakeet.summary': 'Best overall accuracy; detects the language by itself.',
   'voice.model.parakeet.details':
     '25 European languages with punctuation and capitals. Large download; needs a few seconds to load the first time.',

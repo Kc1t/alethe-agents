@@ -122,6 +122,11 @@
   list-style: none;
 }
 
+.priceUnit {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
 .priceNote {
   margin: 0;
   color: var(--fg-muted);

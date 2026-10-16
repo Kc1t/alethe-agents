@@ -28,14 +28,14 @@ const router = (models: VoiceProviderCatalog['models']): VoiceProviderCatalog =>
 })
 
 const ROUTER = router([
-  { id: WHISPER, label: 'Whisper', capability: 'stt', price: '$0.0001' },
+  { id: WHISPER, label: 'Whisper', capability: 'stt', price: '$100' },
   { id: 'x/free-stt', label: 'Free STT', capability: 'stt' },
   {
     id: KOKORO,
     label: 'Kokoro',
     capability: 'tts',
     voices: ['af_bella', 'pf_dora', 'pm_alex', 'Zephyr'],
-    price: '$0.00000062',
+    price: '$0.50 / $6',
   },
 ])
 
@@ -62,13 +62,17 @@ beforeEach(() => {
 })
 
 describe('CloudModelsView', () => {
-  it('shows the OpenRouter price per row, and "—" when the price is absent', () => {
+  it('shows the OpenRouter price per million per row, and "—" when the price is absent', () => {
     render(<CloudModelsView provider="openrouter" catalog={ROUTER} />)
     const priced = cellOf(rowOf('Whisper'), 'price')
-    expect(priced.textContent).toBe('$0.0001')
-    expect(within(priced).getByTitle('prefs.voicePriceHint').textContent).toBe('$0.0001')
+    expect(priced.textContent).toBe('$100 prefs.voicePricePerMillion')
+    expect(within(priced).getByTitle('prefs.voicePriceHint').textContent).toBe(
+      '$100 prefs.voicePricePerMillion',
+    )
     expect(cellOf(rowOf('Free STT'), 'price').textContent).toBe('—')
-    expect(cellOf(rowOf('Kokoro'), 'price').textContent).toBe('$0.00000062')
+    expect(cellOf(rowOf('Kokoro'), 'price').textContent).toBe(
+      '$0.50 / $6 prefs.voicePricePerMillion',
+    )
     // The explanation is also visible as a note under the table.
     const note = screen.getByText('prefs.voicePriceHint', { selector: 'p' })
     const table = screen.getByRole('table')

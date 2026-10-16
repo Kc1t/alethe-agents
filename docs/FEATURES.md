@@ -249,7 +249,8 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
   Only one download runs at a time; cancel deletes the whole partial model; a read that stalls for
   30 seconds ends the attempt so it can be resumed.
 - Cloud provider pages show their models in the same table, with voices by language and, for
-  OpenRouter, its raw prices (OpenRouter does not state the unit, so a hint says so). The Apple
+  OpenRouter, its input / output prices in dollars per million units, as on its site ("$0.50 / $6
+  per 1M"). The Apple
   Speech page shows the permission status and lists installed languages apart from those available
   to install; the System voice page lists voices per language and has a single Test button.
 - Local (default, nothing leaves the device): Parakeet, Zipformer, Whisper base and small, Moonshine
