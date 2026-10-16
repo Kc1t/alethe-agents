@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Shared themed controls in `AletheDesign` (button, icon button, select, card, row highlight, section label,
+  count pill, status dot, project monogram) mirroring the web app's primitives.
 - Kimi, Grok and Codewhale agent color tokens in all built-in and theme-pack themes, matching the web palette.
 - Native macOS app skeleton (Swift, macOS 26+), bundle id `com.kc1t.alethe.mac`.
 - Main window with a sidebar and toolbar, a Settings window (⌘,) and UI zoom in the View menu
