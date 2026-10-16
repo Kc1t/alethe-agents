@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Home content parity: profile-name greeting with an initial avatar and activity streak, responsive
+  Now Playing dock, a free folder picker for quick launch, and New Terminal / New Project actions.
+- Recent project cards show terminal counts and recorded last-use times, with View All opening
+  Find/Jump; New Group shows its Mac shortcut, and the footer adds Search and Help shortcuts.
+- Home usage cards show reset times and support manual refresh; activity adds weekday labels and
+  a percentage change against the previous week, and time analytics can be refreshed manually.
+- Home shows the five latest notifications with agent-colored icons, a count, Clear, and a positive
+  empty state. Help on Home opens the existing onboarding guide with ⌘?.
 - Full-window startup console with a themed wordmark card, blinking cursor and staggered progress cells;
   decorative motion stops when Reduce Motion is enabled.
 - Home content styled after the web dashboard: centered greeting and date chip, terminal-style quick

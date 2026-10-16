@@ -8518,6 +8518,23 @@
         }
       }
     },
+    "home.activity.delta" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change over the previous seven days"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Variação em relação aos sete dias anteriores"
+          }
+        }
+      }
+    },
     "home.activity.less" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8620,6 +8637,40 @@
         }
       }
     },
+    "home.footer.help" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Help ⌘?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajuda ⌘?"
+          }
+        }
+      }
+    },
+    "home.footer.search" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search ⌘K"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar ⌘K"
+          }
+        }
+      }
+    },
     "home.greeting.afternoon" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -8701,6 +8752,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Issues"
+          }
+        }
+      }
+    },
+    "home.notifications.emptyDetail" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You’re all caught up. Agent updates will appear here."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tudo em dia. As atualizações dos agentes aparecerão aqui."
           }
         }
       }
@@ -8888,6 +8956,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld terminais"
+          }
+        }
+      }
+    },
+    "home.recent.viewAll" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View all"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver todos"
           }
         }
       }
@@ -9398,6 +9483,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Uso de IA…"
+          }
+        }
+      }
+    },
+    "home.usage.resets" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resets"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reinicia"
           }
         }
       }
@@ -15715,13 +15817,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nothing yet. Agents that finish or need you while you look elsewhere show up here."
+            "value" : "You’re all caught up"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nada ainda. Agentes que terminam ou precisam de você enquanto olha outra coisa aparecem aqui."
+            "value" : "Tudo em dia"
           }
         }
       }
