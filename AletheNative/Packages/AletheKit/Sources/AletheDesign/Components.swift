@@ -336,3 +336,44 @@ public struct AletheMonogram: View {
         return letters.lowercased()
     }
 }
+
+// MARK: - Activity
+
+/// The working-terminal spinner (`DotmCircular2`): a 14pt 4×4 dot grid whose 12 perimeter dots
+/// light in turn over 1.8s, with a short fading tail. Reduce Motion shows a steady dot.
+public struct AletheActivitySpinner: View {
+    let color: ThemeToken
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+
+    public init(_ color: ThemeToken = .statusWorking) { self.color = color }
+
+    /// Perimeter cells of a 4×4 grid, clockwise from the top-left.
+    static let perimeter: [(Int, Int)] = [
+        (0, 0), (1, 0), (2, 0), (3, 0), (3, 1), (3, 2), (3, 3), (2, 3), (1, 3), (0, 3), (0, 2), (0, 1),
+    ]
+
+    public var body: some View {
+        let side = metrics.size(14)
+        if metrics.reducesMotion {
+            AletheStatusDot(color, side: 7)
+                .frame(width: side, height: side)
+        } else {
+            TimelineView(.periodic(from: .now, by: 1.8 / 12)) { context in
+                let step = Int(context.date.timeIntervalSinceReferenceDate / (1.8 / 12)) % 12
+                Canvas { canvas, size in
+                    let dot = size.width / 7
+                    let pitch = (size.width - dot) / 3
+                    for (index, cell) in Self.perimeter.enumerated() {
+                        let age = (step - index + 12) % 12
+                        let alpha = age == 0 ? 1 : age == 1 ? 0.6 : age == 2 ? 0.35 : 0.12
+                        let rect = CGRect(x: CGFloat(cell.0) * pitch, y: CGFloat(cell.1) * pitch, width: dot, height: dot)
+                        canvas.fill(Path(ellipseIn: rect), with: .color(theme[color].opacity(alpha)))
+                    }
+                }
+                .frame(width: side, height: side)
+                .shadow(color: theme[color].opacity(0.45), radius: metrics.size(2))
+            }
+        }
+    }
+}

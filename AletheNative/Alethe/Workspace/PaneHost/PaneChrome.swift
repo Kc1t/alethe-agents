@@ -298,6 +298,9 @@ enum AgentTokens {
         case "mimo": .agentMimo
         case "freebuff": .agentFreebuff
         case "kiro": .agentKiro
+        case "kimi": .agentKimi
+        case "grok": .agentGrok
+        case "codewhale": .agentCodewhale
         default: .agentShell
         }
     }

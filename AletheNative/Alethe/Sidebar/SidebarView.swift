@@ -24,7 +24,7 @@ struct SidebarView: View {
         let actions = SidebarActions(workspace: workspace, undoManager: undoManager)
         let doc = workspace.document
         return List(selection: selection(workspace, actions)) {
-            Section("sidebar.projects.header") {
+            Section {
                 ForEach(doc.childGroups(of: nil)) { group in
                     GroupRow(group: group, actions: actions)
                 }
@@ -40,6 +40,8 @@ struct SidebarView: View {
                 .onInsert(of: [.plainText]) { index, providers in
                     SidebarDrag.load(providers) { actions.insert($0, into: .ungrouped, at: index) }
                 }
+            } header: {
+                SidebarProjectsHeader(actions: actions)
             }
         }
         .listStyle(.sidebar)
@@ -56,19 +58,7 @@ struct SidebarView: View {
             Button("menu.file.newGroup") { environment.editorRequest = .newGroup(parent: nil) }
         }
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 0) {
-                SidebarNowPlaying()
-                HStack {
-                    Button { actions.chooseFolders() } label: {
-                        Label("sidebar.addProject", systemImage: "plus")
-                    }
-                    .buttonStyle(.borderless)
-                    .accessibilityIdentifier("sidebar.addProject")
-                    Spacer()
-                }
-                .padding(.horizontal, metrics.space(.l))
-                .padding(.vertical, metrics.space(.m))
-            }
+            SidebarNowPlaying()
         }
     }
 
@@ -82,6 +72,32 @@ struct SidebarView: View {
             return state.selectedProjectID.map(SidebarItem.project)
         } set: { item in
             actions.select(item)
+        }
+    }
+}
+
+/// Upstream sidebar header: the uppercase `PROJECTS` label with add-folder and new-project actions.
+private struct SidebarProjectsHeader: View {
+    let actions: SidebarActions
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
+
+    var body: some View {
+        HStack(spacing: metrics.space(.xxs)) {
+            AletheSectionLabel(Text("sidebar.projects.header"))
+            Spacer(minLength: metrics.space(.s))
+            Button { actions.chooseFolders() } label: {
+                Label("sidebar.addProject", systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(AletheIconButtonStyle(side: 20))
+            .help(Text("sidebar.addProject"))
+            .accessibilityIdentifier("sidebar.addProject")
+            Button { environment.editorRequest = .newProject(.ungrouped) } label: {
+                Label("menu.file.newProject", systemImage: "plus")
+            }
+            .buttonStyle(AletheIconButtonStyle(side: 20))
+            .help(Text("menu.file.newProject"))
+            .accessibilityIdentifier("sidebar.newProject")
         }
     }
 }
@@ -117,19 +133,31 @@ private struct GroupRow: View {
             }
         } label: {
             Label {
-                HStack(spacing: metrics.space(.xs)) {
+                // Upstream group tag: faint, lightly tracked name followed by a hairline rule.
+                HStack(spacing: metrics.space(.s)) {
                     Text(verbatim: group.name)
-                        .foregroundStyle(theme[group.suspended == true ? .textTertiary : .textPrimary])
+                        .font(metrics.font(size: 11))
+                        .tracking(metrics.size(11) * 0.04)
+                        .foregroundStyle(theme[group.suspended == true ? .textQuaternary : .fgFaint])
+                        .lineLimit(1)
                     if group.suspended == true {
                         Image(systemName: "pause.circle.fill")
                             .foregroundStyle(theme[.statusDisabled])
                             .help(Text("sidebar.suspended"))
                             .accessibilityLabel(Text("sidebar.suspended"))
                     }
+                    Rectangle()
+                        .fill(theme[.border])
+                        .frame(height: 1)
+                        .frame(maxWidth: .infinity)
                 }
             } icon: {
-                Image(systemName: "folder")
-                    .foregroundStyle(group.color.map { theme[$0.token] } ?? theme[.textSecondary])
+                if let color = group.color {
+                    AletheMonogram(name: group.name, color: theme[color.token], side: 14)
+                } else {
+                    Image(systemName: "folder")
+                        .foregroundStyle(theme[.fgFaint])
+                }
             }
             .onDrop(of: [.plainText], isTargeted: nil) { providers in
                 SidebarDrag.load(providers) { actions.drop($0, onGroup: group.id) }
@@ -184,7 +212,8 @@ private struct ProjectRow: View {
                         Label {
                             HStack(spacing: metrics.space(.xs)) {
                                 Text(verbatim: environment.terminals.displayName(of: tab))
-                                    .foregroundStyle(theme[disabled ? .textTertiary : .textPrimary])
+                                    .font(metrics.font(size: 12.5))
+                                    .foregroundStyle(theme[disabled ? .textTertiary : .fgMuted])
                                     .lineLimit(1)
                                 AgentStatusGlyph(tab: tab.id)
                                 if sharedTabs.contains(tab.id) { RemoteSharedGlyph() }
@@ -201,7 +230,8 @@ private struct ProjectRow: View {
                             Image(systemName: disabled ? "pause.circle"
                                   : environment.terminals.hibernated.contains(tab.id) ? "moon.zzz"
                                   : tab.agent == "shell" ? "terminal" : "sparkles")
-                                .foregroundStyle(theme[disabled ? .statusDisabled : .textSecondary])
+                                .foregroundStyle(theme[disabled ? .statusDisabled : AgentTokens.accent(for: tab.agent)])
+                                .saturation(disabled ? 0 : 1)
                                 .help(environment.terminals.hibernated.contains(tab.id) ? Text("sidebar.hibernated") : Text(verbatim: ""))
                         }
                         .tag(SidebarItem.tab(tab.id))
@@ -227,14 +257,16 @@ private struct ProjectRow: View {
     }
 
     private var label: some View {
-        let dimmed = actions.workspace.document.isProjectDisabled(project.id) || actions.workspace.document.isSuspended(project.id)
+        let doc = actions.workspace.document
+        let dimmed = doc.isProjectDisabled(project.id) || doc.isSuspended(project.id)
+        let selected = doc.workspace.selectedProjectID == project.id
         return Label {
             Text(verbatim: project.name)
+                .font(metrics.font(size: 12.5, weight: selected ? .medium : .regular))
                 .foregroundStyle(theme[dimmed ? .textTertiary : .textPrimary])
         } icon: {
-            Circle()
-                .fill(theme[project.color.token])
-                .frame(width: metrics.size(8), height: metrics.size(8))
+            AletheMonogram(name: project.name, color: theme[project.color.token])
+                .opacity(dimmed ? 0.6 : 1)
         }
         .help(Text(verbatim: project.folder))
         .onDrop(of: [.plainText], isTargeted: nil) { providers in

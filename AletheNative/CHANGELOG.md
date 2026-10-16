@@ -343,6 +343,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Data is stored per profile in `~/Library/Application Support/com.kc1t.alethe.mac`.
 - The DMG opens a branded install window: drag Alethe onto the Applications shortcut to install.
 
+### Changed
+- Sidebar rows follow the web app: project monograms, 12.5 pt rows, agent icons tinted by agent,
+  faint group tags with a hairline rule, and a `PROJECTS` header with add-folder and new-project
+  buttons (the footer button moved there). Working terminals show the dot-matrix spinner and unseen
+  finished ones a check mark.
+
 ### Fixed
 - The app now has its icon in Finder, Launchpad and the DMG, not only in the Dock while running.
 - The app icon now follows the macOS icon grid, so it is the same size as other apps in the Dock, Finder and the app switcher.
