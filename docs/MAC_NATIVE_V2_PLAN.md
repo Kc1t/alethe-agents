@@ -3730,3 +3730,14 @@ Resolved (2026-09-22):
   `listRowSpacing` remain. No build was attempted, as requested; the reviewer must compile externally.
 - AI memory remains unavailable in this session (no tool or skill); this note records the outcome.
 - A checkpoint commit cannot be written under the current read-only Git metadata permissions.
+
+### Home usage compilation follow-up — 2026-10-17
+
+- `HomeUsageCard` enables the provider with `ToolbarItemKind.usagePill(for:)` and
+  `PreferencesDocument.setToolbarItem(_:shown:)`, matching Settings instead of assigning to the
+  derived, read-only `usagePillProviders` list. Added the explicit `AletheModel` import.
+- Validation: the string gate and `git diff --check` pass. No build was attempted at the owner's
+  request; external compilation remains with the reviewer.
+- AI memory is unavailable in this session (no tool, CLI or skill); this note preserves the outcome.
+- A checkpoint commit cannot be written because this worktree's Git metadata is outside the writable
+  sandbox roots; the existing Home changes remain in the worktree for review.

@@ -16,6 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Fixed the web-style Home usage enable action to save its toolbar preference through the supported setter.
+- Web-style Home matches the web overview's responsive project and action cards, usage headlines,
+  meters, reset statistics and provider logos. View All opens the workspace, activity appears once,
+  refresh controls expose busy states, and the two-step setup checklist and music dock follow the
+  web layout with keyboard focus expansion and reduced-motion support. The native interface is unchanged.
 - Web-style sidebars retain their state while opening and closing with smooth panel resizing,
   content fades and directional motion matching the web interface. Separators fade on collapse;
   dragging stays immediate, Reduce Motion disables transitions, and the title bar stays fixed.

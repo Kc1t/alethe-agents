@@ -46,7 +46,7 @@ struct HomeView: View {
                            ? metrics.size(430)
                            : min(metrics.size(610), max(metrics.size(430), geometry.size.height * 0.56)))
                     .entrance(appeared, step: 0, reduced: metrics.reducesMotion || (metrics.isWebInterface && metrics.style == .clean), rise: metrics.size(8))
-                    SetupWalkthroughView(workspace: workspace)
+                    WebHomeSetup(workspace: workspace)
                 } else {
                     VStack(alignment: .leading, spacing: metrics.space(.xxl)) {
                         Spacer(minLength: metrics.size(28))
@@ -74,14 +74,23 @@ struct HomeView: View {
                 (metrics.isWebInterface
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: metrics.size(20)))
                     : AnyLayout(HStackLayout(alignment: .top, spacing: metrics.space(.xxl)))) {
-                    RecentProjects(workspace: workspace)
-                    HomeActions()
-                        .frame(width: metrics.isWebInterface ? nil : metrics.size(240))
+                    if metrics.isWebInterface {
+                        WebHomeOverview(workspace: workspace)
+                    } else {
+                        RecentProjects(workspace: workspace)
+                        HomeActions().frame(width: metrics.size(240))
+                    }
                 }
                 .entrance(appeared, step: 1, reduced: metrics.reducesMotion || (metrics.isWebInterface && metrics.style == .clean), rise: metrics.size(8))
                 VStack(alignment: .leading, spacing: metrics.size(24)) {
-                    UsageStrip()
-                    ActivityGraph(days: $activityDays)
+                    if metrics.isWebInterface {
+                        UsageStrip(homeActivityDays: $activityDays, webContainerWidth: geometry.size.width
+                                   - 2 * min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03)))
+                    }
+                    else {
+                        UsageStrip()
+                        ActivityGraph(days: $activityDays)
+                    }
                     TimeAnalytics()
                     if metrics.isWebInterface { HomeWebNotifications() }
                     else {
@@ -180,7 +189,7 @@ private struct HomeHero: View {
                     avatar
                         .frame(width: metrics.size(116), height: metrics.size(46))
                         .overlay(alignment: .center) {
-                            NowPlayingCard(homeDockInfoWidth: min(metrics.size(126), max(0, availableWidth / 2 - metrics.size(69))))
+                            WebHomeNowPlaying(homeDockInfoWidth: min(metrics.size(126), max(0, availableWidth / 2 - metrics.size(69))))
                                 .fixedSize()
                                 .frame(width: 0, alignment: .leading)
                                 .offset(x: metrics.size(21))
