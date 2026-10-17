@@ -88,7 +88,9 @@ describe('remote mobile conversations', () => {
       expect(document.querySelector('.chat-skeleton')).not.toBeNull()
       await settle()
       expect(document.querySelector('.messages-empty')).toHaveTextContent('Start a conversation')
-      expect(document.querySelector('.send-button')).toBeDisabled()
+      // An empty box still sends Claude Code's queued message now; Codex has no queue.
+      if (agent === 'claude') expect(document.querySelector('.send-button')).toBeEnabled()
+      else expect(document.querySelector('.send-button')).toBeDisabled()
       expect(document.querySelector('#messages')).toHaveAttribute('aria-busy', 'false')
     },
   )

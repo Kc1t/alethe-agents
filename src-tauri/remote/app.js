@@ -1329,16 +1329,65 @@ function updateComposer() {
   const input = form.querySelector('#message')
   const button = form.querySelector('.send-button')
   input.readOnly = session.sending || session.ended
+  // With an empty box the button doubles as "send now" for a message Claude
+  // Code queued while busy (its ctrl+x ctrl+s, which a phone cannot type).
+  const sendNow = !input.value.trim() && canSendNow()
   button.disabled =
     session.sending ||
     session.ended ||
     connectionState !== 'live' ||
-    !input.value.trim() ||
-    (chatView === 'messages' && supportsMessages() && !transcript)
+    (!input.value.trim() && !sendNow) ||
+    (chatView === 'messages' && supportsMessages() && !transcript && !sendNow)
   button.classList.toggle('is-loading', session.sending)
   button.setAttribute('aria-label', t(session.sending ? 'chat.sending' : 'chat.send'))
   form.setAttribute('aria-busy', String(session.sending))
   form.querySelector('#composer-error').textContent = session.error
+}
+
+const SEND_NOW_DOUBLE_TAP_MS = 2_000
+
+function canSendNow(ptyId = selected) {
+  return !readOnly && findChat(ptyId)?.agent === 'claude'
+}
+
+async function sendQueuedNow(ptyId, session) {
+  const now = Date.now()
+  if (now - (session.sendNowArmedAt || 0) > SEND_NOW_DOUBLE_TAP_MS) {
+    session.sendNowArmedAt = now
+    session.controlNotice = 'chat.sendNowArmed'
+    updateChatFeedback()
+    window.setTimeout(() => {
+      if (session.controlNotice !== 'chat.sendNowArmed') return
+      session.controlNotice = ''
+      if (selected === ptyId) updateChatFeedback()
+    }, SEND_NOW_DOUBLE_TAP_MS)
+    return
+  }
+  session.sendNowArmedAt = 0
+  session.sending = true
+  session.error = ''
+  updateComposer()
+  try {
+    await api('/api/agent-control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ptyId, action: 'send_now' }),
+    })
+    session.controlNotice = 'chat.sendNowSent'
+    void loadTranscript(ptyId)
+  } catch (error) {
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
+    session.error = t('chat.sendNowError', { message: error.message || error })
+  } finally {
+    session.sending = false
+    if (selected === ptyId) {
+      updateComposer()
+      updateChatFeedback()
+    }
+  }
 }
 
 function bindComposer() {
@@ -1377,6 +1426,10 @@ function bindComposer() {
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
     const text = input.value.trim()
+    if (!text && canSendNow(ptyId) && !session.sending && connectionState === 'live') {
+      await sendQueuedNow(ptyId, session)
+      return
+    }
     if (
       !text ||
       session.sending ||
