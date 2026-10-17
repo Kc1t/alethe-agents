@@ -107,16 +107,26 @@ struct SidebarWebEmptyState: View {
 
 struct SidebarDropAppearance: ViewModifier {
     let targeted: Bool
+    var insertion = false
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
 
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface {
-            content.background(theme[.panelHover].opacity(targeted ? 1 : 0),
+            content.background(theme[.panelHover].opacity(targeted && !insertion ? 1 : 0),
                                in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
                 .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                    .strokeBorder(theme[.borderStrong].opacity(targeted ? 1 : 0),
+                    .strokeBorder(theme[.borderStrong].opacity(targeted && !insertion ? 1 : 0),
                                   lineWidth: metrics.size(1)))
+                .overlay(alignment: .top) {
+                    if insertion && targeted {
+                        Capsule().fill(theme[.accent])
+                            .frame(height: metrics.size(2))
+                            .padding(.horizontal, metrics.size(5))
+                            .offset(y: -metrics.size(2))
+                            .allowsHitTesting(false)
+                    }
+                }
         } else { content }
     }
 }

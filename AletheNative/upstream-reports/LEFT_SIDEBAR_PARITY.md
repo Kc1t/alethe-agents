@@ -75,3 +75,65 @@ Source: `origin/main`, read using `git show` without checkout. Scope: `Interface
   no build, restart, staging, commit or push was performed.
 - No ai-memory skill or connector is exposed in this session. This existing handoff records
   the follow-up state and remaining validation instead of claiming an external memory update.
+
+## Sidebar motion follow-up
+
+All references below were read from `origin/main` using `git show`; the reference was never
+checked out. Changes are confined to the sidebar, a new design-component extension, this handoff
+and the native changelog. The `.mac` disclosure, navigation and row-menu paths remain intact.
+
+Implemented motion:
+
+| Web source | Native behavior |
+| --- | --- |
+| `NormalProjectSidebar.module.css` `.sidebarTab` | Color 140 ms CSS ease; fill/border 160 ms CSS ease; hover lift −1 point over 180 ms `(0.16, 1, 0.3, 1)`. |
+| Same file, `.layoutBtn` / `.quickNavItem` | Layout color/fill 100 ms; search hover 150 ms CSS ease. |
+| Same file, `.disclosureChevron` | −90° closed rotation, 160 ms fluid ease. |
+| `ui/Collapse.tsx` and `Collapse.module.css` | Disclosure list changes request 170 ms fluid layout animation and independent 130 ms CSS-ease opacity transitions. Initial expanded state does not animate. |
+| Same sidebar CSS, `sidebarPanelIn` | Tab changes use 260 ms fluid opacity/5-point vertical entry; outgoing panel cross-fades. Initial window render does not animate. |
+| Same file, `.rowEndSlot` / `.rowStatusIndicator` | Stable status/menu cell; width 0/16/20 points over 120 ms CSS ease; status hover fade 100 ms. The spinner stays mounted while hidden. |
+| Same file, `.dropBefore` | Project drops show an immediate 2-point accent line, inset 5 points and offset −2 points. Group drops keep their inside highlight. |
+| `UserProfile.module.css` | Profile hover 100 ms CSS ease; popover content enters with 4-point offset/opacity over 120 ms CSS ease-out. |
+| `SidebarUpdate.module.css` | Update-chip hover 150 ms CSS ease. |
+| `styles/visual-clean.css` | Button transition overrides use 120 ms; profile popover uses 180 ms fluid ease. |
+
+`Components+LeftSidebarMotion.swift` centralizes these timings under `Motion.SidebarEffect`.
+Every helper returns nil for Reduce Motion. Sizes use metrics and colors use theme tokens.
+`Components.swift` is untouched. Web terminal row identity is explicitly tied to its pane ID,
+so switching the active sub-tab does not replace the owning row. Existing model-ID ForEach
+collections remain in place. No visible strings were added, and the string catalog is unchanged.
+
+Audited behavior intentionally retained:
+
+- Normal sidebar row hover/press fills, selected/focused fills, count pills and drop indicators
+  have no CSS transitions of their own. No fabricated pulse, shimmer, insertion spring, selected
+  indicator slide or empty-state animation was added. Empty panels participate in tab entry.
+- Running agents retain the shared dot-matrix spinner (`DotmCircular2` uses speed 1.2, hence a
+  1.5-second cycle); the existing shared spinner pauses under Reduce Motion. There is no separate
+  running-dot pulse or loading shimmer in the normal web sidebar.
+- Web tooltips use HTML `title`; there is no specified delay to copy. Native `.help` remains
+  controlled by macOS. Context-menu appearance and drag previews remain hosted by AppKit.
+
+Remaining deviations / reviewer integration:
+
+- Outer sidebar width is controlled by `Shell/MainWindow.swift`, outside this task's assigned
+  sidebar ownership. That host still conditionally removes the sidebar. To match `App.module.css`,
+  its owner must retain the column while closing, animate width over 220 ms fluid ease, content
+  opacity over 220 ms CSS ease and horizontal offset −16 points over 280 ms fluid ease, and disable
+  transitions while resizing. This task does not claim the outer width slide is implemented.
+- SwiftUI List owns actual row insertion/removal and height interpolation. The requested disclosure
+  animation uses the web timings, but exact CSS grid clipping/retention through the 170 ms close
+  interval needs runtime review. Root row insertion/removal uses stable IDs and platform behavior;
+  upstream does not define separate insert/remove keyframes.
+- Native drag previews do not reproduce dnd-kit's 0.45 source opacity/120 ms fade or its custom
+  overlay. Group guide hover tint, merge-tree/panel-specific transitions and clean context-menu
+  entry remain platform behavior. The web merge panel's resizable 220 ms container has no matching
+  sidebar container in the current native implementation.
+- Profile popover content matches translation/fade timing. AppKit additionally animates its host;
+  the web clean popover's 0.985 scale is omitted to honor the task's no-scaleEffect constraint.
+
+Validation: strings gate, Swift frontend syntax parse for all changed Swift files, and whitespace
+checks pass. No compilation, app execution/restart, UI test, staging, commit or push was performed.
+The reviewer must build outside the nested sandbox and inspect rapid disclosure toggles, hover
+slots, tab changes, group/project drops, clean style, Reduce Motion and zoom. No ai-memory skill
+or connector is available; this existing versioned handoff records the state and remaining work.

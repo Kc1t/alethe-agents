@@ -62,6 +62,8 @@ struct SidebarWebProfile: View {
             }
             .ignoresSafeArea(.container, edges: [.bottom, .horizontal])
         }
+        .animation(metrics.isWebInterface ? Motion.SidebarEffect.profile.animation(
+            reduceMotion: metrics.reducesMotion, clean: metrics.style == .clean) : nil, value: hovering)
         .overlay(alignment: .top) {
             Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
         }
@@ -70,7 +72,7 @@ struct SidebarWebProfile: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         .popover(isPresented: $showingMenu, arrowEdge: .top) {
             if metrics.isWebInterface {
-                webMenu
+                webMenu.modifier(SidebarProfilePopoverMotion())
             } else {
                 nativeMenu
             }

@@ -34,6 +34,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed the unsupported sidebar list-spacing modifier to restore macOS API compatibility.
 
 ### Changed
+- Web-style sidebar tabs, disclosures, trailing status slots and profile popovers use the web
+  motion timings and respect Reduce Motion. Project drops show an insertion line; terminal
+  status indicators stay mounted on hover to avoid abrupt row layout changes.
 - Alethe interface Settings use a searchable sidebar, compact section headings, bordered option
   rows and scrolling content. Appearance includes web-style theme swatches, visual-style previews
   and zoom controls; agent rows show brand logos and wrap their actions in narrow windows.

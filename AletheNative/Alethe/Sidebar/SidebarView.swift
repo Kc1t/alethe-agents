@@ -371,6 +371,7 @@ private struct ProjectRow: View {
                         ForEach(project.panes) { pane in
                             if let tab = pane.activeTab {
                                 SidebarTerminalRow(tab: tab, project: project, actions: actions)
+                                    .id(pane.id)
                             } else if pane.content.filePath != nil {
                                 SidebarFileRow(pane: pane, project: project, actions: actions)
                             }
@@ -426,21 +427,39 @@ private struct ProjectRow: View {
                 .buttonStyle(AletheIconButtonStyle(side: 20))
                 .help(Text("terminal.new"))
                 .opacity(hovering || (metrics.isWebInterface && project.panes.isEmpty) ? 1 : 0)
-                Menu { ProjectContextMenu(project: project, actions: actions) } label: {
-                    Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
-                }
-                .menuIndicator(.hidden)
-                .menuStyle(.borderlessButton)
-                .modifier(SidebarMenuAppearance())
-                .fixedSize()
-                .frame(width: metrics.isWebInterface ? metrics.size(hovering ? 20 : working ? 16 : 0) : nil)
-                .help(Text("sidebar.rowMenu"))
-                .opacity(hovering ? 1 : 0)
-                .overlay {
-                    if metrics.isWebInterface && working && !hovering {
-                        AletheActivitySpinner()
-                            .accessibilityLabel(Text("agentStatus.working"))
-                            .allowsHitTesting(false)
+                if metrics.isWebInterface {
+                    SidebarRowEndSlot(active: working, hovering: hovering) {
+                        if working {
+                            AletheActivitySpinner()
+                                .accessibilityLabel(Text("agentStatus.working"))
+                        }
+                    } action: {
+                        Menu { ProjectContextMenu(project: project, actions: actions) } label: {
+                            Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
+                        }
+                        .menuIndicator(.hidden)
+                        .menuStyle(.borderlessButton)
+                        .modifier(SidebarMenuAppearance())
+                        .fixedSize()
+                        .help(Text("sidebar.rowMenu"))
+                    }
+                } else {
+                    Menu { ProjectContextMenu(project: project, actions: actions) } label: {
+                        Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
+                    }
+                    .menuIndicator(.hidden)
+                    .menuStyle(.borderlessButton)
+                    .modifier(SidebarMenuAppearance())
+                    .fixedSize()
+                    .frame(width: metrics.isWebInterface ? metrics.size(hovering ? 20 : working ? 16 : 0) : nil)
+                    .help(Text("sidebar.rowMenu"))
+                    .opacity(hovering ? 1 : 0)
+                    .overlay {
+                        if metrics.isWebInterface && working && !hovering {
+                            AletheActivitySpinner()
+                                .accessibilityLabel(Text("agentStatus.working"))
+                                .allowsHitTesting(false)
+                        }
                     }
                 }
             }
@@ -462,7 +481,7 @@ private struct ProjectRow: View {
         .onHover { hovering = $0 }
         .tag(SidebarItem.project(project.id))
         .help(Text(verbatim: project.folder))
-        .modifier(SidebarDropAppearance(targeted: dropTarget))
+        .modifier(SidebarDropAppearance(targeted: dropTarget, insertion: true))
         .onDrop(of: [.plainText], isTargeted: $dropTarget) { providers in
             SidebarDrag.load(providers) { actions.drop($0, onProject: project.id) }
             return true
@@ -515,11 +534,26 @@ private struct SidebarTerminalRow: View {
                     } else { AletheCountPill(pane.tabs.count) }
                 }
                 Spacer(minLength: metrics.space(.xxs))
-                if metrics.isWebInterface && !hovering { AgentStatusGlyph(tab: statusTab.id) }
-                Menu {
-                    TabContextMenu(tab: tab, project: project, actions: actions)
-                } label: {
-                    Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
+                if metrics.isWebInterface {
+                    SidebarRowEndSlot(active: environment.terminals.activity[statusTab.id] == .working
+                        || environment.terminals.activity[statusTab.id] == .needsInput
+                        || environment.terminals.unread.contains(statusTab.id), hovering: hovering) {
+                        AgentStatusGlyph(tab: statusTab.id)
+                    } action: {
+                        Menu { TabContextMenu(tab: tab, project: project, actions: actions) } label: {
+                            Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
+                        }
+                        .menuIndicator(.hidden)
+                        .menuStyle(.borderlessButton)
+                        .modifier(SidebarMenuAppearance(size: 13))
+                        .fixedSize()
+                        .help(Text("sidebar.rowMenu"))
+                    }
+                } else {
+                    Menu {
+                        TabContextMenu(tab: tab, project: project, actions: actions)
+                    } label: {
+                        Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
                 }
                 .menuIndicator(.hidden)
                 .menuStyle(.borderlessButton)
@@ -528,6 +562,7 @@ private struct SidebarTerminalRow: View {
                 .frame(width: metrics.isWebInterface ? metrics.size(hovering ? 20 : 0) : nil)
                 .help(Text("sidebar.rowMenu"))
                 .opacity(hovering ? 1 : 0)
+                }
                 if pane?.isRemoteShared == true { RemoteSharedGlyph() }
                 if let branch = tab.worktreeBranch {
                     Image(systemName: "arrow.triangle.branch").webProfileSized(14)
@@ -596,8 +631,10 @@ private struct SidebarFileRow: View {
             .menuIndicator(.hidden)
             .modifier(SidebarMenuAppearance(size: 13))
             .fixedSize()
-            .frame(width: metrics.size(hovering ? 20 : 0))
             .opacity(hovering ? 1 : 0)
+            .animation(nil, value: hovering)
+            .frame(width: metrics.size(hovering ? 20 : 0))
+            .animation(Motion.SidebarEffect.rowSlot.animation(reduceMotion: metrics.reducesMotion), value: hovering)
             .help(Text("sidebar.rowMenu"))
         }
         .foregroundStyle(theme[.fg])

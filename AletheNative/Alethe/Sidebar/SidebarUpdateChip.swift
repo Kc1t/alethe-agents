@@ -37,6 +37,8 @@ struct SidebarUpdateChip: View {
                         .strokeBorder(theme[hovering ? .accentBorder : .border], lineWidth: metrics.size(1)))
                 }
                 .buttonStyle(.plain)
+                .animation(Motion.SidebarEffect.quickNavigation.animation(
+                    reduceMotion: metrics.reducesMotion, clean: metrics.style == .clean), value: hovering)
                 .onHover { hovering = $0 }
                 .padding(.horizontal, metrics.size(8))
                 .padding(.bottom, metrics.size(6))

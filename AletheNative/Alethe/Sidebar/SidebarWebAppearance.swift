@@ -49,6 +49,23 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
 
     @ViewBuilder var body: some View {
         if metrics.isWebInterface {
+            webDisclosure
+                .animation(Motion.SidebarEffect.collapse.animation(reduceMotion: metrics.reducesMotion),
+                           value: binding.wrappedValue)
+        } else {
+            DisclosureGroup(isExpanded: binding) { content } label: { label }
+                .tag(item)
+        }
+    }
+
+    private func toggle() {
+        withAnimation(Motion.SidebarEffect.collapse.animation(reduceMotion: metrics.reducesMotion)) {
+            binding.wrappedValue.toggle()
+        }
+    }
+
+    private var webDisclosure: some View {
+        Group {
             label
                 .tag(item)
                 .itemProvider {
@@ -58,11 +75,13 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                     case .tab: nil
                     }
                 }
-                .onTapGesture { if isGroup { binding.wrappedValue.toggle() } }
+                .onTapGesture { if isGroup { toggle() } }
                 .overlay(alignment: .bottomTrailing) {
-                    Button { binding.wrappedValue.toggle() } label: {
+                    Button { toggle() } label: {
                         Image(systemName: "chevron.down").webProfileSized(14)
                             .rotationEffect(.degrees(binding.wrappedValue ? 0 : -90))
+                            .animation(Motion.SidebarEffect.chevron.animation(reduceMotion: metrics.reducesMotion),
+                                       value: binding.wrappedValue)
                             .font(metrics.font(size: isGroup ? 14 : 15))
                             .foregroundStyle(theme[isGroup ? .fgFaint : .fgMuted])
                             .frame(width: metrics.size(isGroup ? 18 : 20), height: metrics.size(isGroup ? 18 : 20))
@@ -78,10 +97,9 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                 .listRowBackground(theme[.bg])
             if binding.wrappedValue {
                 content.environment(\.sidebarGroupDepth, depth + (isGroup ? 1 : 0))
+                    .transition(metrics.reducesMotion ? .identity : .opacity.animation(
+                        Motion.SidebarEffect.collapseOpacity.animation(reduceMotion: false)))
             }
-        } else {
-            DisclosureGroup(isExpanded: binding) { content } label: { label }
-                .tag(item)
         }
     }
 }

@@ -83,7 +83,7 @@ struct LeftSidebar: View {
                     Button { selectedTab = "projects"; environment.showingHome = true } label: {
                         Label { Text("leftSidebar.home") } icon: { Image(systemName: "house").webProfileSized(14) }
                     }
-                    .buttonStyle(AletheSidebarTabStyle(isSelected: environment.showingHome))
+                    .buttonStyle(AletheSidebarMotionTabStyle(isSelected: environment.showingHome))
                     .help(Text("leftSidebar.home"))
                     .accessibilityIdentifier("leftSidebar.home")
                     webTab("projects", title: "leftSidebar.projects", symbol: "square.grid.3x3")
@@ -93,7 +93,7 @@ struct LeftSidebar: View {
                     } label: {
                         Label { Text("menu.git.control") } icon: { Image(systemName: "arrow.triangle.branch").webProfileSized(14) }
                     }
-                    .buttonStyle(AletheSidebarTabStyle(isSelected: false))
+                    .buttonStyle(AletheSidebarMotionTabStyle(isSelected: false))
                     .disabled(selectedProject == nil || !environment.hasPluginCommand(GitControlPlugin.openCommandID))
                     .help(Text("menu.git.control"))
                     .accessibilityIdentifier("leftSidebar.tab.git")
@@ -122,13 +122,16 @@ struct LeftSidebar: View {
                 .aletheRowBackground(isSelected: false)
             }
             .buttonStyle(.plain)
+            .modifier(SidebarQuickNavigationMotion())
             .foregroundStyle(theme[.fgMuted])
             .disabled(environment.workspace == nil)
             .accessibilityIdentifier("leftSidebar.search")
             .padding(.horizontal, metrics.size(8))
             .frame(height: metrics.size(52))
             .overlay(alignment: .bottom) { rule }
-            webContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+            webContent
+                .modifier(SidebarPanelMotion(identity: effectiveTab))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme[.bg])
             webFooter
                 .fixedSize(horizontal: false, vertical: true)
@@ -150,7 +153,7 @@ struct LeftSidebar: View {
         Button {
             selectedTab = id
         } label: { Label { Text(title) } icon: { Image(systemName: symbol).webProfileSized(14) } }
-        .buttonStyle(AletheSidebarTabStyle(isSelected: effectiveTab == id))
+        .buttonStyle(AletheSidebarMotionTabStyle(isSelected: effectiveTab == id))
         .help(Text(title))
         .accessibilityIdentifier("leftSidebar.tab.\(id)")
         .accessibilityAddTraits(effectiveTab == id ? .isSelected : [])
@@ -203,8 +206,8 @@ struct LeftSidebar: View {
                             Button { environment.workspace?.update { $0.setLayoutMode(mode, for: project.id) } } label: {
                                 Label { Text(mode.title) } icon: { Image(systemName: mode.symbol).webProfileSized(14) }
                             }
-                            .buttonStyle(AletheSidebarTabStyle(isSelected: project.layout == mode,
-                                                              width: 24, height: 22, bordered: false))
+                            .buttonStyle(AletheSidebarMotionTabStyle(isSelected: project.layout == mode,
+                                                              layout: true))
                             .help(Text(mode.title))
                             .accessibilityIdentifier("leftSidebar.layout.\(mode.rawValue)")
                             .accessibilityAddTraits(project.layout == mode ? .isSelected : [])
