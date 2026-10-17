@@ -12,6 +12,7 @@ struct AgentLibrarySheet: View {
     @State private var model: AgentLibraryModel?
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
@@ -20,14 +21,14 @@ struct AgentLibrarySheet: View {
     var body: some View {
         Group {
             if let model {
-                content(model)
+                if metrics.isWebInterface { webContent(model) } else { content(model) }
             } else {
                 Text("agentLibrary.noProject")
                     .foregroundStyle(theme[.textSecondary])
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(width: metrics.size(660), height: metrics.size(560))
+        .frame(width: metrics.isWebInterface ? nil : metrics.size(660), height: metrics.isWebInterface ? nil : metrics.size(560))
         .task {
             guard let project, let locations = environment.locations,
                   let profile = environment.profiles?.document.activeProfile.id else { return }
@@ -42,6 +43,90 @@ struct AgentLibrarySheet: View {
         .onDisappear { model?.cancel() }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("agentLibrary.sheet")
+    }
+
+    private func webContent(_ model: AgentLibraryModel) -> some View {
+        ModalsM2WebModal(title: Text("agentLibrary.title"), close: { if let closeOverlay { closeOverlay() } else { dismiss() } }, width: 660) {
+            VStack(alignment: .leading, spacing: metrics.size(14)) {
+                Text("agentLibrary.subtitle").font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+                ModalsM2Segments(selection: Binding(get: { model.scopeChoice }, set: { model.select($0) }),
+                                 options: [(.project, "agentLibrary.scope.project"), (.user, "agentLibrary.scope.user")])
+                    .disabled(model.running).accessibilityIdentifier("agentLibrary.scope")
+                Text(verbatim: model.scope.agentsDirectory.path).font(metrics.monoFont(size: 10.5))
+                    .foregroundStyle(theme[.fgFaint]).lineLimit(1).truncationMode(.middle).textSelection(.enabled)
+                    .accessibilityIdentifier("agentLibrary.path")
+                if model.loading { ProgressView().frame(maxWidth: .infinity) } else {
+                    VStack(alignment: .leading, spacing: metrics.size(8)) {
+                        Text("agentLibrary.section.library").font(metrics.font(size: 10, weight: .semibold)).textCase(.uppercase)
+                            .foregroundStyle(theme[.fgFaint]).tracking(metrics.size(0.6))
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(240)), spacing: metrics.size(8))], spacing: metrics.size(8)) {
+                            ForEach(AgentLibraryCatalog.templates) { template in
+                                webTemplate(template, model)
+                            }
+                        }
+                    }.accessibilityIdentifier("agentLibrary.list")
+                    Toggle(isOn: Binding(get: { model.economyOn }, set: { model.setEconomy($0) })) {
+                        VStack(alignment: .leading, spacing: metrics.size(3)) {
+                            Text("agentLibrary.economy.toggle").font(metrics.font(size: 12.5, weight: .medium))
+                            Text("agentLibrary.economy.detail").font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgMuted])
+                        }
+                    }.disabled(model.running).accessibilityIdentifier("agentLibrary.economy")
+                    ForEach(EconomyAgents.templates) { template in webTemplate(template, model) }
+                    ForEach(model.otherAgents) { agent in otherRow(agent, model) }
+                }
+                if let error = model.error {
+                    Text(verbatim: error).foregroundStyle(theme[.statusStopped]).accessibilityIdentifier("agentLibrary.error")
+                }
+                if let note = model.note {
+                    Text(verbatim: note).foregroundStyle(theme[.fgMuted]).accessibilityIdentifier("agentLibrary.note")
+                }
+                if model.restartHint { Text("agentLibrary.restartHint").foregroundStyle(theme[.fgFaint]) }
+            }
+        } footer: {
+            Button("agentLibrary.undo") { model.undo() }.disabled(model.lastChange == nil || model.running)
+                .accessibilityIdentifier("agentLibrary.undo")
+            Button("agentLibrary.refresh") { Task { await model.refresh() } }.disabled(model.running)
+            Spacer()
+            Button("agentInstall.done") { if let closeOverlay { closeOverlay() } else { dismiss() } }.accessibilityIdentifier("agentLibrary.close")
+        }
+        .confirmationDialog("agentLibrary.overwrite.title", isPresented: Binding(
+            get: { model.pendingOverwrite != nil }, set: { if !$0 { model.pendingOverwrite = nil } }
+        ), presenting: model.pendingOverwrite) { template in
+            Button("agentLibrary.overwrite.confirm", role: .destructive) { model.install(template, overwriteForeign: true) }
+        } message: { template in
+            Text(String(format: String(localized: "agentLibrary.overwrite.message"), template.fileName))
+        }
+        .confirmationDialog("agentLibrary.removeForeign.title", isPresented: Binding(
+            get: { model.pendingForeignRemoval != nil }, set: { if !$0 { model.pendingForeignRemoval = nil } }
+        ), presenting: model.pendingForeignRemoval) { agent in
+            Button("agentLibrary.remove", role: .destructive) { model.remove(agent, force: true) }
+        } message: { agent in
+            Text(String(format: String(localized: "agentLibrary.removeForeign.message"), "\(agent.name).md"))
+        }
+    }
+
+    private func webTemplate(_ template: AgentTemplate, _ model: AgentLibraryModel) -> some View {
+        VStack(alignment: .leading, spacing: metrics.size(6)) {
+            HStack(spacing: metrics.size(7)) {
+                Image(systemName: "person.crop.circle").font(metrics.font(size: 14))
+                    .frame(width: metrics.size(22), height: metrics.size(22))
+                Text(verbatim: template.name).font(metrics.font(size: 12, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 0)
+                CostBadge(cost: template.cost)
+            }
+            Text(template.summaryKey).font(metrics.font(size: 10)).foregroundStyle(theme[.fgFaint])
+            HStack(spacing: metrics.size(6)) { libraryButtons(template, model) }
+                .buttonStyle(AletheButtonStyle())
+            if let installed = model.installed(template.name) {
+                Text(installed.fromAlethe ? "agentLibrary.status.installed" : "agentLibrary.status.foreign")
+                    .font(metrics.font(size: 10)).foregroundStyle(theme[.statusWorking])
+                    .accessibilityIdentifier("agentLibrary.status.\(template.name)")
+            }
+        }
+        .padding(metrics.size(8)).frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme[.surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .accessibilityElement(children: .contain).accessibilityIdentifier("agentLibrary.row.\(template.name)")
     }
 
     private func content(_ model: AgentLibraryModel) -> some View {

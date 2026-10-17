@@ -10,6 +10,7 @@ struct Router9InstallSheet: View {
     let action: Router9Controller.InstallAction
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.openURL) private var openURL
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
@@ -26,6 +27,73 @@ struct Router9InstallSheet: View {
     private var blocked: Bool { installer.isBusy && !isThisRun && !isNodeRun }
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface { webBody } else { nativeBody }
+        }
+        .task {
+            toolchain = await installer.toolchain(launchers: environment.launchers)
+            command = await environment.router9.command(for: action)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("router9.installSheet")
+    }
+
+    private var webBody: some View {
+        ModalsM2WebModal(title: Text(installing ? "router9.install.title" : "router9.uninstall.title"), close: closeWeb) {
+            VStack(alignment: .leading, spacing: metrics.size(10)) {
+                if toolchain == nil { Text("modalsM2.install.probing") }
+                Text(installing ? "router9.install.intro" : "router9.uninstall.intro")
+                    .fixedSize(horizontal: false, vertical: true)
+                if installing {
+                    VStack(alignment: .leading, spacing: metrics.size(6)) {
+                        Text("router9.securityNote")
+                        Button { openURL(Router9.advisoriesURL) } label: {
+                            Label("router9.advisories", systemImage: "arrow.up.right.square")
+                        }.buttonStyle(AletheButtonStyle())
+                    }
+                    .padding(metrics.size(8))
+                    .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                }
+                if let command {
+                    Text(verbatim: command).font(metrics.monoFont(size: 11)).foregroundStyle(theme[.fgMuted])
+                        .textSelection(.enabled).padding(.horizontal, metrics.size(8)).padding(.vertical, metrics.size(4))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                        .accessibilityIdentifier("router9.install.command")
+                }
+                if missingNode { nodeRow }
+                if isThisRun { result }
+                if isThisRun || isNodeRun {
+                    ModalsM2InstallLog(log: installer.log).accessibilityIdentifier("router9.install.log")
+                }
+                if blocked { Text("router9.install.busy").foregroundStyle(theme[.fgMuted]) }
+            }
+        } footer: {
+            Spacer()
+            Button(isThisRun && installer.status != .running ? "agentInstall.done" : "agentInstall.cancel", action: closeWeb)
+                .accessibilityIdentifier("router9.install.close")
+            if !isThisRun || installer.status != .succeeded {
+                Button(action: run) {
+                    Label(installing ? "agentInstall.install" : "agentInstall.uninstall",
+                          systemImage: installing ? "arrow.down.to.line" : "trash")
+                        .font(metrics.font(size: 13))
+                }
+                .buttonStyle(AletheButtonStyle(installing ? .primary : .danger))
+                .keyboardShortcut(.defaultAction)
+                .disabled(command == nil || installer.isBusy || missingNode)
+                .accessibilityIdentifier("router9.install.run")
+            }
+        }
+    }
+
+    private func closeWeb() {
+        if isThisRun || isNodeRun { if installer.isBusy { installer.cancel() }; installer.reset() }
+        if let closeOverlay { closeOverlay() } else { dismiss() }
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             Text(installing ? "router9.install.title" : "router9.uninstall.title")
                 .font(metrics.font(.title3))
@@ -61,10 +129,6 @@ struct Router9InstallSheet: View {
         }
         .padding(metrics.space(.xl))
         .frame(width: metrics.size(520))
-        .task {
-            toolchain = await installer.toolchain(launchers: environment.launchers)
-            command = await environment.router9.command(for: action)
-        }
         .interactiveDismissDisabled(installer.isBusy && (isThisRun || isNodeRun))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("router9.installSheet")

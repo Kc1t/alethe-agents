@@ -147,6 +147,33 @@ struct ExtensionConsentSheet: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface {
+                ModalsM2WebModal(title: Text(verbatim: String(format: String(localized: "extensions.consent.title"), request.manifest.name)),
+                                 close: { resolve(false) }) {
+                    VStack(alignment: .leading, spacing: metrics.size(14)) {
+                        Label("extensions.consent.message", systemImage: "exclamationmark.shield")
+                            .font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint])
+                        Text("settings.plugins.capabilities").font(metrics.font(size: 9, weight: .bold))
+                            .textCase(.uppercase).tracking(metrics.size(0.9)).foregroundStyle(theme[.fgFaint])
+                        let capabilities = PluginCapability.allCases.filter { request.capabilities.contains($0) }
+                        if capabilities.isEmpty { Text("settings.plugins.noCapabilities") }
+                        ForEach(capabilities, id: \.self) { capability in
+                            Text(verbatim: capability.localizedName).font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+                        }
+                    }
+                } footer: {
+                    Spacer()
+                    Button("extensions.consent.deny") { resolve(false) }.keyboardShortcut(.cancelAction)
+                        .accessibilityIdentifier("extensions.consent.deny")
+                    Button("extensions.consent.allow") { resolve(true) }.buttonStyle(AletheButtonStyle(.primary))
+                        .keyboardShortcut(.defaultAction).accessibilityIdentifier("extensions.consent.allow")
+                }
+            } else { nativeBody }
+        }.accessibilityIdentifier("extensions.consent")
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             Text(verbatim: String(format: String(localized: "extensions.consent.title"), request.manifest.name))
                 .font(.headline)

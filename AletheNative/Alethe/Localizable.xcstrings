@@ -36886,6 +36886,358 @@
           }
         }
       }
+    },
+    "modalsM2.install.probing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking what is available on this machine…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificando o que está disponível nesta máquina…"
+          }
+        }
+      }
+    },
+    "modalsM2.install.chooseMethod" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose how to install %@ on this machine."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha como instalar o %@ nesta máquina."
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP servers"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidores MCP"
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.onboardingTitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP servers"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidores MCP"
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.onboardingSubtitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alethe reads the MCP servers each agent already has and can copy one across the others, so a tool set up in Claude also works in Codex."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Alethe lê os servidores MCP que cada agente já tem e copia um para os outros, então uma ferramenta configurada no Claude também funciona no Codex."
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.servers" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "servers"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "servidores"
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.agents" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agents with servers"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "agentes com servidor"
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.gaps" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "not on every agent"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "faltando em algum agente"
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.found" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "config found"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "config encontrada"
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.unreadable" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "config unreadable"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "config ilegível"
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.scanning" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading the agent configs…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lendo as configs dos agentes…"
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.nothing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No MCP server configured yet. You can add one later from the MCP tab in the right sidebar."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum servidor MCP configurado ainda. Dá para adicionar depois pela aba MCP na sidebar direita."
+          }
+        }
+      }
+    },
+    "modalsM2.mcp.syncHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anything an agent cannot express is skipped, never guessed."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que um agente não consegue expressar é pulado, nunca chutado."
+          }
+        }
+      }
+    },
+    "modalsM2.sync.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync your data"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizar seus dados"
+          }
+        }
+      }
+    },
+    "modalsM2.sync.subtitle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back up and restore your projects, layout and time stats."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faça backup e restaure seus projetos, layout e estatísticas de tempo."
+          }
+        }
+      }
+    },
+    "modalsM2.sync.sponsor" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sponsor on GitHub"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apoiar no GitHub"
+          }
+        }
+      }
+    },
+    "modalsM2.sync.cloud" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cloud"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuvem"
+          }
+        }
+      }
+    },
+    "modalsM2.sync.soon" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coming soon"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Em breve"
+          }
+        }
+      }
+    },
+    "modalsM2.sync.cloudDescription" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatic, continuous sync across devices — no token, no setup."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronização automática e contínua entre dispositivos — sem token, sem configurar."
+          }
+        }
+      }
+    },
+    "modalsM2.sync.premium" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Premium"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Premium"
+          }
+        }
+      }
+    },
+    "modalsM2.sync.subscribe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subscribe — coming soon"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assinar — em breve"
+          }
+        }
+      }
+    },
+    "modalsM2.close" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fechar"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

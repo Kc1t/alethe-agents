@@ -14,6 +14,7 @@ struct AgentInstallSheet: View {
     let mode: Mode
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.openURL) private var openURL
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
@@ -34,6 +35,91 @@ struct AgentInstallSheet: View {
     private var isThisRun: Bool { installer.agent == agent.kind && installer.status != .idle }
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface { webBody } else { nativeBody }
+        }
+        .task {
+            toolchain = await installer.toolchain(launchers: environment.launchers)
+            selection = methods.first?.id
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("agentInstall")
+    }
+
+    private var webBody: some View {
+        ModalsM2WebModal(title: Text(verbatim: String(format: String(localized: mode.title), agent.displayName)), close: closeWeb) {
+            VStack(alignment: .leading, spacing: metrics.size(10)) {
+                if toolchain == nil {
+                    Text("modalsM2.install.probing")
+                } else if methods.isEmpty {
+                    unavailable
+                } else {
+                    Text(verbatim: String(format: String(localized: "modalsM2.install.chooseMethod"), agent.displayName))
+                    VStack(spacing: metrics.size(6)) {
+                        ForEach(methods) { method in
+                            Button { selection = method.id } label: {
+                                HStack(alignment: .top, spacing: metrics.size(10)) {
+                                    Image(systemName: selectedMethod?.id == method.id ? "largecircle.fill.circle" : "circle")
+                                        .font(metrics.font(size: 13)).foregroundStyle(theme[.accent])
+                                        .padding(.top, metrics.size(2))
+                                    VStack(alignment: .leading, spacing: metrics.size(3)) {
+                                        Text(method.kind.title).font(metrics.font(size: 12.5, weight: .medium))
+                                        Text(verbatim: method.command).font(metrics.monoFont(size: 11))
+                                            .foregroundStyle(theme[.fgMuted]).textSelection(.enabled)
+                                    }.frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .padding(.horizontal, metrics.size(11)).padding(.vertical, metrics.size(9))
+                                .background(theme[selectedMethod?.id == method.id ? .accentSoft : .bg],
+                                            in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                                    .strokeBorder(theme[selectedMethod?.id == method.id ? .accent : .border], lineWidth: metrics.size(1)))
+                            }
+                            .buttonStyle(.plain).disabled(installer.isBusy)
+                            .accessibilityAddTraits(selectedMethod?.id == method.id ? [.isSelected] : [])
+                        }
+                    }
+                    .accessibilityIdentifier("agentInstall.method")
+                    .onKeyPress(.downArrow) { moveMethod(1); return .handled }
+                    .onKeyPress(.upArrow) { moveMethod(-1); return .handled }
+                }
+                if isThisRun {
+                    result
+                    ModalsM2InstallLog(log: installer.log).accessibilityIdentifier("agentInstall.log")
+                }
+                if let entry {
+                    Button { openURL(entry.docsURL) } label: {
+                        Label("agentInstall.docs", systemImage: "arrow.up.right.square")
+                            .font(metrics.font(size: 12))
+                    }.buttonStyle(.plain).foregroundStyle(theme[.accent]).padding(.top, metrics.size(10))
+                }
+            }
+        } footer: {
+            Spacer()
+            Button("agentInstall.cancel", action: closeWeb).keyboardShortcut(.cancelAction)
+            if !isThisRun || installer.status != .succeeded {
+                Button(action: start) {
+                    Label { Text(mode.action) } icon: { Image(systemName: "arrow.down.to.line").font(metrics.font(size: 13)) }
+                }
+                .buttonStyle(AletheButtonStyle(.primary))
+                .keyboardShortcut(.defaultAction)
+                .disabled(selectedMethod == nil || installer.isBusy)
+                .accessibilityIdentifier("agentInstall.run")
+            }
+        }
+    }
+
+    private func moveMethod(_ direction: Int) {
+        guard !installer.isBusy, !methods.isEmpty else { return }
+        let index = methods.firstIndex { $0.id == selection } ?? 0
+        selection = methods[(index + direction + methods.count) % methods.count].id
+    }
+
+    private func closeWeb() {
+        if isThisRun { if installer.isBusy { installer.cancel() }; installer.reset() }
+        if let closeOverlay { closeOverlay() } else { dismiss() }
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             Text(verbatim: String(format: String(localized: mode.title), agent.displayName))
                 .font((metrics.isWebInterface ? metrics.font(size: 16) : metrics.font(.title3)))
@@ -100,12 +186,6 @@ struct AgentInstallSheet: View {
         }
         .padding(metrics.space(.xl))
         .frame(width: metrics.size(520))
-        .task {
-            toolchain = await installer.toolchain(launchers: environment.launchers)
-            selection = methods.first?.id
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("agentInstall")
     }
 
     private var selectedMethod: InstallMethod? { methods.first { $0.id == selection } }

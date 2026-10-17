@@ -15,10 +15,10 @@ struct SkillsBrowser: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: metrics.isWebInterface ? metrics.size(14) : 0) {
             sidebar
-                .frame(width: metrics.size(240))
-            Divider()
+                .frame(width: metrics.size(metrics.isWebInterface ? 210 : 240))
+            if !metrics.isWebInterface { Divider() }
             detailPane
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -43,6 +43,7 @@ struct SkillsBrowser: View {
         VStack(alignment: .leading, spacing: metrics.space(.s)) {
             TextField(text: $model.query, prompt: Text("skills.filter")) { Text("skills.filter") }
                 .textFieldStyle(.roundedBorder)
+                .modifier(ModalsM2Input())
                 .accessibilityIdentifier("skills.filter")
             Picker(selection: $model.agentFilter) {
                 Text("skills.agent.all").tag(SkillAgent?.none)
@@ -56,7 +57,11 @@ struct SkillsBrowser: View {
             .accessibilityIdentifier("skills.agentFilter")
             list
         }
-        .padding(metrics.space(.m))
+        .padding(metrics.isWebInterface ? 0 : metrics.space(.m))
+        .padding(.trailing, metrics.isWebInterface ? metrics.size(12) : 0)
+        .overlay(alignment: .trailing) {
+            if metrics.isWebInterface { Rectangle().fill(theme[.borderSubtle]).frame(width: metrics.size(1)) }
+        }
     }
 
     @ViewBuilder private var list: some View {
@@ -75,11 +80,19 @@ struct SkillsBrowser: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityIdentifier("skills.noMatch")
         } else {
-            List(model.visibleGroups, selection: $model.selection) { group in
-                row(group).tag(group.name)
+            if metrics.isWebInterface {
+                ScrollView {
+                    VStack(spacing: metrics.size(2)) {
+                        ForEach(model.visibleGroups) { group in
+                            Button { model.selection = group.name } label: { row(group) }
+                                .buttonStyle(ModalsM2RowStyle(selected: model.activeGroup?.name == group.name, vertical: 6))
+                        }
+                    }
+                }.accessibilityIdentifier("skills.list")
+            } else {
+                List(model.visibleGroups, selection: $model.selection) { group in row(group).tag(group.name) }
+                    .listStyle(.sidebar).accessibilityIdentifier("skills.list")
             }
-            .listStyle(.sidebar)
-            .accessibilityIdentifier("skills.list")
         }
     }
 
@@ -103,7 +116,7 @@ struct SkillsBrowser: View {
                 .font(metrics.font(.caption).monospacedDigit())
                 .foregroundStyle(theme[.textTertiary])
         }
-        .font(metrics.font(.body))
+        .font(metrics.isWebInterface ? metrics.font(size: 12.5) : metrics.font(.body))
         .accessibilityIdentifier("skills.row.\(group.name)")
     }
 
@@ -112,7 +125,7 @@ struct SkillsBrowser: View {
     @ViewBuilder private var detailPane: some View {
         if let group = model.activeGroup {
             ScrollView {
-                VStack(alignment: .leading, spacing: metrics.space(.xl)) {
+                VStack(alignment: .leading, spacing: metrics.isWebInterface ? metrics.size(14) : metrics.space(.xl)) {
                     banners
                     header(group)
                     installedOn(group)
@@ -121,13 +134,19 @@ struct SkillsBrowser: View {
                         files(detail)
                         section("skills.section.skillFile") {
                             MarkdownBlocksView(blocks: model.blocks)
+                                .padding(metrics.isWebInterface ? metrics.size(12) : 0)
+                                .overlay {
+                                    if metrics.isWebInterface {
+                                        RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1))
+                                    }
+                                }
                                 .accessibilityIdentifier("skills.body")
                         }
                     } else if model.detailError == nil {
                         ProgressView().frame(maxWidth: .infinity)
                     }
                 }
-                .padding(metrics.space(.xl))
+                .padding(metrics.isWebInterface ? 0 : metrics.space(.xl))
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else if model.snapshots != nil {
@@ -143,7 +162,7 @@ struct SkillsBrowser: View {
                     ContentUnavailableView("skills.noMatch", systemImage: "line.3.horizontal.decrease.circle")
                 }
             }
-            .padding(metrics.space(.xl))
+            .padding(metrics.isWebInterface ? 0 : metrics.space(.xl))
         }
     }
 
@@ -168,7 +187,7 @@ struct SkillsBrowser: View {
         VStack(alignment: .leading, spacing: metrics.space(.xs)) {
             HStack(spacing: metrics.space(.s)) {
                 Text(verbatim: group.name)
-                    .font(metrics.font(.title3))
+                    .font(metrics.isWebInterface ? metrics.font(size: 15, weight: .medium) : metrics.font(.title3))
                     .textSelection(.enabled)
                 if group.bundled {
                     badge("skills.badge.bundled", systemImage: "lock.fill")
@@ -188,7 +207,7 @@ struct SkillsBrowser: View {
             }
             if !group.description.isEmpty {
                 Text(verbatim: group.description)
-                    .font(metrics.font(.body))
+                    .font(metrics.isWebInterface ? metrics.font(size: 12.5) : metrics.font(.body))
                     .foregroundStyle(theme[.textSecondary])
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
@@ -207,7 +226,7 @@ struct SkillsBrowser: View {
                         if entry.bundled { badge("skills.badge.bundled", systemImage: "lock.fill") }
                         if entry.linked { badge("skills.badge.linked", systemImage: "link") }
                         Text(verbatim: entry.path)
-                            .font(metrics.font(.caption).monospaced())
+                            .font(metrics.isWebInterface ? metrics.monoFont(size: 10.5) : metrics.font(.caption).monospaced())
                             .foregroundStyle(theme[.textSecondary])
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -267,7 +286,7 @@ struct SkillsBrowser: View {
                         .font(metrics.font(.footnote).monospaced())
                         .foregroundStyle(theme[.textTertiary])
                     Text(verbatim: value)
-                        .font(metrics.font(.body))
+                        .font(metrics.isWebInterface ? metrics.font(size: 12.5) : metrics.font(.body))
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -281,7 +300,7 @@ struct SkillsBrowser: View {
                 OutlineGroup(detail.tree, children: \.childrenIfFolder) { node in
                     Label {
                         Text(verbatim: node.name)
-                            .font(metrics.font(.body))
+                            .font(metrics.isWebInterface ? metrics.font(size: 12.5) : metrics.font(.body))
                     } icon: {
                         Image(systemName: node.isDirectory ? "folder" : "doc.text")
                             .foregroundStyle(theme[.textTertiary])
@@ -333,9 +352,25 @@ struct SkillsBrowser: View {
 struct SkillsSheet: View {
     let store: SkillStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.metrics) private var metrics
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface {
+                ModalsM2WebModal(title: Text("mcp.tab.skills"), close: { if let closeOverlay { closeOverlay() } else { dismiss() } }, width: 880) {
+                    SkillsBrowser(model: SkillsBrowserModel(store: store)).frame(height: metrics.size(380))
+                } footer: {
+                    Spacer()
+                    Button("agentInstall.done") { if let closeOverlay { closeOverlay() } else { dismiss() } }.accessibilityIdentifier("skills.done")
+                }
+            } else { nativeBody }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("skills.sheet")
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: 0) {
             SkillsBrowser(model: SkillsBrowserModel(store: store))
             Divider()

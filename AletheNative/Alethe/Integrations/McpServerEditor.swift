@@ -15,6 +15,7 @@ struct McpServerEditor: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
+    @Environment(\.modalsM2Close) private var closeOverlay
     @State private var source = Source.registry
     @State private var draft = McpServerDraft()
     @State private var targets: Set<McpAgent> = []
@@ -32,6 +33,55 @@ struct McpServerEditor: View {
     enum RegistryState { case loading, idle, offline }
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface { webBody } else { nativeBody }
+        }
+        .task {
+            guard !prepared else { return }
+            prepared = true
+            if let editing {
+                draft = McpServerDraft(editing: editing.server)
+                source = .manual
+            } else { targets = Set(model.writableAgents) }
+        }
+        .task(id: term) { await search() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("mcp.editor")
+    }
+
+    private func close() { if let closeOverlay { closeOverlay() } else { dismiss() } }
+
+    private var webBody: some View {
+        ModalsM2WebModal(title: Text((editing == nil ? "mcp.add.title" : "mcp.edit.title") as LocalizedStringKey), close: close, width: 620) {
+            VStack(alignment: .leading, spacing: metrics.size(12)) {
+                if editing == nil {
+                    ModalsM2Segments(selection: $source, options: [(.registry, "mcp.add.registry"), (.manual, "mcp.add.manual")])
+                        .accessibilityIdentifier("mcp.add.source")
+                }
+                if source == .registry && editing == nil { registry } else {
+                    form
+                    if editing == nil { targetList }
+                }
+            }
+        } footer: {
+            if let failure {
+                Text(verbatim: failure).font(metrics.font(size: 11.5)).foregroundStyle(theme[.statusStopped])
+                    .lineLimit(3).accessibilityIdentifier("mcp.editor.error")
+            }
+            Spacer()
+            Button("editor.cancel", action: close).disabled(saving)
+            Button { Task { await submit() } } label: {
+                if editing != nil { Text("mcp.edit.save") }
+                else { Text(verbatim: format("mcp.add.action", selectedTargets.count)) }
+            }
+            .buttonStyle(AletheButtonStyle(.primary))
+            .disabled(saving || (editing == nil && source == .registry) || (editing == nil && selectedTargets.isEmpty))
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("mcp.editor.save")
+        }
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: 0) {
             Text((editing == nil ? "mcp.add.title" : "mcp.edit.title") as LocalizedStringKey)
                 .font(metrics.font(.title3))
@@ -65,19 +115,6 @@ struct McpServerEditor: View {
             footer
         }
         .frame(width: metrics.size(640), height: metrics.size(600))
-        .task {
-            guard !prepared else { return }
-            prepared = true
-            if let editing {
-                draft = McpServerDraft(editing: editing.server)
-                source = .manual
-            } else {
-                targets = Set(model.writableAgents)
-            }
-        }
-        .task(id: term) { await search() }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("mcp.editor")
     }
 
     // MARK: Registry
@@ -86,6 +123,7 @@ struct McpServerEditor: View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             TextField(text: $term, prompt: Text("mcp.registry.search")) { Text("mcp.registry.search") }
                 .textFieldStyle(.roundedBorder)
+                .modifier(ModalsM2Input())
                 .accessibilityIdentifier("mcp.registry.search")
             HStack {
                 Picker("mcp.registry.filter", selection: $filter) {
@@ -164,7 +202,7 @@ struct McpServerEditor: View {
         }
         .padding(metrics.space(.m))
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme[.surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .background(theme[metrics.isWebInterface ? .bgSunken : .surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("mcp.registry.entry.\(entry.id)")
     }
@@ -209,7 +247,8 @@ struct McpServerEditor: View {
             field("mcp.field.name") {
                 TextField(text: $draft.name, prompt: Text(verbatim: "playwright")) { Text("mcp.field.name") }
                     .disabled(editing != nil)
-                    .accessibilityIdentifier("mcp.field.name")
+                    .modifier(ModalsM2Input(mono: false))
+                        .accessibilityIdentifier("mcp.field.name")
             }
             Picker("mcp.field.transport", selection: $draft.kind) {
                 ForEach(McpTransportKind.allCases, id: \.self) { kind in
@@ -222,6 +261,7 @@ struct McpServerEditor: View {
             if draft.kind == .stdio {
                 field("mcp.field.command") {
                     TextField(text: $draft.command, prompt: Text(verbatim: "npx")) { Text("mcp.field.command") }
+                        .modifier(ModalsM2Input(mono: true))
                         .accessibilityIdentifier("mcp.field.command")
                 }
                 field("mcp.field.args") {
@@ -230,15 +270,18 @@ struct McpServerEditor: View {
                     }
                     .lineLimit(2...6)
                     .font(metrics.font(.body).monospaced())
-                    .accessibilityIdentifier("mcp.field.args")
+                    .modifier(ModalsM2Input(mono: true))
+                        .accessibilityIdentifier("mcp.field.args")
                 }
                 field("mcp.field.cwd") {
                     TextField(text: $draft.cwd, prompt: Text("mcp.field.optional")) { Text("mcp.field.cwd") }
+                        .modifier(ModalsM2Input(mono: true))
                         .accessibilityIdentifier("mcp.field.cwd")
                 }
             } else {
                 field("mcp.field.url") {
                     TextField(text: $draft.url, prompt: Text(verbatim: "https://mcp.example.com/mcp")) { Text("mcp.field.url") }
+                        .modifier(ModalsM2Input(mono: true))
                         .accessibilityIdentifier("mcp.field.url")
                 }
             }
@@ -341,7 +384,7 @@ struct McpServerEditor: View {
             } else {
                 try await model.add(draft, to: selectedTargets)
             }
-            dismiss()
+            if metrics.isWebInterface { close() } else { dismiss() }
         } catch {
             failure = McpManagerModel.describe(error)
         }

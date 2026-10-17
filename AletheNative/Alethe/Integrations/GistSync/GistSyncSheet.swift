@@ -10,6 +10,7 @@ import SwiftUI
 struct GistSyncSheet: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var token = ""
@@ -24,13 +25,142 @@ struct GistSyncSheet: View {
                 // The main window's undo manager: the import stays undoable once the sheet closes.
                 TauriImportSheet(workspace: workspace, undoManager: NSApp.mainWindow?.undoManager,
                                  projectsFile: pull.projectsFile)
-            } else {
-                form
-            }
+            } else if metrics.isWebInterface {
+                webBody
+            } else { form }
         }
         .accessibilityIdentifier("gistSync.sheet")
         .onAppear { sync.refresh() }
         .onDisappear { sync.close() }
+    }
+
+    private var webBody: some View {
+        ModalsM2WebModal(title: Text("modalsM2.sync.title"), close: { if let closeOverlay { closeOverlay() } else { dismiss() } }, width: 580) {
+            VStack(alignment: .leading, spacing: metrics.size(14)) {
+                Text("modalsM2.sync.subtitle").font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+                HStack(alignment: .top, spacing: metrics.size(12)) {
+                    webGitHubCard
+                    webCloudCard
+                }
+                if let error = sync.error {
+                    Text(verbatim: error).font(metrics.font(size: 12)).foregroundStyle(theme[.statusOffline])
+                        .textSelection(.enabled).accessibilityIdentifier("gistSync.error")
+                } else if sync.notice == .pushed {
+                    Text("gistSync.pushDone").font(metrics.font(size: 12)).foregroundStyle(theme[.statusWorking])
+                        .accessibilityIdentifier("gistSync.notice")
+                }
+                HStack {
+                    Spacer()
+                    Button { NSWorkspace.shared.open(URL(string: "https://github.com/sponsors/Kc1t")!) } label: {
+                        Label("modalsM2.sync.sponsor", systemImage: "heart").font(metrics.font(size: 12.5, weight: .semibold))
+                    }.buttonStyle(AletheButtonStyle())
+                    Spacer()
+                }.padding(.top, metrics.size(2))
+            }
+        } footer: { EmptyView() }
+    }
+
+    private var webGitHubCard: some View {
+        VStack(alignment: .leading, spacing: metrics.size(12)) {
+            HStack(alignment: .top, spacing: metrics.size(10)) {
+                webSyncIcon("chevron.left.forwardslash.chevron.right")
+                VStack(alignment: .leading, spacing: metrics.size(4)) {
+                    Text("gistSync.github").font(metrics.font(size: 14, weight: .semibold))
+                    if sync.connected {
+                        HStack(spacing: metrics.size(6)) {
+                            Circle().fill(theme[.statusWorking]).frame(width: metrics.size(7), height: metrics.size(7))
+                            Text(verbatim: String(format: String(localized: "gistSync.connectedAs"), sync.status?.login ?? "—"))
+                                .accessibilityIdentifier("gistSync.connectedAs")
+                        }.font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgMuted])
+                    } else {
+                        Text("gistSync.description").font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgMuted])
+                    }
+                }
+            }
+            if sync.connected {
+                HStack(spacing: metrics.size(8)) {
+                    Button(action: sync.push) {
+                        Label(sync.busy == .push ? "gistSync.pushing" : "gistSync.push", systemImage: "arrow.up.from.line")
+                            .frame(maxWidth: .infinity)
+                    }.accessibilityIdentifier("gistSync.push")
+                    Button(action: sync.pull) {
+                        Label(sync.busy == .pull ? "gistSync.pulling" : "gistSync.pull", systemImage: "arrow.down.to.line")
+                            .frame(maxWidth: .infinity)
+                    }.accessibilityIdentifier("gistSync.pull")
+                }.buttonStyle(AletheButtonStyle()).disabled(sync.busy != nil)
+                if let pull = sync.confirmingPull {
+                    VStack(alignment: .leading, spacing: metrics.size(8)) {
+                        Text(verbatim: pullSummary(pull)).font(metrics.font(size: 11.5))
+                        HStack(spacing: metrics.size(8)) {
+                            Button("editor.cancel", action: sync.cancelPull)
+                            Button("gistSync.pull.action", action: sync.confirmPull)
+                                .buttonStyle(AletheButtonStyle(.primary)).accessibilityIdentifier("gistSync.pullConfirm")
+                        }.buttonStyle(AletheButtonStyle())
+                    }
+                    .padding(metrics.size(10))
+                    .background(theme[.statusWaitingSoft], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.statusWaiting], lineWidth: metrics.size(1)))
+                }
+                VStack(alignment: .leading, spacing: metrics.size(2)) {
+                    Text(verbatim: when("gistSync.lastPush", sync.status?.lastPushAt)).accessibilityIdentifier("gistSync.lastPush")
+                    Text(verbatim: when("gistSync.lastPull", sync.status?.lastPullAt)).accessibilityIdentifier("gistSync.lastPull")
+                }.font(metrics.font(size: 10.5)).foregroundStyle(theme[.fgFaint])
+                HStack {
+                    if let url = sync.status?.gistURL {
+                        Button("gistSync.openGist") { NSWorkspace.shared.open(url) }
+                            .accessibilityIdentifier("gistSync.openGist")
+                    }
+                    Spacer(minLength: 0)
+                    Button("gistSync.disconnect", action: sync.disconnect)
+                        .foregroundStyle(theme[.statusOffline]).disabled(sync.busy != nil).accessibilityIdentifier("gistSync.disconnect")
+                }.buttonStyle(.plain).font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgMuted])
+            } else {
+                VStack(alignment: .leading, spacing: metrics.size(8)) {
+                    SecureField("gistSync.token", text: $token, prompt: Text("gistSync.token.placeholder"))
+                        .modifier(ModalsM2Input(mono: true)).onSubmit(connect).accessibilityIdentifier("gistSync.token")
+                    Button(action: connect) {
+                        Text(sync.busy == .connect ? "gistSync.connecting" : "gistSync.connect").frame(maxWidth: .infinity)
+                    }.buttonStyle(AletheButtonStyle(.primary))
+                        .disabled(sync.busy != nil || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("gistSync.connect")
+                    Text("gistSync.token.hint").font(metrics.font(size: 10.5)).foregroundStyle(theme[.fgFaint])
+                    Button("gistSync.createToken") { NSWorkspace.shared.open(GistSyncController.createTokenURL) }
+                        .buttonStyle(.plain).font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgMuted])
+                        .accessibilityIdentifier("gistSync.createToken")
+                }
+            }
+        }
+        .padding(metrics.size(14)).frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+    }
+
+    private var webCloudCard: some View {
+        VStack(alignment: .leading, spacing: metrics.size(12)) {
+            HStack(alignment: .top, spacing: metrics.size(10)) {
+                webSyncIcon("cloud")
+                VStack(alignment: .leading, spacing: metrics.size(4)) {
+                    Text("modalsM2.sync.cloud").font(metrics.font(size: 14, weight: .semibold))
+                    Text("modalsM2.sync.soon").font(metrics.font(size: 9, weight: .bold)).textCase(.uppercase)
+                        .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(2))
+                        .background(theme[.accentFaint], in: Capsule())
+                    Text("modalsM2.sync.cloudDescription").font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgMuted])
+                }
+            }
+            Text("modalsM2.sync.premium").font(metrics.font(size: 10.5)).foregroundStyle(theme[.fgFaint])
+            Button("modalsM2.sync.subscribe") {}.buttonStyle(AletheButtonStyle()).disabled(true)
+        }
+        .padding(metrics.size(14)).frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .opacity(0.9)
+    }
+
+    private func webSyncIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol).font(metrics.font(size: 18))
+            .frame(width: metrics.size(32), height: metrics.size(32))
+            .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
     }
 
     private var form: some View {

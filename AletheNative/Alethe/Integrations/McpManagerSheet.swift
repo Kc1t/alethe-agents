@@ -12,18 +12,19 @@ struct McpManagerSheet: View {
     let route: McpManagerRoute
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.metrics) private var metrics
 
     var body: some View {
         Group {
             if let model = environment.mcp {
                 McpManagerContent(model: model, route: route, skillStore: environment.skillStore,
-                                  folder: selectedFolder, dismiss: { dismiss() })
+                                  folder: selectedFolder, dismiss: { if let closeOverlay { closeOverlay() } else { dismiss() } })
             } else {
                 ProgressView()
             }
         }
-        .frame(width: metrics.size(920), height: metrics.size(620))
+        .frame(width: metrics.isWebInterface ? nil : metrics.size(920), height: metrics.isWebInterface ? nil : metrics.size(620))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("mcp.manager")
     }
@@ -65,6 +66,144 @@ private struct McpManagerContent: View {
     }
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface { webBody } else { nativeBody }
+        }
+        .task {
+            guard !routed else { return }
+            routed = true
+            tab = route.tab
+            selection = route.server
+            model.setRepository(folder)
+            if route.add { adding = true }
+            await model.refresh()
+        }
+        .onDisappear { model.close() }
+        .sheet(isPresented: Binding(get: { !metrics.isWebInterface && adding }, set: { adding = $0 })) {
+            McpServerEditor(model: model, editing: nil)
+        }
+        .sheet(item: Binding(get: { metrics.isWebInterface ? nil : editing }, set: { editing = $0 })) { target in
+            McpServerEditor(model: model, editing: target.record)
+        }
+        .sheet(item: $backupsFor) { target in
+            McpBackupsSheet(model: model, record: target.record)
+        }
+        .overlay {
+            if metrics.isWebInterface && adding {
+                NewTerminalWebOverlay(onClose: { adding = false }, defaultWidth: 620) { close in
+                    McpServerEditor(model: model, editing: nil).environment(\.modalsM2Close, close)
+                }
+            }
+            if metrics.isWebInterface, let editing {
+                NewTerminalWebOverlay(onClose: { self.editing = nil }, defaultWidth: 620) { close in
+                    McpServerEditor(model: model, editing: editing.record).environment(\.modalsM2Close, close)
+                }
+            }
+            if metrics.isWebInterface, let records = removal {
+                NewTerminalWebOverlay(onClose: { removal = nil }, defaultWidth: 420, minimumWidth: 320) { close in
+                    ModalsM2WebModal(title: Text("mcp.remove.title"), close: close, width: 420) {
+                        Text(verbatim: removalMessage(records)).font(metrics.font(size: 12)).foregroundStyle(theme[.fgFaint])
+                    } footer: {
+                        Spacer()
+                        Button("editor.cancel", action: close)
+                        Button("mcp.remove.action") { close(); Task { await model.remove(records) } }
+                            .buttonStyle(AletheButtonStyle(.danger)).accessibilityIdentifier("mcp.remove.confirm")
+                    }
+                }
+            }
+        }
+        .confirmationDialog(Text("mcp.remove.title"), isPresented: Binding {
+            !metrics.isWebInterface && removal != nil
+        } set: { if !$0 { removal = nil } }, presenting: removal) { records in
+            Button("mcp.remove.action", role: .destructive) { Task { await model.remove(records) } }
+                .accessibilityIdentifier("mcp.remove.confirm")
+            Button("editor.cancel", role: .cancel) {}
+        } message: { records in Text(verbatim: removalMessage(records)) }
+    }
+
+    private var webBody: some View {
+        ModalsM2WebModal(title: Text("modalsM2.mcp.title"), close: dismiss, width: 880) {
+            VStack(spacing: 0) {
+                HStack(spacing: metrics.size(6)) {
+                    webTab(.servers, title: "mcp.tab.servers")
+                    webTab(.skills, title: "mcp.tab.skills")
+                    Spacer()
+                }
+                .accessibilityIdentifier("mcp.manager.tab")
+                .padding(.bottom, metrics.size(8))
+                .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+                .padding(.bottom, metrics.size(16))
+                if tab == .skills {
+                    SkillsBrowser(model: SkillsBrowserModel(store: skillStore)).frame(height: metrics.size(380))
+                } else {
+                    HStack(spacing: metrics.size(14)) {
+                        webSidebar.frame(width: metrics.size(232))
+                        detail.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }.frame(height: metrics.size(380))
+                }
+            }
+        } footer: {
+            VStack(alignment: .leading, spacing: metrics.size(2)) {
+                Text(verbatim: scopeNote).accessibilityIdentifier("mcp.manager.scope")
+                if let error = model.error { Text(verbatim: error).foregroundStyle(theme[.statusStopped]).accessibilityIdentifier("mcp.manager.error") }
+                if let note = model.note { Text(verbatim: note).accessibilityIdentifier("mcp.manager.note") }
+            }
+            .font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgFaint]).lineLimit(1)
+            Spacer(minLength: 0)
+            if model.undoLabel != nil {
+                Button("mcp.undo") { Task { await model.performUndo() } }
+                    .disabled(model.busy).accessibilityIdentifier("mcp.manager.undo")
+            }
+            Button("agentInstall.done", action: dismiss).accessibilityIdentifier("mcp.manager.done")
+        }
+    }
+
+    private func webTab(_ value: McpManagerRoute.Tab, title: LocalizedStringKey) -> some View {
+        Button { tab = value } label: {
+            Text(title).font(metrics.font(size: 12, weight: tab == value ? .semibold : .medium))
+                .padding(.horizontal, metrics.size(12)).padding(.vertical, metrics.size(6))
+                .background(theme[.accentFaint].opacity(tab == value ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                    .strokeBorder(theme[.accentBorder].opacity(tab == value ? 1 : 0), lineWidth: metrics.size(1)))
+        }.buttonStyle(.plain).foregroundStyle(theme[tab == value ? .fg : .fgMuted])
+            .accessibilityAddTraits(tab == value ? [.isSelected] : [])
+    }
+
+    private var webSidebar: some View {
+        VStack(spacing: metrics.size(8)) {
+            HStack(spacing: metrics.size(7)) {
+                Image(systemName: "magnifyingglass").font(metrics.font(size: 13)).foregroundStyle(theme[.fgFaint])
+                TextField(text: $query, prompt: Text("mcp.search")) { Text("mcp.search") }
+                    .accessibilityIdentifier("mcp.manager.search")
+            }.modifier(ModalsM2Input())
+            Button { adding = true } label: {
+                Label("mcp.addServer", systemImage: "plus").font(metrics.font(size: 12))
+                    .frame(maxWidth: .infinity).padding(.horizontal, metrics.size(10)).padding(.vertical, metrics.size(6))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                        .strokeBorder(theme[.borderStrong], style: StrokeStyle(lineWidth: metrics.size(1), dash: [metrics.size(3)])))
+            }.buttonStyle(.plain).foregroundStyle(theme[.fgMuted])
+                .disabled(model.writableAgents.isEmpty || model.busy).accessibilityIdentifier("mcp.manager.add")
+            if model.snapshots == nil { ProgressView() }
+            ScrollView {
+                VStack(spacing: metrics.size(2)) {
+                    ForEach(visible, id: \.name) { group in
+                        Button { selection = group.name } label: {
+                            HStack(spacing: metrics.size(8)) {
+                                Text(verbatim: group.name).lineLimit(1)
+                                Spacer(minLength: 0)
+                                Text(verbatim: "\(group.agents.count)").font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint])
+                            }
+                        }.buttonStyle(ModalsM2RowStyle(selected: active?.name == group.name))
+                            .accessibilityIdentifier("mcp.manager.row.\(group.name)")
+                    }
+                }
+            }.accessibilityIdentifier("mcp.manager.list")
+        }
+        .padding(.trailing, metrics.size(14))
+        .overlay(alignment: .trailing) { Rectangle().fill(theme[.borderSubtle]).frame(width: metrics.size(1)) }
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: 0) {
             HStack {
                 Picker("mcp.view", selection: $tab) {
@@ -98,37 +237,6 @@ private struct McpManagerContent: View {
             }
             Divider()
             footer
-        }
-        .task {
-            guard !routed else { return }
-            routed = true
-            tab = route.tab
-            selection = route.server
-            model.setRepository(folder)
-            if route.add { adding = true }
-            // Configs may have changed outside Alethe since the last scan.
-            await model.refresh()
-        }
-        .onDisappear { model.close() }
-        .sheet(isPresented: $adding) {
-            McpServerEditor(model: model, editing: nil)
-        }
-        .sheet(item: $editing) { target in
-            McpServerEditor(model: model, editing: target.record)
-        }
-        .sheet(item: $backupsFor) { target in
-            McpBackupsSheet(model: model, record: target.record)
-        }
-        .confirmationDialog(Text("mcp.remove.title"), isPresented: Binding {
-            removal != nil
-        } set: { if !$0 { removal = nil } }, presenting: removal) { records in
-            Button("mcp.remove.action", role: .destructive) {
-                Task { await model.remove(records) }
-            }
-            .accessibilityIdentifier("mcp.remove.confirm")
-            Button("editor.cancel", role: .cancel) {}
-        } message: { records in
-            Text(verbatim: removalMessage(records))
         }
     }
 
@@ -264,7 +372,7 @@ private struct McpServerDetail: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: metrics.space(.xl)) {
+            VStack(alignment: .leading, spacing: metrics.isWebInterface ? metrics.size(14) : metrics.space(.xl)) {
                 header
                 if let owner = group.records.compactMap(\.managedByImport).first {
                     Label { Text(verbatim: format("mcp.importedHint", owner)) } icon: {
@@ -285,7 +393,7 @@ private struct McpServerDetail: View {
                     }
                 }
             }
-            .padding(metrics.space(.xl))
+            .padding(metrics.isWebInterface ? 0 : metrics.space(.xl))
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .accessibilityElement(children: .contain)
@@ -296,7 +404,7 @@ private struct McpServerDetail: View {
         VStack(alignment: .leading, spacing: metrics.space(.xs)) {
             HStack(spacing: metrics.space(.s)) {
                 Text(verbatim: group.name)
-                    .font(metrics.font(.title3))
+                    .font(metrics.isWebInterface ? metrics.font(size: 15, weight: .medium) : metrics.font(.title3))
                     .textSelection(.enabled)
                     .accessibilityIdentifier("mcp.detail.name")
                 Spacer()
@@ -311,7 +419,7 @@ private struct McpServerDetail: View {
                 .accessibilityIdentifier("mcp.detail.remove")
             }
             Text(verbatim: primary?.server.transport.summary ?? "")
-                .font(metrics.font(.footnote).monospaced())
+                .font(metrics.isWebInterface ? metrics.monoFont(size: 11) : metrics.font(.footnote).monospaced())
                 .foregroundStyle(theme[.textSecondary])
                 .textSelection(.enabled)
                 .lineLimit(2)
@@ -346,7 +454,7 @@ private struct McpServerDetail: View {
         HStack(spacing: metrics.space(.s)) {
             Circle().strokeBorder(theme[agent.colorToken], lineWidth: 1)
                 .frame(width: metrics.size(8), height: metrics.size(8))
-            Text(verbatim: agent.label).font(metrics.font(.body))
+            Text(verbatim: agent.label).font(metrics.isWebInterface ? metrics.font(size: 12.5) : metrics.font(.body))
             Text(absentReason(agent))
                 .font(metrics.font(.caption))
                 .foregroundStyle(theme[.textTertiary])
@@ -361,7 +469,8 @@ private struct McpServerDetail: View {
                 .accessibilityIdentifier("mcp.detail.copy.\(agent.rawValue)")
             }
         }
-        .padding(metrics.space(.s))
+        .padding(.horizontal, metrics.isWebInterface ? metrics.size(11) : metrics.space(.s))
+        .padding(.vertical, metrics.isWebInterface ? metrics.size(9) : metrics.space(.s))
         .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("mcp.detail.agent.\(agent.rawValue)")
@@ -375,7 +484,7 @@ private struct McpServerDetail: View {
         let agent = record.agent
         return HStack(spacing: metrics.space(.s)) {
             Circle().fill(theme[agent.colorToken]).frame(width: metrics.size(8), height: metrics.size(8))
-            Text(verbatim: agent.label).font(metrics.font(.body).weight(.medium))
+            Text(verbatim: agent.label).font(metrics.isWebInterface ? metrics.font(size: 12.5, weight: .medium) : metrics.font(.body).weight(.medium))
             if record.sourceKind != .user { McpBadge(title: record.sourceKind.title) }
             if !record.server.enabled {
                 McpBadge(title: "mcp.badge.disabled")
@@ -397,8 +506,9 @@ private struct McpServerDetail: View {
             Spacer(minLength: 0)
             actions(record)
         }
-        .padding(metrics.space(.s))
-        .background(theme[.surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .padding(.horizontal, metrics.isWebInterface ? metrics.size(11) : metrics.space(.s))
+        .padding(.vertical, metrics.isWebInterface ? metrics.size(9) : metrics.space(.s))
+        .background(theme[metrics.isWebInterface ? .bgSunken : .surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("mcp.detail.agent.\(agent.rawValue)")
     }
@@ -481,11 +591,11 @@ private struct McpEnvTable: View {
         let shown = model.revealed[revealKey]
         return GridRow {
             Text(verbatim: key)
-                .font(metrics.font(.footnote).monospaced())
+                .font(metrics.isWebInterface ? metrics.monoFont(size: 11) : metrics.font(.footnote).monospaced())
                 .foregroundStyle(theme[.textTertiary])
             HStack(spacing: metrics.space(.xs)) {
                 Text(verbatim: shown ?? view?.literal?.preview ?? "")
-                    .font(metrics.font(.footnote).monospaced())
+                    .font(metrics.isWebInterface ? metrics.monoFont(size: 11) : metrics.font(.footnote).monospaced())
                     .textSelection(.enabled)
                     .accessibilityIdentifier("mcp.env.value.\(key)")
                 if let from = view?.passthroughFrom {
@@ -522,6 +632,7 @@ private struct McpBackupsSheet: View {
     let model: McpManagerModel
     let record: McpServerRecord
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var backups: [ConfigBackup]?
@@ -619,11 +730,101 @@ extension McpHealthError {
 struct McpIntroSheet: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var snapshots: [McpAgentSnapshot]?
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface { webBody } else { nativeBody }
+        }
+        .task {
+            guard let store = environment.mcp?.store else { return }
+            snapshots = (try? await store.scan(scope: .global, repository: nil)) ?? []
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("mcp.intro")
+    }
+
+    private var webGroups: [McpServerGroup] { McpStore.groups(snapshots ?? []) }
+    private var webGaps: [McpServerGroup] { webGroups.filter { !$0.missingAgents.isEmpty } }
+
+    private var webBody: some View {
+        ModalsM2WebModal(title: Text("mcp.intro.title"), close: { markSeen(); closeWeb() }, width: 640) {
+            VStack(alignment: .leading, spacing: metrics.size(12)) {
+                VStack(alignment: .leading, spacing: metrics.size(1)) {
+                    Text("modalsM2.mcp.onboardingTitle").font(metrics.font(size: 19, weight: .medium)).tracking(metrics.size(-0.38))
+                    Text("modalsM2.mcp.onboardingSubtitle").font(metrics.font(size: 13)).foregroundStyle(theme[.fgMuted])
+                }
+                HStack(spacing: metrics.size(7)) {
+                    webStat(webGroups.count, title: "modalsM2.mcp.servers", token: .accent)
+                    webStat((snapshots ?? []).filter { !$0.servers.isEmpty && $0.issue == nil }.count,
+                            title: "modalsM2.mcp.agents", token: .statusWorking)
+                    webStat(webGaps.count, title: "modalsM2.mcp.gaps", token: webGaps.isEmpty ? .fgFaint : .statusWaiting)
+                }
+                VStack(spacing: 0) {
+                    if let snapshots {
+                        ForEach(snapshots, id: \.agent) { snapshot in
+                            HStack(spacing: metrics.size(12)) {
+                                Text(verbatim: snapshot.agent.label).font(metrics.font(size: 13, weight: .medium))
+                                Spacer(minLength: 0)
+                                if !snapshot.servers.isEmpty {
+                                    Text(verbatim: format("mcp.stats.servers", snapshot.servers.count))
+                                        .font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgFaint])
+                                }
+                                let found = snapshot.sources.contains(where: \.exists)
+                                HStack(spacing: metrics.size(6)) {
+                                    Circle().fill(theme[snapshot.issue != nil ? .statusWaiting : found ? .statusWorking : .fgFaint])
+                                        .frame(width: metrics.size(5), height: metrics.size(5))
+                                    Text(snapshot.issue != nil ? "modalsM2.mcp.unreadable" : found ? "modalsM2.mcp.found" : "mcp.intro.noConfig")
+                                }
+                                .font(metrics.font(size: 11.5))
+                                .foregroundStyle(theme[snapshot.issue != nil ? .statusWaiting : found ? .statusWorking : .fgFaint])
+                                .padding(.horizontal, metrics.size(9)).padding(.vertical, metrics.size(3))
+                                .overlay(Capsule().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                            }
+                            .padding(.horizontal, metrics.size(12)).padding(.vertical, metrics.size(10))
+                            .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("mcp.intro.agent.\(snapshot.agent.rawValue)")
+                        }
+                    } else {
+                        Text("modalsM2.mcp.scanning").font(metrics.font(size: 12)).foregroundStyle(theme[.fgFaint])
+                            .frame(maxWidth: .infinity).padding(.vertical, metrics.size(18))
+                    }
+                }
+                .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                if snapshots != nil {
+                    Text(webGroups.isEmpty ? "modalsM2.mcp.nothing" : "modalsM2.mcp.syncHint")
+                        .font(metrics.font(size: 12.5)).foregroundStyle(theme[.fgMuted])
+                }
+            }
+        } footer: {
+            Spacer()
+            Button("mcp.intro.later") { markSeen(); closeWeb() }
+                .accessibilityIdentifier("mcp.intro.later")
+            Button("mcp.intro.open") { markSeen(); environment.editorRequest = .mcpManager(McpManagerRoute()) }
+                .buttonStyle(AletheButtonStyle(.primary)).keyboardShortcut(.defaultAction)
+                .accessibilityIdentifier("mcp.intro.open")
+        }
+    }
+
+    private func webStat(_ value: Int, title: LocalizedStringKey, token: ThemeToken) -> some View {
+        HStack(spacing: metrics.size(7)) {
+            Circle().fill(theme[token]).frame(width: metrics.size(5), height: metrics.size(5))
+            Text(verbatim: "\(value)").font(metrics.font(size: 12, weight: .medium)).foregroundStyle(theme[.fg])
+            Text(title).font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+        }
+        .padding(.leading, metrics.size(9)).padding(.trailing, metrics.size(11)).padding(.vertical, metrics.size(4))
+        .background(theme[.bgSunken], in: Capsule())
+        .overlay(Capsule().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+    }
+
+    private func closeWeb() { if let closeOverlay { closeOverlay() } else { dismiss() } }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             Text("mcp.intro.title").font(metrics.font(.title2))
             Text("mcp.intro.detail")
@@ -670,12 +871,6 @@ struct McpIntroSheet: View {
         }
         .padding(metrics.space(.xxl))
         .frame(width: metrics.size(520))
-        .task {
-            guard let store = environment.mcp?.store else { return }
-            snapshots = (try? await store.scan(scope: .global, repository: nil)) ?? []
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("mcp.intro")
     }
 
     private func markSeen() {
