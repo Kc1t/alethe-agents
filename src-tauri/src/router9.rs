@@ -235,7 +235,9 @@ pub fn router9_start(
         .append(true)
         .open(&log)
         .map_err(|e| format!("log_open_failed:{e}"))?;
-    let err = out.try_clone().map_err(|e| format!("log_open_failed:{e}"))?;
+    let err = out
+        .try_clone()
+        .map_err(|e| format!("log_open_failed:{e}"))?;
 
     let mut command = match source {
         Router9Source::Managed => {
@@ -249,7 +251,10 @@ pub fn router9_start(
             let mut command = Command::new(node);
             // The managed copy keeps its data beside the profile so it never shares state with an
             // install the user maintains themselves.
-            command.arg(&script).current_dir(&dir).env("DATA_DIR", &data);
+            command
+                .arg(&script)
+                .current_dir(&dir)
+                .env("DATA_DIR", &data);
             command
         }
         Router9Source::External => {

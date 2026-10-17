@@ -68,6 +68,7 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
         lastUsedAt: now,
         ptyId: null,
         extraArgs: args.extraArgs,
+        runAsAdmin: args.runAsAdmin,
         handoff: args.handoff,
         runtimeProfile: args.runtimeProfile,
       }
@@ -132,7 +133,9 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
       })),
 
     setSubTabSessionId: (projectId, terminalId, tabId, sessionId) =>
-      updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, sessionId })),
+      updateSubTab(projectId, terminalId, tabId, (s) =>
+        s.sessionId === sessionId ? s : { ...s, sessionId },
+      ),
 
     setSubTabName: (projectId, terminalId, tabId, name) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({

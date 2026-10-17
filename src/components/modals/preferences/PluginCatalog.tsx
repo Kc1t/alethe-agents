@@ -1,5 +1,5 @@
 import { CloudOff, Download, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useT } from '../../../lib/i18n'
 import { PLUGIN_API_VERSION, refreshLocalPlugins, usePlugins } from '../../../lib/plugins'
@@ -10,6 +10,15 @@ import {
   pluginInstallFromCatalog,
 } from '../../../lib/tauri'
 import { useUiStore } from '../../../stores/uiStore'
+import {
+  mergePluginMarket,
+  searchPluginMarket,
+  type PluginMarketStatus,
+  type PluginMarketSource,
+  type PluginMarketSort,
+} from '../../../lib/pluginMarket'
+import { PluginDetailsModal } from '../../PluginsSidebar/PluginDetailsModal'
+import { PluginMarketFilters } from '../../PluginsSidebar/PluginMarketFilters'
 import controls from '../controls.module.css'
 import { CapabilityList } from './pluginCapabilities'
 import styles from './PluginsPage.module.css'
@@ -24,6 +33,17 @@ export function PluginCatalog() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [installing, setInstalling] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState<PluginMarketStatus>('all')
+  const [source, setSource] = useState<PluginMarketSource>('all')
+  const [sort, setSort] = useState<PluginMarketSort>('relevance')
+  const [selected, setSelected] = useState<CatalogPlugin | null>(null)
+  const filtered = useMemo(() => {
+    const catalogIds = new Set((entries ?? []).map((entry) => entry.id))
+    const rows = mergePluginMarket(installed, entries ?? []).filter((row) => catalogIds.has(row.id))
+    const byId = new Map((entries ?? []).map((entry) => [entry.id, entry]))
+    return searchPluginMarket(rows, query, status, source, sort).map((row) => byId.get(row.id)!)
+  }, [entries, installed, query, status, source, sort])
 
   const load = useCallback(async (refresh: boolean) => {
     setLoading(true)
@@ -92,15 +112,30 @@ export function PluginCatalog() {
         ) : null}
       </div>
 
+      <PluginMarketFilters
+        query={query}
+        setQuery={setQuery}
+        status={status}
+        setStatus={setStatus}
+        source={source}
+        setSource={setSource}
+        sort={sort}
+        setSort={setSort}
+        count={filtered.length}
+        total={entries?.length ?? 0}
+      />
+
       {error ? (
         <div className={styles.emptyNote}>{t('prefs.pluginsCatalogError')}</div>
       ) : entries === null ? (
         <div className={styles.emptyNote}>{t('prefs.pluginsCatalogLoading')}</div>
       ) : entries.length === 0 ? (
         <div className={styles.emptyNote}>{t('prefs.pluginsCatalogEmpty')}</div>
+      ) : filtered.length === 0 ? (
+        <div className={styles.emptyNote}>{t('pluginsTab.empty')}</div>
       ) : (
         <div className={styles.list}>
-          {entries.map((plugin) => {
+          {filtered.map((plugin) => {
             const local = installed.find((entry) => entry.manifest.id === plugin.id)
             const alreadyInstalled = local !== undefined
             const outdated =
@@ -113,7 +148,13 @@ export function PluginCatalog() {
                 <div className={styles.rowHead}>
                   <div className={styles.identity}>
                     <div className={styles.titleLine}>
-                      <span className={styles.name}>{plugin.name}</span>
+                      <button
+                        type="button"
+                        className={styles.profileLink}
+                        onClick={() => setSelected(plugin)}
+                      >
+                        {plugin.name}
+                      </button>
                       {plugin.version ? (
                         <span className={styles.version}>
                           {t('prefs.pluginsVersion', { version: plugin.version })}
@@ -189,6 +230,14 @@ export function PluginCatalog() {
       )}
 
       <p className={styles.importHint}>{t('prefs.pluginsCatalogHint')}</p>
+      {selected ? (
+        <PluginDetailsModal
+          pluginId={selected.id}
+          name={selected.name}
+          nested
+          onClose={() => setSelected(null)}
+        />
+      ) : null}
     </SettingsSection>
   )
 }

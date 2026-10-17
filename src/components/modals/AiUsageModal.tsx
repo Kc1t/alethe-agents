@@ -4,8 +4,9 @@ import { UsageStrip } from '../HomeView/UsageStrip'
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { loadClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
+import { getCachedKimiUsage } from '../../lib/kimiUsageCache'
 import { useT } from '../../lib/i18n'
-import { AGENT_TYPE_LABELS } from '../../lib/types'
+import { AGENT_TYPE_LABELS, DEFAULT_PREFERENCES } from '../../lib/types'
 import { USAGE_PROVIDERS } from '../../lib/usageProviders'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -41,8 +42,10 @@ function UsageVisibilityEditor() {
         <span className={styles.customizeToggleLabel}>{t('usageModal.showInTopbar')}</span>
       </div>
       {USAGE_PROVIDERS.map((provider) => {
-        const usageOn = preferences[provider.usagePrefKey]
-        const topbarOn = preferences[provider.topbarPrefKey]
+        const usageOn =
+          preferences[provider.usagePrefKey] ?? DEFAULT_PREFERENCES[provider.usagePrefKey]
+        const topbarOn =
+          preferences[provider.topbarPrefKey] ?? DEFAULT_PREFERENCES[provider.topbarPrefKey]
         return (
           <div key={provider.id} className={styles.customizeRow}>
             <span className={styles.customizeName}>
@@ -70,9 +73,11 @@ export function AiUsageModal() {
   const closeModal = useUiStore((state) => state.closeModal)
   const setCodexUsage = useUiStore((state) => state.setCodexUsage)
   const setAntigravityUsage = useUiStore((state) => state.setAntigravityUsage)
+  const setKimiUsage = useUiStore((state) => state.setKimiUsage)
   const claudeAccess = useProjectsStore((state) => state.preferences.usageAccess.claude)
   const codexAccess = useProjectsStore((state) => state.preferences.usageAccess.codex)
   const antigravityAccess = useProjectsStore((state) => state.preferences.usageAccess.antigravity)
+  const kimiAccess = useProjectsStore((state) => state.preferences.usageAccess.kimi)
   const preferences = useProjectsStore((state) => state.preferences)
   const [editing, setEditing] = useState(false)
 
@@ -101,10 +106,25 @@ export function AiUsageModal() {
         () => !cancelled && setAntigravityUsage(null),
       )
     }
+    if (kimiAccess) {
+      void getCachedKimiUsage(true).then(
+        (usage) => !cancelled && setKimiUsage(usage),
+        () => !cancelled && setKimiUsage(null),
+      )
+    }
     return () => {
       cancelled = true
     }
-  }, [open, claudeAccess, codexAccess, antigravityAccess, setAntigravityUsage, setCodexUsage])
+  }, [
+    open,
+    claudeAccess,
+    codexAccess,
+    antigravityAccess,
+    kimiAccess,
+    setAntigravityUsage,
+    setCodexUsage,
+    setKimiUsage,
+  ])
 
   return (
     <Modal

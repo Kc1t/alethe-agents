@@ -176,6 +176,7 @@ function repeat(job: VoiceJob, times: number): VoiceJob[] {
 }
 
 function agentCount(decision: JevDecision): number {
+  if (decision.leadCount >= 0.34) return copies(decision.leadCount)
   if (decision.parallel <= 0.5) return 1
   if (decision.howMany >= 0.67) return 3
   return 2
@@ -298,4 +299,36 @@ export function planWarnings(
     warnings.push('lowPrompt')
   }
   return warnings
+}
+// Spoken send words: ending a command with one fires it hands-free. The two-word forms
+// are the safe ones; the single words fire on short commands like "send" or "go".
+const SEND_PHRASES = [
+  'thanks jev',
+  'thank you jev',
+  'send it',
+  'send that',
+  'ship it',
+  'go jev',
+  'send',
+] as const
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const SEND_PHRASE_PATTERN = new RegExp(
+  `\\b(?:${SEND_PHRASES.map((phrase) => escapeRegExp(phrase)).join('|')})[.!?,…'")\\]]*\\s*$`,
+  'i',
+)
+
+export function endsWithSendPhrase(text: string): boolean {
+  return SEND_PHRASE_PATTERN.test(text.trim())
+}
+
+export function stripSendPhrase(text: string): string {
+  return text
+    .trim()
+    .replace(SEND_PHRASE_PATTERN, '')
+    .replace(/[,;:\s]+$/g, '')
+    .trim()
 }

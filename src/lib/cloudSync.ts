@@ -27,6 +27,7 @@ const SYNCED_PREFERENCE_KEYS = [
   'topbarShowClaudeUsage',
   'topbarShowCodexUsage',
   'topbarShowAntigravityUsage',
+  'topbarShowKimiUsage',
   'topbarShowSync',
   'topbarShowProfile',
   'topbarShowMemory',

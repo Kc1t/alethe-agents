@@ -611,14 +611,14 @@ describe('projects file migration', () => {
   })
 
   it('starts a profile with no saved file with every usage provider off', () => {
-    const off = { claude: false, codex: false, antigravity: false }
+    const off = { claude: false, codex: false, antigravity: false, kimi: false }
     expect(EMPTY_PROJECTS_FILE.preferences.usageAccess).toEqual(off)
     expect(normalizePreferences(undefined).usageAccess).toEqual(off)
   })
 
   it('keeps every usage provider on for a file saved before the usage consent existed', () => {
     const { usageAccess: _usageAccess, ...savedBeforeConsent } = DEFAULT_PREFERENCES
-    const on = { claude: true, codex: true, antigravity: true }
+    const on = { claude: true, codex: true, antigravity: true, kimi: true }
 
     for (const version of [6, 8, 9]) {
       const migrated = migrate({ ...EMPTY_PROJECTS_FILE, version, preferences: savedBeforeConsent })
@@ -639,13 +639,20 @@ describe('projects file migration', () => {
       claude: false,
       codex: false,
       antigravity: false,
+      kimi: false,
     })
     expect(saved({ claude: true, codex: false, antigravity: true })).toEqual({
       claude: true,
       codex: false,
       antigravity: true,
+      kimi: false,
     })
-    expect(saved({ codex: true })).toEqual({ claude: false, codex: true, antigravity: false })
+    expect(saved({ codex: true })).toEqual({
+      claude: false,
+      codex: true,
+      antigravity: false,
+      kimi: false,
+    })
   })
 
   it('does not turn usage back on when a migrated file is loaded again', () => {
@@ -664,6 +671,7 @@ describe('projects file migration', () => {
       claude: true,
       codex: false,
       antigravity: true,
+      kimi: true,
     })
   })
 })

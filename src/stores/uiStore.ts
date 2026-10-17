@@ -11,6 +11,7 @@ import {
 import { basename } from '../lib/paths'
 import type {
   AntigravityUsage,
+  KimiUsage,
   ClaudeUsage,
   CodexUsage,
   MemoryStats,
@@ -100,6 +101,7 @@ type UiState = {
   claudeUsageError: 'no_token' | 'unavailable' | null
   codexUsage: CodexUsage | null
   antigravityUsage: AntigravityUsage | null
+  kimiUsage: KimiUsage | null
 
   focusedTerminalId: string | null
   /**
@@ -114,6 +116,8 @@ type UiState = {
   mountedPaneIds: string[]
   /** Pulse that requests focus for a specific pane. */
   focusRequest: { terminalId: string; ts: number } | null
+  /** Pulse that flashes a specific pane so a voice-driven focus is visible. */
+  focusFlash: { terminalId: string; ts: number } | null
   activeTerminal: { projectId: string; terminalId: string } | null
   /** Text voice conversation hands to the Jev command bar (trigger word or modifier). */
   voiceCommandRequest: { text: string; nonce: number } | null
@@ -171,8 +175,10 @@ type UiState = {
   setClaudeUsageError: (value: 'no_token' | 'unavailable' | null) => void
   setCodexUsage: (value: CodexUsage | null) => void
   setAntigravityUsage: (value: AntigravityUsage | null) => void
+  setKimiUsage: (value: KimiUsage | null) => void
   setFocusedTerminal: (id: string | null) => void
   requestPaneFocus: (terminalId: string) => void
+  requestPaneFlash: (terminalId: string) => void
   setActiveTerminal: (projectId: string, terminalId: string) => void
   selectPane: (projectId: string, terminalId: string, extend: boolean) => void
   clearPaneSelection: () => void
@@ -224,10 +230,12 @@ export const useUiStore = create<UiState>((set) => ({
   claudeUsageError: null,
   codexUsage: null,
   antigravityUsage: null,
+  kimiUsage: null,
   focusedTerminalId: null,
   keptAlivePaneIds: [],
   mountedPaneIds: [],
   focusRequest: null,
+  focusFlash: null,
   activeTerminal: null,
   voiceCommandRequest: null,
   selectedPanes: [],
@@ -279,8 +287,10 @@ export const useUiStore = create<UiState>((set) => ({
   setClaudeUsageError: (value) => set({ claudeUsageError: value }),
   setCodexUsage: (value) => set({ codexUsage: value }),
   setAntigravityUsage: (value) => set({ antigravityUsage: value }),
+  setKimiUsage: (value) => set({ kimiUsage: value }),
   setFocusedTerminal: (id) => set({ focusedTerminalId: id }),
   requestPaneFocus: (terminalId) => set({ focusRequest: { terminalId, ts: Date.now() } }),
+  requestPaneFlash: (terminalId) => set({ focusFlash: { terminalId, ts: Date.now() } }),
   setActiveTerminal: (projectId, terminalId) => set({ activeTerminal: { projectId, terminalId } }),
   openVoiceCommand: (text) =>
     set((state) => ({

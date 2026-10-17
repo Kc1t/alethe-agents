@@ -185,6 +185,22 @@ fn models_request(modality: &str) -> HttpRequest {
     }
 }
 
+/// OpenRouter lists its chat models that take audio under text output, not transcription, so
+/// the ones Alethe transcribes with (`speech_cloud`) are added to the speech-to-text list.
+fn add_chat_audio_models(models: &mut Vec<LiveModel>) {
+    for (id, label) in crate::speech_cloud::CHAT_AUDIO_MODELS {
+        if models.iter().all(|model| model.id != id) {
+            models.push(LiveModel {
+                id: id.to_string(),
+                label: label.to_string(),
+                capability: "stt",
+                voices: Vec::new(),
+                price: None,
+            });
+        }
+    }
+}
+
 /// The live list of a kind (`stt` or `tts`), from the cache while fresh.
 pub async fn live_models(kind: &str) -> Result<Vec<LiveModel>, String> {
     let modality = modality(kind).ok_or_else(|| "voice_openrouter_bad_kind".to_string())?;
@@ -201,7 +217,10 @@ pub async fn live_models(kind: &str) -> Result<Vec<LiveModel>, String> {
     let body = send(models_request(modality), Duration::from_secs(15))
         .await
         .map_err(|e| e.to_string())?;
-    let models = parse_models(&body, capability).map_err(|e| e.to_string())?;
+    let mut models = parse_models(&body, capability).map_err(|e| e.to_string())?;
+    if capability == "stt" {
+        add_chat_audio_models(&mut models);
+    }
     remember(
         &mut CACHE.lock().unwrap_or_else(|e| e.into_inner()),
         capability,
@@ -237,6 +256,18 @@ mod tests {
             .headers
             .iter()
             .all(|(name, _)| !name.eq_ignore_ascii_case("authorization")));
+    }
+
+    #[test]
+    fn chat_audio_models_join_the_stt_list_once() {
+        let mut models =
+            parse_models(br#"{"data":[{"id":"openai/gpt-audio-mini"}]}"#, "stt").unwrap();
+        add_chat_audio_models(&mut models);
+        let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["openai/gpt-audio-mini", "google/gemini-3.1-flash-lite"]
+        );
     }
 
     #[test]

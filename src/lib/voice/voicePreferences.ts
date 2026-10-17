@@ -21,6 +21,8 @@ import {
 export type LegacyVoiceFields = {
   dictationModelId?: unknown
   dictationNativeLocale?: unknown
+  dictationProvider?: unknown
+  dictationCloudModel?: unknown
   voiceTtsVoice?: unknown
   voiceTtsRate?: unknown
   voiceStt?: unknown
@@ -60,7 +62,15 @@ function usable(provider: string, flags: VoiceProviderFlags): boolean {
   return !isCloudProvider(provider) || flags[provider]?.configured === true
 }
 
+/** The OpenRouter chat models an older build could transcribe with; the first was its default. */
+const LEGACY_CLOUD_MODELS = ['openai/gpt-audio-mini', 'google/gemini-3.1-flash-lite']
+
 function legacySttChoice(raw: LegacyVoiceFields): SttChoice {
+  if (raw.dictationProvider === 'openrouter') {
+    const cloud = text(raw.dictationCloudModel)
+    const model = cloud && LEGACY_CLOUD_MODELS.includes(cloud) ? cloud : LEGACY_CLOUD_MODELS[0]
+    return { provider: 'openrouter', model, locale: null }
+  }
   const model = text(raw.dictationModelId) ?? DEFAULT_STT_CHOICE.model
   if (model === APPLE_MODEL_ID) {
     return { provider: 'apple', model, locale: text(raw.dictationNativeLocale) }

@@ -29,6 +29,7 @@ import { useRouter9Runtime } from '../../hooks/useRouter9Runtime'
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { loadClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
+import { getCachedKimiUsage } from '../../lib/kimiUsageCache'
 import { useT } from '../../lib/i18n'
 import { useSidebarViews } from '../../lib/viewPlacement'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
@@ -37,7 +38,7 @@ import { codexHeadlineWindow, hasCodexWindow, killPty, remoteControlInfo } from 
 import { usePomodoroStore } from '../../stores/pomodoroStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
+import { AntigravityIcon, ClaudeIcon, CodexIcon, KimiIcon } from '../icons/AgentIcons'
 import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
 import styles from './TitleBar.module.css'
 
@@ -264,6 +265,8 @@ export function TitleBar() {
   const updateInfo = useUiStore((s) => s.updateInfo)
   const setCodexUsage = useUiStore((s) => s.setCodexUsage)
   const setAntigravityUsage = useUiStore((s) => s.setAntigravityUsage)
+  const kimiUsage = useUiStore((s) => s.kimiUsage)
+  const setKimiUsage = useUiStore((s) => s.setKimiUsage)
   const openModal = useUiStore((s) => s.openModal_)
   const workspaceTabs = useProjectsStore((s) => s.workspace.tabs)
   const activeWorkspaceTabId = useProjectsStore((s) => s.workspace.activeTabId)
@@ -418,6 +421,26 @@ export function TitleBar() {
       if (interval !== null) window.clearInterval(interval)
     }
   }, [setAntigravityUsage, usageAccess.antigravity])
+
+  useEffect(() => {
+    if (!usageAccess.kimi) return
+    let cancelled = false
+    const tick = async () => {
+      if (!activeRef.current) return
+      try {
+        const usage = await getCachedKimiUsage()
+        if (!cancelled) setKimiUsage(usage)
+      } catch {
+        if (!cancelled) setKimiUsage(null)
+      }
+    }
+    void tick()
+    const interval = window.setInterval(tick, 60_000)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [setKimiUsage, usageAccess.kimi])
 
   const win = getCurrentWindow()
 
@@ -883,6 +906,48 @@ export function TitleBar() {
                       {antigravityUsage.cli_path.split(/[\\/]/).pop()}
                     </div>
                   ) : null}
+                </div>
+              </div>
+            ) : null}
+            {preferences.topbarShowKimiUsage && usageAccess.kimi ? (
+              <div className={styles.usageWidget}>
+                <button
+                  type="button"
+                  className={styles.usagePill}
+                  style={{ '--pill-color': 'var(--agent-kimi)' } as React.CSSProperties}
+                  onClick={() => openModal('aiUsage')}
+                  title={t('ui.titlebar.itemKimi')}
+                  aria-label={t('ui.titlebar.itemKimi')}
+                >
+                  <KimiIcon size={13} />
+                  <span>
+                    {kimiUsage?.status === 'ready' && kimiUsage.windows.length
+                      ? formatPct(kimiUsage.windows[0].used_percent)
+                      : '—'}
+                  </span>
+                </button>
+                <div className={styles.usagePopover} role="tooltip">
+                  <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemKimi')}</div>
+                  {kimiUsage?.status === 'ready' ? (
+                    kimiUsage.windows.map((window) => (
+                      <div className={styles.usagePopoverLine} key={window.label}>
+                        <span>
+                          {window.label === 'limit_5h'
+                            ? '5h'
+                            : window.label === 'limit_7d'
+                              ? t('widget.week')
+                              : window.label === 'limit_month_code'
+                                ? t('widget.kimiMonthlyCode')
+                                : t('widget.kimiMonthlyTotal')}
+                        </span>
+                        <strong>
+                          {formatPct(window.used_percent)} · {formatResetTime(window.resets_at)}
+                        </strong>
+                      </div>
+                    ))
+                  ) : (
+                    <div className={styles.usagePopoverMain}>{t('widget.kimiUsageHint')}</div>
+                  )}
                 </div>
               </div>
             ) : null}

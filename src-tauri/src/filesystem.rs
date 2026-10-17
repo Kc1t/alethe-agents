@@ -174,7 +174,9 @@ fn browse_directory_inner(path: String) -> Result<DirectoryListing, String> {
         let p = PathBuf::from(trimmed);
         if p.exists() {
             if p.is_file() {
-                p.parent().map(|parent| parent.to_path_buf()).unwrap_or(home.clone())
+                p.parent()
+                    .map(|parent| parent.to_path_buf())
+                    .unwrap_or(home.clone())
             } else {
                 p
             }
@@ -183,7 +185,9 @@ fn browse_directory_inner(path: String) -> Result<DirectoryListing, String> {
         }
     };
 
-    let canonical = directory.canonicalize().unwrap_or_else(|_| directory.clone());
+    let canonical = directory
+        .canonicalize()
+        .unwrap_or_else(|_| directory.clone());
     let current_path_str = canonical.to_string_lossy().into_owned();
     let clean_current_path = strip_extended_prefix(&current_path_str);
 

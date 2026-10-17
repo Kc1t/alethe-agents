@@ -187,6 +187,8 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
   for (const legacy of [
     'dictationModelId',
     'dictationNativeLocale',
+    'dictationProvider',
+    'dictationCloudModel',
     'voiceTtsVoice',
     'voiceTtsRate',
   ]) {

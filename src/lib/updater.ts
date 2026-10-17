@@ -1,6 +1,8 @@
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 
+import { flushProjectsState } from '../stores/projectsStore'
+
 export type UpdateInfo = {
   version: string
   currentVersion: string
@@ -39,7 +41,7 @@ export async function installPendingUpdate(
   if (!pending) throw new Error('No update is pending: it may already be installed.')
   let total = 0
   let downloaded = 0
-  await pending.downloadAndInstall((event) => {
+  await pending.download((event) => {
     switch (event.event) {
       case 'Started':
         total = event.data.contentLength ?? 0
@@ -54,6 +56,9 @@ export async function installPendingUpdate(
         break
     }
   })
+  // Installing exits the process on Windows, so nothing after it can save.
+  await flushProjectsState().catch(() => {})
+  await pending.install()
 
   await relaunch()
 }

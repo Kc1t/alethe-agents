@@ -17,6 +17,21 @@
   font-size: 12px;
 }
 
+.modalPane {
+  height: auto;
+  padding: 4px 0 12px;
+  overflow: visible;
+  background: transparent;
+}
+
+.modalPane .titleLine {
+  flex-wrap: wrap;
+}
+
+.modalPane .mono {
+  overflow-wrap: anywhere;
+}
+
 .header {
   display: flex;
   align-items: flex-start;

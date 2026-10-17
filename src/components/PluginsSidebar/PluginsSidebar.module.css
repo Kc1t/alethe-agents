@@ -96,6 +96,60 @@
   padding: 10px;
 }
 
+.filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.filterLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.filterLabel:last-child {
+  grid-column: 1 / -1;
+}
+
+.filterSelect {
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: var(--bg-elevated);
+  font-size: 12px;
+}
+
+.filterSelect:focus-visible,
+.card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.results {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.results button {
+  color: var(--accent);
+  font-size: inherit;
+}
+
 .empty {
   padding: 24px 12px;
   color: var(--fg-muted);

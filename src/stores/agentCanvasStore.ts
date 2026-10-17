@@ -5,6 +5,7 @@ import { basename } from '../lib/paths'
 export type AgentHookPayload = {
   hook_event_name?: string
   session_id?: string
+  source?: string
   /** The terminal (ptyId) this fired from, tagged by the backend (agent_events.rs). */
   plannerId?: string
   /** Which CLI's own subagent mechanism fired this — 'claude' or 'codex' (agent_events.rs). */

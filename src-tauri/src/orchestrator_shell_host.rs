@@ -85,6 +85,7 @@ impl ShellHost for PtyShellHost {
             None,
             None,
             None,
+            None,
             Some(command_line.to_string()),
         ))
         .map(|_| ())

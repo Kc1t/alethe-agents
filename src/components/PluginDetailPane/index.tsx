@@ -16,17 +16,34 @@ import { useCatalog } from '../PluginsSidebar/useCatalog'
 import styles from './PluginDetailPane.module.css'
 
 export function PluginDetailPane({ terminal }: PaneProps) {
+  return <PluginDetails pluginId={terminal.pluginId ?? ''} />
+}
+
+export function PluginDetails({
+  pluginId,
+  onUninstalled,
+  modal = false,
+}: {
+  pluginId: string
+  onUninstalled?: () => void
+  modal?: boolean
+}) {
   const t = useT()
-  const pluginId = terminal.pluginId ?? ''
   const installed = usePlugins().find((entry) => entry.manifest.id === pluginId)
-  const { entries } = useCatalog()
+  const { entries, loading } = useCatalog()
   const listing = entries.find((entry) => entry.id === pluginId)
   const pushToast = useUiStore((state) => state.pushToast)
-  const [busy, setBusy] = useState(false)
+  const [operation, setOperation] = useState<'install' | 'uninstall' | 'toggle' | null>(null)
+  const busy = operation !== null
   const [trustOpen, setTrustOpen] = useState(false)
+  const [uninstallOpen, setUninstallOpen] = useState(false)
 
   if (!installed && !listing) {
-    return <div className={styles.missing}>{t('pluginPane.missing')}</div>
+    return (
+      <div className={styles.missing}>
+        {t(loading ? 'pluginsTab.loading' : 'pluginPane.missing')}
+      </div>
+    )
   }
 
   const name = installed?.manifest.name ?? listing?.name ?? pluginId
@@ -40,7 +57,7 @@ export function PluginDetailPane({ terminal }: PaneProps) {
     installed.manifest.version !== listing.version
 
   const install = async () => {
-    setBusy(true)
+    setOperation('install')
     try {
       await pluginInstallFromCatalog(PLUGIN_API_VERSION, pluginId)
       await refreshLocalPlugins()
@@ -51,20 +68,34 @@ export function PluginDetailPane({ terminal }: PaneProps) {
     } catch (error) {
       pushToast({ title: t('prefs.pluginsCatalogInstallError'), body: String(error) })
     } finally {
-      setBusy(false)
+      setOperation(null)
     }
   }
 
   const uninstall = async () => {
-    setBusy(true)
+    setOperation('uninstall')
     try {
       await pluginUninstall(pluginId)
       await refreshLocalPlugins()
       pushToast({ title: t('prefs.pluginsUninstallSuccess'), body: '' })
+      setUninstallOpen(false)
+      onUninstalled?.()
     } catch (error) {
       pushToast({ title: t('prefs.pluginsUninstallError', { error: String(error) }), body: '' })
     } finally {
-      setBusy(false)
+      setOperation(null)
+    }
+  }
+
+  const changeEnabled = async (enabled: boolean) => {
+    setOperation('toggle')
+    try {
+      await setPluginEnabled(pluginId, enabled)
+      setTrustOpen(false)
+    } catch (error) {
+      pushToast({ title: t('pluginPane.actionFailed'), body: String(error) })
+    } finally {
+      setOperation(null)
     }
   }
 
@@ -74,11 +105,11 @@ export function PluginDetailPane({ terminal }: PaneProps) {
       setTrustOpen(true)
       return
     }
-    void setPluginEnabled(pluginId, !installed.enabled)
+    void changeEnabled(!installed.enabled)
   }
 
   return (
-    <div className={styles.pane}>
+    <div className={`${styles.pane} ${modal ? styles.modalPane : ''}`}>
       <header className={styles.header}>
         <div className={styles.icon}>
           <Blocks size={22} />
@@ -112,7 +143,7 @@ export function PluginDetailPane({ terminal }: PaneProps) {
 
       <div className={styles.actions}>
         {installed ? (
-          <button type="button" className={styles.button} onClick={toggle}>
+          <button type="button" className={styles.button} disabled={busy} onClick={toggle}>
             {installed.enabled ? t('pluginPane.disable') : t('pluginPane.enable')}
           </button>
         ) : null}
@@ -124,7 +155,7 @@ export function PluginDetailPane({ terminal }: PaneProps) {
             onClick={() => void install()}
           >
             <Download size={13} />
-            {busy
+            {operation === 'install'
               ? t('prefs.pluginsCatalogInstalling')
               : outdated
                 ? t('prefs.pluginsCatalogUpdate')
@@ -152,12 +183,40 @@ export function PluginDetailPane({ terminal }: PaneProps) {
             type="button"
             className={styles.buttonDanger}
             disabled={busy}
-            onClick={() => void uninstall()}
+            onClick={() => setUninstallOpen(true)}
           >
             {t('prefs.pluginsUninstall')}
           </button>
         ) : null}
       </div>
+
+      {uninstallOpen ? (
+        <div className={styles.trust} role="alert">
+          <strong>{t('prefs.pluginsUninstallTitle', { name })}</strong>
+          <p className={styles.trustBody}>{t('prefs.pluginsUninstallBody')}</p>
+          <div className={styles.trustActions}>
+            <button
+              type="button"
+              className={styles.button}
+              disabled={busy}
+              onClick={() => setUninstallOpen(false)}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              className={styles.buttonDanger}
+              disabled={busy}
+              onClick={() => void uninstall()}
+            >
+              {busy ? t('pluginPane.removing') : t('prefs.pluginsUninstallConfirm')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {installed?.source === 'bundled' ? (
+        <p className={styles.meta}>{t('pluginPane.bundledHint')}</p>
+      ) : null}
 
       {listing?.package ? (
         <p className={styles.pinned}>
@@ -202,9 +261,9 @@ export function PluginDetailPane({ terminal }: PaneProps) {
             <button
               type="button"
               className={styles.buttonPrimary}
+              disabled={busy}
               onClick={() => {
-                setTrustOpen(false)
-                void setPluginEnabled(pluginId, true)
+                void changeEnabled(true)
               }}
             >
               {t('prefs.pluginsTrustConfirm')}

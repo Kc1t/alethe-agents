@@ -3,6 +3,15 @@ import { invoke } from '@tauri-apps/api/core'
 import { withUsageAccess } from '../usageAccess'
 import type { ModelCost } from './sessions'
 
+export type KimiUsage = {
+  status: 'ready' | 'no_auth' | 'unavailable'
+  windows: { label: string; used_percent: number; resets_at: string }[]
+}
+
+export function getKimiUsage(): Promise<KimiUsage> {
+  return withUsageAccess('kimi', () => invoke<KimiUsage>('get_kimi_usage'))
+}
+
 export type ClaudeUsageWindow = {
   utilization: number
   resets_at: string

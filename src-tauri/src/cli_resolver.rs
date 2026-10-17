@@ -44,7 +44,13 @@ pub fn command_builder_for_terminal(
     resolved_launcher: Option<&str>,
     extra_args: &[String],
     command_line: Option<&str>,
-) -> CommandBuilder {
+    run_as_admin: bool,
+) -> Result<CommandBuilder, String> {
+    let has_command = initial_command.is_some_and(|value| !value.trim().is_empty())
+        || command_line.is_some_and(|value| !value.trim().is_empty());
+    if run_as_admin && has_command {
+        return Err("Administrator mode is available only for plain shell terminals".to_string());
+    }
     let trimmed = initial_command
         .map(str::trim)
         .filter(|value| !value.is_empty());
@@ -91,7 +97,36 @@ pub fn command_builder_for_terminal(
                 .filter(|value| !value.is_empty())
                 .map(str::to_string)
                 .unwrap_or_else(default_shell);
-            let mut builder = CommandBuilder::new(&shell);
+            let mut builder = if run_as_admin {
+                #[cfg(windows)]
+                {
+                    let elevation_command = if let Ok(gsudo) = which::which("gsudo.exe") {
+                        gsudo
+                    } else {
+                        let sudo_mode = RegKey::predef(HKEY_LOCAL_MACHINE)
+                            .open_subkey(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Sudo")
+                            .ok()
+                            .and_then(|key| key.get_value::<u32, _>("Enabled").ok());
+                        let policy_mode = RegKey::predef(HKEY_LOCAL_MACHINE)
+                            .open_subkey(r"SOFTWARE\Policies\Microsoft\Windows\Sudo")
+                            .ok()
+                            .and_then(|key| key.get_value::<u32, _>("Enabled").ok());
+                        if sudo_mode != Some(3) || policy_mode.is_some_and(|mode| mode != 3) {
+                            return Err("An integrated administrator shell requires gsudo or Windows Sudo enabled in inline mode".to_string());
+                        }
+                        which::which("sudo.exe").map_err(|_| "Windows Sudo is unavailable".to_string())?
+                    };
+                    let mut elevated = CommandBuilder::new(elevation_command);
+                    elevated.arg(&shell);
+                    elevated
+                }
+                #[cfg(not(windows))]
+                {
+                    return Err("Administrator shell mode is available only on Windows".to_string());
+                }
+            } else {
+                CommandBuilder::new(&shell)
+            };
             if is_powershell(&shell) {
                 builder.arg("-NoLogo");
             }
@@ -144,7 +179,7 @@ pub fn command_builder_for_terminal(
     builder.env_remove("CLAUDECODE");
     builder.env_remove("CLAUDE_CODE_ENTRYPOINT");
     builder.env_remove("CLAUDECODE_PARENT_PID");
-    builder
+    Ok(builder)
 }
 
 ///
@@ -1101,6 +1136,12 @@ pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOptio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn administrator_mode_rejects_agent_commands() {
+        let result = command_builder_for_terminal(Some("codex"), None, &[], None, true);
+        assert!(result.is_err());
+    }
     use std::path::PathBuf;
 
     fn argv_of(builder: &CommandBuilder) -> Vec<String> {
@@ -1113,7 +1154,7 @@ mod tests {
 
     #[test]
     fn a_shell_given_a_command_line_runs_it_and_exits_with_it() {
-        let argv = argv_of(&command_builder_for_terminal(None, None, &[], Some("npm run dev")));
+        let argv = argv_of(&command_builder_for_terminal(None, None, &[], Some("npm run dev"), false).unwrap());
         assert_eq!(argv.last().map(String::as_str), Some("npm run dev"), "{argv:?}");
         let flag = if cfg!(windows) { "-Command" } else { "-lc" };
         assert_eq!(argv[argv.len() - 2], flag, "{argv:?}");
@@ -1121,7 +1162,7 @@ mod tests {
 
     #[test]
     fn a_plain_shell_stays_interactive() {
-        let argv = argv_of(&command_builder_for_terminal(None, None, &[], None));
+        let argv = argv_of(&command_builder_for_terminal(None, None, &[], None, false).unwrap());
         assert!(!argv.iter().any(|arg| arg == "-Command" || arg == "-lc"), "{argv:?}");
     }
 
@@ -1145,7 +1186,7 @@ mod tests {
     #[test]
     fn plain_shell_tab_uses_the_configured_shell() {
         let shell = if cfg!(windows) { "nu.exe" } else { "/bin/zsh" };
-        let builder = command_builder_for_terminal(None, Some(shell), &[], None);
+        let builder = command_builder_for_terminal(None, Some(shell), &[], None, false).unwrap();
         assert_eq!(builder.get_argv()[0], shell);
         // A non-PowerShell shell must not inherit PowerShell's switches.
         assert_eq!(builder.get_argv().len(), 1);
@@ -1154,7 +1195,7 @@ mod tests {
     #[test]
     fn plain_shell_tab_falls_back_to_the_default_shell() {
         for override_value in [None, Some("")] {
-            let builder = command_builder_for_terminal(None, override_value, &[], None);
+            let builder = command_builder_for_terminal(None, override_value, &[], None, false).unwrap();
             assert_eq!(builder.get_argv()[0], default_shell().as_str());
         }
     }
@@ -1166,7 +1207,7 @@ mod tests {
         } else {
             "/usr/bin/pwsh"
         };
-        let builder = command_builder_for_terminal(None, Some(shell), &[], None);
+        let builder = command_builder_for_terminal(None, Some(shell), &[], None, false).unwrap();
         assert_eq!(builder.get_argv()[1], "-NoLogo");
     }
 

@@ -77,10 +77,16 @@ export type CodexSessionSnapshot = {
   cwd: string
   modified_at_ms: number
   size_bytes: number
+  source?: string | null
+  started_at?: string | null
 }
 
 export async function snapshotClaudeSessions(cwd: string): Promise<ClaudeSessionSnapshot[]> {
   return invoke<ClaudeSessionSnapshot[]>('snapshot_claude_sessions', { cwd })
+}
+
+export async function claudeSessionExists(cwd: string, sessionId: string): Promise<boolean> {
+  return invoke<boolean>('claude_session_exists', { cwd, sessionId })
 }
 
 export async function snapshotCodexSessions(cwd: string): Promise<CodexSessionSnapshot[]> {

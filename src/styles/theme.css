@@ -44,6 +44,13 @@
   font-style: italic;
   font-display: block;
 }
+@font-face {
+  font-family: 'Alethe Terminal Symbols';
+  src: url('../assets/fonts/AletheTerminalSymbols-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
 
 /* Smooth transition when switching theme (App.tsx sets
    document.documentElement.dataset.theme = uiTheme, instant by default).

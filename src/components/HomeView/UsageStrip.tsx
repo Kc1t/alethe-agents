@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { loadClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
+import { getCachedKimiUsage } from '../../lib/kimiUsageCache'
 import { translate, getLocale, useT } from '../../lib/i18n'
 import { AGENT_TYPE_LABELS } from '../../lib/types'
 import { USAGE_PROVIDERS, type UsageProviderDef } from '../../lib/usageProviders'
@@ -15,7 +16,7 @@ import {
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
+import { AntigravityIcon, ClaudeIcon, CodexIcon, KimiIcon } from '../icons/AgentIcons'
 import { ActivityGraph } from './ActivityGraph'
 import styles from './HomeView.module.css'
 
@@ -68,6 +69,15 @@ async function refreshCodex(): Promise<void> {
   }
 }
 
+async function refreshKimi(): Promise<void> {
+  const { setKimiUsage } = useUiStore.getState()
+  try {
+    setKimiUsage(await getCachedKimiUsage(true))
+  } catch {
+    setKimiUsage(null)
+  }
+}
+
 async function refreshAntigravity(): Promise<void> {
   const { setAntigravityUsage } = useUiStore.getState()
   try {
@@ -98,6 +108,12 @@ const PROVIDER_CARD: Record<
     badgeClass: styles.badgeAntigravity,
     icon: <AntigravityIcon size={16} />,
     refresh: refreshAntigravity,
+  },
+  kimi: {
+    name: 'kimi code',
+    badgeClass: styles.badgeKimi,
+    icon: <KimiIcon size={16} />,
+    refresh: refreshKimi,
   },
 }
 
@@ -604,6 +620,81 @@ function AntigravityCard({ usage }: { usage: AntigravityUsage | null }) {
   )
 }
 
+function KimiCard() {
+  const t = useT()
+  const usage = useUiStore((s) => s.kimiUsage)
+  const setUsage = useUiStore((s) => s.setKimiUsage)
+  const accent = 'var(--agent-kimi)'
+  const ready = usage?.status === 'ready' && usage.windows.length > 0
+  const label = (key: string) =>
+    key === 'limit_5h'
+      ? '5h'
+      : key === 'limit_7d'
+        ? t('widget.week')
+        : key === 'limit_month_code'
+          ? t('widget.kimiMonthlyCode')
+          : t('widget.kimiMonthlyTotal')
+  const refresh = async () => {
+    try {
+      setUsage(await getCachedKimiUsage(true))
+    } catch {
+      setUsage(null)
+    }
+  }
+  return (
+    <div className={styles.usageCard}>
+      <CardHead
+        badgeClass={styles.badgeKimi}
+        icon={<KimiIcon size={16} />}
+        name="Kimi Code"
+        accent={accent}
+        hasData={ready}
+        onRefresh={refresh}
+      />
+      {ready ? (
+        <>
+          <Hero
+            percent={usage.windows[0].used_percent}
+            reset={formatResetTime(usage.windows[0].resets_at)}
+            critical={usage.windows[0].used_percent >= 80}
+            sub={label(usage.windows[0].label)}
+          />
+          <div className={styles.cardBody}>
+            <div className={styles.meterList}>
+              {usage.windows.map((window) => (
+                <Meter
+                  key={window.label}
+                  label={label(window.label)}
+                  reset={formatResetTime(window.resets_at)}
+                  value={`${pctNum(window.used_percent)}%`}
+                  util={window.used_percent}
+                  base={accent}
+                />
+              ))}
+            </div>
+          </div>
+          <CardFoot
+            accent={accent}
+            left={t('widget.live')}
+            right={t('widget.peak', {
+              v: `${pctNum(Math.max(...usage.windows.map((w) => w.used_percent)))}%`,
+            })}
+          />
+        </>
+      ) : (
+        <div className={styles.usageEmpty}>
+          <span className={styles.usageEmptyTitle}>
+            {usage?.status === 'no_auth'
+              ? t('widget.kimiNotSignedIn')
+              : t('widget.usageUnavailable')}
+          </span>
+          <span className={styles.usageEmptyHint}>{t('widget.kimiUsageHint')}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function UsageStrip({
   showActivity = true,
   showResetCreditAction = false,
@@ -618,9 +709,10 @@ export function UsageStrip({
   const showClaude = useProjectsStore((s) => s.preferences.usageShowClaude)
   const showCodex = useProjectsStore((s) => s.preferences.usageShowCodex)
   const showAntigravity = useProjectsStore((s) => s.preferences.usageShowAntigravity)
+  const showKimi = useProjectsStore((s) => s.preferences.usageShowKimi ?? true)
   const access = useProjectsStore((s) => s.preferences.usageAccess)
 
-  if (!showClaude && !showCodex && !showAntigravity) {
+  if (!showClaude && !showCodex && !showAntigravity && !showKimi) {
     return (
       <div className={`${styles.usageStrip} ${showActivity ? '' : styles.usageStripTwo}`}>
         <div className={styles.usageEmpty}>{t('usageModal.allHidden')}</div>
@@ -645,6 +737,7 @@ export function UsageStrip({
       ) : (
         <UsageOffCard providerId="antigravity" />
       )}
+      {!showKimi ? null : access.kimi ? <KimiCard /> : <UsageOffCard providerId="kimi" />}
       {showActivity ? <ActivityGraph /> : null}
     </div>
   )

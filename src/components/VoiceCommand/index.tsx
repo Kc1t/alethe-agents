@@ -1,36 +1,38 @@
-import { Loader2, Mic, Play, Square } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Loader2, Mic, Play, Repeat } from 'lucide-react'
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { agentInputFor, waitForAgentInput } from '../../lib/agentInputRegistry'
 import { PaneHiddenError, TerminalPromptOpenError } from '../../lib/agentPromptDelivery'
 import { agentLabel } from '../../lib/agentProviders'
 import { type TFunction, useT } from '../../lib/i18n'
 import { isMacOS } from '../../lib/platform'
-import {
-  CaptureGate,
-  openCapture,
-  transcribeCapture,
-  transcriptionFailureText,
-} from '../../lib/speech/capture'
+import { openCapture, transcribeCapture, transcriptionFailureText } from '../../lib/speech/capture'
+import { createSpeechEndpoint, vadSpeechEnded } from '../../lib/speech/endpoint'
 import { sttChoiceFor } from '../../lib/speech/engine'
 import { isSpeechTooShort } from '../../lib/speech/errors'
 import {
   jevDecide,
   type JevDecision,
+  speechCaptureLevel,
   type SpeechInputDevice,
   speechListInputDevices,
   speechPrepare,
+  speechPrepareVad,
   speechStopCapture,
+  speechTranscribePartial,
+  speechVadStatus,
   writePty,
 } from '../../lib/tauri'
 import { type AgentType, isShellAgentType } from '../../lib/types'
-import { isJevKeyConfigured, migrateLegacyJevKey, saveJevKey } from '../../lib/voice/jevKey'
+import { isJevKeyConfigured, migrateLegacyJevKey } from '../../lib/voice/jevKey'
 import { acceleratorLabel, matchesAccelerator, parseAccelerator } from '../../lib/voice/shortcut'
 import {
   BLOCK_REASONS,
+  endsWithSendPhrase,
   needsConfirmation,
   planFromDecision,
   planWarnings,
+  stripSendPhrase,
   toJevContext,
   type VoicePlan,
   type VoiceWarning,
@@ -47,18 +49,33 @@ import { useUiStore } from '../../stores/uiStore'
 import { isRecordingShortcut } from '../../stores/voiceConversationStore'
 import { useVoiceHistoryStore } from '../../stores/voiceHistoryStore'
 import { Dropdown } from '../ui/Dropdown'
-import { VoiceSpectrum } from '../VoiceSpectrum'
 import styles from './VoiceCommand.module.css'
 
+const LEVEL_POLL_MS = 60
+const SPECTRUM_BARS = 40
+const SILENT_LEVEL = 0.005
+const SILENT_POLLS_BEFORE_WARNING = 12
+const SILENCE: number[] = Array.from({ length: SPECTRUM_BARS }, () => 0)
 const DECIDE_TIMEOUT_MS = 20000
+const PARTIAL_POLL_MS = 700
+const HEARD_TAIL_CHARS = 60
 
-function withTimeout<T>(work: Promise<T>, timeoutMessage: string): Promise<T> {
-  return Promise.race([
-    work,
-    new Promise<T>((_, reject) =>
-      window.setTimeout(() => reject(new Error(timeoutMessage)), DECIDE_TIMEOUT_MS),
-    ),
-  ])
+async function withTimeout<T>(work: Promise<T>, timeoutMessage: string): Promise<T> {
+  let timer: number | undefined
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(timeoutMessage)), DECIDE_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+function tailOf(text: string): string {
+  return text.length > HEARD_TAIL_CHARS ? `…${text.slice(-HEARD_TAIL_CHARS)}` : text
 }
 
 function readWorkspace(): VoiceWorkspace {
@@ -111,6 +128,7 @@ function focusTerminal(projectId: string, terminalId: string) {
   const ui = useUiStore.getState()
   ui.setActiveTerminal(projectId, terminalId)
   ui.requestPaneFocus(terminalId)
+  ui.requestPaneFlash(terminalId)
 }
 
 /** Why the pane refused a submit, as the person reads it; null for any other failure. */
@@ -231,19 +249,20 @@ export function VoiceCommand() {
   const legacyKey = useProjectsStore((s) => s.preferences.voiceCommandApiKey)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const dictationEnabled = useProjectsStore((s) => s.preferences.dictationEnabled)
+  const conversationEnabled = useProjectsStore((s) => s.preferences.voiceConversationEnabled)
+  const keepListening = useProjectsStore((s) => s.preferences.voiceKeepListening)
   const voiceStt = useProjectsStore((s) => s.preferences.voiceStt)
   const engine = useMemo(() => sttChoiceFor({ voiceStt }, 'conversation'), [voiceStt])
   const micId = useProjectsStore((s) => s.preferences.dictationMicrophoneId)
-  const conversationEnabled = useProjectsStore((s) => s.preferences.voiceConversationEnabled)
   const conversationShortcut = useProjectsStore((s) => s.preferences.voiceShortcut)
   const commandShortcut = useProjectsStore((s) => s.preferences.voiceCommandShortcut)
   // Either voice feature means the mic and an engine are set up; the bar uses the conversation one.
-  const voiceInput = keyReady && (dictationEnabled || conversationEnabled)
+  const voiceEnabled = dictationEnabled || conversationEnabled
+  const voiceInput = keyReady && voiceEnabled
   const voiceCommandRequest = useUiStore((s) => s.voiceCommandRequest)
   const handledNonce = useRef<number | null>(null)
 
   const [open, setOpen] = useState(false)
-  const [text, setText] = useState('')
   const [phase, setPhase] = useState<'idle' | 'listening' | 'transcribing' | 'deciding'>('idle')
   const [message, setMessage] = useState<string | null>(null)
   const [decision, setDecision] = useState<JevDecision | null>(null)
@@ -251,49 +270,77 @@ export function VoiceCommand() {
   const [warnings, setWarnings] = useState<VoiceWarning[]>([])
   const [pendingEntryId, setPendingEntryId] = useState<string | null>(null)
   const [mics, setMics] = useState<SpeechInputDevice[]>([])
+  const [levels, setLevels] = useState<number[]>(SILENCE)
   const [micSilent, setMicSilent] = useState(false)
-  const [keyDraft, setKeyDraft] = useState('')
+  const [heard, setHeard] = useState('')
+  const [voice, setVoice] = useState(false)
 
-  const inputRef = useRef<HTMLInputElement>(null)
-  const gateRef = useRef(new CaptureGate())
+  const pillRef = useRef<HTMLDivElement>(null)
+  const recordingRef = useRef(false)
   const busyRef = useRef(false)
-  const transcribeRef = useRef<() => void>(() => undefined)
+  const startingRef = useRef(false)
+  const sessionRef = useRef(0)
 
   const recording = phase === 'listening'
   const busy = phase === 'transcribing' || phase === 'deciding'
   const runnable = plan !== null && plan.kind !== 'blocked'
 
-  const close = useCallback(() => {
-    setOpen(false)
-    setText('')
+  const resetForNextCommand = useCallback(() => {
     setMessage(null)
     setDecision(null)
     setPlan(null)
     setWarnings([])
     setPendingEntryId(null)
+    setLevels(SILENCE)
     setMicSilent(false)
-    setKeyDraft('')
     setPhase('idle')
-    if (gateRef.current.abandon()) void speechStopCapture().catch(() => undefined)
   }, [])
+
+  const close = useCallback(() => {
+    sessionRef.current += 1
+    setOpen(false)
+    resetForNextCommand()
+    if (recordingRef.current) {
+      recordingRef.current = false
+      void speechStopCapture().catch(() => undefined)
+    }
+  }, [resetForNextCommand])
 
   const execute = useCallback(
     async (pending: VoicePlan, entryId: string | null) => {
-      close()
+      const prefs = useProjectsStore.getState().preferences
+      const continuous =
+        isJevKeyConfigured(prefs.voiceProviders) &&
+        (prefs.dictationEnabled || prefs.voiceConversationEnabled) &&
+        prefs.voiceKeepListening
+      busyRef.current = true
+      if (continuous) {
+        resetForNextCommand()
+        setPhase('deciding')
+      } else {
+        close()
+      }
       try {
         const actions = await runPlan(pending, t)
         if (entryId) {
           useVoiceHistoryStore.getState().settle(entryId, { status: 'ran', actions })
         }
+        useUiStore.getState().pushToast({
+          title: t('voice.successToastTitle'),
+          body: summarize(pending, t),
+        })
       } catch (cause) {
         const reason = cause instanceof Error ? cause.message : String(cause)
         if (entryId) {
           useVoiceHistoryStore.getState().settle(entryId, { status: 'failed', error: reason })
         }
         useUiStore.getState().pushToast({ title: t('voice.failedToast'), body: reason })
+      } finally {
+        busyRef.current = false
+        setPhase('idle')
       }
     },
-    [close, t],
+    [close, resetForNextCommand, t],
   )
 
   const route = useCallback(
@@ -301,11 +348,16 @@ export function VoiceCommand() {
       const history = useVoiceHistoryStore.getState()
       const workspace = readWorkspace()
       const startedAt = performance.now()
+      const session = sessionRef.current
       const answer = await withTimeout(
         jevDecide(spoken, toJevContext(workspace)),
         t('voice.error.timeout'),
       )
       const decideMs = Math.round(performance.now() - startedAt)
+      if (session !== sessionRef.current) {
+        history.settle(entryId, { status: 'blocked', summary: t('voice.confirm.cancel') })
+        return null
+      }
       const next = planFromDecision(answer, workspace)
       const nextWarnings = planWarnings(answer, next, workspace)
       const held = next.kind === 'blocked' || needsConfirmation(next, nextWarnings)
@@ -318,7 +370,7 @@ export function VoiceCommand() {
         summary: summarize(next, t),
       })
       if (!held) {
-        void execute(next, entryId)
+        await execute(next, entryId)
         return null
       }
       return { answer, next, nextWarnings, entryId }
@@ -370,46 +422,59 @@ export function VoiceCommand() {
     if (!voiceCommandRequest || handledNonce.current === voiceCommandRequest.nonce) return
     handledNonce.current = voiceCommandRequest.nonce
     setOpen(true)
-    setText(voiceCommandRequest.text)
     if (voiceCommandRequest.text) void decide(voiceCommandRequest.text)
   }, [voiceCommandRequest, decide])
 
   const listen = useCallback(async () => {
-    if (gateRef.current.active || busyRef.current) return
+    if (recordingRef.current || busyRef.current || startingRef.current) return
+    const session = sessionRef.current
+    startingRef.current = true
     try {
-      await gateRef.current.start(
-        async () => {
-          const block = await openCapture(engine, micId)
-          if (block) {
-            if (block !== 'cancelled') setMessage(t(block))
-            return false
-          }
-          setMicSilent(false)
-          setMessage(null)
-          setPhase('listening')
-          return true
-        },
-        () => transcribeRef.current(),
-      )
+      const block = await openCapture(engine, micId, {
+        cancelled: () => session !== sessionRef.current,
+      })
+      if (block) {
+        if (block !== 'cancelled') setMessage(t(block))
+        return
+      }
+      recordingRef.current = true
+      setMicSilent(false)
+      setHeard('')
+      setLevels(SILENCE)
+      setMessage(null)
+      setPhase('listening')
     } catch (cause) {
+      recordingRef.current = false
       setPhase('idle')
       setMessage(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      startingRef.current = false
     }
   }, [engine, micId, t])
 
   const transcribe = useCallback(() => {
-    if (!gateRef.current.takeStop()) return
+    if (startingRef.current && !recordingRef.current) {
+      sessionRef.current += 1
+      return
+    }
+    if (!recordingRef.current) return
+    recordingRef.current = false
+    busyRef.current = true
+    setPhase('transcribing')
+    const session = sessionRef.current
     const history = useVoiceHistoryStore.getState()
     const entryId = history.start('', 'voice', t('voice.lifecycle.transcribing'))
     history.settle(entryId, { summary: t('voice.lifecycle.transcribing') })
-    useUiStore.getState().setRightSidebarMode('jev')
-    close()
 
     void (async () => {
       try {
         const startedAt = performance.now()
-        const transcript = await transcribeCapture(engine, 'conversation')
+        const transcript = stripSendPhrase(await transcribeCapture(engine, 'conversation'))
         const transcribeMs = Math.round(performance.now() - startedAt)
+        if (session !== sessionRef.current) {
+          history.settle(entryId, { status: 'blocked', summary: t('voice.confirm.cancel') })
+          return
+        }
         if (!transcript) {
           history.settle(entryId, {
             status: 'blocked',
@@ -423,14 +488,13 @@ export function VoiceCommand() {
           summary: t('voice.lifecycle.askingJev'),
           transcribeMs,
         })
+        setPhase('deciding')
         const held = await route(transcript, entryId)
         if (!held) return
         setPendingEntryId(held.entryId)
-        setText(transcript)
         setDecision(held.answer)
         setPlan(held.next)
         setWarnings(held.nextWarnings)
-        setOpen(true)
       } catch (cause) {
         // A tap too short to record is not a failure: a hint, no failed entry, no toast.
         if (isSpeechTooShort(cause)) {
@@ -444,30 +508,17 @@ export function VoiceCommand() {
           error: reason,
         })
         useUiStore.getState().pushToast({ title: t('voice.failedToast'), body: reason })
+      } finally {
+        busyRef.current = false
+        setPhase('idle')
       }
     })()
-  }, [close, engine, route, t])
-
-  useEffect(() => {
-    transcribeRef.current = transcribe
-  }, [transcribe])
+  }, [engine, route, t])
 
   const toggleRecording = useCallback(() => {
-    if (gateRef.current.active) transcribe()
+    if (recordingRef.current) transcribe()
     else void listen()
   }, [listen, transcribe])
-
-  const saveKey = useCallback(async () => {
-    const draft = keyDraft.trim()
-    if (!draft) return
-    setMessage(null)
-    try {
-      await saveJevKey(draft)
-      setKeyDraft('')
-    } catch {
-      setMessage(t('prefs.voiceKeyRejected'))
-    }
-  }, [keyDraft, t])
 
   // Older versions kept the key in plaintext preferences; it moves to the keychain once.
   useEffect(() => {
@@ -475,13 +526,13 @@ export function VoiceCommand() {
   }, [legacyKey])
 
   const confirm = useCallback(() => {
-    if (!plan || plan.kind === 'blocked') return
+    if (!plan || plan.kind === 'blocked' || busyRef.current) return
     void execute(plan, pendingEntryId)
     setPendingEntryId(null)
   }, [execute, plan, pendingEntryId])
 
   useEffect(() => {
-    if (!open || !(dictationEnabled || conversationEnabled)) return
+    if (!open || !voiceEnabled) return
     let cancelled = false
     void speechListInputDevices()
       .then((devices) => {
@@ -492,10 +543,82 @@ export function VoiceCommand() {
     // prepares it right before capture instead.
     if (engine.provider === 'local')
       void speechPrepare(engine.modelId, engine.locale, engine.provider).catch(() => undefined)
+    void speechPrepareVad().catch(() => undefined)
     return () => {
       cancelled = true
     }
-  }, [open, dictationEnabled, conversationEnabled, engine])
+  }, [open, voiceEnabled, engine])
+
+  useEffect(() => {
+    if (!open || !voiceInput) return
+    void listen()
+  }, [open, voiceInput, listen])
+
+  // Continuous listening: re-arm the mic after each command until the bar is closed.
+  useEffect(() => {
+    if (!open || !voiceInput || !keepListening || message || plan !== null || phase !== 'idle')
+      return
+    if (recordingRef.current) return
+    const id = window.setInterval(() => {
+      if (busyRef.current) return
+      window.clearInterval(id)
+      void listen()
+    }, 200)
+    return () => window.clearInterval(id)
+  }, [open, voiceInput, keepListening, message, plan, phase, listen])
+
+  useEffect(() => {
+    if (phase !== 'listening') return
+    let silentPolls = 0
+    const endpoint = createSpeechEndpoint()
+    const id = window.setInterval(() => {
+      void speechVadStatus()
+        .then(async (status) => {
+          const next = status ? status.level : await speechCaptureLevel()
+          setLevels((previous) => [...previous.slice(1), next])
+          setVoice(status?.voice ?? false)
+          if (next > SILENT_LEVEL) {
+            silentPolls = 0
+            setMicSilent(false)
+          } else {
+            silentPolls += 1
+            if (silentPolls > SILENT_POLLS_BEFORE_WARNING) setMicSilent(true)
+          }
+          const ended = status ? vadSpeechEnded(status) : endpoint.push(next, performance.now())
+          if (ended) transcribe()
+        })
+        .catch(() => undefined)
+    }, LEVEL_POLL_MS)
+    return () => window.clearInterval(id)
+  }, [phase, transcribe])
+
+  // Hands-free send: a spoken send phrase ends the recording, and so does a long pause.
+  useEffect(() => {
+    if (phase !== 'listening' || engine.provider !== 'local') return
+    let cancelled = false
+    let unsupported = false
+    let pending = false
+    const id = window.setInterval(() => {
+      if (cancelled || unsupported || pending || !recordingRef.current || busyRef.current) return
+      pending = true
+      void speechTranscribePartial(engine.modelId)
+        .then((partial) => {
+          if (cancelled || !recordingRef.current) return
+          setHeard(partial.trim())
+          if (partial && endsWithSendPhrase(partial)) transcribe()
+        })
+        .catch(() => {
+          unsupported = true // backend without partial transcription
+        })
+        .finally(() => {
+          pending = false
+        })
+    }, PARTIAL_POLL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [phase, engine, transcribe])
 
   useEffect(() => {
     const own = parseAccelerator(commandShortcut)
@@ -509,7 +632,8 @@ export function VoiceCommand() {
         if (conversationEnabled && isConversationChord) return
         e.preventDefault()
         e.stopPropagation()
-        setOpen((current) => !current)
+        if (open) close()
+        else setOpen(true)
         return
       }
       // While off, the conversation chord would otherwise do nothing at all: say why.
@@ -524,13 +648,30 @@ export function VoiceCommand() {
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [commandShortcut, conversationEnabled, conversationShortcut, t])
+  }, [close, commandShortcut, conversationEnabled, conversationShortcut, open, t])
 
   useEffect(() => {
     if (!open) return
-    const id = window.setTimeout(() => inputRef.current?.focus(), 0)
+    const id = window.setTimeout(() => pillRef.current?.focus(), 0)
     return () => window.clearTimeout(id)
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        close()
+      } else if (e.key === 'Enter' && runnable) {
+        e.preventDefault()
+        e.stopPropagation()
+        confirm()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [open, close, runnable, confirm])
 
   useEffect(() => {
     if (!open || !voiceInput) return
@@ -554,177 +695,201 @@ export function VoiceCommand() {
 
   useEffect(
     () => () => {
-      if (gateRef.current.abandon()) void speechStopCapture().catch(() => undefined)
+      sessionRef.current += 1
+      if (!recordingRef.current) return
+      recordingRef.current = false
+      void speechStopCapture().catch(() => undefined)
     },
     [],
   )
 
   if (!open) return null
 
+  const voiceLevel = Math.min(1, (levels[levels.length - 1] ?? 0) * 4)
+
   const hint = recording
-    ? t('voice.bar.stopHint')
+    ? t('voice.bar.handsFreeHint')
     : phase === 'transcribing'
       ? t('voice.bar.transcribingHint')
       : phase === 'deciding'
         ? t('voice.bar.decidingHint')
         : runnable
           ? t('voice.bar.runnableHint')
-          : keyReady
-            ? t('voice.bar.idleHint')
-            : t('voice.bar.noKeyHint')
+          : !keyReady
+            ? t('voice.bar.noKeyHint')
+            : !voiceEnabled
+              ? t('voice.bar.enableVoiceHint')
+              : t('voice.bar.voiceOnlyHint')
 
   return (
     <div
-      className={styles.backdrop}
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) close()
-      }}
+      className={styles.anchor}
+      data-phase={phase}
+      data-voice={recording && voice}
+      style={{ '--voice-level': recording ? voiceLevel : 0 } as CSSProperties}
     >
-      <div className={styles.panel} role="dialog" aria-label={t('voice.bar.title')}>
-        <div className={styles.inputRow}>
-          {voiceInput ? (
-            <button
-              type="button"
-              className={`${styles.micButton} ${recording ? styles.micButtonLive : ''}`}
-              onClick={toggleRecording}
-              disabled={busy}
-              aria-pressed={recording}
-              aria-label={recording ? t('voice.bar.stopRecording') : t('voice.bar.startRecording')}
-              title={recording ? t('voice.bar.stopRecording') : t('voice.bar.startRecordingTitle')}
-            >
-              {busy ? (
-                <Loader2 size={17} className={styles.spin} aria-hidden />
-              ) : recording ? (
-                <Square size={15} aria-hidden />
-              ) : (
-                <Mic size={17} aria-hidden />
-              )}
-            </button>
+      <div
+        className={styles.scrim}
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) close()
+        }}
+      />
+
+      {plan ? (
+        <div className={styles.card} role="alertdialog" aria-label={t('voice.bar.title')}>
+          <svg className={styles.borderTrace} aria-hidden="true" focusable="false">
+            <rect x="1" y="1" rx="32" pathLength="100" />
+          </svg>
+          <p className={runnable ? styles.summary : styles.blocked}>{summarize(plan, t)}</p>
+
+          {plan.kind === 'reuse' && plan.prompt ? (
+            <p className={styles.prompt}>{plan.prompt}</p>
+          ) : null}
+          {plan.kind === 'spawn'
+            ? plan.jobs
+                .filter((job) => job.prompt)
+                .map((job, index) => (
+                  <p key={`${job.agent}-${index}`} className={styles.prompt}>
+                    {agentLabel(job.agent)}: {job.prompt}
+                  </p>
+                ))
+            : null}
+
+          {decision ? (
+            <p className={styles.detail}>
+              {decision.action.choice} {decision.action.confidence.toFixed(2)} |{' '}
+              {t('voice.history.projectConf', {
+                value: decision.project.confidence.toFixed(2),
+              })}{' '}
+              | {decision.latencyMs} ms | US$ {decision.costUsd.toFixed(6)}
+            </p>
           ) : null}
 
-          <input
-            ref={inputRef}
-            className={styles.input}
-            type={keyReady ? 'text' : 'password'}
-            value={keyReady ? text : keyDraft}
-            spellCheck={false}
-            placeholder={
-              keyReady
-                ? recording
-                  ? t('voice.bar.listeningPlaceholder')
-                  : t('voice.bar.speakPlaceholder')
-                : t('voice.bar.keyPlaceholder')
-            }
-            aria-label={keyReady ? t('voice.bar.inputLabel') : t('voice.bar.keyInputLabel')}
-            onChange={(event) => {
-              if (!keyReady) {
-                setKeyDraft(event.target.value)
-                return
-              }
-              setText(event.target.value)
-              setDecision(null)
-              setPlan(null)
-              setWarnings([])
-              setPendingEntryId(null)
-              setMessage(null)
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                close()
-                return
-              }
-              if (event.key !== 'Enter') return
-              event.preventDefault()
-              if (!keyReady) void saveKey()
-              else if (runnable) confirm()
-              else void decide(text)
-            }}
-          />
-        </div>
+          {warnings.map((warning) => (
+            <p key={warning} className={styles.warning}>
+              {t(WARNINGS[warning])}
+            </p>
+          ))}
 
-        {voiceInput ? (
-          <div className={styles.spectrumRow}>
-            <VoiceSpectrum live={recording} onSilent={setMicSilent} />
-            {mics.length > 1 ? (
-              <Dropdown
-                rootClassName={styles.micSelect}
-                className={styles.micSelectTrigger}
-                value={micId ?? ''}
-                disabled={recording}
-                ariaLabel={t('voice.bar.micLabel')}
-                options={[
-                  { value: '', label: t('voice.bar.micDefault') },
-                  ...mics.map((device) => ({
-                    value: device.deviceId,
-                    label: device.label,
-                  })),
-                ]}
-                onChange={(value) => {
-                  const device = mics.find((item) => item.deviceId === value)
-                  setPreferences({
-                    dictationMicrophoneId: value || null,
-                    dictationMicrophoneLabel: device?.label ?? null,
-                  })
-                }}
-              />
-            ) : null}
-          </div>
-        ) : null}
+          {message ? <p className={styles.blocked}>{message}</p> : null}
 
-        {recording && micSilent ? (
-          <p className={styles.warning}>{t('voice.bar.micSilent')}</p>
-        ) : null}
-
-        {plan ? (
-          <p className={runnable ? styles.summary : styles.blocked}>{summarize(plan, t)}</p>
-        ) : message ? (
-          <p className={styles.blocked}>{message}</p>
-        ) : null}
-
-        {plan?.kind === 'reuse' && plan.prompt ? (
-          <p className={styles.prompt}>{plan.prompt}</p>
-        ) : null}
-        {plan?.kind === 'spawn'
-          ? plan.jobs
-              .filter((job) => job.prompt)
-              .map((job, index) => (
-                <p key={`${job.agent}-${index}`} className={styles.prompt}>
-                  {agentLabel(job.agent)}: {job.prompt}
-                </p>
-              ))
-          : null}
-
-        {decision ? (
-          <p className={styles.detail}>
-            {decision.action.choice} {decision.action.confidence.toFixed(2)} |{' '}
-            {t('voice.history.projectConf', {
-              value: decision.project.confidence.toFixed(2),
-            })}{' '}
-            | {decision.latencyMs} ms | US$ {decision.costUsd.toFixed(6)}
-          </p>
-        ) : null}
-
-        {warnings.map((warning) => (
-          <p key={warning} className={styles.warning}>
-            {t(WARNINGS[warning])}
-          </p>
-        ))}
-
-        {runnable ? (
           <div className={styles.confirmRow}>
-            <button type="button" className={styles.confirmRun} onClick={confirm}>
-              <Play size={13} aria-hidden />
-              {t('voice.confirm.run')}
-            </button>
+            {runnable ? (
+              <button type="button" className={styles.confirmRun} onClick={confirm}>
+                <Play size={13} aria-hidden />
+                {t('voice.confirm.run')}
+              </button>
+            ) : null}
             <button type="button" className={styles.confirmCancel} onClick={close}>
               {t('voice.confirm.cancel')}
             </button>
           </div>
-        ) : null}
+        </div>
+      ) : null}
 
-        <p className={styles.hint}>{hint}</p>
+      <div
+        ref={pillRef}
+        className={styles.center}
+        data-phase={phase}
+        role="dialog"
+        tabIndex={-1}
+        aria-label={t('voice.bar.title')}
+      >
+        {voiceInput ? (
+          <button
+            type="button"
+            className={styles.orb}
+            onClick={toggleRecording}
+            disabled={busy}
+            aria-pressed={recording}
+            aria-label={recording ? t('voice.bar.stopRecording') : t('voice.bar.startRecording')}
+            title={recording ? t('voice.bar.stopRecording') : t('voice.bar.startRecordingTitle')}
+          >
+            <span className={styles.ring} aria-hidden="true" />
+            {busy ? (
+              <Loader2 size={21} strokeWidth={1.7} className={styles.spin} aria-hidden />
+            ) : (
+              <Mic size={21} strokeWidth={1.7} aria-hidden />
+            )}
+          </button>
+        ) : (
+          <span className={styles.orb} data-disabled="true" aria-hidden="true">
+            <Mic size={21} strokeWidth={1.7} />
+          </span>
+        )}
+
+        <div className={styles.captionRow}>
+          <p className={styles.caption} aria-live="polite">
+            {recording && micSilent
+              ? t('voice.bar.micSilent')
+              : recording && heard
+                ? tailOf(heard)
+                : hint}
+          </p>
+
+          {voiceInput ? (
+            <button
+              type="button"
+              className={`${styles.toggleButton} ${keepListening ? styles.toggleButtonOn : ''}`}
+              onClick={() => setPreferences({ voiceKeepListening: !keepListening })}
+              aria-pressed={keepListening}
+              disabled={busy}
+              aria-label={t('voice.bar.keepListening')}
+              title={t('voice.bar.keepListeningTitle')}
+            >
+              <Repeat size={12} aria-hidden />
+            </button>
+          ) : null}
+
+          {voiceInput && !recording && mics.length > 1 ? (
+            <Dropdown
+              rootClassName={styles.micSelect}
+              className={styles.micSelectTrigger}
+              value={micId ?? ''}
+              ariaLabel={t('voice.bar.micLabel')}
+              options={[
+                { value: '', label: t('voice.bar.micDefault') },
+                ...mics.map((device) => ({ value: device.deviceId, label: device.label })),
+              ]}
+              onChange={(value) => {
+                const device = mics.find((item) => item.deviceId === value)
+                setPreferences({
+                  dictationMicrophoneId: value || null,
+                  dictationMicrophoneLabel: device?.label ?? null,
+                })
+              }}
+            />
+          ) : null}
+        </div>
+
+        {message && !plan ? (
+          <p className={styles.blocked} role="alert">
+            {message}
+          </p>
+        ) : null}
+      </div>
+
+      {recording ? (
+        <div className={styles.spectrum} aria-hidden="true">
+          {[...levels]
+            .reverse()
+            .concat(levels)
+            .map((value, index) => (
+              <span
+                key={index}
+                className={styles.spectrumBar}
+                style={{ transform: `scaleY(${1 + Math.min(1, value * 4) * 11})` }}
+              />
+            ))}
+        </div>
+      ) : null}
+
+      <div className={styles.edge} data-phase={phase} aria-hidden="true">
+        <span className={styles.edgeBase} />
+        <span className={styles.edgePulse} />
+        <span className={styles.edgeGlow} />
+        <span className={styles.edgeScan} />
       </div>
     </div>
   )

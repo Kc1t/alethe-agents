@@ -19,7 +19,12 @@ describe('enableOrchestratorFeature', () => {
     enableOrchestratorFeature()
 
     expect(preferences().enabledFeatures.orchestrator).toBe(true)
-    expect(preferences().usageAccess).toEqual({ claude: true, codex: true, antigravity: false })
+    expect(preferences().usageAccess).toEqual({
+      claude: true,
+      codex: true,
+      antigravity: false,
+      kimi: false,
+    })
     const [toast] = useUiStore.getState().toasts
     expect(toast.body).toContain('Claude Code, Codex')
   })
@@ -28,7 +33,7 @@ describe('enableOrchestratorFeature', () => {
     useProjectsStore.setState({
       preferences: {
         ...DEFAULT_PREFERENCES,
-        usageAccess: { claude: true, codex: false, antigravity: false },
+        usageAccess: { claude: true, codex: false, antigravity: false, kimi: false },
       },
     })
     enableOrchestratorFeature()
@@ -40,14 +45,19 @@ describe('enableOrchestratorFeature', () => {
 
   it('respects a reading turned off again while the feature stays on', () => {
     enableOrchestratorFeature()
-    useProjectsStore
-      .getState()
-      .setPreferences({ usageAccess: { claude: false, codex: false, antigravity: false } })
+    useProjectsStore.getState().setPreferences({
+      usageAccess: { claude: false, codex: false, antigravity: false, kimi: false },
+    })
     useUiStore.setState({ toasts: [] })
 
     enableOrchestratorFeature()
 
-    expect(preferences().usageAccess).toEqual({ claude: false, codex: false, antigravity: false })
+    expect(preferences().usageAccess).toEqual({
+      claude: false,
+      codex: false,
+      antigravity: false,
+      kimi: false,
+    })
     expect(useUiStore.getState().toasts).toEqual([])
   })
 
@@ -55,7 +65,7 @@ describe('enableOrchestratorFeature', () => {
     useProjectsStore.setState({
       preferences: {
         ...DEFAULT_PREFERENCES,
-        usageAccess: { claude: true, codex: true, antigravity: false },
+        usageAccess: { claude: true, codex: true, antigravity: false, kimi: false },
       },
     })
     enableOrchestratorFeature()

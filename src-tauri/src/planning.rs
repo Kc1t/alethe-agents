@@ -533,7 +533,11 @@ pub fn append_plan_diagram(
     let current = std::fs::read_to_string(path).map_err(|e| format!("read failed: {e}"))?;
     let diagram_block = format!(
         "\n\n### {}\n\n```mermaid\n{}\n```\n",
-        if title.is_empty() { "Architecture Diagram" } else { &title },
+        if title.is_empty() {
+            "Architecture Diagram"
+        } else {
+            &title
+        },
         mermaid_code.trim()
     );
     let updated = format!("{}{}", current.trim_end(), diagram_block);

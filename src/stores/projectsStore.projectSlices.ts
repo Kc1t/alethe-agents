@@ -582,6 +582,7 @@ export function createProjectsSlice({
               extraArgs: tab.extraArgs,
               cwd: info.path,
               graphifyRepo: graphifyRepoOf(project, info.path),
+              runAsAdmin: tab.runAsAdmin,
             })
             window.dispatchEvent(
               new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
@@ -699,6 +700,7 @@ export function createProjectsSlice({
                   extraArgs: tab.extraArgs,
                   cwd: info.path,
                   graphifyRepo: graphifyRepoOf(project, info.path),
+                  runAsAdmin: tab.runAsAdmin,
                 })
                 window.dispatchEvent(
                   new CustomEvent('alethe:terminal-resize-request', {

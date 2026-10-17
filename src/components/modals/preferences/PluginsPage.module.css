@@ -352,6 +352,23 @@
   margin-bottom: 10px;
 }
 
+.profileLink {
+  padding: 0;
+  color: var(--fg);
+  text-align: left;
+  font: inherit;
+  font-weight: 600;
+}
+
+.profileLink:hover {
+  color: var(--accent);
+}
+
+.profileLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .catalogStale {
   display: inline-flex;
   align-items: center;

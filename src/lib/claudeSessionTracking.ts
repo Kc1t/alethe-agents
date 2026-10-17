@@ -2,9 +2,15 @@ import type { AgentHookPayload } from '../stores/agentCanvasStore'
 import { useProjectsStore } from '../stores/projectsStore'
 import { registerSessionClaim, releaseSessionClaim } from './sessionDiscovery'
 import { saveSession } from './sessionResume'
+import { recordAppEvent } from './tauri/misc'
+
+export function shortSessionId(sessionId: string | undefined): string {
+  return sessionId ? sessionId.slice(0, 8) : 'none'
+}
 
 export function claudeSessionFromHook(payload: AgentHookPayload): string | undefined {
   if (payload.sourceAgent && payload.sourceAgent !== 'claude') return undefined
+  if (payload.agent_id) return undefined
   if (
     payload.hook_event_name !== 'SessionStart' &&
     payload.hook_event_name !== 'UserPromptSubmit'
@@ -42,6 +48,10 @@ export function trackClaudeSessionHook(payload: AgentHookPayload): void {
         })
         if (tab.sessionId !== sessionId) {
           state.setSubTabSessionId(project.id, terminal.id, tab.id, sessionId)
+          void recordAppEvent(
+            'session.adopt',
+            `agent=claude via=${payload.hook_event_name} from=${shortSessionId(tab.sessionId)} to=${shortSessionId(sessionId)}`,
+          )
         }
         return
       }

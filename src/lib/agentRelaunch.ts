@@ -19,6 +19,7 @@ export async function relaunchAgentPty({
   sessionId,
   cwd,
   graphifyRepo,
+  runAsAdmin,
 }: {
   ptyId: string
   agent: AgentType
@@ -27,6 +28,7 @@ export async function relaunchAgentPty({
   sessionId?: string
   cwd?: string
   graphifyRepo?: string | null
+  runAsAdmin?: boolean
 }): Promise<AgentLaunch> {
   const prepared = preparePtyRuntimeLaunch(agent, runtimeProfile, extraArgs ?? [])
   const extras =
@@ -48,7 +50,8 @@ export async function relaunchAgentPty({
     ...ptyLaunchTarget(agent),
     cwd: cwd || undefined,
     extraArgs: launch.args,
-    env: prepared.env,
+    runAsAdmin: agent === 'shell' && runAsAdmin,
+    env: { ...(prepared.env ?? {}), ALETHE_PLANNER: ptyId },
   })
   if (extras) recordClaudeLaunch(ptyId, extras.orchestrator)
   return launch

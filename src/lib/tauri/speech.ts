@@ -168,6 +168,22 @@ export async function speechCaptureLevel(): Promise<number> {
   return invoke('speech_capture_level')
 }
 
+export type VadStatus = {
+  level: number
+  voice: boolean
+  heardMs: number
+  silenceMs: number
+  segments: number
+}
+
+export async function speechVadStatus(): Promise<VadStatus | null> {
+  return invoke('speech_vad_status')
+}
+
+export async function speechPrepareVad(): Promise<boolean> {
+  return invoke('speech_prepare_vad')
+}
+
 export async function speechStopCapture(): Promise<CapturedAudio> {
   return invoke('speech_stop_capture')
 }
@@ -176,6 +192,17 @@ export type SttCallOptions = {
   provider: SttProviderId
   fallbackLocale: string | null
   usage: string
+}
+
+/**
+ * Transcribes the last few seconds of the capture that is still recording, so a spoken send
+ * phrase can end it. Errors when the engine cannot transcribe a running capture.
+ */
+export async function speechTranscribePartial(
+  modelId: string,
+  locale?: string | null,
+): Promise<string> {
+  return invoke('speech_transcribe_partial', { modelId, locale: locale ?? null })
 }
 
 /** Loads the model, requests Apple permission, or checks a cloud key; true when ready. */

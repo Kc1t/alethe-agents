@@ -409,7 +409,7 @@
 
 .path {
   flex: 0 0 auto;
-  padding: 7px 10px;
+  padding: 5px 10px;
   overflow: hidden;
   color: var(--fg-faint);
   border-bottom: 1px solid var(--border);
@@ -419,12 +419,18 @@
 }
 
 .readmeTabs {
+  min-height: 31px;
   display: flex;
   gap: 3px;
-  padding: 5px 8px 0;
+  align-items: end;
+  padding: 3px 6px 0;
   overflow-x: auto;
   border-bottom: 1px solid var(--border);
-  scrollbar-width: thin;
+  scrollbar-width: none;
+}
+
+.readmeTabs::-webkit-scrollbar {
+  display: none;
 }
 
 .readmeTab {
@@ -433,8 +439,11 @@
   flex: 0 0 auto;
   min-width: 0;
   max-width: 180px;
+  min-height: 27px;
   padding: 0;
+  border: 1px solid transparent;
   border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   color: var(--fg-muted);
   font-size: 10px;
   white-space: nowrap;
@@ -469,6 +478,7 @@
 
 .readmeTabClose:hover {
   color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .readmeTab:hover,
@@ -476,8 +486,24 @@
   color: var(--fg);
 }
 
+.readmeTab:hover {
+  background: var(--panel-hover);
+}
+
 .readmeTabActive {
   border-bottom-color: var(--accent);
+  background: var(--panel);
+  border-left-color: var(--border);
+  border-right-color: var(--border);
+  border-top-color: var(--border);
+}
+
+.readmeTabActive .readmeTabSelect {
+  font-weight: 650;
+}
+
+.readmeTabClose {
+  border-radius: var(--radius-sm);
 }
 
 .content {

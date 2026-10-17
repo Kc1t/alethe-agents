@@ -6,7 +6,7 @@ import {
   savedConversationIdFor,
   saveSession,
 } from './sessionResume'
-import { getPtyCwd, snapshotCodexSessions } from './tauri'
+import { getPtyCwd } from './tauri'
 import type { SubTab } from './types'
 
 /**
@@ -34,11 +34,8 @@ export async function restartAgentTab({
   }
   const activeSessions = getActiveSessions()
   const savedSession = activeSessions[tab.id] ?? activeSessions[ptyId] ?? null
-  let resumeSessionId = tab.sessionId ?? savedConversationIdFor(savedSession, tab.type, restartCwd)
-
-  if (!resumeSessionId && tab.type === 'codex' && restartCwd) {
-    resumeSessionId = (await snapshotCodexSessions(restartCwd).catch(() => []))[0]?.id
-  }
+  const resumeSessionId =
+    tab.sessionId ?? savedConversationIdFor(savedSession, tab.type, restartCwd)
 
   const launch = await relaunchAgentPty({
     ptyId,
@@ -48,6 +45,7 @@ export async function restartAgentTab({
     sessionId: resumeSessionId,
     cwd: restartCwd,
     graphifyRepo,
+    runAsAdmin: tab.runAsAdmin,
   })
   if (launch.sessionId && launch.sessionId !== tab.sessionId) {
     useProjectsStore.getState().setSubTabSessionId(projectId, terminalId, tab.id, launch.sessionId)

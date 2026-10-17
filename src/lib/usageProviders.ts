@@ -14,12 +14,15 @@ export interface UsageProviderDef {
   /** Preferences key controlling the usage panel card (modal + home strip). */
   usagePrefKey: keyof Pick<
     Preferences,
-    'usageShowClaude' | 'usageShowCodex' | 'usageShowAntigravity'
+    'usageShowClaude' | 'usageShowCodex' | 'usageShowAntigravity' | 'usageShowKimi'
   >
   /** Preferences key controlling the topbar pill. */
   topbarPrefKey: keyof Pick<
     Preferences,
-    'topbarShowClaudeUsage' | 'topbarShowCodexUsage' | 'topbarShowAntigravityUsage'
+    | 'topbarShowClaudeUsage'
+    | 'topbarShowCodexUsage'
+    | 'topbarShowAntigravityUsage'
+    | 'topbarShowKimiUsage'
   >
 }
 
@@ -44,5 +47,12 @@ export const USAGE_PROVIDERS: UsageProviderDef[] = [
     vendor: 'Google',
     usagePrefKey: 'usageShowAntigravity',
     topbarPrefKey: 'topbarShowAntigravityUsage',
+  },
+  {
+    id: 'kimi',
+    agentType: 'kimi',
+    vendor: 'Moonshot AI',
+    usagePrefKey: 'usageShowKimi',
+    topbarPrefKey: 'topbarShowKimiUsage',
   },
 ]

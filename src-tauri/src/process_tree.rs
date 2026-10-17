@@ -145,11 +145,12 @@ fn roots_files() -> Vec<PathBuf> {
 }
 
 fn identify(sys: &System, pid: u32) -> Option<PersistedRoot> {
-    sys.process(Pid::from_u32(pid)).map(|process| PersistedRoot {
-        pid,
-        name: process.name().to_string_lossy().into_owned(),
-        start_time: process.start_time(),
-    })
+    sys.process(Pid::from_u32(pid))
+        .map(|process| PersistedRoot {
+            pid,
+            name: process.name().to_string_lossy().into_owned(),
+            start_time: process.start_time(),
+        })
 }
 
 /// PIDs are recycled, so identity is the triple, never the number alone.

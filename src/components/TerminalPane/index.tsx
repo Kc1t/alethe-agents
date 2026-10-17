@@ -110,6 +110,18 @@ export const TerminalPane = memo(function TerminalPane({
     }
   }, [focusReq, terminal.id])
 
+  // Flash pulse from a voice-driven focus: draw attention without stealing focus.
+  const focusFlash = useUiStore((s) => s.focusFlash)
+  useEffect(() => {
+    if (!focusFlash || focusFlash.terminalId !== terminal.id) return
+    const node = paneRef.current
+    if (!node) return
+    node.animate(
+      [{ boxShadow: '0 0 0 2px var(--accent)' }, { boxShadow: '0 0 0 12px transparent' }],
+      { duration: 700, easing: 'ease-out' },
+    )
+  }, [focusFlash, terminal.id])
+
   const setActiveTab = useProjectsStore((s) => s.setActiveTab)
   const closeSubTab = useProjectsStore((s) => s.closeSubTab)
   const setLaneVisible = useProjectsStore((s) => s.setLaneVisible)
@@ -678,6 +690,7 @@ export const TerminalPane = memo(function TerminalPane({
                   command={activeTab.type === 'shell' ? null : activeTab.type}
                   cwd={activeTab.cwd || null}
                   extraArgs={runtimeExtraArgs}
+                  runAsAdmin={activeTab.type === 'shell' && activeTab.runAsAdmin}
                   initialInput={activeTab.initialInput}
                   runtimeProfile={activeTab.runtimeProfile}
                   useRouter9={activeTab.useRouter9}
@@ -694,9 +707,7 @@ export const TerminalPane = memo(function TerminalPane({
                     }
                   }}
                   onSessionId={(sessionId) => {
-                    if (activeTab.sessionId !== sessionId) {
-                      setSubTabSessionId(projectId, terminal.id, activeTab.id, sessionId)
-                    }
+                    setSubTabSessionId(projectId, terminal.id, activeTab.id, sessionId)
                   }}
                   onInitialInputSent={() =>
                     setSubTabInitialInput(projectId, terminal.id, activeTab.id, undefined)

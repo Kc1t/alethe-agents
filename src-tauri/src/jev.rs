@@ -26,7 +26,7 @@ fn resolve_model(model: Option<&str>) -> &str {
         .unwrap_or(MODEL)
 }
 
-fn client() -> &'static reqwest::Client {
+pub(crate) fn client() -> &'static reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
@@ -156,7 +156,7 @@ fn actions() -> Map<String, Value> {
         "focus_terminal",
         "Only bring a terminal that is ALREADY OPEN into view, without creating anything. No \
          task is handed over and no new terminal is started. Phrases like: show me X, bring up \
-         X, go to X, switch to X",
+         X, go to X, switch to X, open terminal three, show agent one",
     );
     put("kill_terminal", "Stop or kill a running agent or terminal");
     put("nothing", "Not a command addressed to the app");
@@ -471,7 +471,9 @@ fn build_questions(spoken: &str, context: &JevContext) -> Map<String, Value> {
     questions.insert(
         "count_1".into(),
         score(
-            "How many copies of the first agent the user asked to open",
+            "How many new terminals or copies of the first agent the user asked to open. \
+             Count bare terminals too, even when no task or agent name was spoken. \
+             Answer One when no quantity was specified",
             vec!["One", "Two", "Three or more"],
         ),
     );
@@ -515,13 +517,13 @@ fn build_questions(spoken: &str, context: &JevContext) -> Map<String, Value> {
     );
     questions.insert(
         "parallel".into(),
-        noul("The user asked for more than one agent working at the same time"),
+        noul("The user asked to open more than one terminal or agent, with or without a task"),
     );
     questions.insert(
         "how_many".into(),
         score(
-            "How many agents the user wants working on this",
-            vec!["One", "Two or three", "As many as possible"],
+            "How many new terminals or agents the user asked for. Count bare terminals too",
+            vec!["One", "Two", "Three or more"],
         ),
     );
     questions.insert(

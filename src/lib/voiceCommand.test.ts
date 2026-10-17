@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 
 import type { JevAnswer, JevDecision } from './tauri/jev'
 import {
+  endsWithSendPhrase,
   needsConfirmation,
   planFromDecision,
   planWarnings,
+  stripSendPhrase,
   toJevContext,
   type VoiceWorkspace,
 } from './voiceCommand'
@@ -145,6 +147,21 @@ describe('voice command routing', () => {
     expect(one.kind === 'spawn' && one.jobs.length).toBe(1)
     expect(two.kind === 'spawn' && two.jobs.length).toBe(2)
     expect(three.kind === 'spawn' && three.jobs.length).toBe(3)
+  })
+
+  it('honours the explicit first-agent quantity without a task or parallel-work score', () => {
+    const two = planFromDecision(decision({ leadCount: 0.5, parallel: 0.1 }), workspace)
+    const three = planFromDecision(decision({ leadCount: 0.9, parallel: 0.1 }), workspace)
+    expect(two.kind === 'spawn' && two.jobs.length).toBe(2)
+    expect(three.kind === 'spawn' && three.jobs.length).toBe(3)
+  })
+
+  it('uses the specific quantity before the broader fleet estimate', () => {
+    const plan = planFromDecision(
+      decision({ leadCount: 0.5, parallel: 0.9, howMany: 0.9 }),
+      workspace,
+    )
+    expect(plan.kind === 'spawn' && plan.jobs.length).toBe(2)
   })
 
   it('flags a destructive request and a busy target', () => {
@@ -455,5 +472,34 @@ describe('asking for two of each agent', () => {
     })
     const plan = planFromDecision(singles, workspace)
     expect(plan.kind === 'spawn' && plan.jobs.map((job) => job.agent)).toEqual(['claude', 'codex'])
+  })
+})
+
+describe('hands-free send phrases', () => {
+  it('fires on a send phrase at the end, whatever the case or punctuation', () => {
+    expect(endsWithSendPhrase('open two claude agents thanks jev')).toBe(true)
+    expect(endsWithSendPhrase('open two claude agents, THANKS JEV!')).toBe(true)
+    expect(endsWithSendPhrase('run the tests, ship it.')).toBe(true)
+    expect(endsWithSendPhrase('send it')).toBe(true)
+    expect(endsWithSendPhrase('go jev')).toBe(true)
+  })
+
+  it('does not fire mid-sentence or on lookalike words', () => {
+    expect(endsWithSendPhrase('open the cargo folder')).toBe(false)
+    expect(endsWithSendPhrase('go through the readme')).toBe(false)
+    expect(endsWithSendPhrase('abra um Claude no projeto, manda')).toBe(false)
+    expect(endsWithSendPhrase("open claude and let's go")).toBe(false)
+    expect(endsWithSendPhrase('agent one send the report to the backend')).toBe(false)
+  })
+
+  it('strips the trailing phrase and keeps the command', () => {
+    expect(stripSendPhrase('open two claude agents, thanks jev')).toBe('open two claude agents')
+    expect(stripSendPhrase('run git status in the shell SEND IT')).toBe(
+      'run git status in the shell',
+    )
+    expect(stripSendPhrase('open a claude in the project, send that')).toBe(
+      'open a claude in the project',
+    )
+    expect(stripSendPhrase('open a terminal')).toBe('open a terminal')
   })
 })

@@ -24,23 +24,29 @@ pub struct ClaudeSessionSnapshot {
     pub size_bytes: u64,
 }
 
-/// Mirrors how Claude names the directory it stores a project's sessions in.
-///
-/// The dot matters. Worktrees live under `<repo>/.alethe/worktrees/<id>`, and
-/// Claude folds the dot into a hyphen along with the separators, writing
-/// `-home-user-repo--alethe-worktrees-<id>`. Leaving it as `.alethe` produced a
-/// path that never exists, so no session was ever found for a pane running in a
-/// worktree.
+/// Mirrors Claude's project directory name: every non-alphanumeric UTF-16 unit becomes a hyphen.
 fn encode_cwd_for_claude(cwd: &str) -> String {
     let trimmed = cwd.trim_end_matches(|c: char| c == '\\' || c == '/');
-    trimmed
-        .chars()
-        .map(|c| match c {
-            ':' | '\\' | '/' | '.' => '-',
-            _ => c,
-        })
-        .collect()
+    let path = if trimmed.is_empty() || trimmed.ends_with(':') {
+        cwd
+    } else {
+        trimmed
+    };
+    let mut encoded = String::with_capacity(path.len());
+    for c in path.chars() {
+        if c.is_ascii_alphanumeric() {
+            encoded.push(c);
+        } else {
+            for _ in 0..c.len_utf16() {
+                encoded.push('-');
+            }
+        }
+    }
+    encoded
 }
+
+// Claude truncates longer names to this length and appends a hash of the full path.
+const CLAUDE_DIR_NAME_LIMIT: usize = 200;
 
 pub(crate) fn claude_projects_dir() -> Option<PathBuf> {
     provider_home_dir(&[".claude", "projects"])
@@ -79,7 +85,10 @@ struct RecordHeader {
 
 /// Reads one line, keeping at most `MAX_LINE_BYTES` and discarding the rest
 /// without buffering it. Returns false at EOF.
-pub(crate) fn read_capped_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> std::io::Result<bool> {
+pub(crate) fn read_capped_line(
+    reader: &mut impl BufRead,
+    buf: &mut Vec<u8>,
+) -> std::io::Result<bool> {
     buf.clear();
     let mut consumed_any = false;
     loop {
@@ -189,6 +198,8 @@ fn matching_project_dirs(root: &PathBuf, encoded: &str) -> Vec<PathBuf> {
         return vec![direct];
     }
     let target_lower = encoded.to_ascii_lowercase();
+    let truncated_prefix = (target_lower.len() > CLAUDE_DIR_NAME_LIMIT)
+        .then(|| format!("{}-", &target_lower[..CLAUDE_DIR_NAME_LIMIT]));
     let Ok(entries) = fs::read_dir(root) else {
         return Vec::new();
     };
@@ -199,14 +210,50 @@ fn matching_project_dirs(root: &PathBuf, encoded: &str) -> Vec<PathBuf> {
             if !path.is_dir() {
                 return None;
             }
-            let name = path.file_name()?.to_str()?.to_string();
-            if name.to_ascii_lowercase() == target_lower {
-                Some(path)
-            } else {
-                None
-            }
+            let name = path.file_name()?.to_str()?.to_ascii_lowercase();
+            let matches = match &truncated_prefix {
+                Some(prefix) => name.starts_with(prefix),
+                None => name == target_lower,
+            };
+            matches.then_some(path)
         })
         .collect()
+}
+
+fn is_session_file_stem(session_id: &str) -> bool {
+    !session_id.is_empty()
+        && session_id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn claude_session_exists_inner(cwd: &str, session_id: &str) -> Result<bool, String> {
+    if !is_session_file_stem(session_id) {
+        return Ok(false);
+    }
+    let file_name = format!("{session_id}.jsonl");
+    if project_dirs_for_cwd(cwd)?
+        .iter()
+        .any(|dir| dir.join(&file_name).is_file())
+    {
+        return Ok(true);
+    }
+    let Some(root) = claude_projects_dir() else {
+        return Err("USERPROFILE/HOME nao definido".to_string());
+    };
+    let Ok(entries) = fs::read_dir(root) else {
+        return Ok(false);
+    };
+    Ok(entries
+        .filter_map(|entry| entry.ok())
+        .any(|entry| entry.path().join(&file_name).is_file()))
+}
+
+#[tauri::command]
+pub async fn claude_session_exists(cwd: String, session_id: String) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || claude_session_exists_inner(&cwd, &session_id))
+        .await
+        .map_err(|error| format!("claude_session_exists: falha na task bloqueante: {error}"))?
 }
 
 pub(crate) fn project_dirs_for_cwd(cwd: &str) -> Result<Vec<PathBuf>, String> {
@@ -686,7 +733,51 @@ mod tests {
 
 #[cfg(test)]
 mod encode_cwd_tests {
-    use super::encode_cwd_for_claude;
+    use super::{encode_cwd_for_claude, matching_project_dirs, CLAUDE_DIR_NAME_LIMIT};
+
+    #[test]
+    fn folds_spaces_underscores_and_punctuation() {
+        assert_eq!(
+            encode_cwd_for_claude(r"D:\kauam\Documents\Github\Projects\Alethe Game"),
+            "D--kauam-Documents-Github-Projects-Alethe-Game"
+        );
+        assert_eq!(
+            encode_cwd_for_claude(r"D:\kauam\Documents\Github\Verzel\app_cartao_avenida"),
+            "D--kauam-Documents-Github-Verzel-app-cartao-avenida"
+        );
+        assert_eq!(encode_cwd_for_claude("/srv/a@b+c#(d)"), "-srv-a-b-c--d-");
+    }
+
+    #[test]
+    fn folds_one_hyphen_per_utf16_unit() {
+        assert_eq!(encode_cwd_for_claude(r"C:\Users\João"), "C--Users-Jo-o");
+        assert_eq!(encode_cwd_for_claude("/tmp/a😀b"), "-tmp-a--b");
+    }
+
+    #[test]
+    fn keeps_the_separator_of_a_drive_or_filesystem_root() {
+        assert_eq!(encode_cwd_for_claude(r"D:\"), "D--");
+        assert_eq!(encode_cwd_for_claude("/"), "-");
+    }
+
+    #[test]
+    fn finds_the_hashed_directory_of_an_overlong_path() {
+        let root = std::env::temp_dir().join(format!(
+            "alethe-claude-dirs-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let encoded = format!("-home-{}", "a".repeat(CLAUDE_DIR_NAME_LIMIT + 40));
+        let stored = root.join(format!("{}-1x2y3z", &encoded[..CLAUDE_DIR_NAME_LIMIT]));
+        let sibling = root.join(format!("{}b-9z", &encoded[..CLAUDE_DIR_NAME_LIMIT - 1]));
+        std::fs::create_dir_all(&stored).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+
+        let found = matching_project_dirs(&root, &encoded);
+
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(found, vec![stored]);
+    }
 
     #[test]
     fn folds_the_dot_of_a_worktree_path() {

@@ -92,7 +92,10 @@ fn create_cursor_chat_inner(cwd: String) -> Result<String, String> {
         .map_err(|error| format!("cursor-agent create-chat failed to run: {error}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("cursor-agent create-chat failed: {}", stderr.trim()));
+        return Err(format!(
+            "cursor-agent create-chat failed: {}",
+            stderr.trim()
+        ));
     }
 
     extract_chat_id(&String::from_utf8_lossy(&output.stdout))

@@ -1,86 +1,35 @@
-import { Blocks, CloudOff, RefreshCw, Search } from 'lucide-react'
+import { Blocks, CloudOff, RefreshCw } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { usePlugins } from '../../lib/plugins'
-import { useProjectsStore } from '../../stores/projectsStore'
-import { useUiStore } from '../../stores/uiStore'
+import {
+  mergePluginMarket,
+  searchPluginMarket,
+  type PluginMarketStatus,
+  type PluginMarketSource,
+  type PluginMarketSort,
+} from '../../lib/pluginMarket'
+import { PluginDetailsModal } from './PluginDetailsModal'
+import { PluginMarketFilters } from './PluginMarketFilters'
 import styles from './PluginsSidebar.module.css'
 import { useCatalog } from './useCatalog'
-
-type Row = {
-  id: string
-  name: string
-  description: string
-  author: string
-  version: string
-  installed: boolean
-  enabled: boolean
-  outdated: boolean
-}
 
 export function PluginsSidebar() {
   const t = useT()
   const installed = usePlugins()
   const { entries, loading, stale, reload } = useCatalog()
   const [query, setQuery] = useState('')
-  const createPluginPane = useProjectsStore((state) => state.createPluginPane)
-  const setActiveTerminal = useUiStore((state) => state.setActiveTerminal)
-  const pushToast = useUiStore((state) => state.pushToast)
-
-  const rows = useMemo(() => {
-    const byId = new Map<string, Row>()
-    for (const entry of installed) {
-      byId.set(entry.manifest.id, {
-        id: entry.manifest.id,
-        name: entry.manifest.name,
-        description: entry.manifest.description,
-        author: '',
-        version: entry.manifest.version,
-        installed: true,
-        enabled: entry.enabled,
-        outdated: false,
-      })
-    }
-    for (const plugin of entries) {
-      const local = byId.get(plugin.id)
-      byId.set(plugin.id, {
-        id: plugin.id,
-        name: plugin.name,
-        description: plugin.description || local?.description || '',
-        author: plugin.author,
-        version: local?.version ?? plugin.version,
-        installed: local?.installed ?? false,
-        enabled: local?.enabled ?? false,
-        outdated: local !== undefined && plugin.version !== '' && local.version !== plugin.version,
-      })
-    }
-    const needle = query.trim().toLowerCase()
-    return [...byId.values()]
-      .filter((row) =>
-        needle === ''
-          ? true
-          : `${row.name} ${row.id} ${row.author} ${row.description}`.toLowerCase().includes(needle),
-      )
-      .sort((a, b) => {
-        if (a.installed !== b.installed) return a.installed ? -1 : 1
-        return a.name.localeCompare(b.name)
-      })
-  }, [entries, installed, query])
-
-  const openProfile = (row: Row) => {
-    const { projects, activeProjectId } = useProjectsStore.getState()
-    const project = projects.find((entry) => entry.id === activeProjectId) ?? projects[0]
-    if (!project) {
-      pushToast({ title: t('pluginsTab.noProject'), body: '' })
-      return
-    }
-    const existing = project.terminals.find(
-      (terminal) => terminal.kind === 'plugin' && terminal.pluginId === row.id,
-    )
-    const pane = existing ?? createPluginPane(project.id, row.id, row.name)
-    setActiveTerminal(project.id, pane.id)
-  }
+  const [status, setStatus] = useState<PluginMarketStatus>('all')
+  const [source, setSource] = useState<PluginMarketSource>('all')
+  const [sort, setSort] = useState<PluginMarketSort>('relevance')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const allRows = useMemo(() => mergePluginMarket(installed, entries), [installed, entries])
+  const rows = useMemo(
+    () => searchPluginMarket(allRows, query, status, source, sort),
+    [allRows, query, status, source, sort],
+  )
+  const selected = allRows.find((row) => row.id === selectedId)
 
   return (
     <aside className={styles.sidebar} aria-label={t('pluginsTab.title')}>
@@ -106,17 +55,18 @@ export function PluginsSidebar() {
         </button>
       </header>
 
-      <div className={styles.searchRow}>
-        <Search size={13} />
-        <input
-          type="search"
-          className={styles.search}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t('pluginsTab.searchPlaceholder')}
-          spellCheck={false}
-        />
-      </div>
+      <PluginMarketFilters
+        query={query}
+        setQuery={setQuery}
+        status={status}
+        setStatus={setStatus}
+        source={source}
+        setSource={setSource}
+        sort={sort}
+        setSort={setSort}
+        count={rows.length}
+        total={allRows.length}
+      />
 
       <div className={styles.content}>
         {rows.length === 0 ? (
@@ -130,7 +80,7 @@ export function PluginsSidebar() {
                 key={row.id}
                 type="button"
                 className={styles.card}
-                onClick={() => openProfile(row)}
+                onClick={() => setSelectedId(row.id)}
               >
                 <div className={styles.cardTop}>
                   <span className={styles.name}>{row.name}</span>
@@ -151,6 +101,13 @@ export function PluginsSidebar() {
           </div>
         )}
       </div>
+      {selectedId ? (
+        <PluginDetailsModal
+          pluginId={selectedId}
+          name={selected?.name ?? selectedId}
+          onClose={() => setSelectedId(null)}
+        />
+      ) : null}
     </aside>
   )
 }

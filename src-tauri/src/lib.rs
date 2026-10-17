@@ -40,6 +40,7 @@ mod graphify;
 mod handoff;
 mod health_probe;
 mod jev;
+mod kimi_usage;
 mod logging;
 mod mcp_agents;
 mod mcp_catalog;
@@ -83,6 +84,8 @@ mod speech_hub;
 mod speech_apple;
 mod speech_capture;
 mod speech_download;
+mod speech_cloud;
+mod speech_vad;
 mod spotify;
 mod stats;
 mod supervisor;
@@ -442,6 +445,7 @@ pub fn run() {
             pty::get_pty_cwd,
             pty::set_pty_read_state,
             pty::set_pty_visible,
+            pty::resume_pty_output,
             pty::set_pty_priority,
             ghostty_bridge::ghostty_spawn,
             ghostty_bridge::ghostty_sync_frame,
@@ -537,6 +541,7 @@ pub fn run() {
             spotify::spotify_status,
             spotify::spotify_get_current,
             claude_sessions::snapshot_claude_sessions,
+            claude_sessions::claude_session_exists,
             claude_sessions::list_claude_sessions,
             claude_sessions::get_claude_session_title,
             claude_sessions::get_claude_activity,
@@ -553,6 +558,7 @@ pub fn run() {
             codex_usage::get_codex_usage,
             codex_usage::consume_codex_reset_credit,
             antigravity_usage::get_antigravity_usage,
+            kimi_usage::get_kimi_usage,
             agent_cost::get_session_cost,
             agent_cost::get_transcript_cost,
             agent_cost::get_model_pricing,
@@ -570,9 +576,12 @@ pub fn run() {
             speech::speech_delete_model,
             speech::speech_start_capture,
             speech::speech_capture_level,
+            speech::speech_vad_status,
+            speech::speech_prepare_vad,
             speech::speech_stop_capture,
             speech::speech_prepare,
             speech::speech_stop_and_transcribe,
+            speech::speech_transcribe_partial,
             speech::speech_transcribe,
             speech::speech_native_locales,
             speech_hub::speech_hub_search,

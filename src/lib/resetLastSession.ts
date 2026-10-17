@@ -1,5 +1,6 @@
 import { claudeLaunchExtras, graphifyRepoOf, recordClaudeLaunch } from './claudeMcpConfigs'
 import { claudeLaunchFlags } from './sessionLaunch'
+import { isSessionClaimed } from './sessionDiscovery'
 import { conversationFields, getActiveSessions, saveSession } from './sessionResume'
 import { acquireSpawnSlot, releaseSpawnSlot } from './spawnQueue'
 import {
@@ -56,7 +57,12 @@ async function latestSessionId(
 ): Promise<string | null> {
   if (!cwd) return null
   try {
-    if (agent === 'codex') return pickSessionId(await snapshotCodexSessions(cwd), exclude)
+    if (agent === 'codex') {
+      const interactive = (await snapshotCodexSessions(cwd)).filter(
+        (session) => session.source === 'cli' && !isSessionClaimed('codex', cwd, session.id),
+      )
+      return pickSessionId(interactive, exclude)
+    }
     if (agent === 'claude') return pickSessionId(await snapshotClaudeSessions(cwd), exclude)
     if (agent === 'opencode') {
       if (savedOpenCodeId) return savedOpenCodeId
@@ -199,6 +205,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
         command: target.agent,
         cwd: cwd || undefined,
         extraArgs,
+        env: { ALETHE_PLANNER: target.ptyId },
       })
       if (claudeExtras) recordClaudeLaunch(target.ptyId, claudeExtras.orchestrator)
       window.dispatchEvent(

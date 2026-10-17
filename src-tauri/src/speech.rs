@@ -20,10 +20,11 @@ use crate::paths::app_data_dir;
 use crate::speech_capture::{self, CaptureSession, CapturedAudio, SpeechInputDevice};
 use crate::speech_download::{self, ActiveDownload, DownloadFlags, WriteOutcome};
 use crate::speech_layout::SttLayout;
+use crate::speech_vad::{VadMonitor, VadStatus};
 use crate::voice_providers::http::{CloudError, CloudErrorKind};
 use crate::voice_providers::CloudProvider;
 
-const SAMPLE_RATE: i32 = 16_000;
+pub(crate) const SAMPLE_RATE: i32 = 16_000;
 
 pub const APPLE_MODEL_ID: &str = "apple-speech";
 
@@ -243,7 +244,11 @@ impl From<Layout> for SttLayout {
                 joiner: "joiner.int8.onnx".into(),
                 tokens: "tokens.txt".into(),
             },
-            Layout::Whisper { encoder, decoder, tokens } => SttLayout::Whisper {
+            Layout::Whisper {
+                encoder,
+                decoder,
+                tokens,
+            } => SttLayout::Whisper {
                 encoder: encoder.into(),
                 decoder: decoder.into(),
                 tokens: tokens.into(),
@@ -543,6 +548,14 @@ const TTS_CATALOG: &[TtsCatalogEntry] = &[
     },
 ];
 
+const VAD_DIR: &str = "silero-vad";
+const VAD_FILE: ModelFile = ModelFile {
+    name: "silero_vad.onnx",
+    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+    size_bytes: 643_854,
+    sha256: "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+};
+
 pub struct SpeechState {
     /// Serializes downloads so two prefs clicks don't race the same folder.
     download_lock: AsyncMutex<()>,
@@ -552,6 +565,7 @@ pub struct SpeechState {
     capture: Mutex<Option<CaptureSession>>,
     /// Loading the encoder costs hundreds of megabytes of disk read per utterance.
     recognizer: Mutex<Option<(PathBuf, Arc<OfflineRecognizer>)>>,
+    vad: Mutex<Option<VadMonitor>>,
 }
 
 impl Default for SpeechState {
@@ -561,6 +575,7 @@ impl Default for SpeechState {
             downloads: DownloadFlags::default(),
             capture: Mutex::new(None),
             recognizer: Mutex::new(None),
+            vad: Mutex::new(None),
         }
     }
 }
@@ -658,8 +673,7 @@ fn tts_ready(dir: &Path, entry: &TtsCatalogEntry) -> bool {
 }
 
 /// What a downloaded Hugging Face model that sherpa cannot load reports.
-const HUB_INCOMPATIBLE: &str =
-    "This model cannot run in Alethe. Remove it in Preferences → Voice.";
+const HUB_INCOMPATIBLE: &str = "This model cannot run in Alethe. Remove it in Preferences → Voice.";
 
 /// A Hugging Face model that fails to load reads as incompatible; a catalog model keeps the
 /// engine's own error.
@@ -733,11 +747,12 @@ pub(crate) async fn local_tts_voices(
     if let Some(voices) = crate::speech_hub::meta::known_voices(&meta) {
         return voices;
     }
-    let reported = tokio::task::spawn_blocking(move || crate::tts_local::num_speakers(&dir, &layout))
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .unwrap_or(1);
+    let reported =
+        tokio::task::spawn_blocking(move || crate::tts_local::num_speakers(&dir, &layout))
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .unwrap_or(1);
     crate::speech_hub::meta::voice_list(&[], reported)
 }
 
@@ -1394,6 +1409,7 @@ pub fn speech_delete_model(
 
 #[tauri::command]
 pub fn speech_start_capture(
+    app: AppHandle,
     state: State<'_, SpeechState>,
     device_id: Option<String>,
 ) -> Result<(), String> {
@@ -1405,7 +1421,48 @@ pub fn speech_start_capture(
         return Err("Dictation is already recording".into());
     }
     *slot = Some(speech_capture::start_capture(device_id)?);
+    let monitor = vad_model_path(&app)
+        .ok()
+        .filter(|path| path.is_file())
+        .and_then(|path| VadMonitor::new(&path).ok());
+    if let Ok(mut vad) = state.vad.lock() {
+        *vad = monitor;
+    }
     Ok(())
+}
+
+fn vad_model_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(models_root(app)?.join(VAD_DIR).join(VAD_FILE.name))
+}
+
+#[tauri::command]
+pub async fn speech_prepare_vad(app: AppHandle) -> Result<bool, String> {
+    let path = vad_model_path(&app)?;
+    if path.is_file() {
+        return Ok(true);
+    }
+    let dir = models_root(&app)?.join(VAD_DIR);
+    fs::create_dir_all(&dir).map_err(|e| format!("create vad dir: {e}"))?;
+    let files = [DownloadFile::from(&VAD_FILE)];
+    let client = download_client()?;
+    download_files(
+        &app,
+        &client,
+        VAD_DIR,
+        &dir,
+        &files,
+        &AtomicBool::new(false),
+    )
+    .await?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn speech_vad_status(state: State<'_, SpeechState>) -> Option<VadStatus> {
+    let capture = state.capture.lock().ok()?;
+    let capture = capture.as_ref()?;
+    let mut vad = state.vad.lock().ok()?;
+    Some(vad.as_mut()?.poll(capture))
 }
 
 #[tauri::command]
@@ -1423,7 +1480,7 @@ pub fn speech_stop_capture(state: State<'_, SpeechState>) -> Result<CapturedAudi
     stop_capture(&state)
 }
 
-fn stop_capture(state: &SpeechState) -> Result<CapturedAudio, String> {
+pub(crate) fn stop_capture(state: &SpeechState) -> Result<CapturedAudio, String> {
     let mut slot = state
         .capture
         .lock()
@@ -1431,6 +1488,9 @@ fn stop_capture(state: &SpeechState) -> Result<CapturedAudio, String> {
     let capture = slot
         .take()
         .ok_or_else(|| "Dictation is not recording".to_string())?;
+    if let Ok(mut vad) = state.vad.lock() {
+        *vad = None;
+    }
     capture.stop()
 }
 
@@ -1441,7 +1501,7 @@ fn decode_threads() -> i32 {
     cores.saturating_sub(1).clamp(2, 8) as i32
 }
 
-const HOTWORDS: &[&str] = &[
+pub(crate) const HOTWORDS: &[&str] = &[
     "CODEX",
     "CLAUDE",
     "CLAUDE CODE",
@@ -1450,13 +1510,28 @@ const HOTWORDS: &[&str] = &[
     "OPENCODE",
     "TERMINAL",
     "TERMINALS",
+    "OPEN TWO TERMINALS",
+    "OPEN THREE TERMINALS",
+    "OPEN UP TWO TERMINALS",
+    "OPEN UP THREE TERMINALS",
     "AGENT",
     "AGENTS",
+    "TERMINAL ONE",
+    "TERMINAL TWO",
+    "TERMINAL THREE",
+    "AGENT ONE",
+    "AGENT TWO",
+    "AGENT THREE",
+    "FIRST TERMINAL",
+    "SECOND TERMINAL",
+    "THIRD TERMINAL",
     "SHELL",
     "IN THE SHELL",
     "SPIN UP",
     "GIT STATUS",
     "RUN THE BUILD",
+    "SEND IT",
+    "THANKS JEV",
     "PACKAGE JSON",
     "FRONTEND",
     "BACKEND",
@@ -1473,14 +1548,17 @@ fn is_text_vocab(path: &Path) -> bool {
 
 fn write_hotwords(dir: &Path) -> Result<PathBuf, String> {
     let path = dir.join("hotwords.txt");
-    let body = HOTWORDS.join("
-");
+    let body = HOTWORDS.join(
+        "
+",
+    );
     fs::write(&path, body).map_err(|e| format!("write hotwords: {e}"))?;
     Ok(path)
 }
 
 fn build_recognizer(dir: &Path, layout: &SttLayout) -> Result<OfflineRecognizer, String> {
-    let mut config = crate::speech_layout::recognizer_config(dir, layout, decode_threads(), SAMPLE_RATE)?;
+    let mut config =
+        crate::speech_layout::recognizer_config(dir, layout, decode_threads(), SAMPLE_RATE)?;
     // Biasing only bites on a BPE model when the vocab is handed over too, and sherpa wants the
     // text vocab, not the sentencepiece model: the binary one takes the process down.
     if let SttLayout::Transducer { model_type, .. } = layout {
@@ -1502,7 +1580,7 @@ fn build_recognizer(dir: &Path, layout: &SttLayout) -> Result<OfflineRecognizer,
 const TRIM_THRESHOLD: f32 = 0.012;
 const TRIM_PAD_SAMPLES: usize = (SAMPLE_RATE as usize) / 10;
 
-fn trim_silence(samples: &[f32]) -> &[f32] {
+pub(crate) fn trim_silence(samples: &[f32]) -> &[f32] {
     let loud = |sample: &f32| sample.abs() > TRIM_THRESHOLD;
     let Some(first) = samples.iter().position(loud) else {
         return samples;
@@ -1627,7 +1705,9 @@ fn pick_fallback(
     if let Some(locale) = apple_locale_ready {
         return Some(FallbackStt::Apple(locale));
     }
-    ready_sherpa.first().map(|id| FallbackStt::Sherpa(id.clone()))
+    ready_sherpa
+        .first()
+        .map(|id| FallbackStt::Sherpa(id.clone()))
 }
 
 #[derive(Clone, Serialize)]
@@ -1676,9 +1756,7 @@ async fn fallback_transcriber(
         FallbackStt::Apple(locale) => transcriber_for(app, state, APPLE_MODEL_ID, Some(&locale))
             .ok()
             .map(|t| (t, APPLE_MODEL_ID.to_string())),
-        FallbackStt::Sherpa(id) => transcriber_for(app, state, &id, None)
-            .ok()
-            .map(|t| (t, id)),
+        FallbackStt::Sherpa(id) => transcriber_for(app, state, &id, None).ok().map(|t| (t, id)),
     }
 }
 
@@ -1705,10 +1783,7 @@ fn engine_for(
         Some(id) => Ok(Engine::Apple {
             locale: id.to_string(),
         }),
-        None => Err(
-            "Choose the native recognition language in Preferences → Voice."
-                .to_string(),
-        ),
+        None => Err("Choose the native recognition language in Preferences → Voice.".to_string()),
     }
 }
 
@@ -1853,6 +1928,17 @@ fn check_recording_length(samples: usize) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn validate_capture(audio: &CapturedAudio) -> Result<(), String> {
+    check_recording_length(audio.samples.len())?;
+    if audio.peak < 0.005 {
+        return Err(
+            "No audio captured. Check the microphone and that PipeWire/PulseAudio can see it."
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn speech_stop_and_transcribe(
     app: AppHandle,
@@ -1864,13 +1950,7 @@ pub async fn speech_stop_and_transcribe(
     usage: Option<String>,
 ) -> Result<String, String> {
     let audio = stop_capture(&state)?;
-    check_recording_length(audio.samples.len())?;
-    if audio.peak < 0.005 {
-        return Err(
-            "No audio captured. Check the microphone and that PipeWire/PulseAudio can see it."
-                .into(),
-        );
-    }
+    validate_capture(&audio)?;
     let Some(cloud) = SttProvider::infer(provider, &model_id).cloud() else {
         let transcriber = transcriber_for(&app, &state, &model_id, locale.as_deref())?;
         return transcribe_on_worker(transcriber, audio.samples, audio.sample_rate).await;
@@ -1879,18 +1959,12 @@ pub async fn speech_stop_and_transcribe(
     // A keychain failure is a cloud failure like any other: the local fallback still runs.
     let error = match crate::voice_providers::keys::read_key_async(&app, cloud).await {
         Err(_) => CloudError::of(CloudErrorKind::Other),
-        Ok(Some(key)) => match crate::voice_providers::stt_cloud::transcribe(
-            cloud,
-            &model_id,
-            &key,
-            &trimmed,
-            audio.sample_rate,
-        )
-        .await
-        {
-            Ok(text) => return Ok(text),
-            Err(error) => error,
-        },
+        Ok(Some(key)) => {
+            match transcribe_cloud(cloud, &model_id, &key, &trimmed, audio.sample_rate).await {
+                Ok(text) => return Ok(text),
+                Err(error) => error,
+            }
+        }
         Ok(None) => CloudError::of(CloudErrorKind::Auth),
     };
     let _ = crate::diagnostics::append_spawn_log(
@@ -1911,6 +1985,64 @@ pub async fn speech_stop_and_transcribe(
         },
     );
     transcribe_on_worker(transcriber, audio.samples, audio.sample_rate).await
+}
+
+/// OpenRouter's chat audio models answer through chat completions; every other cloud model
+/// through its provider's transcription endpoint.
+async fn transcribe_cloud(
+    cloud: CloudProvider,
+    model_id: &str,
+    key: &str,
+    samples: &[f32],
+    sample_rate: u32,
+) -> Result<String, CloudError> {
+    if cloud == CloudProvider::Openrouter && crate::speech_cloud::is_chat_audio_model(model_id) {
+        return crate::speech_cloud::transcribe_with_chat_model(
+            key,
+            model_id,
+            samples,
+            sample_rate,
+        )
+        .await
+        .map_err(|message| {
+            eprintln!("[speech] OpenRouter chat transcription failed: {message}");
+            CloudError::of(CloudErrorKind::Other)
+        });
+    }
+    crate::voice_providers::stt_cloud::transcribe(cloud, model_id, key, samples, sample_rate).await
+}
+
+/// Decodes a sliding tail window so a spoken send phrase is never split across chunks.
+#[tauri::command]
+pub async fn speech_transcribe_partial(
+    app: AppHandle,
+    state: State<'_, SpeechState>,
+    model_id: String,
+    locale: Option<String>,
+) -> Result<String, String> {
+    let transcriber = transcriber_for(&app, &state, &model_id, locale.as_deref())?;
+    let samples = {
+        let slot = state
+            .capture
+            .lock()
+            .map_err(|_| "speech capture lock poisoned".to_string())?;
+        let session = slot
+            .as_ref()
+            .ok_or_else(|| "Dictation is not recording".to_string())?;
+        session.snapshot()
+    };
+    let window = partial_window(&samples).to_vec();
+    if window.len() < (SAMPLE_RATE as usize) / 4 {
+        return Ok(String::new());
+    }
+    transcribe_on_worker(transcriber, window, SAMPLE_RATE as u32).await
+}
+
+const PARTIAL_WINDOW_SECONDS: usize = 3;
+
+fn partial_window(samples: &[f32]) -> &[f32] {
+    let window = SAMPLE_RATE as usize * PARTIAL_WINDOW_SECONDS;
+    &samples[samples.len().saturating_sub(window)..]
 }
 
 #[tauri::command]
@@ -1938,8 +2070,16 @@ mod tests {
     fn every_download_is_pinned_and_hashed() {
         for entry in CATALOG {
             for file in entry.files {
-                assert!(file.url.starts_with("https://huggingface.co/"), "{}", file.url);
-                assert!(!file.url.contains("/resolve/main/"), "unpinned revision: {}", file.url);
+                assert!(
+                    file.url.starts_with("https://huggingface.co/"),
+                    "{}",
+                    file.url
+                );
+                assert!(
+                    !file.url.contains("/resolve/main/"),
+                    "unpinned revision: {}",
+                    file.url
+                );
                 assert_eq!(file.sha256.len(), 64, "{}", file.name);
                 assert!(file.size_bytes > 0);
             }
@@ -1949,7 +2089,14 @@ mod tests {
     #[test]
     fn whisper_and_moonshine_entries_ship_the_files_their_layout_reads() {
         let whisper = find_entry("whisper-small-int8").unwrap();
-        let Layout::Whisper { encoder, decoder, tokens } = whisper.layout else { panic!("whisper layout") };
+        let Layout::Whisper {
+            encoder,
+            decoder,
+            tokens,
+        } = whisper.layout
+        else {
+            panic!("whisper layout")
+        };
         let names: Vec<&str> = whisper.files.iter().map(|f| f.name).collect();
         for needed in [encoder, decoder, tokens] {
             assert!(names.contains(&needed), "{needed}");
@@ -2090,8 +2237,15 @@ mod tests {
         let path = std::env::temp_dir().join(format!("alethe-blob-{}", std::process::id()));
         std::fs::write(&path, b"hello\n").unwrap();
         // `printf 'hello\n' | git hash-object --stdin`
-        assert_eq!(git_blob_sha1(&path).unwrap(), "ce013625030ba8dba906f756967f9e9ca394464a");
-        assert!(verify(&path, &Check::GitSha1("ce013625030ba8dba906f756967f9e9ca394464a".into())).unwrap());
+        assert_eq!(
+            git_blob_sha1(&path).unwrap(),
+            "ce013625030ba8dba906f756967f9e9ca394464a"
+        );
+        assert!(verify(
+            &path,
+            &Check::GitSha1("ce013625030ba8dba906f756967f9e9ca394464a".into())
+        )
+        .unwrap());
         assert!(!verify(&path, &Check::Sha256("0".repeat(64))).unwrap());
         let _ = std::fs::remove_file(&path);
     }
@@ -2099,24 +2253,54 @@ mod tests {
     #[test]
     fn hub_files_become_download_files_with_their_checks() {
         let files = vec![
-            crate::speech_hub::detect::RepoFile { path: "a.onnx".into(), size: 5, sha256: Some("f".repeat(64)), git_sha1: None },
-            crate::speech_hub::detect::RepoFile { path: "espeak-ng-data/x".into(), size: 2, sha256: None, git_sha1: Some("e".repeat(40)) },
+            crate::speech_hub::detect::RepoFile {
+                path: "a.onnx".into(),
+                size: 5,
+                sha256: Some("f".repeat(64)),
+                git_sha1: None,
+            },
+            crate::speech_hub::detect::RepoFile {
+                path: "espeak-ng-data/x".into(),
+                size: 2,
+                sha256: None,
+                git_sha1: Some("e".repeat(40)),
+            },
         ];
         let out = hub_download_files("csukuangfj/r", &"c".repeat(40), &files).unwrap();
-        assert_eq!(out[0].url, format!("https://huggingface.co/csukuangfj/r/resolve/{}/a.onnx", "c".repeat(40)));
+        assert_eq!(
+            out[0].url,
+            format!(
+                "https://huggingface.co/csukuangfj/r/resolve/{}/a.onnx",
+                "c".repeat(40)
+            )
+        );
         assert!(matches!(&out[0].check, Check::Sha256(h) if h == &"f".repeat(64)));
         assert!(matches!(&out[1].check, Check::GitSha1(h) if h == &"e".repeat(40)));
         assert_eq!(out[1].name, "espeak-ng-data/x");
-        let unchecked = vec![crate::speech_hub::detect::RepoFile { path: "b".into(), size: 1, sha256: None, git_sha1: None }];
+        let unchecked = vec![crate::speech_hub::detect::RepoFile {
+            path: "b".into(),
+            size: 1,
+            sha256: None,
+            git_sha1: None,
+        }];
         assert!(hub_download_files("csukuangfj/r", &"c".repeat(40), &unchecked).is_err());
     }
 
     #[test]
     fn hub_ids_are_known_models() {
-        assert!(matches!(ready_check("hf:csukuangfj/x"), Ok(ReadyCheck::Hub)));
+        assert!(matches!(
+            ready_check("hf:csukuangfj/x"),
+            Ok(ReadyCheck::Hub)
+        ));
         assert!(ready_check("hf:someone/x").is_err());
-        assert!(matches!(ready_check("piper-en-us-amy-low"), Ok(ReadyCheck::Tts(_))));
-        assert!(matches!(ready_check("whisper-base-int8"), Ok(ReadyCheck::Stt(_))));
+        assert!(matches!(
+            ready_check("piper-en-us-amy-low"),
+            Ok(ReadyCheck::Tts(_))
+        ));
+        assert!(matches!(
+            ready_check("whisper-base-int8"),
+            Ok(ReadyCheck::Stt(_))
+        ));
         assert!(ready_check("nope").is_err());
     }
 
@@ -2130,7 +2314,10 @@ mod tests {
 
     #[test]
     fn fallback_order_prefers_apple_with_a_ready_locale() {
-        let picked = pick_fallback(Some("pt-BR".into()), &["parakeet-tdt-0.6b-v3-int8".to_string()]);
+        let picked = pick_fallback(
+            Some("pt-BR".into()),
+            &["parakeet-tdt-0.6b-v3-int8".to_string()],
+        );
         assert!(matches!(picked, Some(FallbackStt::Apple(locale)) if locale == "pt-BR"));
     }
 
@@ -2138,7 +2325,10 @@ mod tests {
     fn fallback_order_uses_the_first_ready_sherpa_model() {
         let picked = pick_fallback(
             None,
-            &["zipformer-small-en-int8".to_string(), "parakeet-tdt-0.6b-v3-int8".to_string()],
+            &[
+                "zipformer-small-en-int8".to_string(),
+                "parakeet-tdt-0.6b-v3-int8".to_string(),
+            ],
         );
         assert!(matches!(picked, Some(FallbackStt::Sherpa(id)) if id == "zipformer-small-en-int8"));
     }
@@ -2151,8 +2341,14 @@ mod tests {
     #[test]
     fn provider_defaults_from_the_model_id_for_old_callers() {
         assert_eq!(SttProvider::infer(None, "apple-speech"), SttProvider::Apple);
-        assert_eq!(SttProvider::infer(None, "parakeet-tdt-0.6b-v3-int8"), SttProvider::Local);
-        assert_eq!(SttProvider::infer(Some(SttProvider::Gemini), "x"), SttProvider::Gemini);
+        assert_eq!(
+            SttProvider::infer(None, "parakeet-tdt-0.6b-v3-int8"),
+            SttProvider::Local
+        );
+        assert_eq!(
+            SttProvider::infer(Some(SttProvider::Gemini), "x"),
+            SttProvider::Gemini
+        );
     }
 
     #[test]
@@ -2178,7 +2374,10 @@ mod tests {
             engine_for("parakeet-tdt-0.6b-v3-int8", None, true),
             Ok(Engine::Local)
         ));
-        assert!(matches!(engine_for("hf:csukuangfj/x", None, true), Ok(Engine::Local)));
+        assert!(matches!(
+            engine_for("hf:csukuangfj/x", None, true),
+            Ok(Engine::Local)
+        ));
         assert!(engine_for("nope", None, true).is_err());
     }
 

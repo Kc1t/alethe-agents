@@ -54,6 +54,7 @@ import { VoiceConversation } from './components/VoiceConversation'
 import { WorkspaceView } from './components/WorkspaceView'
 import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useAgentHookBridge } from './hooks/useAgentHookBridge'
+import { useCodexSessionBridge } from './hooks/useCodexSessionBridge'
 import { useAgentsSidebarAutoOpen } from './hooks/useAgentsSidebarAutoOpen'
 import { useAiMemoryAutoStart } from './hooks/useAiMemoryAutoStart'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
@@ -217,6 +218,7 @@ export default function App() {
   useAgentHookBridge()
   useSpeechEngineDefault(hydrated, activeProfileId)
   useVoiceFallbackToasts()
+  useCodexSessionBridge()
   useAgentsSidebarAutoOpen()
   useCliOpenRequests(hydrated)
 

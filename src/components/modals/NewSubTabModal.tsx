@@ -1,9 +1,10 @@
-import { Folder, FolderCheck, Zap } from 'lucide-react'
+import { Folder, FolderCheck, ShieldCheck, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { pickDirectory } from '../../lib/dialog'
+import { isWindows } from '../../lib/platform'
 import {
   agentLabel,
   isAgentEnabled,
@@ -14,6 +15,7 @@ import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from '../.
 import { AgentIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
 import { Modal } from './Modal'
+import terminalStyles from './NewTerminalModal.module.css'
 import controls from './controls.module.css'
 import picker from './agentPicker.module.css'
 
@@ -40,6 +42,7 @@ export function NewSubTabModal() {
   const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
   const [unrestricted, setUnrestricted] = useState<Partial<Record<AgentType, boolean>>>({})
+  const [runAsAdmin, setRunAsAdmin] = useState(false)
 
   const visibleAgents = useAgentTypes()
     .filter((type) => isAgentEnabled(enabled, type))
@@ -60,6 +63,7 @@ export function NewSubTabModal() {
     setRuntimeProfile('lean')
     setCwd('')
     setUnrestricted({})
+    setRunAsAdmin(false)
   }
 
   const submit = () => {
@@ -70,6 +74,7 @@ export function NewSubTabModal() {
       type,
       cwd: cwd.trim() || inheritedCwd,
       extraArgs,
+      runAsAdmin: type === 'shell' && runAsAdmin,
       runtimeProfile,
     })
     reset()
@@ -190,6 +195,27 @@ export function NewSubTabModal() {
               : t(`term.runtimeProfile.${runtimeProfile}.desc`)}
           </span>
         </div>
+      ) : null}
+      {isWindows() && type === 'shell' ? (
+        <button
+          type="button"
+          className={`${terminalStyles.permissionToggle} ${runAsAdmin ? terminalStyles.permissionToggleActive : ''}`}
+          onClick={() => setRunAsAdmin((value) => !value)}
+          aria-pressed={runAsAdmin}
+        >
+          <span className={terminalStyles.permissionToggleIcon}>
+            <ShieldCheck size={16} />
+          </span>
+          <span className={terminalStyles.permissionToggleCopy}>
+            <span className={terminalStyles.permissionToggleTitle}>{t('term.runAsAdmin')}</span>
+            <span className={terminalStyles.permissionToggleDescription}>
+              {t('term.runAsAdminDescription')}
+            </span>
+          </span>
+          <span className={terminalStyles.permissionToggleState}>
+            {runAsAdmin ? t('term.unrestrictedOn') : t('term.unrestrictedOff')}
+          </span>
+        </button>
       ) : null}
       <div className={controls.field}>
         <label className={controls.label}>{t('term.folderCwd')}</label>

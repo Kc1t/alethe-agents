@@ -40,7 +40,7 @@ tauri-plugin-global-shortcut = "~2.3"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "time", "process", "io-util", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "time", "process", "io-util", "macros", "fs"] }
 tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
 tokio-tungstenite = "0.26"
 futures-util = "0.3"

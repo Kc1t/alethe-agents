@@ -76,11 +76,17 @@ describe('restartAgentTab', () => {
     expect(mocks.relaunch.mock.calls[0][0]).toMatchObject({ sessionId: 'saved-9' })
   })
 
-  it('falls back to the latest Codex session of the folder', async () => {
+  // The folder's latest Codex conversation may belong to another pane; a guess would move this one.
+  it('does not guess a Codex conversation from the folder', async () => {
     mocks.snapshotCodex.mockResolvedValue([{ id: 'codex-1' }, { id: 'codex-0' }])
     await restart({ type: 'codex' })
-    expect(mocks.snapshotCodex).toHaveBeenCalledWith('/w')
-    expect(mocks.relaunch.mock.calls[0][0]).toMatchObject({ agent: 'codex', sessionId: 'codex-1' })
+    expect(mocks.snapshotCodex).not.toHaveBeenCalled()
+    expect(mocks.relaunch.mock.calls[0][0]).toMatchObject({ agent: 'codex', sessionId: undefined })
+  })
+
+  it('passes the tab run-as-admin flag to the relaunch', async () => {
+    await restart({ type: 'shell', runAsAdmin: true })
+    expect(mocks.relaunch.mock.calls[0][0]).toMatchObject({ runAsAdmin: true })
   })
 
   it('records a new conversation id on the tab', async () => {

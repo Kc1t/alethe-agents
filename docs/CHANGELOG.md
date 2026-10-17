@@ -11,7 +11,45 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ## [Unreleased]
 
 ### Added
+- **Administrator shell tabs.** New terminal and new tab dialogs offer a Windows administrator
+  option when Shell is selected. Elevated shells stay in the Alethe tab and request UAC approval
+  through gsudo or Windows Sudo configured in inline mode.
+- **OpenRouter transcriber.** Preferences → Voice now has a Transcriber option: keep the
+  on-device model, or send each recording to OpenRouter using the same API key as Jev. Pick
+  GPT Audio Mini (fastest, about 1.2 s per command) or Gemini 3.1 Flash Lite (about 1.7 s, more
+  precise with technical words). Requests route to the lowest-latency provider. Applies to both the voice pill and
+  Ctrl+E dictation; live partial transcripts are skipped in this mode to avoid a paid call every
+  poll.
+- **Compact voice pill.** The voice command bar is now a small floating pill at the bottom of
+  the screen instead of a large centered modal: mic, waveform and status share one rounded bar,
+  confirmation details sit in a compact card above it, and a small hint reads "Esc to cancel".
+  The pill now has a smaller footprint, fully rounded controls, a gentle entrance and idle
+  animation, and animated processing dots. It fits its contents, with a travelling border highlight
+  and rounded confirmation card, and respects reduced motion.
+  Commands are voice-only; the API key is configured in voice dictation preferences.
+  Rounded voice surfaces are preserved in the Clean visual style.
+  Opening the voice pill no longer shows an automatic microphone focus ring.
+  Voice launch counts now honor the first-agent quantity for bare terminal requests, and
+  distinguish two terminals from three; speech recognition also biases common launch phrases.
+- **Voice focus flash and ordinals.** Focusing a pane by voice ("open terminal three", "show
+  agent one") now flashes the target pane so it is obvious what gained focus.
+- **Continuous listening mode.** A new toggle in the voice pill keeps the microphone live between
+  commands until the bar is closed; each finished command re-arms the mic automatically.
+- **Voice success toast.** Commands that run now confirm with an ephemeral toast, matching the
+  existing failure toast.
 
+- **Cleaner Markdown viewer tabs.** The right-sidebar document tabs now use a compact strip with a
+  clearer active state, hidden scrollbar chrome, and a less prominent file path row.
+- **Easier hands-free voice sending.** Short Portuguese send phrases such as “manda”, “envia” and
+  “pode mandar” now end recording without requiring the less reliable “thanks Jev” phrase.
+- Kimi Code is now an option in AI usage details, with independent panel and topbar visibility
+  settings. Live five-hour, weekly, and monthly quotas are fetched using the CLI's existing login,
+  with token renewal, manual refresh, and automatic polling; unavailable data is never shown as zero.
+
+- **Hands-free voice sending.** A command no longer waits for a keypress: end the
+  sentence with a send phrase such as "thanks Jev" or "send it" and it fires as soon as
+  the phrase is recognised, and a pause of about two seconds sends by itself. Releasing
+  F9 or clicking the stop button still works.
 - **Voice conversation with every agent.** Voice now talks to any agent Alethe runs in a pane —
   Codex, OpenCode, Cursor, Kiro, Kimi, Grok, the other built-ins and custom agents — not only
   Claude Code. The session picker lists them all with the agent's name. Claude Code keeps its full
@@ -382,6 +420,16 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **OpenRouter transcription and the Jev key moved into Preferences → Voice.** GPT Audio Mini and
+  Gemini 3.1 Flash Lite are listed with OpenRouter's other speech-to-text models and can be picked
+  for dictation or conversation (the Jev bar uses the conversation choice); a choice made in the
+  old **Transcriber** setting carries over. Jev uses the OpenRouter key saved on the OpenRouter
+  account page, in the system keychain, instead of a plain-text field. Hands-free sending (send
+  phrases and the pause) works with any local model.
+- Plugin Market profiles now open in a modal without adding workspace panes or requiring a project.
+  The sidebar and preferences catalogue share status/source filters, sorting, result counts, and
+  accent-insensitive multiword search across names, authors, descriptions, repositories, and permissions.
+  Installed local plugins can be uninstalled from their profile; bundled plugins explain how to disable them.
 - **Jev has its own shortcut and no longer asks for a key it already has.**
   - The command bar opens with `Ctrl+Shift+J` (⌘⇧J), which can be changed under Preferences →
     Voice → Conversation even with voice conversation off. `Ctrl+Shift+Space` belongs to voice
@@ -479,6 +527,34 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   context file is created owner-only and never overwrites an existing one.
 
 ### Fixed
+
+- Claude panes reopen on the conversation they were on when the project folder has a space, an
+  underscore, an accent or other punctuation in its path. Alethe looked for the saved conversation
+  in the wrong directory, treated it as gone and started a new chat on every launch.
+- A Claude pane now follows `/clear` and an in-CLI `/resume` immediately, instead of only after the
+  next prompt, so closing the app right after switching conversations no longer brings back the
+  previous chat.
+- A Codex pane now follows the conversation started by `/new`: it moves to the new chat once its
+  first prompt is sent, and reopens on it. Codex panes also keep getting their conversation when
+  the pane is not visible, when it was resumed, or when `codex exec` runs share the folder.
+- Restarting a Claude pane from the inspector or with "Reset last session" no longer stops it from
+  tracking later conversation changes.
+- Installing an update saves the workspace first, so the last changes before the update are kept.
+- Terminal output from agents (Claude Code tables, `⏺`/`⎿` markers, box borders) no longer
+  misaligns or overlaps, especially on Linux. Terminals now use the bundled Caskaydia Cove font plus
+  a bundled symbols font (subset of JuliaMono, SIL OFL) instead of whatever the system falls back
+  to, and re-measure their cells once the fonts load and when the app zoom changes.
+- Agent history in a terminal no longer turns into unreadable fragments after the pane is hidden and
+  shown again (maximizing another pane, switching projects). Instead of wiping the terminal and
+  replaying the last 512 KB of raw output, which re-drew old frames at the wrong width, the pane now
+  receives only the output it missed while hidden; the full replay remains a fallback when that
+  backlog overflowed.
+- Resizing a pane (dragging a divider, maximizing, the pane animation) now sends the new size to the
+  running agent only once it has settled and the divider is released, so agents stop redrawing their
+  screen at every intermediate width.
+- Terminal clipboard events now use bounded paste writes instead of bypassing them through xterm's
+  keyboard input path. Failed or slow paste writes no longer automatically restart the live agent session,
+  and read-only terminals reject clipboard input.
 
 - **Voice HUD on macOS: drag it while Alethe is active, and keep its round corners.** The HUD can
   now be moved by its top strip while Alethe is the app in front, not only while another app is.

@@ -3,6 +3,7 @@ import {
   FolderSearch,
   Grid2X2,
   ListChecks,
+  ShieldCheck,
   SquareTerminal,
   Waypoints,
   Workflow,
@@ -20,7 +21,7 @@ import {
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { basename, pathSegments } from '../../lib/paths'
-import { formatShortcut } from '../../lib/platform'
+import { formatShortcut, isWindows } from '../../lib/platform'
 import { DEFAULT_GRID_ID } from '../../lib/projectGrids'
 import { router9SupportsAgent } from '../../lib/router9'
 import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
@@ -85,6 +86,7 @@ export function NewTerminalModal() {
   const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
   const [unrestricted, setUnrestricted] = useState<Partial<Record<AgentType, boolean>>>({})
+  const [runAsAdmin, setRunAsAdmin] = useState(false)
   const [selectedGridId, setSelectedGridId] = useState(UNGROUPED_GRID)
 
   const only = context?.only
@@ -130,6 +132,7 @@ export function NewTerminalModal() {
     setMode('terminal')
     setGoal('')
     setCreateMore(false)
+    setRunAsAdmin(false)
     setUseRouter9(router9.config.defaultForNewAgents)
     setUnrestricted({
       shell: alwaysStartUnrestricted,
@@ -178,6 +181,7 @@ export function NewTerminalModal() {
       grok: false,
       codewhale: false,
     })
+    setRunAsAdmin(false)
     setSelectedGridId(UNGROUPED_GRID)
   }
 
@@ -203,6 +207,7 @@ export function NewTerminalModal() {
         type,
         cwd: finalCwd,
         extraArgs,
+        runAsAdmin: type === 'shell' && !orchestrating && runAsAdmin,
         runtimeProfile,
         useRouter9: routingAvailable && useRouter9,
         initialInput: orchestrating && trimmedGoal ? trimmedGoal : undefined,
@@ -384,6 +389,28 @@ export function NewTerminalModal() {
               side={orchestrating ? t('term.plannerSide') : undefined}
             />
           </div>
+
+          {isWindows() && type === 'shell' && !orchestrating ? (
+            <button
+              type="button"
+              className={`${styles.permissionToggle} ${runAsAdmin ? styles.permissionToggleActive : ''}`}
+              onClick={() => setRunAsAdmin((value) => !value)}
+              aria-pressed={runAsAdmin}
+            >
+              <span className={styles.permissionToggleIcon}>
+                <ShieldCheck size={16} />
+              </span>
+              <span className={styles.permissionToggleCopy}>
+                <span className={styles.permissionToggleTitle}>{t('term.runAsAdmin')}</span>
+                <span className={styles.permissionToggleDescription}>
+                  {t('term.runAsAdminDescription')}
+                </span>
+              </span>
+              <span className={styles.permissionToggleState}>
+                {runAsAdmin ? t('term.unrestrictedOn') : t('term.unrestrictedOff')}
+              </span>
+            </button>
+          ) : null}
 
           <div className={styles.field}>
             <span className={styles.fieldLabel}>

@@ -126,6 +126,7 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
         sessionId: activeTab.sessionId,
         cwd: activeTab.cwd,
         graphifyRepo: graphifyRepoOf(project, terminal.cwd),
+        runAsAdmin: activeTab.runAsAdmin,
       })
       if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
         setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)

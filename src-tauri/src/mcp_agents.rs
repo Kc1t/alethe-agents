@@ -334,11 +334,7 @@ fn kimi_server(name: &str, obj: &Map<String, Value>) -> McpServer {
     }
 }
 
-fn kimi_upsert(
-    raw: &str,
-    source: &McpSource,
-    server: &McpServer,
-) -> Result<String, String> {
+fn kimi_upsert(raw: &str, source: &McpSource, server: &McpServer) -> Result<String, String> {
     let mut root = json_root(raw)?;
     let servers = servers_container_mut(&mut root, "mcpServers", source, true)?
         .ok_or_else(|| "unparsable:mcpServers".to_string())?;
@@ -1375,7 +1371,10 @@ name = "gate"
         let filesystem = by_name(&servers, "filesystem");
         assert!(!filesystem.enabled);
         assert_eq!(
-            filesystem.env.get("MODE").and_then(|e| e.literal.as_deref()),
+            filesystem
+                .env
+                .get("MODE")
+                .and_then(|e| e.literal.as_deref()),
             Some("prod")
         );
         assert!(matches!(

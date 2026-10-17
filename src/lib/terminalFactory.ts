@@ -57,6 +57,7 @@ export function makeDefaultTerminal(args: {
     type: AgentType
     cwd: string
     extraArgs?: string[]
+    runAsAdmin?: boolean
     initialInput?: string
     handoff?: AgentHandoffBootstrap
     runtimeProfile?: AgentRuntimeProfile
@@ -91,6 +92,7 @@ export function makeDefaultTerminal(args: {
         lastUsedAt: now,
         ptyId: args.firstTab.ptyId ?? null,
         extraArgs: args.firstTab.extraArgs,
+        runAsAdmin: args.firstTab.runAsAdmin,
         initialInput: args.firstTab.initialInput,
         handoff: args.firstTab.handoff,
         runtimeProfile: args.firstTab.runtimeProfile,

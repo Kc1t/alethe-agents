@@ -107,6 +107,42 @@ describe('Claude session persistence across terminal views', () => {
     expect(peekSession(tabs()[0].id)?.claudeSessionId).toBe('chat-0')
   })
 
+  it.each(['startup', 'clear', 'resume', 'compact', 'fork'])(
+    'follows the conversation a SessionStart reports for source %s',
+    async (source) => {
+      await mountBridge()
+      act(() =>
+        events.handler?.({
+          payload: {
+            plannerId: 'pty-0',
+            session_id: `after-${source}`,
+            hook_event_name: 'SessionStart',
+            source,
+          },
+        }),
+      )
+      expect(tabs()[0].sessionId).toBe(`after-${source}`)
+      expect(peekSession(tabs()[0].id)?.claudeSessionId).toBe(`after-${source}`)
+    },
+  )
+
+  it('ignores a session reported from inside a subagent or teammate', async () => {
+    await mountBridge()
+    act(() =>
+      events.handler?.({
+        payload: {
+          plannerId: 'pty-0',
+          session_id: 'teammate-session',
+          hook_event_name: 'SessionStart',
+          source: 'startup',
+          agent_id: 'agent-1',
+        },
+      }),
+    )
+    expect(tabs()[0].sessionId).toBe('chat-0')
+    expect(peekSession(tabs()[0].id)).toBeNull()
+  })
+
   it('ignores other providers, subagent events, and events from a replaced PTY', async () => {
     await mountBridge()
     emit('old-pty-0', 'wrong')

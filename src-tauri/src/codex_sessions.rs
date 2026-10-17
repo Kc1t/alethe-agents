@@ -12,6 +12,8 @@ pub struct CodexSessionSnapshot {
     pub cwd: String,
     pub modified_at_ms: u128,
     pub size_bytes: u64,
+    pub source: Option<String>,
+    pub started_at: Option<String>,
 }
 
 pub(crate) fn codex_sessions_dir() -> Option<PathBuf> {
@@ -32,7 +34,38 @@ pub(crate) fn collect_jsonl_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn parse_codex_session(path: &Path, metadata: &fs::Metadata) -> Option<CodexSessionSnapshot> {
+struct CodexSessionMeta {
+    id: String,
+    cwd: String,
+    source: Option<String>,
+    started_at: Option<String>,
+}
+
+fn parse_session_meta(first_line: &str) -> Option<CodexSessionMeta> {
+    let value = serde_json::from_str::<serde_json::Value>(first_line).ok()?;
+    if value.get("type").and_then(|v| v.as_str()) != Some("session_meta") {
+        return None;
+    }
+    let payload = value.get("payload")?;
+    let text = |key: &str| {
+        payload
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
+    Some(CodexSessionMeta {
+        id: text("id")?,
+        cwd: text("cwd")?,
+        // Subagent threads carry an object here; only a plain string names a launch surface.
+        source: text("source"),
+        started_at: text("timestamp"),
+    })
+}
+
+pub(crate) fn parse_codex_session(
+    path: &Path,
+    metadata: &fs::Metadata,
+) -> Option<CodexSessionSnapshot> {
     let file = fs::File::open(path).ok()?;
     let mut reader = BufReader::new(file);
     let mut first_line = String::new();
@@ -41,19 +74,14 @@ fn parse_codex_session(path: &Path, metadata: &fs::Metadata) -> Option<CodexSess
         return None;
     }
 
-    let value = serde_json::from_str::<serde_json::Value>(&first_line).ok()?;
-    if value.get("type").and_then(|v| v.as_str()) != Some("session_meta") {
-        return None;
-    }
-    let payload = value.get("payload")?;
-    let id = payload.get("id").and_then(|v| v.as_str())?.to_string();
-    let cwd = payload.get("cwd").and_then(|v| v.as_str())?.to_string();
-
+    let meta = parse_session_meta(&first_line)?;
     Some(CodexSessionSnapshot {
-        id,
-        cwd,
+        id: meta.id,
+        cwd: meta.cwd,
         modified_at_ms: file_modified_ms(metadata),
         size_bytes: metadata.len(),
+        source: meta.source,
+        started_at: meta.started_at,
     })
 }
 
@@ -132,9 +160,11 @@ fn find_codex_session_file(session_id: &str) -> Option<PathBuf> {
     let mut files = Vec::new();
     collect_jsonl_files(&root, &mut files);
     let suffix = format!("{session_id}.jsonl");
-    files
-        .into_iter()
-        .find(|path| path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&suffix)))
+    files.into_iter().find(|path| {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.ends_with(&suffix))
+    })
 }
 
 /// Only the first genuine user turn: the file also carries the framework's
@@ -152,14 +182,18 @@ fn codex_first_user_text(line: &str) -> Option<String> {
     {
         return None;
     }
-    payload.get("content")?.as_array()?.iter().find_map(|block| {
-        let text = block.get("text").and_then(|v| v.as_str())?.trim();
-        if text.is_empty() || text.starts_with('<') {
-            None
-        } else {
-            Some(text.to_string())
-        }
-    })
+    payload
+        .get("content")?
+        .as_array()?
+        .iter()
+        .find_map(|block| {
+            let text = block.get("text").and_then(|v| v.as_str())?.trim();
+            if text.is_empty() || text.starts_with('<') {
+                None
+            } else {
+                Some(text.to_string())
+            }
+        })
 }
 
 const MAX_TITLE_SCAN_LINES: usize = 200;
@@ -202,6 +236,37 @@ pub async fn get_codex_session_title(session_id: String) -> Result<Option<String
     tokio::task::spawn_blocking(move || get_codex_session_title_inner(session_id))
         .await
         .map_err(|error| format!("get_codex_session_title: falha na task bloqueante: {error}"))?
+}
+
+#[cfg(test)]
+mod session_meta_tests {
+    use super::parse_session_meta;
+
+    #[test]
+    fn reads_the_launch_surface_and_start_time_of_an_interactive_session() {
+        let line = r#"{"timestamp":"2026-10-07T12:00:01.000Z","type":"session_meta","payload":{"id":"abc","timestamp":"2026-10-07T12:00:00.000Z","cwd":"D:\\repo","originator":"codex-tui","source":"cli"}}"#;
+        let meta = parse_session_meta(line).expect("session_meta line");
+
+        assert_eq!(meta.id, "abc");
+        assert_eq!(meta.cwd, r"D:\repo");
+        assert_eq!(meta.source.as_deref(), Some("cli"));
+        assert_eq!(meta.started_at.as_deref(), Some("2026-10-07T12:00:00.000Z"));
+    }
+
+    #[test]
+    fn a_subagent_thread_has_no_launch_surface() {
+        let line = r#"{"type":"session_meta","payload":{"id":"abc","cwd":"D:\\repo","originator":"codex-tui","source":{"subagent":{"thread_spawn":{}}}}}"#;
+        let meta = parse_session_meta(line).expect("session_meta line");
+
+        assert_eq!(meta.source, None);
+        assert_eq!(meta.started_at, None);
+    }
+
+    #[test]
+    fn rejects_a_line_that_is_not_session_meta() {
+        assert!(parse_session_meta(r#"{"type":"event_msg","payload":{}}"#).is_none());
+        assert!(parse_session_meta(r#"{"type":"session_meta","payl"#).is_none());
+    }
 }
 
 #[cfg(test)]

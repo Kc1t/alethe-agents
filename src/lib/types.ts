@@ -24,7 +24,7 @@ export type BuiltinAgentType =
 export type AgentType = BuiltinAgentType | (string & {})
 
 /** Providers whose subscription usage Alethe can read. */
-export type UsageProviderId = 'claude' | 'codex' | 'antigravity'
+export type UsageProviderId = 'claude' | 'codex' | 'antigravity' | 'kimi'
 
 export const AGENT_TYPE_LABELS: Record<BuiltinAgentType, string> = {
   claude: 'Claude Code',
@@ -229,6 +229,8 @@ export type SubTab = {
   sessionId?: string
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
+  /** Start a plain Windows shell with administrator privileges. */
+  runAsAdmin?: boolean
 
   initialInput?: string
   /** One-shot context packet used to bootstrap a cross-provider session. */
@@ -575,6 +577,7 @@ export type TerminalCreationPreset = {
     type: AgentType
     cwd: string
     extraArgs?: string[]
+    runAsAdmin?: boolean
     runtimeProfile?: AgentRuntimeProfile
     useRouter9?: boolean
   }
@@ -848,10 +851,12 @@ export type Preferences = {
   usageShowClaude: boolean
   usageShowCodex: boolean
   usageShowAntigravity: boolean
+  usageShowKimi: boolean
   /** Itens opcionais exibidos no canto direito da topbar. */
   topbarShowClaudeUsage: boolean
   topbarShowCodexUsage: boolean
   topbarShowAntigravityUsage: boolean
+  topbarShowKimiUsage: boolean
   topbarShowSync: boolean
   topbarShowProfile: boolean
   topbarShowMemory: boolean
@@ -940,6 +945,8 @@ export type Preferences = {
   voiceHudPosition: VoiceHudPosition
   /** Dragged HUD position; null until the user moves it. */
   voiceHudCustomPosition: VoiceHudCustomPosition | null
+  /** Keep the microphone live between commands until the bar is closed. */
+  voiceKeepListening: boolean
   /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
@@ -1076,13 +1083,15 @@ export const DEFAULT_PREFERENCES: Preferences = {
   spotifyClientId: '',
   spotifyClientSecret: '',
   discordRichPresenceEnabled: false,
-  usageAccess: { claude: false, codex: false, antigravity: false },
+  usageAccess: { claude: false, codex: false, antigravity: false, kimi: false },
   usageShowClaude: true,
   usageShowCodex: true,
   usageShowAntigravity: true,
+  usageShowKimi: true,
   topbarShowClaudeUsage: true,
   topbarShowCodexUsage: true,
   topbarShowAntigravityUsage: true,
+  topbarShowKimiUsage: false,
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
@@ -1157,6 +1166,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   voiceJevTrigger: 'alethe',
   voiceHudPosition: 'bottom-center',
   voiceHudCustomPosition: null,
+  voiceKeepListening: false,
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',

@@ -32,6 +32,24 @@ describe('normalizeVoicePreferences', () => {
     expect(result.voiceStt).toEqual({ dictation: local, conversation: local })
   })
 
+  it('moves a legacy OpenRouter transcriber to both uses', () => {
+    const legacy = {
+      dictationProvider: 'openrouter',
+      dictationCloudModel: 'google/gemini-3.1-flash-lite',
+    }
+    const { voiceStt } = normalizeVoicePreferences(legacy)
+    const choice = { provider: 'openrouter', model: 'google/gemini-3.1-flash-lite', locale: null }
+    expect(voiceStt).toEqual({ dictation: choice, conversation: choice })
+  })
+
+  it('gives a legacy OpenRouter transcriber with an unknown model the old default', () => {
+    const { voiceStt } = normalizeVoicePreferences({
+      dictationProvider: 'openrouter',
+      dictationCloudModel: 'someone/else',
+    })
+    expect(voiceStt.dictation.model).toBe('openai/gpt-audio-mini')
+  })
+
   it('keeps the legacy system voice and clamps its rate', () => {
     const result = normalizeVoicePreferences({
       voiceTtsVoice: 'com.apple.voice.Luciana',

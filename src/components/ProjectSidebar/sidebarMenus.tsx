@@ -483,6 +483,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         sessionId: activeTab.sessionId,
         cwd: activeTab.cwd,
         graphifyRepo: graphifyRepoOf(project, term.cwd),
+        runAsAdmin: activeTab.runAsAdmin,
       })
       window.dispatchEvent(
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),

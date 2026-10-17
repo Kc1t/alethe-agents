@@ -9,7 +9,6 @@
 //! Percent-encoding is decoded once before validation, so `%2e%2e` is caught by
 //! the same rule as a literal `..`.
 
-
 use std::path::{Path, PathBuf};
 
 const INVALID_PLUGIN_ID: &str = "invalid_plugin_id";
@@ -90,7 +89,8 @@ fn validate_request_path(path: &str) -> Result<(), String> {
 fn split_target(host: Option<&str>, path: &str) -> Option<(String, String)> {
     let path = path.trim_start_matches('/');
     let host = host?;
-    if host.eq_ignore_ascii_case("localhost") || host.eq_ignore_ascii_case("alethe-plugin.localhost")
+    if host.eq_ignore_ascii_case("localhost")
+        || host.eq_ignore_ascii_case("alethe-plugin.localhost")
     {
         return match path.split_once('/') {
             Some((id, rest)) => Some((id.to_string(), rest.to_string())),

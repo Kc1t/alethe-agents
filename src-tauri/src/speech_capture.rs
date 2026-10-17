@@ -40,6 +40,8 @@ pub struct CaptureSession {
     stop_tx: mpsc::Sender<()>,
     join: JoinHandle<Result<CapturedAudio, String>>,
     level: Arc<AtomicU32>,
+    samples: Arc<Mutex<Vec<f32>>>,
+    sample_rate: u32,
 }
 
 fn host() -> cpal::Host {
@@ -69,8 +71,7 @@ pub fn list_input_devices() -> Result<Vec<SpeechInputDevice>, String> {
     }
     if out.is_empty() {
         return Err(
-            "No microphone found. Check PipeWire/PulseAudio and that a mic is connected."
-                .into(),
+            "No microphone found. Check PipeWire/PulseAudio and that a mic is connected.".into(),
         );
     }
     Ok(out)
@@ -98,10 +99,7 @@ fn to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
     if channels <= 1 {
         return interleaved.to_vec();
     }
-    interleaved
-        .chunks(channels)
-        .map(|frame| frame[0])
-        .collect()
+    interleaved.chunks(channels).map(|frame| frame[0]).collect()
 }
 
 fn publish_level(level: &Arc<AtomicU32>, mono: &[f32]) {
@@ -119,7 +117,7 @@ fn append_mono(dst: &Arc<Mutex<Vec<f32>>>, mono: &[f32]) {
     }
 }
 
-fn resample_linear(input: &[f32], input_rate: u32, target_rate: u32) -> Vec<f32> {
+pub(crate) fn resample_linear(input: &[f32], input_rate: u32, target_rate: u32) -> Vec<f32> {
     if input.is_empty() || input_rate == 0 {
         return Vec::new();
     }
@@ -147,9 +145,11 @@ fn peak_amplitude(samples: &[f32]) -> f32 {
 
 pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String> {
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
-    let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+    let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
     let level = Arc::new(AtomicU32::new(0));
     let level_for_thread = Arc::clone(&level);
+    let samples = Arc::new(Mutex::new(Vec::with_capacity(TARGET_RATE as usize * 8)));
+    let session_samples = Arc::clone(&samples);
 
     let join = std::thread::Builder::new()
         .name("alethe-speech-capture".into())
@@ -173,7 +173,6 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
             let channels = supported.channels() as usize;
             let sample_format = supported.sample_format();
             let config: StreamConfig = supported.into();
-            let samples = Arc::new(Mutex::new(Vec::with_capacity(TARGET_RATE as usize * 8)));
             let level = level_for_thread;
             let err_fn = |err| eprintln!("[speech] capture stream error: {err}");
 
@@ -248,11 +247,14 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
                 return Err(message);
             }
 
-            let _ = ready_tx.send(Ok(()));
+            let _ = ready_tx.send(Ok(sample_rate));
             let _ = stop_rx.recv();
             drop(stream);
 
-            let raw = samples.lock().map(|guard| guard.clone()).unwrap_or_default();
+            let raw = samples
+                .lock()
+                .map(|guard| guard.clone())
+                .unwrap_or_default();
             let out = resample_linear(&raw, sample_rate, TARGET_RATE);
             let peak = peak_amplitude(&out);
             Ok(CapturedAudio {
@@ -264,10 +266,12 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
         .map_err(|e| format!("spawn capture thread: {e}"))?;
 
     match ready_rx.recv() {
-        Ok(Ok(())) => Ok(CaptureSession {
+        Ok(Ok(sample_rate)) => Ok(CaptureSession {
             stop_tx,
             join,
             level,
+            samples: session_samples,
+            sample_rate,
         }),
         Ok(Err(error)) => {
             let _ = join.join();
@@ -283,6 +287,30 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
 impl CaptureSession {
     pub fn level(&self) -> f32 {
         f32::from_bits(self.level.load(Ordering::Relaxed))
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+
+    pub fn raw_since(&self, from: usize) -> (Vec<f32>, usize) {
+        self.samples
+            .lock()
+            .map(|guard| {
+                let start = from.min(guard.len());
+                (guard[start..].to_vec(), guard.len())
+            })
+            .unwrap_or((Vec::new(), from))
+    }
+
+    /// Live mono samples resampled to the recognizer rate; safe to read mid-recording.
+    pub fn snapshot(&self) -> Vec<f32> {
+        let raw = self
+            .samples
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default();
+        resample_linear(&raw, self.sample_rate, TARGET_RATE)
     }
 
     pub fn stop(self) -> Result<CapturedAudio, String> {
@@ -303,5 +331,15 @@ mod tests {
         let input = vec![0.5_f32; 4800];
         let out = resample_linear(&input, 48_000, 16_000);
         assert_eq!(out.len(), 1600);
+    }
+
+    #[test]
+    fn resample_of_a_prefix_matches_the_full_resample() {
+        let input: Vec<f32> = (0..48_000).map(|i| (i as f32 * 0.01).sin()).collect();
+        let full = resample_linear(&input, 48_000, 16_000);
+        let half = resample_linear(&input[..24_000], 48_000, 16_000);
+        assert_eq!(half.len(), 8_000);
+        assert!(full.len() > half.len());
+        assert!(half.iter().zip(&full).all(|(a, b)| (a - b).abs() < 1e-6));
     }
 }

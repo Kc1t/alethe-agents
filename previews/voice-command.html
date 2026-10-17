@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alethe — prévia da UI de voz</title>
+<style>
+:root,
+[data-theme='dark'] {
+  --anim-instant: 80ms;
+  --anim-fast: 140ms;
+  --anim-normal: 220ms;
+  --anim-slow: 350ms;
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-out-fluid: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-fluid: cubic-bezier(0.45, 0, 0.55, 1);
+
+  --bg: #101114;
+  --bg-elevated: #1f2125;
+  --bg-sunken: #1a1c1f;
+  --panel: #2a2d33;
+  --panel-hover: #34373e;
+  --border: #2a2d33;
+  --border-strong: rgba(243, 244, 246, 0.22);
+
+  /* texto */
+  --fg: #f3f4f6;
+  --fg-muted: #c8c8d0;
+  --fg-faint: #8b8b95;
+  --text-primary: #f3f4f6;
+  --text-secondary: #c8c8d0;
+  --text-tertiary: #8b8b95;
+  --text-quaternary: #6b6b75;
+
+  /* accent (off-white em dark — segue Alethe) */
+  --accent: #f3f4f6;
+  --accent-strong: #ffffff;
+  --accent-on: #101114;
+  --accent-soft: rgba(243, 244, 246, 0.06);
+  --accent-faint: rgba(243, 244, 246, 0.06);
+  --accent-border: rgba(243, 244, 246, 0.22);
+  --accent-ring: rgba(243, 244, 246, 0.1);
+  --accent-bg-soft: rgba(243, 244, 246, 0.06);
+  --accent-border-soft: rgba(243, 244, 246, 0.22);
+
+  --surface-modal: #1f2125;
+  --surface-card-default: #2a2d33;
+  --surface-card-default-strong: #34373e;
+  --surface-card-selected: rgba(243, 244, 246, 0.06);
+  --border-subtle: #2a2d33;
+  --border-accent: rgba(243, 244, 246, 0.22);
+
+  /* status (working/waiting/stopped/disabled/offline) */
+  --status-working: #10b981;
+  --status-working-soft: rgba(16, 185, 129, 0.16);
+  --status-waiting: #f59e0b;
+  --status-waiting-soft: rgba(245, 158, 11, 0.16);
+  --status-stopped: #8b8b95;
+  --status-stopped-soft: rgba(139, 139, 149, 0.14);
+  --status-disabled: #4b5563;
+  --status-offline: #ef4444;
+  --status-offline-soft: rgba(239, 68, 68, 0.16);
+  --status-active: var(--status-working);
+  --status-idle: var(--status-stopped);
+
+  /* agent colors */
+  --agent-shell: #10b981;
+  --agent-claude: #ec9333;
+  --agent-codex: #06b6d4;
+  --agent-opencode: #8b8b95;
+  --agent-freebuff: #7c5cff;
+  --agent-mimo: #ff7a1a;
+  --agent-antigravity: #4285f4;
+  --agent-kiro: #9046ff;
+  --agent-cursor: #78849b;
+  --agent-kimi: #2e6be6;
+  --agent-shell-soft: rgba(16, 185, 129, 0.14);
+  --agent-claude-soft: rgba(236, 147, 51, 0.15);
+  --agent-codex-soft: rgba(6, 182, 212, 0.15);
+  --agent-opencode-soft: rgba(139, 139, 149, 0.15);
+  --agent-freebuff-soft: rgba(124, 92, 255, 0.15);
+  --agent-mimo-soft: rgba(255, 122, 26, 0.15);
+  --agent-antigravity-soft: rgba(66, 133, 244, 0.15);
+  --agent-kiro-soft: rgba(144, 70, 255, 0.15);
+  --agent-cursor-soft: rgba(120, 132, 155, 0.15);
+  --agent-kimi-soft: rgba(46, 107, 230, 0.15);
+
+  --project-orange: #f97316;
+  --project-pink: #ec4899;
+  --project-purple: #8b5cf6;
+  --project-blue: #0ea5e9;
+  --project-teal: #14b8a6;
+  --project-green: #84cc16;
+  --project-yellow: #eab308;
+  --project-red: #ef4444;
+  --project-gray: #64748b;
+  --project-black: #0a0a0a;
+
+  /* foco dotted (Alethe focus mode) */
+  --focus-ring: #38bdf8;
+
+  /* shape-tabs-lane casa com chrome do pane */
+  --shape-tabs-lane-bg: #1a1c1f;
+  --shape-tabs-lane-border: rgba(255, 255, 255, 0.06);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Caskaydia Cove Nerd Font Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
+}
+.anchor {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-bottom: 24px;
+  pointer-events: none;
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+}
+
+.pill {
+  position: relative;
+  width: fit-content;
+  max-width: calc(100vw - 48px);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  color: var(--fg);
+  background: var(--bg-elevated, var(--bg-sunken));
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  animation: voiceEnter 280ms var(--ease-out-fluid) both;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.pill[data-phase='listening'] {
+  border-color: var(--accent-border);
+}
+
+.borderTrace {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.25px;
+  opacity: 0.5;
+}
+
+.borderTrace rect {
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  stroke-dasharray: 14 86;
+  stroke-linecap: round;
+  animation: voiceBorderTravel 6s linear infinite;
+}
+
+.pill[data-phase='listening'] .borderTrace rect,
+.pill[data-phase='transcribing'] .borderTrace rect,
+.pill[data-phase='deciding'] .borderTrace rect {
+  animation-duration: 3s;
+}
+
+@keyframes voiceBorderTravel {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+.pill:focus {
+  outline: none;
+}
+
+.activity {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 20px;
+  height: 20px;
+  color: var(--fg-faint);
+  animation: voiceBreathe 3s ease-in-out infinite;
+}
+
+.activity span {
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.pill[data-phase='transcribing'] .activity,
+.pill[data-phase='deciding'] .activity {
+  color: var(--accent);
+  animation: none;
+}
+
+.pill[data-phase='transcribing'] .activity span,
+.pill[data-phase='deciding'] .activity span {
+  animation: voiceThinking 900ms ease-in-out infinite;
+  animation-delay: var(--dot-delay, 0ms);
+}
+
+.activity span:nth-child(2) {
+  --dot-delay: 120ms;
+}
+
+.activity span:nth-child(3) {
+  --dot-delay: 240ms;
+}
+
+@keyframes voiceEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes voiceBreathe {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@keyframes voiceThinking {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  50% {
+    transform: translateY(-2px) scaleY(2.5);
+  }
+}
+
+.card {
+  position: relative;
+  width: fit-content;
+  min-width: min(280px, calc(100vw - 48px));
+  max-width: min(420px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px 24px;
+  color: var(--fg);
+  background: var(--bg-elevated, var(--bg-sunken));
+  border: 1px solid var(--border);
+  border-radius: 32px;
+  animation: voiceEnter 220ms var(--ease-out-fluid) both;
+  box-shadow: var(--shadow-lg);
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  pointer-events: auto;
+}
+
+.status {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0 4px;
+  background: transparent;
+  border: 0;
+  user-select: none;
+  color: var(--fg-faint);
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 200px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.summary {
+  margin: 0;
+  color: var(--status-ready, var(--accent));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.blocked {
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 13px;
+}
+
+.prompt {
+  margin: 0;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.detail {
+  margin: 0;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.warning {
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 11px;
+}
+
+.hint {
+  position: relative;
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 10px;
+  pointer-events: auto;
+  animation: voiceEnter 220ms var(--ease-out-fluid) both;
+}
+
+.spin {
+  color: var(--status-waiting);
+  animation: voiceSpin 1s linear infinite;
+}
+
+@keyframes voiceSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.micButton {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s,
+    transform 0.18s var(--ease-out-fluid);
+}
+
+.micButton:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+  transform: scale(1.06);
+}
+
+.micButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.micButtonLive {
+  color: var(--fg);
+  background: var(--status-offline);
+  border-color: var(--status-offline);
+  animation: voicePulse 1.5s ease-out infinite;
+}
+
+@keyframes voicePulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-offline) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.spectrum {
+  flex: 0 1 156px;
+  width: 156px;
+  min-width: 0;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.spectrumBar {
+  flex: 1;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--fg-faint);
+  transform-origin: center;
+  transition: transform 0.07s linear;
+}
+
+.spectrum[data-live='true'] .spectrumBar {
+  background: var(--accent);
+}
+
+.micSelect {
+  flex: none;
+  max-width: 100px;
+  padding: 2px 2px;
+  color: var(--fg-faint);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 10px;
+}
+
+.micSelect:disabled {
+  opacity: 0.5;
+}
+
+.toggleButton {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-faint);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    border-color 0.12s;
+}
+
+.toggleButton:hover {
+  color: var(--fg);
+}
+
+.toggleButtonOn {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.confirmRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.confirmRun,
+.confirmCancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s,
+    filter 0.12s;
+}
+
+.confirmRun {
+  color: var(--accent-on);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.confirmRun:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.confirmCancel {
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.confirmCancel:hover {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}
+
+.anchor .pill[role='dialog'] {
+  border-radius: 999px;
+}
+
+.anchor .card[role='alertdialog'] {
+  border-radius: 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill,
+  .card,
+  .hint,
+  .activity,
+  .activity span,
+  .micButtonLive,
+  .spin {
+    animation: none !important;
+  }
+
+  .borderTrace rect {
+    animation: none;
+  }
+
+  .pill,
+  .micButton,
+  .spectrumBar {
+    transition: none;
+  }
+}
+
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-sans);height:100vh}button,input,select{font-family:inherit}button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:3px}[hidden]{display:none!important}
+.previewHeader{padding:24px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:20px;flex-wrap:wrap}.previewHeader h1{font-size:16px;margin:0}.previewHeader p{color:var(--fg-faint);font-size:12px;margin:6px 0 0}.controls{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}.controls button{border:1px solid var(--border);background:var(--bg-elevated);color:var(--fg-muted);border-radius:var(--radius-md);padding:8px 12px;cursor:pointer}.controls button[aria-pressed=true]{color:var(--accent);border-color:var(--accent)}.workspace{padding:24px 32px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;height:calc(100vh - 230px)}.terminal{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg-sunken);overflow:hidden}.terminal header{font-size:12px;color:var(--fg-muted);padding:12px;border-bottom:1px solid var(--border)}.terminal pre{margin:16px;color:var(--fg-faint);font:12px/1.8 var(--font-mono);white-space:pre-wrap}.terminal:first-child{border-color:var(--border-strong)}.toast{position:fixed;right:24px;top:110px;max-width:320px;padding:16px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:var(--shadow-lg);font-size:13px}.toast p{font-size:12px;color:var(--fg-muted);margin:8px 0 0}svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.anchor{z-index:10}.hint,.blocked{max-width:calc(100vw - 48px)}@media(max-width:700px){.previewHeader{padding:20px}.controls{margin-left:0}.workspace{padding:20px;grid-template-columns:1fr}.terminal:nth-child(n+2){display:none}.micSelect{max-width:90px}}@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+<header class="previewHeader">
+  <div><h1>Alethe · UI de voz</h1><p>Prévia interativa · comandos e áudio simulados</p></div>
+  <nav class="controls" aria-label="Estado da prévia">
+    <button data-state="idle" aria-pressed="true">Pronta</button><button data-state="listening" aria-pressed="false">Escutando</button><button data-state="deciding" aria-pressed="false">Processando</button><button data-state="confirm" aria-pressed="false">Confirmação</button><button data-state="success" aria-pressed="false">Sucesso</button><button data-state="error" aria-pressed="false">Erro</button>
+  </nav>
+</header>
+<main class="workspace" aria-label="Contexto ilustrativo do workspace">
+  <section class="terminal"><header>1 · Claude Code</header><pre>Workspace / Alethe
+
+› Aguardando seu próximo comando</pre></section>
+  <section class="terminal"><header>2 · Codex</header><pre>Workspace / Alethe
+
+› Pronto</pre></section>
+  <section class="terminal" id="target"><header>3 · Terminal</header><pre>PS D:\projects\alethe&gt;</pre></section>
+</main>
+<aside class="toast" id="toast" role="status" hidden><strong>Comando de voz executado</strong><p>Terminal 3 em foco.</p></aside>
+<div class="anchor" id="anchor">
+  <div class="scrim" id="scrim" role="presentation"></div>
+  <div class="card" id="card" role="alertdialog" aria-label="Confirmar comando de voz" hidden><svg class="borderTrace" aria-hidden="true"><rect x="1" y="1" rx="32" pathLength="100"/></svg>
+    <p class="summary">Encerrar Claude Code?</p>
+    <p class="warning">Este comando encerra um terminal em execução.</p>
+    <div class="confirmRow"><button class="confirmRun" id="run">Executar</button><button class="confirmCancel" id="cancel">Cancelar</button></div>
+  </div>
+  <p class="hint" id="hint">Esc para cancelar</p>
+  <p class="blocked" id="error" role="alert" hidden>Não foi possível acessar o microfone.</p>
+  <div class="pill" data-phase="idle" role="dialog" aria-label="Comando de voz"><svg class="borderTrace" aria-hidden="true"><rect x="1" y="1" rx="22" pathLength="100"/></svg>
+    <button class="micButton" id="mic" aria-label="Começar a gravar" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg></button>
+    <div class="spectrum" id="spectrum" data-live="true" role="presentation" hidden></div>
+    <span class="activity" id="activity" aria-hidden="true"><span></span><span></span><span></span></span>
+    <span class="status" id="input" aria-live="polite">Jev</span>
+    <button class="toggleButton" id="continuous" aria-label="Escuta contínua" title="Manter o microfone ativo entre comandos" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="m17 2 4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3"/></svg></button>
+    <select class="micSelect" id="device" aria-label="Microfone"><option>Padrão do sistema</option><option>Microfone USB</option></select>
+  </div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+let state='idle',timer,toastTimer;
+const micIcon=$('mic').innerHTML;
+const bars=Array.from({length:40},()=>{const el=document.createElement('span');el.className='spectrumBar';$('spectrum').append(el);return el});
+function show(next){
+  state=next;clearInterval(timer);clearTimeout(toastTimer);document.querySelector('.pill').dataset.phase=next==='confirm'?'idle':next;$('activity').hidden=next==='listening';
+  $('anchor').hidden=next==='success';$('toast').hidden=next!=='success';$('card').hidden=next!=='confirm';$('error').hidden=next!=='error';
+  const listening=next==='listening',busy=next==='deciding';$('input').textContent=busy?'Perguntando ao Jev o que fazer':'Jev';
+  $('spectrum').hidden=!listening;$('input').hidden=listening;$('device').hidden=listening;$('input').disabled=busy;$('mic').disabled=busy;
+  $('mic').classList.toggle('micButtonLive',listening);$('mic').setAttribute('aria-pressed',String(listening));$('mic').setAttribute('aria-label',listening?'Parar a gravação':'Começar a gravar');
+  $('mic').innerHTML=listening?'<svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14"/></svg>':busy?'<svg class="spin" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6-8.5"/></svg>':micIcon;
+  $('hint').textContent=listening?'Solte o F9, diga “thanks Jev” ou “send it”, ou pause para enviar':busy?'Perguntando ao Jev o que fazer':next==='confirm'?'Enter executa esse plano | Esc cancela':'Clique no microfone ou segure F9 para falar | Esc cancela';
+  document.querySelectorAll('[data-state]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.state===next)));
+  if(listening)timer=setInterval(()=>bars.forEach((bar,i)=>bar.style.transform=`scaleY(${1+Math.abs(Math.sin(Date.now()/260+i*.62))*9})`),70);
+  if(next==='success'){
+    $('target').animate([{boxShadow:'0 0 0 2px var(--accent)'},{boxShadow:'0 0 0 12px transparent'}],{duration:700,easing:'ease-out'});
+    toastTimer=setTimeout(()=>{$('toast').hidden=true;if($('continuous').getAttribute('aria-pressed')==='true')show('listening')},2500);
+  }
+}
+document.querySelectorAll('[data-state]').forEach(button=>button.addEventListener('click',()=>show(button.dataset.state)));
+$('mic').onclick=()=>show(state==='listening'?'confirm':'listening');
+$('continuous').onclick=()=>{const on=$('continuous').getAttribute('aria-pressed')!=='true';$('continuous').setAttribute('aria-pressed',String(on));$('continuous').classList.toggle('toggleButtonOn',on);if(on&&state==='idle')show('listening')};
+$('run').onclick=()=>show('success');$('cancel').onclick=()=>show('idle');$('scrim').onclick=()=>{$('anchor').hidden=true;clearInterval(timer)};
+window.addEventListener('keydown',event=>{
+  if(event.key==='Escape'){$('anchor').hidden=true;clearInterval(timer)}
+  if(event.ctrlKey&&event.shiftKey&&event.code==='Space'){event.preventDefault();show('idle')}
+  if(event.key==='F9'){event.preventDefault();if(!event.repeat)show('listening')}
+  if(event.key==='Enter'&&!$('anchor').hidden){event.preventDefault();show(state==='confirm'?'success':'confirm')}
+});
+window.addEventListener('keyup',event=>{if(event.key==='F9'&&state==='listening')show('confirm')});
+</script>
+</html>
