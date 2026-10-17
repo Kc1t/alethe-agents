@@ -585,6 +585,7 @@
 .todoTitle {
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
   padding: 4px 0;
@@ -599,6 +600,7 @@
   display: block;
   width: auto;
   flex: 1;
+  flex-basis: 100%;
   min-width: 0;
   padding: 0;
   overflow: hidden;
@@ -612,9 +614,8 @@
 .todoTitleText {
   display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .projectLink {
