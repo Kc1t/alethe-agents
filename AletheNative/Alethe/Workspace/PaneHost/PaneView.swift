@@ -48,16 +48,48 @@ final class PaneView: NSView {
     private var headerHeight: CGFloat = 28
     private var laneWidth: CGFloat = 36
     private let focusInset = CALayer()
+    private var hoverTracking: NSTrackingArea?
+    private var pointerInside = false
+    private var onPaneDrag: (CGSize?) -> Void = { _ in }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let hoverTracking { removeTrackingArea(hoverTracking) }
+        let area = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(area)
+        hoverTracking = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        pointerInside = true
+        updateHeaderVisibility()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        pointerInside = false
+        updateHeaderVisibility()
+    }
+
+    private func updateHeaderVisibility() {
+        guard let context, context.metrics.isWebInterface else { return }
+        let visible = pointerInside || ((window?.firstResponder as? NSView)?.isDescendant(of: header) == true)
+        NSAnimationContext.runAnimationGroup { animation in
+            animation.duration = context.metrics.reducesMotion ? 0 : 0.12
+            header.animator().alphaValue = visible ? 1 : 0
+        }
+    }
 
     private func style(focused: Bool, dropTarget: Bool, context: PaneHostContext) {
         let web = context.metrics.isWebInterface
         layer?.cornerRadius = web ? 0 : context.metrics.radius(.md)
         layer?.borderWidth = web ? context.metrics.size(dropTarget ? 2 : 1) : (dropTarget ? 2 : 1)
-        layer?.borderColor = context.theme.nsColor(dropTarget ? .accent : focused ? (web ? .focusRing : context.focusBorder) : .border).cgColor
+        let focusToken: ThemeToken = web && context.metrics.style != .clean ? .focusRing : context.focusBorder
+        let showFocus = focused && (!web || context.environment.focusModePaneID != paneID)
+        layer?.borderColor = context.theme.nsColor(dropTarget ? (web ? .focusRing : .accent) : showFocus ? focusToken : .border).cgColor
         layer?.backgroundColor = context.theme.nsColor(.bgSunken).cgColor
-        if web && focused {
+        if web && focused && context.environment.focusModePaneID != paneID {
             if focusInset.superlayer == nil { layer?.addSublayer(focusInset) }
-            focusInset.borderColor = context.theme.nsColor(.focusRing).withAlphaComponent(0.7).cgColor
+            focusInset.borderColor = context.theme.nsColor(focusToken).withAlphaComponent(context.metrics.style == .clean ? 1 : 0.7).cgColor
             focusInset.borderWidth = context.metrics.size(1)
             focusInset.zPosition = 10
         } else { focusInset.removeFromSuperlayer() }
@@ -78,7 +110,9 @@ final class PaneView: NSView {
         guard let tab = pane.activeTab else { return }
         self.context = context
         let environment = context.environment
-        headerHeight = context.metrics.size(context.metrics.isWebInterface ? 34 : 28)
+        headerHeight = context.metrics.size(context.metrics.isWebInterface ? 0 : 28)
+        header.alphaValue = context.metrics.isWebInterface && !pointerInside && ((window?.firstResponder as? NSView)?.isDescendant(of: header) != true) ? 0 : 1
+        alphaValue = context.metrics.isWebInterface && pane.isDisabled ? 0.85 : 1
         laneWidth = context.metrics.size(36)
         let isIsolated = context.workspace?.document.workspace.isolatedPaneID == pane.id
         header.rootView = context.hosted(PaneHeader(
@@ -99,6 +133,7 @@ final class PaneView: NSView {
             onSessionCost: tab.sessionID == nil ? nil : { context.environment.editorRequest = .sessionCost(tab.id) },
             onHandoff: Handoff.supports(AgentKind(rawValue: tab.agent)) ? { context.environment.editorRequest = .handoff(tab.id) } : nil,
             onDrag: onDrag))
+        onPaneDrag = onDrag
         configureLane(pane: pane, project: project, focused: focused, context: context)
 
         style(focused: focused, dropTarget: dropTarget, context: context)
@@ -218,6 +253,7 @@ final class PaneView: NSView {
         }
         let root = context.hosted(SubTabsLane(
             pane: pane, isFocused: focused,
+            onDrag: onPaneDrag,
             onActivate: { context.activateTab($0) },
             onClose: { context.closeTab($0) },
             onRestart: { context.restart($0, in: project) },

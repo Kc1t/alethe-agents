@@ -211,6 +211,15 @@ struct PaneHeader: View {
     @Environment(\.metrics) private var metrics
 
     @State private var webHeaderWidth: CGFloat = 0
+    @State private var renaming = false
+    @State private var renameDraft = ""
+    @FocusState private var renameFocused: Bool
+
+    private func commitWebRename() {
+        let name = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        environment.workspace?.update { $0.updateTab(tab.id) { $0.title = name.isEmpty ? nil : name } }
+        renaming = false
+    }
 
     var body: some View {
         Group {
@@ -220,42 +229,60 @@ struct PaneHeader: View {
 
     private var webHeader: some View {
         HStack(spacing: metrics.size(8)) {
-            HStack(spacing: metrics.size(6)) {
-                Image(systemName: "line.3.horizontal")
-                    .font(metrics.font(size: 12))
-                    .foregroundStyle(theme[.fgFaint])
-                AgentLogo(agent: tab.agent, size: 16,
-                          templateColor: theme[AgentTokens.accent(for: tab.agent)])
-                Text(verbatim: environment.terminals.displayName(of: tab))
+            if tab.agent != "shell" {
+                HStack(spacing: metrics.size(6)) {
+                    if !isLaneVisible {
+                        Image(systemName: "circle.grid.2x3.fill")
+                            .font(metrics.font(size: 12))
+                            .foregroundStyle(theme[.fgFaint]).opacity(0.55)
+                    }
+                    AgentLogo(agent: tab.agent, size: 16,
+                              templateColor: theme[AgentTokens.accent(for: tab.agent)])
+                    Group {
+                        if renaming {
+                            TextField("", text: $renameDraft)
+                                .textFieldStyle(.plain)
+                                .focused($renameFocused)
+                                .onSubmit { commitWebRename() }
+                                .onExitCommand { renaming = false }
+                                .onChange(of: renameFocused) { _, focused in
+                                    if !focused && renaming { commitWebRename() }
+                                }
+                                .padding(.horizontal, metrics.size(4))
+                                .padding(.vertical, metrics.size(1))
+                                .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(4)))
+                                .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.accent], lineWidth: metrics.size(1)))
+                                .frame(maxWidth: metrics.size(160))
+                        } else {
+                            Text(verbatim: environment.terminals.displayName(of: tab))
+                                .lineLimit(1)
+                                .onTapGesture(count: 2) {
+                                    renameDraft = environment.terminals.displayName(of: tab)
+                                    renaming = true
+                                    renameFocused = true
+                                }
+                        }
+                    }
                     .font(metrics.font(size: 12, weight: .medium))
-                    .foregroundStyle(theme[.fg]).lineLimit(1)
-                if let folder = tab.workingDirectory, !folder.isEmpty {
-                    Text(verbatim: URL(filePath: folder).lastPathComponent)
-                        .font(metrics.monoFont(size: 10, weight: .medium))
-                        .foregroundStyle(theme[.fgFaint]).lineLimit(1)
-                        .padding(.horizontal, metrics.size(7))
-                        .padding(.vertical, metrics.size(1))
-                        .background(theme[.bgElevated], in: Capsule())
-                        .overlay(Capsule().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                        .frame(maxWidth: metrics.size(240))
+                    .foregroundStyle(theme[.fg])
+                    AgentStatusGlyph(tab: tab.id)
+                    if isRemoteShared { RemoteSharedGlyph() }
                 }
-                AgentStatusGlyph(tab: tab.id)
-                if isRemoteShared { RemoteSharedGlyph() }
+                .padding(.horizontal, metrics.size(6))
+                .frame(maxWidth: min(metrics.size(320), max(0, webHeaderWidth * 0.5)), alignment: .leading)
+                .frame(height: metrics.size(26))
+                .clipped()
+                .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
+                .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
             }
-            .padding(.horizontal, metrics.size(6))
-            .frame(maxWidth: min(metrics.size(320), max(0, webHeaderWidth * 0.5)), alignment: .leading)
-            .frame(height: metrics.size(26))
-            .clipped()
-            .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
-            .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
             Spacer(minLength: 0)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: metrics.size(4)) {
+                HStack(spacing: metrics.size(2)) {
                     webAction("plus", "subtabs.newEllipsis", action: onNewSubTab)
                     webAction("sidebar.left", isLaneVisible ? "subtabs.hideLane" : "subtabs.showLane", action: onToggleLane)
                         .disabled(isLaneVisible && !canHideLane)
-                    webAction("arrow.up.left.and.arrow.down.right", isIsolated ? "pane.showAll" : "pane.showAlone", action: onToggleIsolation)
-                    webAction("viewfinder", isInFocusMode ? "focusMode.exit" : "focusMode.enter", action: onToggleFocus)
+                    webAction(isIsolated ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", isIsolated ? "pane.showAll" : "pane.showAlone", action: onToggleIsolation)
+                    webAction(isInFocusMode ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", isInFocusMode ? "focusMode.exit" : "focusMode.enter", action: onToggleFocus)
                     if let onFillFreeSpace { webAction("arrow.up.left.and.arrow.down.right", "pane.fillFreeSpace", action: onFillFreeSpace) }
                     if let onSessionCost { webAction("dollarsign", "menu.terminal.sessionCost", action: onSessionCost) }
                     if let onHandoff { webAction("arrow.left.arrow.right", "menu.terminal.handoff", action: onHandoff) }
@@ -297,7 +324,7 @@ struct PaneHeader: View {
 
     private func webAction(_ symbol: String, _ label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) { Label(label, systemImage: symbol) }
-            .buttonStyle(AletheIconButtonStyle(side: 20))
+            .buttonStyle(AlethePaneActionStyle(danger: symbol == "xmark"))
             .help(Text(label)).accessibilityLabel(Text(label))
     }
 
