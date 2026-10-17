@@ -253,10 +253,10 @@ pub fn run() {
                         let (width, height) = rgba.dimensions();
                         let icon = tauri::image::Image::new_owned(rgba.into_raw(), width, height);
                         if let Err(error) = window.set_icon(icon) {
-                            eprintln!("[icon] falha ao aplicar ícone da janela: {error}");
+                            eprintln!("[icon] could not set the window icon: {error}");
                         }
                     }
-                    Err(error) => eprintln!("[icon] falha ao decodificar ícone embutido: {error}"),
+                    Err(error) => eprintln!("[icon] could not decode the embedded icon: {error}"),
                 }
                 // Required for getUserMedia / voice dictation on WebKitGTK.
                 webview_media::grant_media_permissions(&window);
@@ -641,7 +641,8 @@ pub fn run() {
         .build(context)
         .expect("error while building alethe")
         .run(move |_app_handle, event| {
-            // emitir `Exit`; esperar esse evento deixa shells/agentes vivos
+            // Teardown runs on `ExitRequested`: the runtime does not always emit `Exit`, and
+            // waiting for it would leave shells and agents alive.
 
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 pty::kill_all_sessions_background(&sessions_for_exit);
