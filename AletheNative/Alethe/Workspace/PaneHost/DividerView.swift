@@ -33,8 +33,9 @@ final class DividerView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let context, context.metrics.isWebInterface else { return }
         let active = hovering || start != nil
-        if active { context.theme.nsColor(.accentSoft).setFill(); bounds.fill() }
+        if active && context.metrics.style != .clean { context.theme.nsColor(.accentSoft).setFill(); bounds.fill() }
         context.theme.nsColor(active ? .accent : .borderStrong).withAlphaComponent(active ? 1 : 0.7).setFill()
+        if !active && context.metrics.style == .clean { return }
         let thickness = context.metrics.size(active ? 3 : 1)
         let length = active ? context.metrics.size(36) : (axis == .vertical ? bounds.height : bounds.width)
         let rect = axis == .vertical
@@ -61,6 +62,7 @@ final class DividerView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         start = event.locationInWindow
+        needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -73,6 +75,7 @@ final class DividerView: NSView {
     override func mouseUp(with event: NSEvent) {
         guard start != nil else { return }
         start = nil
+        needsDisplay = true
         onEnd?()
     }
 }

@@ -16,12 +16,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style terminal and agent panes keep their 32-point headers pinned, including shell titles,
+  bounded agent logos, compact action buttons and an overflow menu. Solo panes no longer show a
+  project container title, border or extra padding; grouped projects retain their title and count.
+  Workspace gutters, collapsed strips, resize indicators, sub-tab add states and empty-project
+  actions follow the web metrics. Native macOS styling and terminal lifecycle callbacks are retained.
 - The Home ASCII art is no longer drawn upside down.
 - Fixed workspace-tab event monitoring compilation under Swift's strict concurrency checks.
 - Web-style workspace tabs show pinned borders, pane counts and clean-style selection, support
   numbered shortcuts and middle-click closing, and reveal the selected tab when overflowing.
-  Terminal headers float over the terminal on hover, with inline title editing, compact action
-  hover states, lane drag handles and unread completion badges. Native macOS styling is preserved.
+  Terminal headers support inline title editing, compact action hover states, lane drag handles
+  and unread completion badges. Native macOS styling is preserved.
 - Web-style Git dialogs use themed modal headers, compact repository and worktree rows, bounded
   agent artwork, pending-file commit review and pull-request cards. Native macOS sheets and Git
   operation guards are retained; full-window overlay routing remains pending host integration.

@@ -72,11 +72,7 @@ final class PaneView: NSView {
 
     private func updateHeaderVisibility() {
         guard let context, context.metrics.isWebInterface else { return }
-        let visible = pointerInside || ((window?.firstResponder as? NSView)?.isDescendant(of: header) == true)
-        NSAnimationContext.runAnimationGroup { animation in
-            animation.duration = context.metrics.reducesMotion ? 0 : 0.12
-            header.animator().alphaValue = visible ? 1 : 0
-        }
+        header.alphaValue = 1
     }
 
     private func style(focused: Bool, dropTarget: Bool, context: PaneHostContext) {
@@ -110,8 +106,8 @@ final class PaneView: NSView {
         guard let tab = pane.activeTab else { return }
         self.context = context
         let environment = context.environment
-        headerHeight = context.metrics.size(context.metrics.isWebInterface ? 0 : 28)
-        header.alphaValue = context.metrics.isWebInterface && !pointerInside && ((window?.firstResponder as? NSView)?.isDescendant(of: header) != true) ? 0 : 1
+        headerHeight = context.metrics.size(context.metrics.isWebInterface ? 32 : 28)
+        header.alphaValue = 1
         alphaValue = context.metrics.isWebInterface && pane.isDisabled ? 0.85 : 1
         laneWidth = context.metrics.size(36)
         let isIsolated = context.workspace?.document.workspace.isolatedPaneID == pane.id
@@ -392,8 +388,7 @@ final class PaneView: NSView {
             return
         }
         let web = context?.metrics.isWebInterface == true
-        let inset = web ? context?.metrics.size(4) ?? 4 : 0
-        header.frame = CGRect(x: inset, y: inset, width: max(0, bounds.width - inset * 2), height: web ? context?.metrics.size(26) ?? 26 : headerHeight)
+        header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
         let body = CGRect(x: 0, y: headerHeight, width: bounds.width, height: max(0, bounds.height - headerHeight))
         let leading = lane == nil ? 0 : min(laneWidth, body.width)
         lane?.frame = CGRect(x: 0, y: body.minY, width: leading, height: body.height)

@@ -38150,6 +38150,22 @@
           }
         }
       }
+    },
+    "pane.actions" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pane actions"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ações do painel"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

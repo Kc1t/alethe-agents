@@ -71,15 +71,16 @@ final class ContainerView: NSView {
                    owners: [PaneID: Project] = [:], showsHeader: Bool = true,
                    context: PaneHostContext, onHeaderDrag: @escaping (CGSize?) -> Void) {
         self.context = context
+        let grouped = showsHeader && project.visiblePanes.count > 1 && isolatedPane == nil
         if context.metrics.isWebInterface {
             wantsLayer = true
             layer?.cornerRadius = 0
-            layer?.borderWidth = context.metrics.size(1)
+            layer?.borderWidth = grouped ? context.metrics.size(1) : 0
             layer?.borderColor = context.theme.nsColor(.border).cgColor
             layer?.backgroundColor = context.theme.nsColor(.bg).cgColor
             if accentLine.superlayer == nil { layer?.addSublayer(accentLine) }
             accentLine.backgroundColor = context.theme.nsColor(project.color.token).cgColor
-            accentLine.opacity = 0.65
+            accentLine.opacity = grouped ? 0.65 : 0
             accentLine.zPosition = 10
         } else {
             layer?.borderWidth = 0
@@ -87,7 +88,7 @@ final class ContainerView: NSView {
             accentLine.removeFromSuperlayer()
         }
         self.owners = owners
-        self.showsHeader = showsHeader
+        self.showsHeader = context.metrics.isWebInterface ? grouped : showsHeader
         if let lastProject, lastProject.layout != project.layout { animateNextLayout = true }
         lastProject = project
         lastFocused = focusedPane
@@ -159,8 +160,9 @@ final class ContainerView: NSView {
     }
 
     private var paneArea: CGRect {
-        let top = showsHeader ? headerHeight + (context?.metrics.isWebInterface == true ? 0 : gap) : 0
-        return CGRect(x: 0, y: top, width: bounds.width, height: max(0, bounds.height - top))
+        let edge = context?.metrics.isWebInterface == true && showsHeader ? context?.metrics.size(1) ?? 1 : 0
+        let top = showsHeader ? headerHeight + (context?.metrics.isWebInterface == true ? edge : gap) : 0
+        return CGRect(x: edge, y: top, width: max(0, bounds.width - edge * 2), height: max(0, bounds.height - top - edge))
     }
 
     /// Enters or leaves focus mode for one of this container's panes.
@@ -243,9 +245,10 @@ final class ContainerView: NSView {
             slotViews.append(view)
         }
         for (view, slot) in zip(slotViews, slots) {
-            view.frame = slot.frame.integral
+            let inset = context?.metrics.isWebInterface == true ? context?.metrics.size(4) ?? 4 : 0
+            view.frame = slot.frame.insetBy(dx: inset, dy: inset).integral
             let active = reorder?.slot.map { $0.col == slot.col && $0.row == slot.row } == true
-            let radius = context?.metrics.radius(.md) ?? 8
+            let radius = context.map { $0.metrics.isWebInterface ? $0.metrics.size(4) : $0.metrics.radius(.md) } ?? 8
             view.layer?.cornerRadius = radius
             view.layer?.backgroundColor = active ? context?.theme.nsColor(.accentFaint).cgColor : nil
             if let border = view.layer?.sublayers?.first as? CAShapeLayer {
@@ -253,7 +256,7 @@ final class ContainerView: NSView {
                 border.path = CGPath(roundedRect: view.bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: radius,
                                      cornerHeight: radius, transform: nil)
                 border.strokeColor = context?.theme.nsColor(active ? .accent : .borderSubtle).cgColor
-                border.lineWidth = active ? 2 : 1
+                border.lineWidth = context?.metrics.isWebInterface == true ? context?.metrics.size(1) ?? 1 : (active ? 2 : 1)
             }
             view.setAccessibilityElement(true)
             view.setAccessibilityRole(.group)
@@ -392,6 +395,8 @@ final class ContainerView: NSView {
         guard let project = lastProject, let context else { return }
         configure(project: project, isSelected: lastSelected, focusedPane: lastFocused, weights: weights,
                   isCollapsed: isCollapsed, isFullscreen: isFullscreen, isolatedPane: isolatedPane,
+                  owners: context.metrics.isWebInterface ? owners : [:],
+                  showsHeader: context.metrics.isWebInterface ? showsHeader : true,
                   context: context, onHeaderDrag: onHeaderDrag)
     }
 
@@ -404,27 +409,83 @@ final class ContainerView: NSView {
         layer.shadowOpacity = lifted && !(context?.metrics.isWebInterface == true && context?.metrics.style == .clean) ? 1 : 0
         layer.shadowRadius = lifted ? CGFloat(shadow?.blur ?? 0) / 2 : 0
         layer.shadowOffset = CGSize(width: shadow?.x ?? 0, height: -(shadow?.y ?? 0))
-        view.alphaValue = lifted ? 0.94 : 1
+        view.alphaValue = lifted ? (context?.metrics.isWebInterface == true ? 0.55 : 0.94) : 1
     }
 }
 
 /// The pane area of a project that has no terminals yet.
 private struct ProjectEmptyState: View {
     let project: Project
+    @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        VStack(spacing: metrics.space(.l)) {
-            Text("workspace.project.noTerminals")
-                .font(metrics.font(.body))
-                .foregroundStyle(theme[.textSecondary])
-            NewTerminalButton(project: project)
-                .fixedSize()
+        Group {
+            if metrics.isWebInterface {
+                GeometryReader { geometry in
+                    VStack(spacing: metrics.size(geometry.size.width <= metrics.size(520) ? 16 : 24)) {
+                        Image("AletheMark")
+                            .resizable()
+                            .renderingMode(.template)
+                            .scaledToFit()
+                            .foregroundStyle(theme[.fg])
+                            .opacity(0.045)
+                            .frame(width: metrics.size(geometry.size.width <= metrics.size(520) ? 104 : 190),
+                                   height: min(metrics.size(geometry.size.width <= metrics.size(520) ? 104 : 190),
+                                               max(0, geometry.size.height - metrics.size(110))))
+                            .accessibilityHidden(true)
+                        VStack(spacing: metrics.size(2)) {
+                            emptyAction("terminal.new", shortcut: "⌘T", id: "terminal.new") {
+                                environment.editorRequest = .newTerminal(project.id)
+                            }
+                            emptyAction("menu.file.addContent", shortcut: "⇧⌘A", id: "workspace.project.addContent") {
+                                environment.editorRequest = .addContent(project.id)
+                            }
+                        }
+                        .frame(maxWidth: metrics.size(280))
+                    }
+                    .frame(maxWidth: min(metrics.size(360), max(0, geometry.size.width - metrics.size(32))))
+                    .padding(.horizontal, metrics.size(16))
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+            } else {
+                VStack(spacing: metrics.space(.l)) {
+                    Text("workspace.project.noTerminals")
+                        .font(metrics.font(.body))
+                        .foregroundStyle(theme[.textSecondary])
+                    NewTerminalButton(project: project)
+                        .fixedSize()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workspace.project.empty")
+    }
+
+    private func emptyAction(_ title: LocalizedStringKey, shortcut: String, id: String,
+                             action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: metrics.size(18)) {
+                Text(title).font(metrics.font(size: 12)).lineLimit(1)
+                Spacer(minLength: 0)
+                Text(verbatim: shortcut)
+                    .font(metrics.monoFont(size: 10))
+                    .padding(.horizontal, metrics.size(5))
+                    .frame(minWidth: metrics.size(18), minHeight: metrics.size(18))
+                    .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(3)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.size(3))
+                        .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, metrics.size(4))
+            .padding(.vertical, metrics.size(2))
+            .frame(minHeight: metrics.size(26))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(AletheWorkspaceActionStyle())
+        .accessibilityIdentifier(id)
     }
 }
 

@@ -103,10 +103,10 @@ final class PaneHostView: NSView {
         needsLayout = true
     }
 
-    private var gap: CGFloat { context?.metrics.space(.s) ?? 6 }
+    private var gap: CGFloat { context.map { $0.metrics.isWebInterface ? $0.metrics.size(10) : $0.metrics.space(.s) } ?? 6 }
     private var minimumContainer: CGFloat { context?.metrics.size(260) ?? 260 }
-    private var collapsedWidth: CGFloat { context?.metrics.size(40) ?? 40 }
-    private var area: CGRect { bounds.insetBy(dx: gap, dy: gap) }
+    private var collapsedWidth: CGFloat { context.map { $0.metrics.size($0.metrics.isWebInterface ? 36 : 40) } ?? 40 }
+    private var area: CGRect { context?.metrics.isWebInterface == true ? bounds : bounds.insetBy(dx: gap, dy: gap) }
 
     /// Shown containers that are not collapsed: the ones that share the width and have dividers.
     private var expanded: [ProjectID] { order.filter { !collapsed.contains($0) } }

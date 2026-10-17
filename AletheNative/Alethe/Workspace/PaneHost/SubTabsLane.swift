@@ -46,7 +46,7 @@ struct SubTabsLane: View {
                         .font(metrics.font(size: 12))
                         .frame(width: metrics.size(26), height: metrics.size(26))
                         .overlay(RoundedRectangle(cornerRadius: metrics.size(6))
-                            .strokeBorder(theme[.borderStrong], style: StrokeStyle(lineWidth: metrics.size(1), dash: [metrics.size(3), metrics.size(2)])))
+                            .strokeBorder(theme[addHovered ? .accentBorder : .borderStrong], style: StrokeStyle(lineWidth: metrics.size(1), dash: [metrics.size(3), metrics.size(2)])))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme[addHovered ? .fg : .fgFaint])
@@ -197,10 +197,10 @@ private struct SubTabItem: View {
             if canClose && (metrics.isWebInterface || isHovered) {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(metrics.font(size: 7, weight: .bold))
+                        .font(metrics.font(size: metrics.isWebInterface ? 8 : 7, weight: .bold))
                         .frame(width: metrics.size(12), height: metrics.size(12))
                         .background(Circle().fill(theme[.bgElevated]))
-                        .overlay(Circle().strokeBorder(theme[.border]))
+                        .overlay(Circle().strokeBorder(theme[.border], lineWidth: metrics.isWebInterface ? metrics.size(1) : 1))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme[.textSecondary])

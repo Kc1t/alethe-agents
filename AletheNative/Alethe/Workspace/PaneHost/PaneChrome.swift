@@ -18,7 +18,64 @@ struct ContainerHeader: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
+    @State private var webHovered = false
+    @Environment(AppEnvironment.self) private var environment
+
     var body: some View {
+        if metrics.isWebInterface { webContainerHeader } else { nativeContainerHeader }
+    }
+
+    private var webContainerHeader: some View {
+        HStack(spacing: metrics.size(6)) {
+            if !isFullscreen {
+                Image(systemName: "circle.grid.2x3.fill")
+                    .font(metrics.font(size: 11))
+                    .foregroundStyle(theme[.fgFaint])
+                    .frame(width: metrics.size(22), height: metrics.size(22))
+            }
+            Circle().fill(theme[project.color.token])
+                .frame(width: metrics.size(7), height: metrics.size(7))
+            Text(verbatim: project.name)
+                .font(metrics.font(size: 11, weight: .semibold))
+                .foregroundStyle(theme[.fg])
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(verbatim: String(project.visiblePanes.count))
+                .font(metrics.font(size: 10, weight: .bold))
+                .foregroundStyle(theme[.fgFaint])
+                .padding(.horizontal, metrics.size(3))
+            HStack(spacing: 0) {
+                headerButton("plus", label: "menu.file.newTerminal", id: "container.newTerminal.\(project.name)") {
+                    environment.editorRequest = .newTerminal(project.id)
+                }
+                if !isFullscreen {
+                    headerButton("chevron.right", label: "workspace.container.collapse", id: "container.collapse.\(project.name)", action: onCollapse)
+                }
+                headerButton(isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                             label: isFullscreen ? "workspace.container.showAll" : "workspace.container.showAlone",
+                             id: "container.fullscreen.\(project.name)", action: onFullscreen)
+                headerButton("minus", label: "workspace.container.close", id: "container.close.\(project.name)", action: onClose)
+                // Retain native layout and saved-grid commands in the web container.
+                layoutMenu
+                if !project.namedGrids.isEmpty { gridMenu }
+            }
+            .opacity(webHovered ? 1 : 0)
+            .allowsHitTesting(webHovered)
+        }
+        .padding(.horizontal, metrics.size(8))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme[.bgElevated])
+        .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
+        .contentShape(Rectangle())
+        .onHover { webHovered = $0 }
+        .animation(Motion.WorkspaceEffect.close.animation(reduceMotion: metrics.reducesMotion), value: webHovered)
+        .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
+            .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("container.\(project.name)")
+    }
+
+    private var nativeContainerHeader: some View {
         // Upstream container tag: 7pt bullet, 11pt semibold name, 1px rule under an elevated bar.
         HStack(spacing: metrics.space(.s)) {
             Circle()
@@ -210,7 +267,7 @@ struct PaneHeader: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
-    @State private var webHeaderWidth: CGFloat = 0
+    @State private var webHeaderWidth: CGFloat = 240
     @State private var renaming = false
     @State private var renameDraft = ""
     @FocusState private var renameFocused: Bool
@@ -229,7 +286,7 @@ struct PaneHeader: View {
 
     private var webHeader: some View {
         HStack(spacing: metrics.size(8)) {
-            if tab.agent != "shell" {
+            Group {
                 HStack(spacing: metrics.size(6)) {
                     if !isLaneVisible {
                         Image(systemName: "circle.grid.2x3.fill")
@@ -238,6 +295,7 @@ struct PaneHeader: View {
                     }
                     AgentLogo(agent: tab.agent, size: 16,
                               templateColor: theme[AgentTokens.accent(for: tab.agent)])
+                        .frame(width: metrics.size(18), height: metrics.size(18))
                     Group {
                         if renaming {
                             TextField("", text: $renameDraft)
@@ -268,12 +326,9 @@ struct PaneHeader: View {
                     AgentStatusGlyph(tab: tab.id)
                     if isRemoteShared { RemoteSharedGlyph() }
                 }
-                .padding(.horizontal, metrics.size(6))
-                .frame(maxWidth: min(metrics.size(320), max(0, webHeaderWidth * 0.5)), alignment: .leading)
-                .frame(height: metrics.size(26))
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .clipped()
-                .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
-                .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                .layoutPriority(1)
             }
             Spacer(minLength: 0)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -281,24 +336,45 @@ struct PaneHeader: View {
                     webAction("plus", "subtabs.newEllipsis", action: onNewSubTab)
                     webAction("sidebar.left", isLaneVisible ? "subtabs.hideLane" : "subtabs.showLane", action: onToggleLane)
                         .disabled(isLaneVisible && !canHideLane)
-                    webAction(isIsolated ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", isIsolated ? "pane.showAll" : "pane.showAlone", action: onToggleIsolation)
                     webAction(isInFocusMode ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", isInFocusMode ? "focusMode.exit" : "focusMode.enter", action: onToggleFocus)
-                    if let onFillFreeSpace { webAction("arrow.up.left.and.arrow.down.right", "pane.fillFreeSpace", action: onFillFreeSpace) }
-                    if let onSessionCost { webAction("dollarsign", "menu.terminal.sessionCost", action: onSessionCost) }
-                    if let onHandoff { webAction("arrow.left.arrow.right", "menu.terminal.handoff", action: onHandoff) }
-                    webAction("pause", "pane.disable", action: onDisable)
+                    Menu {
+                        Button(action: onToggleIsolation) {
+                            Label(isIsolated ? LocalizedStringKey("pane.showAll") : "pane.showAlone", systemImage: "rectangle.expand.vertical")
+                        }
+                        if let onFillFreeSpace {
+                            Button(action: onFillFreeSpace) { Label("pane.fillFreeSpace", systemImage: "arrow.up.left.and.arrow.down.right") }
+                        }
+                        if let onSessionCost {
+                            Button(action: onSessionCost) { Label("menu.terminal.sessionCost", systemImage: "dollarsign") }
+                        }
+                        if let onHandoff {
+                            Button(action: onHandoff) { Label("menu.terminal.handoff", systemImage: "arrow.left.arrow.right") }
+                        }
+                        Button(action: onDisable) { Label("pane.disable", systemImage: "pause") }
+                    } label: {
+                        Label("pane.actions", systemImage: "ellipsis")
+                            .labelStyle(.iconOnly)
+                            .font(metrics.font(size: 12))
+                            .frame(width: metrics.size(22), height: metrics.size(22))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .buttonStyle(AlethePinnedPaneActionStyle())
+                    .help(Text("pane.actions"))
+                    .accessibilityLabel(Text("pane.actions"))
                     webAction("xmark", "pane.close", action: onClose).accessibilityIdentifier("pane.close")
                 }
                 .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal, metrics.size(3))
             }
-            .frame(maxWidth: metrics.size(CGFloat(6 + (onFillFreeSpace == nil ? 0 : 1)
-                + (onSessionCost == nil ? 0 : 1) + (onHandoff == nil ? 0 : 1)) * 24 + 2))
-            .frame(height: metrics.size(26))
-            .background(theme[.bgElevated].opacity(0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
-            .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+            .frame(width: min(metrics.size(118), max(0, (webHeaderWidth - metrics.size(16)) * 0.6)))
+            .frame(height: metrics.size(32))
         }
+        .padding(.horizontal, metrics.size(8))
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { webHeaderWidth = $0 }
+        .frame(height: metrics.size(32))
+        .background(theme[.shapeTabsLaneBg])
+        .overlay(alignment: .bottom) { theme[.shapeTabsLaneBorder].frame(height: metrics.size(1)) }
         .contentShape(Rectangle())
         .onTapGesture(count: 2, perform: onToggleFocus)
         .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
@@ -324,7 +400,7 @@ struct PaneHeader: View {
 
     private func webAction(_ symbol: String, _ label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) { Label(label, systemImage: symbol) }
-            .buttonStyle(AlethePaneActionStyle(danger: symbol == "xmark"))
+            .buttonStyle(AlethePinnedPaneActionStyle(danger: symbol == "xmark"))
             .help(Text(label)).accessibilityLabel(Text(label))
     }
 
