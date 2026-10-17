@@ -50,7 +50,7 @@ struct SidebarMenuButton: View {
     }
 }
 
-/// `EmptyState` compact card from the web sidebar; its copy may wrap without moving its controls.
+/// Compact web empty state, without a surrounding card in the sidebar.
 struct SidebarWebEmptyState: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.metrics) private var metrics
@@ -92,17 +92,12 @@ struct SidebarWebEmptyState: View {
         .padding(.horizontal, metrics.size(18))
         .padding(.vertical, metrics.size(20))
         .frame(maxWidth: .infinity)
-        .background(theme[.bgSunken].opacity(metrics.style == .clean ? 0 : 1),
-                    in: RoundedRectangle(cornerRadius: cardRadius))
-        .overlay(RoundedRectangle(cornerRadius: cardRadius)
-            .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
         .padding(metrics.size(14))
         .accessibilityIdentifier("sidebar.empty")
     }
 
     private var iconRadius: CGFloat { metrics.size(metrics.style == .clean ? 4 : 18) }
     private var buttonRadius: CGFloat { metrics.size(metrics.style == .clean ? 4 : 12) }
-    private var cardRadius: CGFloat { metrics.style == .clean ? metrics.size(0) : metrics.radius(.lg) }
 }
 
 struct SidebarDropAppearance: ViewModifier {

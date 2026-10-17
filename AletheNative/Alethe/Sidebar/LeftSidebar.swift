@@ -1,4 +1,5 @@
 import AletheDesign
+import AletheGitControl
 import AletheModel
 import AlethePluginKit
 import SwiftUI
@@ -87,6 +88,15 @@ struct LeftSidebar: View {
                     .accessibilityIdentifier("leftSidebar.home")
                     webTab("projects", title: "leftSidebar.projects", symbol: "square.grid.3x3")
                     webTab("files", title: "rightSidebar.files", symbol: "folder")
+                    Button {
+                        environment.openPluginSheet(GitControlPlugin.sheetID, project: selectedProject?.id)
+                    } label: {
+                        Label("menu.git.control", systemImage: "arrow.triangle.branch")
+                    }
+                    .buttonStyle(AletheSidebarTabStyle(isSelected: false))
+                    .disabled(selectedProject == nil || !environment.hasPluginCommand(GitControlPlugin.openCommandID))
+                    .help(Text("menu.git.control"))
+                    .accessibilityIdentifier("leftSidebar.tab.git")
                     ForEach(pluginTabs, id: \.id) { tab in
                         webTab(tab.id, title: PluginViewRegistry.title(for: tab), symbol: tab.symbol)
                     }
@@ -116,7 +126,7 @@ struct LeftSidebar: View {
             .disabled(environment.workspace == nil)
             .accessibilityIdentifier("leftSidebar.search")
             .padding(.horizontal, metrics.size(8))
-            .padding(.vertical, metrics.size(6))
+            .frame(height: metrics.size(52))
             .overlay(alignment: .bottom) { rule }
             webContent.frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme[.bg])
@@ -207,6 +217,7 @@ struct LeftSidebar: View {
                 .padding(.bottom, metrics.size(10))
                 .overlay(alignment: .top) { rule }
             }
+            SidebarUpdateChip()
             SidebarNowPlaying()
             SidebarWebProfile()
         }

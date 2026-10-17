@@ -88,16 +88,18 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
 
 struct SidebarLabelAppearance: ViewModifier {
     let isGroup: Bool
+    var iconSize: CGFloat = 15
     @Environment(\.metrics) private var metrics
 
     @ViewBuilder func body(content: Content) -> some View {
-        if metrics.isWebInterface { content.labelStyle(SidebarLabelStyle(isGroup: isGroup)) }
+        if metrics.isWebInterface { content.labelStyle(SidebarLabelStyle(isGroup: isGroup, iconSize: iconSize)) }
         else { content }
     }
 }
 
 struct SidebarLabelStyle: LabelStyle {
     let isGroup: Bool
+    var iconSize: CGFloat = 15
     @Environment(\.metrics) private var metrics
 
     @ViewBuilder func makeBody(configuration: Configuration) -> some View {
@@ -105,9 +107,9 @@ struct SidebarLabelStyle: LabelStyle {
             HStack(spacing: metrics.size(isGroup ? 8 : 9)) {
                 if !isGroup {
                     configuration.icon
-                        .font(metrics.font(size: 14))
+                        .font(metrics.font(size: iconSize == 20 ? 20 : 14))
                         .fixedSize()
-                        .frame(minWidth: metrics.size(15))
+                        .frame(minWidth: metrics.size(iconSize))
                 }
                 configuration.title
                     .frame(maxWidth: .infinity, alignment: .leading)
