@@ -5,6 +5,7 @@ import SwiftUI
 /// `TitleBar/index.tsx` and `TitleBar.module.css`, with the system traffic lights retained.
 struct WebTitleBar: View {
     @Binding var sidebarVisible: Bool
+    let fullScreen: Bool
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -17,7 +18,9 @@ struct WebTitleBar: View {
         HStack(spacing: 0) {
             HStack(spacing: metrics.size(4)) {
                 // The standard AppKit buttons are hosted above this reserved region.
-                Color.clear.frame(width: metrics.size(72))
+                if !fullScreen {
+                    Color.clear.frame(width: metrics.size(72))
+                }
                 Button { showsMenu.toggle() } label: {
                     Image(systemName: "line.3.horizontal")
                         .resizable().scaledToFit()
@@ -43,9 +46,8 @@ struct WebTitleBar: View {
             if let workspace = environment.workspace, !workspace.document.workspace.tabs.isEmpty {
                 WorkspaceTabBar(workspace: workspace)
                     .layoutPriority(-1)
-            } else {
-                Spacer(minLength: metrics.size(12))
             }
+            Spacer(minLength: metrics.size(12))
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: metrics.size(7)) {
                     HStack(spacing: metrics.size(4)) {
@@ -99,11 +101,11 @@ struct WebTitleBar: View {
                 environment.rightSidebarVisible.toggle()
             }
             .help(Text(environment.rightSidebarVisible ? "titlebar.right.close" : "titlebar.right.open"))
-            .padding(.leading, metrics.size(2))
+            .padding(.leading, metrics.size(8))
             .padding(.trailing, metrics.size(6))
         }
         .foregroundStyle(theme[.fgMuted])
-        .frame(height: metrics.size(32))
+        .frame(height: metrics.size(40))
         .background(WindowDragRegion())
         .background(theme[.bgElevated])
         .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }

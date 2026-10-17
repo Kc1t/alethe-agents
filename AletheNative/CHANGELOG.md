@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- The web interface keeps a full-width, 40-point title bar above both sidebars and the workspace.
+  Traffic lights stay centered in their reserved area; fullscreen hides them and releases that space.
+  Sidebar toggles leave the title bar in place, with the native interface layout preserved.
 - Web-style New Terminal dialogs open centered and recenter with the window. Edge and corner
   handles resize the dialog; dragging the header moves it within the window, and double-clicking
   the header restores its default size. The body and agent menus scroll within their bounds while

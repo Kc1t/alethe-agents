@@ -13,6 +13,7 @@ struct MainWindow: View {
     @SceneStorage("main.columnVisibility") private var sidebarVisible = true
     @AppStorage("main.rightSidebarWidth") private var rightSidebarWidth = 280.0
     @AppStorage("main.webLeftWidth") private var webLeftWidth = 286.0
+    @State private var webFullScreen = false
     @State private var showsTitleBarNews = false
     @State private var showsTitleBarMemory = false
     @State private var showsTitleBarCustomization = false
@@ -50,7 +51,9 @@ struct MainWindow: View {
             if metrics.isWebInterface { sidebarVisible.toggle() }
         }
         .overlay {
-            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(metrics.isWebInterface ? 32 : 40))
+            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(40),
+                               fullScreen: $webFullScreen)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .ignoresSafeArea(.container, edges: .top)
         }
         .accessibilityHidden(!environment.startupFinished)
@@ -137,30 +140,36 @@ struct MainWindow: View {
     }
 
     private var webShell: some View {
-        VStack(spacing: 0) {
-            WebTitleBar(sidebarVisible: $sidebarVisible)
-            GeometryReader { geometry in
-                HStack(spacing: 0) {
-                    if sidebarVisible {
-                        LeftSidebar()
-                            .frame(width: min(metrics.size(webLeftWidth), geometry.size.width * 0.30))
-                            .background(theme[.bg])
-                        WebShellSeparator(width: $webLeftWidth, limits: 220...380)
+        GeometryReader { windowGeometry in
+            VStack(spacing: 0) {
+                WebTitleBar(sidebarVisible: $sidebarVisible, fullScreen: webFullScreen)
+                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true)
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        if sidebarVisible {
+                            LeftSidebar()
+                                .frame(width: min(metrics.size(webLeftWidth), geometry.size.width * 0.30))
+                                .background(theme[.bg])
+                            WebShellSeparator(width: $webLeftWidth, limits: 220...380)
+                        }
+                        WorkspaceView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+                            .overlay(alignment: .bottom) { DictationHUD() }
+                        if environment.rightSidebarVisible {
+                            WebShellSeparator(width: $webRightWidth, limits: 260...420, trailing: true)
+                            RightSidebar()
+                                .frame(width: min(metrics.size(webRightWidth), geometry.size.width * 0.30))
+                                .background(theme[.bg])
+                        }
                     }
-                    WorkspaceView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
-                        .overlay(alignment: .bottom) { DictationHUD() }
-                    if environment.rightSidebarVisible {
-                        WebShellSeparator(width: $webRightWidth, limits: 260...420, trailing: true)
-                        RightSidebar()
-                            .frame(width: min(metrics.size(webRightWidth), geometry.size.width * 0.30))
-                            .background(theme[.bg])
-                    }
+                    .frame(maxHeight: .infinity)
                 }
-                .frame(maxHeight: .infinity)
             }
+            .frame(width: windowGeometry.size.width, height: windowGeometry.size.height, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .modifier(WebTitleBarPopoverLayer())
         .background(theme[.bg])
         .ignoresSafeArea(.container, edges: .top)

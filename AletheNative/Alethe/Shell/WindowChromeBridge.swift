@@ -9,10 +9,18 @@ extension Notification.Name {
 struct WindowChromeBridge: NSViewRepresentable {
     let web: Bool
     let barHeight: CGFloat
+    @Binding var fullScreen: Bool
 
     func makeNSView(context: Context) -> ChromeView { ChromeView() }
 
     func updateNSView(_ view: ChromeView, context: Context) {
+        let fullScreenBinding = $fullScreen
+        view.fullScreenChanged = { value in
+            // AppKit can notify during a SwiftUI update; publish on the next main turn.
+            Task { @MainActor in
+                if fullScreenBinding.wrappedValue != value { fullScreenBinding.wrappedValue = value }
+            }
+        }
         view.web = web
         view.barHeight = barHeight
         view.apply()
@@ -21,6 +29,8 @@ struct WindowChromeBridge: NSViewRepresentable {
     final class ChromeView: NSView {
         var web = false
         var barHeight: CGFloat = 40
+        var fullScreenChanged: (@MainActor (Bool) -> Void)?
+        private var previousFullScreen: Bool?
         private var previousWeb: Bool?
         private var savedToolbar: NSToolbar?
         private var savedTitleVisibility: NSWindow.TitleVisibility = .visible
@@ -115,12 +125,17 @@ struct WindowChromeBridge: NSViewRepresentable {
 
         private func positionLights() {
             guard web, let window else { return }
+            let fullScreen = window.styleMask.contains(.fullScreen)
+            if previousFullScreen != fullScreen {
+                previousFullScreen = fullScreen
+                fullScreenChanged?(fullScreen)
+            }
             for (index, kind) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].enumerated() {
                 guard let button = window.standardWindowButton(kind) else { continue }
                 // SwiftUI hides the system title-bar host when its toolbar is hidden. Keep the
                 // real buttons in our overlay so their target/actions and accessibility survive.
                 if button.superview !== self { addSubview(button) }
-                button.isHidden = false
+                button.isHidden = fullScreen
                 let scale = barHeight / 40
                 let origin = NSPoint(x: (12 + CGFloat(index) * 20) * scale,
                                      y: (barHeight - button.frame.height) / 2)
