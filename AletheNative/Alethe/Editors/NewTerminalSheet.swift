@@ -63,7 +63,8 @@ struct NewTerminalSheet: View {
     }
 
     @Environment(\.newTerminalModalHeight) private var modalHeight
-    @State private var webContentHeight: CGFloat = 0
+    @Environment(\.webModalHasExplicitHeight) private var explicitModalHeight
+    @State private var webContentHeight: CGFloat = 440
     @State private var advanced = false
     @State private var createMore = false
     @FocusState private var pathFocused: Bool
@@ -258,6 +259,8 @@ struct NewTerminalSheet: View {
             .padding(.horizontal, metrics.size(22))
             .padding(.top, metrics.size(20))
             .padding(.bottom, metrics.size(2))
+            .webModalHeader()
+            .fixedSize(horizontal: false, vertical: true)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: metrics.size(14)) {
@@ -281,6 +284,8 @@ struct NewTerminalSheet: View {
                                 Image(systemName: "terminal").font(metrics.font(size: 17))
                             } else {
                                 AgentLogo(agent: kind.rawValue, size: 17)
+                                    .frame(width: metrics.size(17), height: metrics.size(17))
+                                    .clipped()
                             }
                         }
                         .accessibilityIdentifier("newTerminal.agent")
@@ -344,7 +349,8 @@ struct NewTerminalSheet: View {
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { webContentHeight = $0 }
             }
             .scrollBounceBehavior(.basedOnSize)
-            .frame(height: min(webContentHeight, max(metrics.size(60), modalHeight - metrics.size(125))))
+            .frame(height: explicitModalHeight ? nil : min(webContentHeight, max(0, modalHeight - metrics.size(125))))
+            .frame(maxHeight: explicitModalHeight ? .infinity : nil)
             Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
             HStack(spacing: metrics.size(10)) {
                 if !orchestrating && targetPane == nil {
@@ -390,6 +396,7 @@ struct NewTerminalSheet: View {
             }
             .padding(.horizontal, metrics.size(22))
             .padding(.top, metrics.size(14)).padding(.bottom, metrics.size(18))
+            .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(theme[.fg])
         .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(20)))

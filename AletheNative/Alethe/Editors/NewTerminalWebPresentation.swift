@@ -1,3 +1,4 @@
+import AppKit
 import AletheDesign
 import SwiftUI
 
@@ -22,7 +23,7 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
             if open { open = false } else { showOptions() }
         } label: {
             HStack(spacing: metrics.size(11)) {
-                icon(selection).frame(width: metrics.size(20), height: metrics.size(20))
+                icon(selection).frame(width: metrics.size(20), height: metrics.size(20)).clipped()
                 Text(verbatim: title(selection))
                     .font(metrics.font(size: 13.5)).lineLimit(1)
                 Spacer(minLength: 0)
@@ -83,7 +84,7 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
                             focused = true
                         } label: {
                             HStack(spacing: metrics.size(11)) {
-                                icon(value).frame(width: metrics.size(20), height: metrics.size(20))
+                                icon(value).frame(width: metrics.size(20), height: metrics.size(20)).clipped()
                                 VStack(alignment: .leading, spacing: metrics.size(2)) {
                                     Text(verbatim: title(value)).font(metrics.font(size: 13))
                                     if let description = detail(value) {
@@ -111,7 +112,7 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
                     }
                 }.padding(metrics.size(5))
             }
-            .frame(height: dropdownHeight)
+            .frame(maxHeight: dropdownHeight)
             .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(14)))
             .overlay(RoundedRectangle(cornerRadius: metrics.size(14))
                 .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
@@ -154,28 +155,116 @@ struct NewTerminalWebOverlay<Content: View>: View {
     @State private var visible = false
     @State private var closing = false
 
+    // CSS has no minimum: keep the footer usable, then let the body scroll.
+    var defaultWidth: CGFloat = 500
+    var minimumWidth: CGFloat = 440
+    var minimumHeight: CGFloat = 240
+    @State private var resized: CGSize?
+    @State private var measuredHeight: CGFloat = 440
+    @State private var displacement = CGSize.zero
+    @State private var dragOrigin: CGSize?
+    @State private var resizeOrigin: CGRect?
+
+    init(onClose: @escaping () -> Void, defaultWidth: CGFloat = 500,
+         minimumWidth: CGFloat = 440, minimumHeight: CGFloat = 240,
+         @ViewBuilder content: @escaping (@escaping () -> Void) -> Content) {
+        self.onClose = onClose
+        self.defaultWidth = defaultWidth
+        self.minimumWidth = minimumWidth
+        self.minimumHeight = minimumHeight
+        self.content = content
+    }
+
     var body: some View {
         GeometryReader { geometry in
+            let maximum = CGSize(width: max(0, geometry.size.width - metrics.size(48)),
+                                 height: max(0, geometry.size.height - metrics.size(80)))
+            let size = CGSize(width: min(resized?.width ?? metrics.size(defaultWidth), maximum.width),
+                              height: min(resized?.height ?? measuredHeight, maximum.height))
             ZStack {
                 theme[.bgSunken].opacity(visible ? 0.68 : 0)
                     .contentShape(Rectangle())
                     .onTapGesture(perform: close)
-                    .animation(metrics.reducesMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.2), value: visible)
+                    .animation(metrics.reducesMotion ? nil : Motion.terminalExit, value: visible)
                 content(close)
-                    .environment(\.newTerminalModalHeight, max(0, geometry.size.height - metrics.size(80)))
-                    .frame(width: min(metrics.size(500), max(0, geometry.size.width - metrics.size(48))))
-                    .frame(maxHeight: max(0, geometry.size.height - metrics.size(80)))
+                    .environment(\.newTerminalModalHeight, resized == nil ? maximum.height : size.height)
+                    .environment(\.webModalHasExplicitHeight, resized != nil)
+                    .environment(\.webModalMove, { translation in move(translation, size: size, window: geometry.size) })
+                    .environment(\.webModalEndMove, { dragOrigin = nil })
+                    .environment(\.webModalReset, reset)
+                    .frame(width: size.width)
+                    .frame(height: resized == nil ? nil : size.height)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredHeight = $0 }
+                    .overlay { resizeHandles(size: size, window: geometry.size, maximum: maximum) }
                     .shadow(color: theme.shadow(.lg).color.color, radius: metrics.size(40), y: metrics.size(16))
                     .opacity(visible ? 1 : 0)
                     .offset(y: visible || metrics.reducesMotion ? 0 : metrics.size(20))
+                    .position(x: geometry.size.width / 2 + displacement.width,
+                              y: geometry.size.height / 2 + displacement.height)
                     .animation(metrics.reducesMotion ? nil : closing ? Motion.terminalExit : Motion.terminalEntrance, value: visible)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
+            .onChange(of: geometry.size) { _, _ in reset() }
         }
-        .ignoresSafeArea()
-        .onAppear { visible = true }
+        .onAppear { reset(); visible = true }
         .onExitCommand(perform: close)
         .accessibilityAddTraits(.isModal)
+    }
+
+    private func reset() {
+        resized = nil
+        displacement = .zero
+        dragOrigin = nil
+        resizeOrigin = nil
+    }
+
+    private func move(_ translation: CGSize, size: CGSize, window: CGSize) {
+        if dragOrigin == nil { dragOrigin = displacement }
+        let origin = dragOrigin ?? .zero
+        let x = max(0, (window.width - size.width) / 2 - metrics.size(24))
+        let y = max(0, (window.height - size.height) / 2 - metrics.size(40))
+        displacement = CGSize(width: min(x, max(-x, origin.width + translation.width)),
+                              height: min(y, max(-y, origin.height + translation.height)))
+    }
+
+    private func resizeHandles(size: CGSize, window: CGSize, maximum: CGSize) -> some View {
+        ForEach(0..<8) { index in
+            let x: CGFloat = [0, 0.5, 1, 1, 1, 0.5, 0, 0][index]
+            let y: CGFloat = [0, 0, 0, 0.5, 1, 1, 1, 0.5][index]
+            Rectangle().fill(.clear)
+                .frame(width: x == 0.5 ? max(0, size.width - metrics.size(24)) : metrics.size(8),
+                       height: y == 0.5 ? max(0, size.height - metrics.size(24)) : metrics.size(8))
+                .contentShape(Rectangle())
+                .onHover { inside in
+                    if inside {
+                        (x == 0.5 ? NSCursor.resizeUpDown : y == 0.5 ? NSCursor.resizeLeftRight : NSCursor.crosshair).push()
+                    } else { NSCursor.pop() }
+                }
+                .gesture(DragGesture(coordinateSpace: .global)
+                    .onChanged { value in
+                        if resizeOrigin == nil {
+                            resizeOrigin = CGRect(x: (window.width - size.width) / 2 + displacement.width,
+                                                  y: (window.height - size.height) / 2 + displacement.height,
+                                                  width: size.width, height: size.height)
+                        }
+                        guard let original = resizeOrigin else { return }
+                        let marginX = metrics.size(24), marginY = metrics.size(40)
+                        let minWidth = min(metrics.size(minimumWidth), maximum.width)
+                        let minHeight = min(metrics.size(minimumHeight), maximum.height)
+                        var left = original.minX, right = original.maxX
+                        var top = original.minY, bottom = original.maxY
+                        if x == 0 { left = max(marginX, min(right - minWidth, original.minX + value.translation.width)) }
+                        if x == 1 { right = min(window.width - marginX, max(left + minWidth, original.maxX + value.translation.width)) }
+                        if y == 0 { top = max(marginY, min(bottom - minHeight, original.minY + value.translation.height)) }
+                        if y == 1 { bottom = min(window.height - marginY, max(top + minHeight, original.maxY + value.translation.height)) }
+                        resized = CGSize(width: right - left, height: bottom - top)
+                        displacement = CGSize(width: (left + right - window.width) / 2,
+                                              height: (top + bottom - window.height) / 2)
+                    }
+                    .onEnded { _ in resizeOrigin = nil })
+                .position(x: size.width * x, y: size.height * y)
+                .accessibilityHidden(true)
+        }
     }
 
     private func close() {
@@ -211,15 +300,14 @@ struct NewTerminalDropdownLayer: ViewModifier {
             GeometryReader { geometry in
                 ForEach(Array(menus.enumerated()), id: \.offset) { _, menu in
                     let rect = geometry[menu.anchor]
+                    let height = min(menu.height, max(0, geometry.size.height - metrics.size(16)))
                     let below = rect.maxY + metrics.size(6)
-                    let top = below + menu.height <= geometry.size.height
-                        ? below : max(metrics.size(8), rect.minY - menu.height - metrics.size(6))
+                    let top = below + height <= geometry.size.height
+                        ? below : max(metrics.size(8), rect.minY - height - metrics.size(6))
                     Rectangle().fill(.clear).contentShape(Rectangle()).onTapGesture(perform: menu.dismiss)
                     menu.content
-                        .frame(width: rect.width)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .offset(x: rect.minX, y: top)
+                        .frame(width: rect.width, height: height)
+                        .position(x: rect.midX, y: top + height / 2)
                 }
             }
         }
@@ -232,4 +320,29 @@ extension View {
 
 extension EnvironmentValues {
     @Entry var newTerminalModalHeight: CGFloat = 600
+}
+
+/// Apply to a modal header; the existing overlay supplies window-local movement and reset.
+private struct WebModalHeader: ViewModifier {
+    @Environment(\.webModalMove) private var move
+    @Environment(\.webModalEndMove) private var endMove
+    @Environment(\.webModalReset) private var reset
+
+    func body(content: Content) -> some View {
+        content.contentShape(Rectangle())
+            .simultaneousGesture(DragGesture(coordinateSpace: .global)
+                .onChanged { move($0.translation) }.onEnded { _ in endMove() })
+            .onTapGesture(count: 2, perform: reset)
+    }
+}
+
+extension View {
+    func webModalHeader() -> some View { modifier(WebModalHeader()) }
+}
+
+extension EnvironmentValues {
+    @Entry var webModalHasExplicitHeight = false
+    @Entry var webModalMove: (CGSize) -> Void = { _ in }
+    @Entry var webModalEndMove: () -> Void = {}
+    @Entry var webModalReset: () -> Void = {}
 }

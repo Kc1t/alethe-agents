@@ -16,6 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style New Terminal dialogs open centered and recenter with the window. Edge and corner
+  handles resize the dialog; dragging the header moves it within the window, and double-clicking
+  the header restores its default size. The body and agent menus scroll within their bounds while
+  the header and footer stay visible. The native interface keeps its existing sheet presentation.
 - Web-style right sidebar tabs and MCP/GSD rows fade hover and selection colors with the web
   timings. MCP and pull-request refresh icons rotate at their original speeds without shifting
   the header; GSD busy sessions use the stepped dot-matrix indicator. Reduce Motion pauses these
