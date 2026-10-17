@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 /// One rate-limit window of a provider (used share, when it resets).
 public struct UsageWindow: Hashable, Sendable, Identifiable {
@@ -115,36 +114,59 @@ public enum AIUsage {
     public static func claudeToken(homeDirectory: String = NSHomeDirectory(), allowInteraction: Bool = true) -> String? {
         if let token = ProcessInfo.processInfo.environment["CLAUDE_OAUTH_TOKEN"], !token.isEmpty { return token }
         if let data = FileManager.default.contents(atPath: "\(homeDirectory)/.claude/.credentials.json"),
-           let token = claudeToken(fromSecret: data) { return token }
-        for account in [NSUserName(), "default", "user", "claude", ""] {
-            if let secret = keychainSecret(service: "Claude Code-credentials", account: account, allowInteraction: allowInteraction) {
-                if let token = claudeToken(fromSecret: secret) { return token }
-            }
-        }
-        if let secret = keychainSecret(service: "Claude Code-credentials", allowInteraction: allowInteraction) {
-            return claudeToken(fromSecret: secret)
-        }
-        return nil
+           let value = claudeCredential(data), value.expiresAt.map({ $0 > Date() }) ?? true { return value.token }
+        return credentialCache.token(key: "claude:\(homeDirectory)", allowInteraction: allowInteraction,
+                                     local: { nil }, secret: {
+            keychainSecret(service: "Claude Code-credentials").flatMap(claudeCredential)
+        })
+    }
+
+    private static let credentialCache = UsageCredentialCache()
+
+    /// Call after an explicit reconnect/login action to permit credential discovery again.
+    public static func reconnectCredentials() { credentialCache.reconnect() }
+
+    static func claudeCredential(_ data: Data) -> UsageCredentialCache.Credential? {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let oauth = object["claudeAiOauth"] as? [String: Any],
+              let token = oauth["accessToken"] as? String, !token.isEmpty else { return nil }
+        // Claude Code stores expiresAt as Unix milliseconds.
+        let expiry = (oauth["expiresAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
+            ?? date(oauth["expiresAt"])
+        return .init(token: token, expiresAt: expiry)
     }
 
     static func claudeToken(fromSecret data: Data) -> String? {
-        let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-        let token = (object?["claudeAiOauth"] as? [String: Any])?["accessToken"] as? String
-        return token?.isEmpty == false ? token : nil
+        claudeCredential(data)?.token
     }
 
     public static func claude(session: URLSession = .shared) async -> ProviderUsage {
-        guard let token = claudeToken() else { return ProviderUsage(agent: .claude, status: .noAuth) }
-        var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!, timeoutInterval: 15)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-        guard let (data, response) = try? await session.data(for: request) else {
-            return ProviderUsage(agent: .claude, status: .unavailable("network"))
+        await claudeUsage(discover: { claudeToken() }, refresh: { token, status in
+            credentialCache.reject(key: "claude:\(NSHomeDirectory())", token: token, status: status)
+        }, fetch: { token in
+            var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!, timeoutInterval: 15)
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+            guard let (data, response) = try? await session.data(for: request) else { return nil }
+            return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
+        })
+    }
+
+    static func claudeUsage(discover: () -> String?, refresh: (String, Int) -> Bool,
+                            fetch: (String) async -> (Data, Int)?) async -> ProviderUsage {
+        for attempt in 0..<2 {
+            guard let token = discover() else { return ProviderUsage(agent: .claude, status: .noAuth) }
+            guard let (data, status) = await fetch(token) else {
+                return ProviderUsage(agent: .claude, status: .unavailable("network"))
+            }
+            if status == 401 || status == 403 {
+                if attempt == 0, refresh(token, status) { continue }
+                return ProviderUsage(agent: .claude, status: .noAuth)
+            }
+            guard status == 200 else { return ProviderUsage(agent: .claude, status: .unavailable("HTTP \(status)")) }
+            return parseClaude(data) ?? ProviderUsage(agent: .claude, status: .unavailable("format"))
         }
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if status == 401 { return ProviderUsage(agent: .claude, status: .noAuth) }
-        guard status == 200 else { return ProviderUsage(agent: .claude, status: .unavailable("HTTP \(status)")) }
-        return parseClaude(data) ?? ProviderUsage(agent: .claude, status: .unavailable("format"))
+        return ProviderUsage(agent: .claude, status: .noAuth)
     }
 
     // MARK: - Codex
@@ -269,10 +291,14 @@ public enum AIUsage {
     }
 
     static func antigravityToken() -> String? {
-        guard let secret = keychainSecret(service: "gemini", account: "antigravity"),
-              let object = (try? JSONSerialization.jsonObject(with: secret)) as? [String: Any],
-              let token = (object["token"] as? [String: Any])?["access_token"] as? String, !token.isEmpty else { return nil }
-        return token
+        credentialCache.token(key: "antigravity", local: { nil }, secret: {
+            guard let secret = keychainSecret(service: "gemini", account: "antigravity"),
+                  let object = (try? JSONSerialization.jsonObject(with: secret)) as? [String: Any],
+                  let oauth = object["token"] as? [String: Any],
+                  let token = oauth["access_token"] as? String, !token.isEmpty else { return nil }
+            let expiry = (oauth["expires_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
+            return .init(token: token, expiresAt: expiry)
+        })
     }
 
     public static func antigravity(executable: String?, session: URLSession = .shared) async -> ProviderUsage {
@@ -289,7 +315,7 @@ public enum AIUsage {
         }
         guard var token = antigravityToken() else { return ProviderUsage(agent: .antigravity, status: .noAuth) }
         var answer = await fetch(token)
-        if answer?.1 == 401 {
+        if let status = answer?.1, credentialCache.reject(key: "antigravity", token: token, status: status) {
             // `agy models` refreshes the stored credential (upstream `refresh_credential_with_agy`).
             _ = await CLIOutput.run(executable, ["models"], timeout: .seconds(12))
             guard let fresh = antigravityToken() else { return ProviderUsage(agent: .antigravity, status: .noAuth) }
@@ -297,38 +323,21 @@ public enum AIUsage {
             answer = await fetch(token)
         }
         guard let (data, status) = answer else { return ProviderUsage(agent: .antigravity, status: .unavailable("network")) }
-        if status == 401 { return ProviderUsage(agent: .antigravity, status: .noAuth) }
+        if status == 401 || status == 403 { return ProviderUsage(agent: .antigravity, status: .noAuth) }
         guard status == 200 else { return ProviderUsage(agent: .antigravity, status: .unavailable("HTTP \(status)")) }
         return parseAntigravity(data) ?? ProviderUsage(agent: .antigravity, status: .unavailable("format"))
     }
 
     // MARK: - Keychain
 
-    /// Attribute lookup detects sign-in even when Keychain denies access to the secret.
+    /// Attribute-only discovery never requests access to the secret.
     static func keychainContains(service: String, account: String? = nil) -> Bool {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-            kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
-        ]
-        if let account { query[kSecAttrAccount as String] = account }
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        return status == errSecSuccess || status == errSecInteractionNotAllowed
+        UsageKeychainReader().contains(service: service, account: account)
     }
 
-    /// A generic password another tool stored (macOS asks the user to allow Alethe to read it).
     static func keychainSecret(service: String, account: String? = nil, allowInteraction: Bool = true) -> Data? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-            kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        if !allowInteraction { query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
-        if let account { query[kSecAttrAccount as String] = account }
-        var result: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data,
-              !data.isEmpty else { return nil }
-        return data
+        guard allowInteraction else { return nil }
+        return UsageKeychainReader().read(service: service, account: account)
     }
 
     // MARK: - Limit resets
