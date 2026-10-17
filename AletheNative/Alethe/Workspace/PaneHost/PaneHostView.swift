@@ -60,7 +60,16 @@ final class PaneHostView: NSView {
             for project in open { for pane in project.visiblePanes { flatOwners[pane.id] = project } }
             projects[Self.flatID] = Project(id: Self.flatID, name: "", folder: "", panes: open.flatMap(\.visiblePanes))
         } else {
-            for id in openIDs { projects[id] = document.project(id) }
+            for id in openIDs {
+                guard var project = document.project(id) else { continue }
+                if context.metrics.isWebInterface, let isolated = document.activeWorkspaceTab?.webPaneID {
+                    // A terminal workspace displays its pane independently of the project's active grid.
+                    project.panes = project.panes.filter { $0.id == isolated }
+                    for index in project.panes.indices { project.panes[index].gridID = nil }
+                    project.activeGridID = nil
+                }
+                projects[id] = project
+            }
         }
         let ids = flat ? [Self.flatID] : state.fullscreenProjectID.flatMap { openIDs.contains($0) ? [$0] : nil } ?? openIDs
         let collapsedNow = flat ? [] : Set(state.collapsedProjectIDs).intersection(ids)
@@ -88,7 +97,8 @@ final class PaneHostView: NSView {
                            isCollapsed: collapsed.contains(id),
                            isFullscreen: state.fullscreenProjectID == id,
                            isolatedPane: state.fullscreenProjectID == id ? state.isolatedPaneID : nil,
-                           owners: flat ? flatOwners : [:], showsHeader: !flat,
+                           owners: flat ? flatOwners : [:],
+                           showsHeader: !flat && (!context.metrics.isWebInterface || openIDs.count > 1),
                            context: context) { [weak self] translation in
                 self?.containerDragged(id, translation: translation)
             }

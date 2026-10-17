@@ -146,6 +146,10 @@ extension WorkspaceDocument {
     /// The tab's title: its project's name, or the composition's first project plus how many more
     /// (upstream `compositionLabel`). Nil for an empty view.
     public func label(of tab: WorkspaceTab) -> (name: String, more: Int)? {
+        if let group = tab.webGroupID.flatMap({ id in groups.first { $0.id == id } }) { return (group.name, 0) }
+        if let pane = tab.webPaneID.flatMap(pane)?.pane {
+            return (pane.activeTab?.title ?? pane.activeTab?.agent ?? "", 0)
+        }
         if tab.kind == .project, let project = tab.projectID.flatMap(project) { return (project.name, 0) }
         let names = tab.snapshot.openProjectIDs.compactMap { project($0)?.name }
         guard let first = names.first else { return nil }
@@ -154,7 +158,8 @@ extension WorkspaceDocument {
 
     /// The color of a tab: its project's, or the first open project's.
     public func color(of tab: WorkspaceTab) -> ProjectColor? {
-        (tab.projectID ?? tab.snapshot.openProjectIDs.first).flatMap(project)?.color
+        if let id = tab.webGroupID { return groups.first { $0.id == id }?.color }
+        return (tab.kind == .project ? tab.projectID : tab.snapshot.openProjectIDs.first).flatMap(project)?.color
     }
 
     public var activeWorkspaceTab: WorkspaceTab? {
@@ -319,7 +324,7 @@ extension WorkspaceDocument {
 
     /// Shows `tab`, adding it to the bar when asked (dropping the oldest unpinned tab past the
     /// limit), and records the visit (upstream `applyTabNavigation`).
-    private mutating func navigate(to tab: WorkspaceTab, adding: Bool) {
+    mutating func navigate(to tab: WorkspaceTab, adding: Bool) {
         var tab = tab
         tab.snapshot = sanitized(tab.snapshot)
         if adding {

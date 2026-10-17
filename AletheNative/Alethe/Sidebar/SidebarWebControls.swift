@@ -1,4 +1,6 @@
 import AletheDesign
+import AletheModel
+import AppKit
 import SwiftUI
 
 /// Menu labels need their own style: AppKit menus do not inherit an icon button's label style.
@@ -158,10 +160,46 @@ struct SidebarWebGroupOpen: ViewModifier {
     @Environment(\.metrics) private var metrics
 
     @ViewBuilder func body(content: Content) -> some View {
-        if metrics.isWebInterface {
+        if metrics.isWebInterface && metrics.style != .clean {
             content
                 .highPriorityGesture(TapGesture(count: 2).onEnded { open() })
                 .help(Text("sidebar.openOnlyGroup"))
+        } else { content }
+    }
+}
+
+/// Explicit web gestures handle repeated selections and ignore row modifier keys.
+struct SidebarWebClick: ViewModifier {
+    let single: () -> Void
+    var double: (() -> Void)? = nil
+    @Environment(\.metrics) private var metrics
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if metrics.isWebInterface {
+            if let double {
+                content.onTapGesture(count: 2, perform: double)
+                    .onTapGesture(perform: single)
+            } else { content.onTapGesture(perform: single) }
+        } else { content }
+    }
+}
+
+struct SidebarWebPaneDrag: ViewModifier {
+    let pane: PaneID?
+    @Environment(\.metrics) private var metrics
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if metrics.isWebInterface, let pane {
+            content.itemProvider {
+                let provider = NSItemProvider()
+                let data = Data(SidebarDrag.payload(pane).utf8)
+                provider.registerDataRepresentation(forTypeIdentifier: SidebarDrag.paneType.identifier,
+                    visibility: .ownProcess) { completion in
+                    completion(data, nil)
+                    return nil
+                }
+                return provider
+            }
         } else { content }
     }
 }

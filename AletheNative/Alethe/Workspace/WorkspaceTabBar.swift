@@ -70,7 +70,7 @@ struct WorkspaceTabBar: View {
                     .rotationEffect(.degrees(45))
                     .foregroundStyle(theme[.accent])
             }
-            if metrics.isWebInterface, tab.kind == .composition {
+            if metrics.isWebInterface, tab.kind == .composition, tab.webGroupID == nil, tab.webPaneID == nil {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
                     .font(metrics.font(size: 14))
                     .foregroundStyle(theme[.accent])
@@ -88,7 +88,7 @@ struct WorkspaceTabBar: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             if metrics.isWebInterface {
                 Text(verbatim: String(tab.snapshot.openProjectIDs.reduce(0) { total, id in
-                    total + (document.projects.first(where: { $0.id == id })?.visiblePanes.count ?? 0)
+                    total + (tab.webPaneID == nil ? (document.projects.first(where: { $0.id == id })?.visiblePanes.count ?? 0) : 1)
                 }))
                     .font(metrics.font(size: 9, weight: metrics.style == .clean ? .medium : .bold))
                     .foregroundStyle(theme[.fgFaint])
@@ -141,7 +141,7 @@ struct WorkspaceTabBar: View {
         }
         .background {
             if metrics.isWebInterface {
-                WorkspaceTabEvents(number: document.workspace.tabs.firstIndex(where: { $0.id == tab.id }).map { $0 + 1 },
+                WorkspaceTabEvents(
                     activate: {
                         workspace.update { $0.activateWorkspaceTab(tab.id) }
                         environment.showingHome = false

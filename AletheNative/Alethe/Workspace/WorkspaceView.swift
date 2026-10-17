@@ -22,6 +22,14 @@ struct WorkspaceView: View {
             content
             #endif
         }
+        .background {
+            if metrics.isWebInterface, let workspace = environment.workspace {
+                ForEach(Array(workspace.document.projects.prefix(9).enumerated()), id: \.element.id) { index, project in
+                    WorkspaceTabEvents(number: index + 1, listensForMiddleClick: false,
+                        activate: { workspace.update { $0.openWebProject(project.id) } }, close: {})
+                }
+            }
+        }
         .onChange(of: environment.workspace?.document.currentSnapshot) { _, _ in
             environment.workspace?.update { $0.syncActiveTab() }
         }
@@ -61,7 +69,10 @@ struct WorkspaceView: View {
             if !metrics.isWebInterface, let workspace = environment.workspace, !workspace.document.workspace.tabs.isEmpty {
                 WorkspaceTabBar(workspace: workspace)
             }
-            if let doc = environment.workspace?.document, !doc.workspace.openProjectIDs.isEmpty {
+            if let doc = environment.workspace?.document, !doc.workspace.openProjectIDs.isEmpty,
+               !metrics.isWebInterface || doc.workspace.openProjectIDs.contains(where: {
+                   !(doc.project($0)?.visiblePanes.isEmpty ?? true)
+               }) || doc.activeWorkspaceTab?.webPaneID != nil {
                 PaneHost(document: doc, terminalStates: environment.terminals.states,
                          terminalGenerations: environment.terminals.generations,
                          focusModePane: environment.focusModePaneID)

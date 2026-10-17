@@ -14,15 +14,26 @@ enum SidebarItem: Hashable {
 enum SidebarDrag {
     static let projectPrefix = "alethe-project:"
     static let groupPrefix = "alethe-group:"
+    static let panePrefix = "alethe-pane:"
+    static let paneType = UTType(exportedAs: "com.kc1t.alethe.sidebar-pane")
+    static func payload(_ pane: PaneID) -> String { panePrefix + pane.rawValue }
 
     static func payload(_ project: ProjectID) -> String { projectPrefix + project.rawValue }
     static func payload(_ group: GroupID) -> String { groupPrefix + group.rawValue }
 
-    enum Dropped { case project(ProjectID), group(GroupID) }
+    enum Dropped { case project(ProjectID), group(GroupID), pane(PaneID) }
 
     /// Reads dragged sidebar payloads and hands each one to `apply` on the main actor.
     static func load(_ providers: [NSItemProvider], apply: @escaping @MainActor (Dropped) -> Void) {
-        for provider in providers where provider.canLoadObject(ofClass: NSString.self) {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(paneType.identifier) {
+                provider.loadDataRepresentation(forTypeIdentifier: paneType.identifier) { data, _ in
+                    guard let data, let text = String(data: data, encoding: .utf8), let dropped = parse(text) else { return }
+                    Task { @MainActor in apply(dropped) }
+                }
+                continue
+            }
+            guard provider.canLoadObject(ofClass: NSString.self) else { continue }
             _ = provider.loadObject(ofClass: NSString.self) { object, _ in
                 guard let text = object as? String, let dropped = parse(text) else { return }
                 Task { @MainActor in apply(dropped) }
@@ -31,6 +42,7 @@ enum SidebarDrag {
     }
 
     static func parse(_ text: String) -> Dropped? {
+        if text.hasPrefix(panePrefix) { return .pane(PaneID(rawValue: String(text.dropFirst(panePrefix.count)))) }
         if text.hasPrefix(projectPrefix) { return .project(ProjectID(rawValue: String(text.dropFirst(projectPrefix.count)))) }
         if text.hasPrefix(groupPrefix) { return .group(GroupID(rawValue: String(text.dropFirst(groupPrefix.count)))) }
         return nil
@@ -84,6 +96,8 @@ struct SidebarActions {
             switch dropped {
             case .project(let project):
                 doc.moveProject(project, to: .group(target), at: Int.max)
+            case .pane:
+                break
             case .group(let group):
                 doc.moveGroup(group, toParent: target, at: Int.max)
             }
@@ -97,6 +111,8 @@ struct SidebarActions {
             switch dropped {
             case .project(let project):
                 doc.moveProject(project, to: location, at: index)
+            case .pane:
+                break
             case .group(let group):
                 if case .group(let parent) = location { doc.moveGroup(group, toParent: parent, at: Int.max) }
             }
@@ -135,6 +151,12 @@ struct SidebarActions {
 
     /// Dropping on a project row places the dragged project before it, in the target's list.
     func drop(_ dropped: SidebarDrag.Dropped, onProject target: ProjectID) {
+        if case .pane(let pane) = dropped {
+            workspace.update(undoManager: undoManager, actionName: String(localized: "undo.move")) {
+                $0.moveWebPane(pane, to: target)
+            }
+            return
+        }
         guard case .project(let project) = dropped, project != target,
               let location = workspace.document.location(of: target) else { return }
         workspace.update(undoManager: undoManager, actionName: String(localized: "undo.move")) { doc in
@@ -161,7 +183,11 @@ struct SidebarActions {
         }
     }
 
-    func openGroup(_ group: GroupID, adding: Bool) {
+    func openGroup(_ group: GroupID, adding: Bool, web: Bool = false) {
+        if web {
+            workspace.update { $0.openWebGroup(group, adding: adding) }
+            return
+        }
         workspace.update { doc in
             let projects = doc.groups.filter { doc.isGroup($0.id, inside: group) }.flatMap(\.projectIDs)
             guard let first = projects.first else { return }

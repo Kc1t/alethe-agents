@@ -148,6 +148,7 @@ struct LeftSidebar: View {
     private func webTab(_ id: String, title: LocalizedStringKey, symbol: String) -> some View {
         Button {
             selectedTab = id
+            if metrics.style == .clean { environment.showingHome = false }
         } label: { Label { Text(title) } icon: { Image(systemName: symbol).webProfileSized(14) } }
         .buttonStyle(AletheSidebarMotionTabStyle(isSelected: effectiveTab == id))
         .help(Text(title))
