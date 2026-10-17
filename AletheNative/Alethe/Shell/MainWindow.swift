@@ -43,9 +43,32 @@ struct MainWindow: View {
         // Keep the window usable at 800×500 even when its controls are zoomed.
         .frame(minWidth: metrics.isWebInterface ? metrics.size(800 / metrics.scale) : 800,
                minHeight: metrics.isWebInterface ? metrics.size(500 / metrics.scale) : 500)
-        .sheet(item: editorRequest) { request in
+        .blur(radius: webTerminalPresented ? metrics.size(10) : 0)
+        .allowsHitTesting(!webTerminalPresented)
+        .accessibilityHidden(webTerminalPresented)
+        .sheet(item: systemEditorRequest) { request in
             if let workspace = environment.workspace { editor(for: request, workspace: workspace) }
         }
+        .overlay {
+            if webTerminalPresented, let request = environment.editorRequest, let workspace = environment.workspace {
+                NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }) { close in
+                    editor(for: request, workspace: workspace, closeOverlay: close)
+                }
+                .id(request.id)
+            }
+        }
+    }
+
+    private var webTerminalPresented: Bool {
+        guard metrics.isWebInterface, let request = environment.editorRequest else { return false }
+        switch request {
+        case .newTerminal, .newSubTab: return true
+        default: return false
+        }
+    }
+
+    private var systemEditorRequest: Binding<EditorRequest?> {
+        Binding { webTerminalPresented ? nil : environment.editorRequest } set: { environment.editorRequest = $0 }
     }
 
     private var webShell: some View {
@@ -103,7 +126,7 @@ struct MainWindow: View {
     }
 
     @ViewBuilder
-    private func editor(for request: EditorRequest, workspace: WorkspaceModel) -> some View {
+    private func editor(for request: EditorRequest, workspace: WorkspaceModel, closeOverlay: (() -> Void)? = nil) -> some View {
         switch request {
         case .newProject(let location, let folder):
             ProjectEditor(workspace: workspace, undoManager: undoManager, editing: nil, initialLocation: location,
@@ -116,10 +139,10 @@ struct MainWindow: View {
             GroupEditor(workspace: workspace, undoManager: undoManager, editing: id, initialParent: nil)
         case .newTerminal(let project):
             NewTerminalSheet(workspace: workspace, undoManager: undoManager,
-                             initialProject: project ?? workspace.document.workspace.selectedProjectID)
+                             initialProject: project ?? workspace.document.workspace.selectedProjectID, closeOverlay: closeOverlay)
         case .newSubTab(let pane):
             NewTerminalSheet(workspace: workspace, undoManager: undoManager,
-                             initialProject: workspace.document.pane(pane)?.project.id, targetPane: pane)
+                             initialProject: workspace.document.pane(pane)?.project.id, targetPane: pane, closeOverlay: closeOverlay)
         case .addContent(let project):
             AddContentSheet(workspace: workspace, undoManager: undoManager,
                             project: project ?? workspace.document.workspace.selectedProjectID)
