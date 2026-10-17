@@ -34,6 +34,10 @@ describe('voiceServersStore', () => {
   it('marks the list loaded even when listing fails', async () => {
     tauri.voiceServersList.mockRejectedValue(new Error('x'))
     await useVoiceServersStore.getState().refresh()
-    expect(useVoiceServersStore.getState()).toMatchObject({ servers: [], loaded: true, failed: true })
+    expect(useVoiceServersStore.getState()).toMatchObject({
+      servers: [],
+      loaded: true,
+      failed: true,
+    })
   })
 })

@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { decodeOsc52 } from './osc52'
 
-const encode = (text: string) =>
-  btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+const encode = (text: string) => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
 
 describe('decodeOsc52', () => {
   it('decodes a clipboard write, UTF-8 included', () => {

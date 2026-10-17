@@ -1,68 +1,68 @@
 [
- {
-  "type": "directory",
-  "oid": "18b4177b08ec0c62e043a523f05a5059a9ca075e",
-  "size": 0,
-  "path": "espeak-ng-data"
- },
- {
-  "type": "file",
-  "oid": "495fe935f83c472badd32596706b266cb4ccb955",
-  "size": 1608,
-  "path": ".gitattributes"
- },
- {
-  "type": "file",
-  "oid": "d20a0a0d7502c64f56c11d1becd2e5bdf3916fa2",
-  "size": 278,
-  "path": "MODEL_CARD"
- },
- {
-  "type": "file",
-  "oid": "c80197330f8c63a954cc0ff213197679230d9873",
-  "size": 67817,
-  "path": "espeak-ng-data/pt_dict"
- },
- {
-  "type": "file",
-  "oid": "4623c8486c714eafa399ff4b9dbc74ff2904ccab",
-  "size": 3193,
-  "path": "espeak-ng-data/voices/!v/Mr serious"
- },
- {
-  "type": "file",
-  "oid": "a0df7ad6d83eacef1b464c79cae871504cee7ac3",
-  "size": 63201428,
-  "lfs": {
-   "oid": "39fb6b580d6d40a3230b7a9d0851d282074537b9694892b5b3cd90ff87c6cbb3",
-   "size": 63201428,
-   "pointerSize": 133
+  {
+    "type": "directory",
+    "oid": "18b4177b08ec0c62e043a523f05a5059a9ca075e",
+    "size": 0,
+    "path": "espeak-ng-data"
   },
-  "xetHash": "6b5d2a50238696c74490a09eef7b88f960b3451cbf85390f28a51c63f39ad4e2",
-  "path": "pt_BR-faber-medium.onnx"
- },
- {
-  "type": "file",
-  "oid": "b0206c81d70e6e4468b94d36491b4c17fac531b7",
-  "size": 4855,
-  "path": "pt_BR-faber-medium.onnx.json"
- },
- {
-  "type": "file",
-  "oid": "faf0ab137b386bdfbe74f0b4f1a4c9d839d893f4",
-  "size": 907,
-  "path": "tokens.txt"
- },
- {
-  "type": "file",
-  "oid": "e0a8ec8260d5bab9f068d13c878263fe9549e286",
-  "size": 2243,
-  "path": "vits-piper.py"
- },
- {
-  "type": "file",
-  "oid": "2a163d7140690d0f371ed9dd2bb5b4d73a3bf531",
-  "size": 1758,
-  "path": "vits-piper.sh"
- }
+  {
+    "type": "file",
+    "oid": "495fe935f83c472badd32596706b266cb4ccb955",
+    "size": 1608,
+    "path": ".gitattributes"
+  },
+  {
+    "type": "file",
+    "oid": "d20a0a0d7502c64f56c11d1becd2e5bdf3916fa2",
+    "size": 278,
+    "path": "MODEL_CARD"
+  },
+  {
+    "type": "file",
+    "oid": "c80197330f8c63a954cc0ff213197679230d9873",
+    "size": 67817,
+    "path": "espeak-ng-data/pt_dict"
+  },
+  {
+    "type": "file",
+    "oid": "4623c8486c714eafa399ff4b9dbc74ff2904ccab",
+    "size": 3193,
+    "path": "espeak-ng-data/voices/!v/Mr serious"
+  },
+  {
+    "type": "file",
+    "oid": "a0df7ad6d83eacef1b464c79cae871504cee7ac3",
+    "size": 63201428,
+    "lfs": {
+      "oid": "39fb6b580d6d40a3230b7a9d0851d282074537b9694892b5b3cd90ff87c6cbb3",
+      "size": 63201428,
+      "pointerSize": 133
+    },
+    "xetHash": "6b5d2a50238696c74490a09eef7b88f960b3451cbf85390f28a51c63f39ad4e2",
+    "path": "pt_BR-faber-medium.onnx"
+  },
+  {
+    "type": "file",
+    "oid": "b0206c81d70e6e4468b94d36491b4c17fac531b7",
+    "size": 4855,
+    "path": "pt_BR-faber-medium.onnx.json"
+  },
+  {
+    "type": "file",
+    "oid": "faf0ab137b386bdfbe74f0b4f1a4c9d839d893f4",
+    "size": 907,
+    "path": "tokens.txt"
+  },
+  {
+    "type": "file",
+    "oid": "e0a8ec8260d5bab9f068d13c878263fe9549e286",
+    "size": 2243,
+    "path": "vits-piper.py"
+  },
+  {
+    "type": "file",
+    "oid": "2a163d7140690d0f371ed9dd2bb5b4d73a3bf531",
+    "size": 1758,
+    "path": "vits-piper.sh"
+  }
 ]

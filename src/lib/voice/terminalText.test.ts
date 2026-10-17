@@ -19,9 +19,13 @@ describe('cleanTerminalLine', () => {
 describe('readableTerminalText', () => {
   // A terminal wraps at its width, not at sentence ends.
   it('joins the lines of a paragraph and keeps paragraphs apart', () => {
-    const raw = ['The build failed because', 'the import was wrong.', '', '╭────╮', 'Fixed now.'].join(
-      '\n',
-    )
+    const raw = [
+      'The build failed because',
+      'the import was wrong.',
+      '',
+      '╭────╮',
+      'Fixed now.',
+    ].join('\n')
     expect(readableTerminalText(raw)).toBe(
       'The build failed because the import was wrong.\nFixed now.',
     )

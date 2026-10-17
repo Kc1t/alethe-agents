@@ -64,7 +64,10 @@ export function ServerDetail({
     }
     // A failed test reports loopback: true, so only a successful one is trusted for the notice.
     if (result.ok) setLan(!result.loopback)
-    setHealth(target, result.ok ? 'connected' : result.reason === 'auth' ? 'invalid' : 'disconnected')
+    setHealth(
+      target,
+      result.ok ? 'connected' : result.reason === 'auth' ? 'invalid' : 'disconnected',
+    )
     setFeedback(
       result.ok
         ? { tone: 'ok', text: t('prefs.voiceServerOnline', { count: result.voices.length }) }
@@ -223,12 +226,7 @@ export function ServerDetail({
           <PlugZap size={14} aria-hidden="true" />
           {t('prefs.voiceServerTest')}
         </button>
-        <button
-          type="button"
-          className={controls.btn}
-          disabled={busy || !id}
-          onClick={use}
-        >
+        <button type="button" className={controls.btn} disabled={busy || !id} onClick={use}>
           {t('prefs.voiceServerUse')}
         </button>
         {hasKey ? (

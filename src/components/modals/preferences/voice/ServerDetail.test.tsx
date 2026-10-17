@@ -41,7 +41,12 @@ describe('ServerDetail', () => {
     Object.values(tauri).forEach((fn) => fn.mockReset())
     tauri.voiceServersList.mockResolvedValue([saved])
     tauri.voiceServersSave.mockResolvedValue({ server: saved, loopback: false })
-    tauri.voiceServersTest.mockResolvedValue({ ok: true, reason: null, voices: ['a', 'b'], loopback: false })
+    tauri.voiceServersTest.mockResolvedValue({
+      ok: true,
+      reason: null,
+      voices: ['a', 'b'],
+      loopback: false,
+    })
   })
 
   it('creates a server, shows the LAN notice and tests it', async () => {
@@ -66,7 +71,12 @@ describe('ServerDetail', () => {
 
   it('keeps the LAN notice when the test of a LAN server fails', async () => {
     tauri.voiceServersSave.mockResolvedValue({ server: saved, loopback: false })
-    tauri.voiceServersTest.mockResolvedValue({ ok: false, reason: 'network', voices: [], loopback: true })
+    tauri.voiceServersTest.mockResolvedValue({
+      ok: false,
+      reason: 'network',
+      voices: [],
+      loopback: true,
+    })
     render(<ServerDetail serverId={null} onBack={() => undefined} />)
     fireEvent.change(screen.getByLabelText('prefs.voiceServerName'), { target: { value: 'Fish' } })
     fireEvent.change(screen.getByLabelText('prefs.voiceServerAddress'), {

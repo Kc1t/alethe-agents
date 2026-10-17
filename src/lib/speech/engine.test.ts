@@ -7,19 +7,38 @@ const choice = (provider: string, model: string, locale: string | null = null) =
 
 describe('sttChoiceFor', () => {
   it('returns the use own choice', () => {
-    const prefs = { voiceStt: { dictation: choice('local', 'zipformer-small-en-int8'), conversation: choice('openai', 'whisper-1') } }
+    const prefs = {
+      voiceStt: {
+        dictation: choice('local', 'zipformer-small-en-int8'),
+        conversation: choice('openai', 'whisper-1'),
+      },
+    }
     expect(sttChoiceFor(prefs, 'conversation')).toEqual({
-      provider: 'openai', modelId: 'whisper-1', locale: null, needsLocale: false, fallbackLocale: null,
+      provider: 'openai',
+      modelId: 'whisper-1',
+      locale: null,
+      needsLocale: false,
+      fallbackLocale: null,
     })
   })
 
   it('asks for a locale when Apple has none', () => {
-    const prefs = { voiceStt: { dictation: choice('apple', 'apple-speech'), conversation: choice('apple', 'apple-speech') } }
+    const prefs = {
+      voiceStt: {
+        dictation: choice('apple', 'apple-speech'),
+        conversation: choice('apple', 'apple-speech'),
+      },
+    }
     expect(sttChoiceFor(prefs, 'dictation').needsLocale).toBe(true)
   })
 
   it('offers an Apple locale from either use as the fallback', () => {
-    const prefs = { voiceStt: { dictation: choice('openai', 'whisper-1'), conversation: choice('apple', 'apple-speech', 'pt-BR') } }
+    const prefs = {
+      voiceStt: {
+        dictation: choice('openai', 'whisper-1'),
+        conversation: choice('apple', 'apple-speech', 'pt-BR'),
+      },
+    }
     expect(sttChoiceFor(prefs, 'dictation').fallbackLocale).toBe('pt-BR')
   })
 })

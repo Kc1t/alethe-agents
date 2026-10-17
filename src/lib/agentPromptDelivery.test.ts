@@ -173,7 +173,12 @@ describe('readRecentLines', () => {
   })
 
   it('reads the last lines, scrollback included, joining soft-wrapped rows', () => {
-    const rows: Array<[string, boolean?]> = [['old'], ['first half '], ['second half', true], ['end']]
+    const rows: Array<[string, boolean?]> = [
+      ['old'],
+      ['first half '],
+      ['second half', true],
+      ['end'],
+    ]
     expect(readRecentLines(buffer(rows), 3)).toBe('first half second half\nend')
     expect(readRecentLines(buffer(rows), 10)).toBe('old\nfirst half second half\nend')
   })
