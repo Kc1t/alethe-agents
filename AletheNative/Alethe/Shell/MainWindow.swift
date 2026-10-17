@@ -33,15 +33,16 @@ struct MainWindow: View {
             if metrics.isWebInterface { sidebarVisible.toggle() }
         }
         .overlay {
-            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(32))
+            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(40))
                 .ignoresSafeArea(.container, edges: .top)
         }
         .accessibilityHidden(!environment.startupFinished)
         .overlay {
             if !environment.startupFinished { StartupLoadingView() }
         }
-        .frame(minWidth: metrics.isWebInterface ? metrics.size(800) : 800,
-               minHeight: metrics.isWebInterface ? metrics.size(500) : 500)
+        // Keep the window usable at 800×500 even when its controls are zoomed.
+        .frame(minWidth: metrics.isWebInterface ? metrics.size(800 / metrics.scale) : 800,
+               minHeight: metrics.isWebInterface ? metrics.size(500 / metrics.scale) : 500)
         .sheet(item: editorRequest) { request in
             if let workspace = environment.workspace { editor(for: request, workspace: workspace) }
         }
@@ -50,25 +51,27 @@ struct MainWindow: View {
     private var webShell: some View {
         VStack(spacing: 0) {
             WebTitleBar(sidebarVisible: $sidebarVisible)
-            HStack(spacing: 0) {
-                if sidebarVisible {
-                    LeftSidebar()
-                        .frame(width: metrics.size(webLeftWidth))
-                        .background(theme[.bg])
-                    WebShellSeparator(width: $webLeftWidth, limits: 220...380)
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    if sidebarVisible {
+                        LeftSidebar()
+                            .frame(width: min(metrics.size(webLeftWidth), geometry.size.width * 0.30))
+                            .background(theme[.bg])
+                        WebShellSeparator(width: $webLeftWidth, limits: 220...380)
+                    }
+                    WorkspaceView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                        .overlay(alignment: .bottom) { DictationHUD() }
+                    if environment.rightSidebarVisible {
+                        WebShellSeparator(width: $webRightWidth, limits: 260...420, trailing: true)
+                        RightSidebar()
+                            .frame(width: min(metrics.size(webRightWidth), geometry.size.width * 0.30))
+                            .background(theme[.bg])
+                    }
                 }
-                WorkspaceView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .overlay(alignment: .bottom) { DictationHUD() }
-                if environment.rightSidebarVisible {
-                    WebShellSeparator(width: $webRightWidth, limits: 260...420, trailing: true)
-                    RightSidebar()
-                        .frame(width: metrics.size(webRightWidth))
-                        .background(theme[.bg])
-                }
+                .frame(maxHeight: .infinity)
             }
-            .frame(maxHeight: .infinity)
         }
         .background(theme[.bg])
         .ignoresSafeArea(.container, edges: .top)

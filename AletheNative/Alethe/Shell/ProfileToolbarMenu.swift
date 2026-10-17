@@ -73,7 +73,9 @@ struct ProfileToolbarMenu: View {
                         .lineLimit(metrics.isWebInterface ? 1 : nil)
                 } icon: {
                     if metrics.isWebInterface {
-                        Image(systemName: "person.2").font(metrics.font(size: 12))
+                        Image(systemName: "person.2")
+                            .resizable().scaledToFit()
+                            .frame(width: metrics.size(12), height: metrics.size(12))
                     } else {
                         Image(systemName: "person.crop.circle")
                     }

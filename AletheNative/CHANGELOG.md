@@ -16,6 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web interface title-bar controls use fixed icon frames and a 32-point sidebar toggle inside a
+  40-point bar, with macOS traffic lights reserved separately. The right tab strip is 40 points
+  tall and Markdown empty states use a centered 24-point icon.
+- Web workspace empty actions retain the original watermark, spacing and shortcut sizes without
+  overflowing narrow windows. Sidebars yield width at 800×500 and higher interface zoom levels.
 - Fixed opaque return type inference in the native Settings tabbed layout.
 - Home quick-launch agent images keep a 16-point intrinsic and layout size, preventing oversized
   menu artwork; Agent, Path and Mode controls retain their web widths and compact wrapping.

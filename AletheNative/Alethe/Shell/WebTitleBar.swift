@@ -25,7 +25,9 @@ struct WebTitleBar: View {
                     Button { environment.showingHome = true } label: { Label("menu.view.showHome", systemImage: "house") }
                     Button { openSettings() } label: { Label("leftSidebar.preferences", systemImage: "gearshape") }
                 } label: {
-                    Image(systemName: "line.3.horizontal").font(metrics.font(size: 14))
+                    Image(systemName: "line.3.horizontal")
+                        .resizable().scaledToFit()
+                        .frame(width: metrics.size(14), height: metrics.size(14))
                 }
                 .buttonStyle(AletheIconButtonStyle(side: 28))
                 .menuStyle(.borderlessButton)
@@ -33,7 +35,7 @@ struct WebTitleBar: View {
                 .frame(width: metrics.size(28), height: metrics.size(28))
                 .accessibilityLabel(Text("chrome.mainMenu"))
                 .accessibilityIdentifier("chrome.mainMenu")
-                icon("sidebar.left", label: "chrome.toggleSidebar", id: "chrome.toggleSidebar", isOn: sidebarVisible) {
+                icon("sidebar.left", label: "chrome.toggleSidebar", id: "chrome.toggleSidebar", isOn: sidebarVisible, side: 32) {
                     sidebarVisible.toggle()
                 }
 
@@ -102,7 +104,7 @@ struct WebTitleBar: View {
             .padding(.trailing, metrics.size(6))
         }
         .foregroundStyle(theme[.fgMuted])
-        .frame(height: metrics.size(32))
+        .frame(height: metrics.size(40))
         .background(WindowDragRegion())
         .background(theme[.bgElevated])
         .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
@@ -113,10 +115,15 @@ struct WebTitleBar: View {
         (environment.preferences?.document ?? PreferencesDocument()).showsToolbarItem(item)
     }
 
-    private func icon(_ symbol: String, label: LocalizedStringKey, id: String, isOn: Bool = false, size: CGFloat = 14,
+    private func icon(_ symbol: String, label: LocalizedStringKey, id: String, isOn: Bool = false, size: CGFloat = 14, side: CGFloat = 28,
                       action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: symbol).font(metrics.font(size: size)) }
-            .buttonStyle(AletheIconButtonStyle(side: 28, isOn: isOn))
+        Button(action: action) {
+            Image(systemName: symbol)
+                .resizable().scaledToFit()
+                .frame(width: metrics.size(size), height: metrics.size(size))
+        }
+            .buttonStyle(AletheIconButtonStyle(side: side, isOn: isOn))
+            .fixedSize()
             .help(Text(label))
             .accessibilityLabel(Text(label))
             .accessibilityIdentifier(id)

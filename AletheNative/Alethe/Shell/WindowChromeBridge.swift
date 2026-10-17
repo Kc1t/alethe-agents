@@ -20,7 +20,7 @@ struct WindowChromeBridge: NSViewRepresentable {
 
     final class ChromeView: NSView {
         var web = false
-        var barHeight: CGFloat = 32
+        var barHeight: CGFloat = 40
         private var previousWeb: Bool?
         private var savedToolbar: NSToolbar?
         private var savedTitleVisibility: NSWindow.TitleVisibility = .visible
@@ -121,7 +121,7 @@ struct WindowChromeBridge: NSViewRepresentable {
                 // real buttons in our overlay so their target/actions and accessibility survive.
                 if button.superview !== self { addSubview(button) }
                 button.isHidden = false
-                let scale = barHeight / 32
+                let scale = barHeight / 40
                 let origin = NSPoint(x: (12 + CGFloat(index) * 20) * scale,
                                      y: (barHeight - button.frame.height) / 2)
                 if button.frame.origin != origin { button.setFrameOrigin(origin) }

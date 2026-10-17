@@ -181,7 +181,11 @@ struct RightSidebar: View {
                         Button {
                             environment.rightSidebarTab = tab.id
                         } label: {
-                            Label(PluginViewRegistry.title(for: tab), systemImage: webSymbol(tab))
+                            Label { Text(PluginViewRegistry.title(for: tab)) } icon: {
+                                Image(systemName: webSymbol(tab))
+                                    .resizable().scaledToFit()
+                                    .frame(width: metrics.size(14), height: metrics.size(14))
+                            }
                         }
                         .buttonStyle(AletheRightSidebarTabStyle(selected: selected?.id == tab.id))
                         .help(Text(PluginViewRegistry.title(for: tab)))
@@ -196,7 +200,11 @@ struct RightSidebar: View {
                 Button {
                     environment.editorRequest = .mcpManager(McpManagerRoute())
                 } label: {
-                    Label("rightSidebar.maximize", systemImage: "arrow.up.left.and.arrow.down.right")
+                    Label { Text("rightSidebar.maximize") } icon: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .resizable().scaledToFit()
+                            .frame(width: metrics.size(14), height: metrics.size(14))
+                    }
                 }
                 .buttonStyle(AletheRightSidebarTabStyle())
                 .help(Text("rightSidebar.maximize"))
@@ -208,7 +216,11 @@ struct RightSidebar: View {
             Button {
                 environment.rightSidebarVisible = false
             } label: {
-                Label("rightSidebar.close", systemImage: "sidebar.right")
+                Label { Text("rightSidebar.close") } icon: {
+                    Image(systemName: "sidebar.right")
+                        .resizable().scaledToFit()
+                        .frame(width: metrics.size(14), height: metrics.size(14))
+                }
             }
             .buttonStyle(AletheRightSidebarTabStyle())
             .help(Text("rightSidebar.close"))
@@ -216,13 +228,14 @@ struct RightSidebar: View {
         }
         .padding(.horizontal, metrics.size(10))
         .padding(.vertical, metrics.size(4))
-        .frame(height: metrics.size(34))
+        .frame(height: metrics.size(40))
         .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
     }
 
     private func webSymbol(_ tab: SidebarTabContribution) -> String {
         switch tab.viewID {
-        case AgentsView.tabID: "cpu"
+        case AgentsView.tabID: "head.square"
+        case "plugins": "square.grid.2x2"
         case GSDSyncView.tabID: "sparkles"
         default: tab.symbol
         }
@@ -255,7 +268,7 @@ struct WebSidebarEmpty: View {
     var detail: LocalizedStringKey? = nil
     var symbol = "doc.text"
     var boxed = false
-    var iconSize: CGFloat = 20
+    var iconSize: CGFloat = 24
     var minimumHeight: CGFloat? = nil
     var gap: CGFloat? = nil
     var centeredInPanel = true
@@ -263,7 +276,9 @@ struct WebSidebarEmpty: View {
     @Environment(\.theme) private var theme
     var body: some View {
         VStack(spacing: metrics.size(gap ?? (boxed ? 7 : 8))) {
-            Image(systemName: symbol).font(metrics.font(size: iconSize))
+            Image(systemName: symbol)
+                .resizable().scaledToFit()
+                .frame(width: metrics.size(iconSize), height: metrics.size(iconSize))
                 .foregroundStyle(theme[boxed ? .fgFaint : .fgMuted])
                 .frame(width: boxed ? metrics.size(38) : nil, height: boxed ? metrics.size(38) : nil)
                 .background(theme[.bgElevated].opacity(boxed ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
@@ -294,8 +309,9 @@ private struct WebUnavailableSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: metrics.size(7)) {
-                Image(systemName: voice ? "mic" : "square.3.layers.3d")
-                    .font(metrics.font(size: voice ? 15 : 16))
+                Image(systemName: voice ? "mic" : "square.grid.2x2")
+                    .resizable().scaledToFit()
+                    .frame(width: metrics.size(voice ? 15 : 16), height: metrics.size(voice ? 15 : 16))
                 Text((voice ? "rightSidebar.jev" : "rightSidebar.plugins") as LocalizedStringKey)
                     .font(metrics.font(size: 14, weight: .medium)).lineLimit(1)
                 Spacer(minLength: 0)
@@ -314,7 +330,9 @@ private struct WebUnavailableSidebar: View {
             .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
             if !voice {
                 HStack(spacing: metrics.size(6)) {
-                    Image(systemName: "magnifyingglass").font(metrics.font(size: 13))
+                    Image(systemName: "magnifyingglass")
+                        .resizable().scaledToFit()
+                        .frame(width: metrics.size(13), height: metrics.size(13))
                     TextField("rightSidebar.plugins.search", text: .constant(""))
                         .textFieldStyle(.plain).font(metrics.font(size: 12))
                         .padding(.horizontal, metrics.size(8)).frame(height: metrics.size(26))
@@ -331,7 +349,9 @@ private struct WebUnavailableSidebar: View {
                     WebSidebarEmpty(title: "rightSidebar.jev.empty", detail: "rightSidebar.jev.unavailable", symbol: "mic", boxed: true, iconSize: 18)
                 } else {
                     VStack(spacing: metrics.size(8)) {
-                        Image(systemName: "square.3.layers.3d").font(metrics.font(size: 20))
+                        Image(systemName: "square.grid.2x2")
+                            .resizable().scaledToFit()
+                            .frame(width: metrics.size(24), height: metrics.size(24))
                         Text("rightSidebar.plugins.empty").font(metrics.font(size: 12, weight: .bold)).foregroundStyle(theme[.fg])
                         Text("rightSidebar.plugins.unavailable").font(metrics.font(size: 11))
                             .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)

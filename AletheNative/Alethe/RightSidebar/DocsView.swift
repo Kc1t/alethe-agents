@@ -80,7 +80,9 @@ struct DocsView: View {
         if let file = opened.first(where: { $0.path == selectedPath }) {
             VStack(spacing: 0) {
                 WebSidebarHeader {
-                    Image(systemName: "doc.text").font(metrics.font(size: 15))
+                    Image(systemName: "doc.text")
+                        .resizable().scaledToFit()
+                        .frame(width: metrics.size(15), height: metrics.size(15))
                     Text(verbatim: file.name).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                     Spacer(minLength: 0)
                     HStack(spacing: metrics.size(2)) {
@@ -108,7 +110,9 @@ struct DocsView: View {
                                         selectedPath = tab.path
                                     } label: {
                                         HStack(spacing: metrics.size(5)) {
-                                            Image(systemName: "doc.text").font(metrics.font(size: 11))
+                                            Image(systemName: "doc.text")
+                                                .resizable().scaledToFit()
+                                                .frame(width: metrics.size(11), height: metrics.size(11))
                                             Text(verbatim: tab.name).lineLimit(1)
                                         }
                                         .padding(.leading, metrics.size(7)).padding(.trailing, metrics.size(4))
@@ -117,7 +121,9 @@ struct DocsView: View {
                                     Button {
                                         close(tab)
                                     } label: {
-                                        Image(systemName: "xmark").font(metrics.font(size: 10))
+                                        Image(systemName: "xmark")
+                                            .resizable().scaledToFit()
+                                            .frame(width: metrics.size(10), height: metrics.size(10))
                                             .padding(.leading, metrics.size(3)).padding(.trailing, metrics.size(6))
                                             .padding(.vertical, metrics.size(5))
                                     }.accessibilityLabel(Text("docs.closeTab")).accessibilityIdentifier("docs.tab.close")
@@ -143,7 +149,9 @@ struct DocsView: View {
                     .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
                 if let error = file.loadError {
                     VStack(spacing: metrics.size(7)) {
-                        Image(systemName: "doc.text").font(metrics.font(size: 20))
+                        Image(systemName: "doc.text")
+                            .resizable().scaledToFit()
+                            .frame(width: metrics.size(20), height: metrics.size(20))
                         Text(verbatim: format("markdown.loadError", file.path)).font(metrics.font(size: 12, weight: .bold))
                         Text(verbatim: error).font(metrics.font(size: 11))
                         Button("markdown.refresh") { file.reload() }.buttonStyle(AletheButtonStyle(size: .small))

@@ -87,6 +87,9 @@ struct WorkspaceView: View {
         GeometryReader { geometry in
             let viewportWidth = (NSApp.keyWindow?.frame.width ?? geometry.size.width) / metrics.scale
             let markSide: CGFloat = viewportWidth <= 520 ? 104 : min(190, max(112, viewportWidth * 0.18))
+            let contentWidth = max(0, min(metrics.size(360), geometry.size.width - metrics.size(68)))
+            let availableMarkSide = min(metrics.size(markSide), contentWidth,
+                                        max(0, geometry.size.height - metrics.size(140)))
             VStack(spacing: metrics.size(viewportWidth <= 520 ? 16 : 24)) {
                 Image("WorkspaceKnight")
                     .renderingMode(.template)
@@ -94,8 +97,7 @@ struct WorkspaceView: View {
                     .aspectRatio(contentMode: .fit)
                     .foregroundStyle(theme[.fg])
                     .opacity(0.045)
-                    .frame(width: metrics.size(markSide),
-                           height: metrics.size(markSide))
+                    .frame(width: availableMarkSide, height: availableMarkSide)
                     .accessibilityHidden(true)
                 VStack(spacing: metrics.size(2)) {
                     if let project = emptyProject, !project.panes.isEmpty {
@@ -112,8 +114,7 @@ struct WorkspaceView: View {
                 }
                 .frame(maxWidth: metrics.size(280))
             }
-            .frame(maxWidth: metrics.size(360))
-            .frame(width: max(0, geometry.size.width - metrics.size(32)))
+            .frame(width: contentWidth)
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .accessibilityElement(children: .contain)
@@ -125,6 +126,7 @@ struct WorkspaceView: View {
         Button(action: action) {
             HStack(spacing: metrics.size(18)) {
                 Text(title).font(metrics.font(size: 12))
+                    .lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 0)
                 if let shortcut {
                     Text(verbatim: shortcut)
@@ -135,6 +137,7 @@ struct WorkspaceView: View {
                         .overlay(RoundedRectangle(cornerRadius: metrics.size(3))
                             .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                         .overlay(alignment: .bottom) { theme[.borderStrong].frame(height: metrics.size(1)) }
+                        .fixedSize()
                         .accessibilityHidden(true)
                 }
             }
