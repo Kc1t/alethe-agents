@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Web-style sidebar project menus can hide, reveal, archive and restore projects, with local state
+  retained per profile. Profile images can be selected locally or reset to the bundled default.
+- A sidebar update chip links to newer stable native DMG releases on the fork when available.
 - Persistent prompt queue in the right sidebar for Codex and Claude, with priority ordering,
   drag reordering, Run now and Cancel actions. Prompts release when an agent has capacity, at a
   scheduled time or after a job settles; usage-limit failures wait for the reset before retrying.
@@ -22,6 +25,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and zoom controls; agent rows show brand logos and wrap their actions in narrow windows.
   Shortcuts and application version are available in the sidebar. Native macOS Settings retain
   their tabbed layout.
+- Web-style sidebar navigation includes the Git control shortcut; search uses a 52-point row,
+  project folders use 20-point symbols, and empty lists omit the surrounding bordered card.
+  Profile menus show the active avatar and identity; new project actions retain context-menu icons.
 - The Alethe sidebar uses bundled agent logos (including mixed-agent terminal stacks), the default
   profile image, icon-only row menus and labeled context-menu icons. Long names yield to fixed
   controls; count chips, album art and playback indicators retain their dimensions when zoomed.

@@ -104,14 +104,25 @@ struct SidebarActions {
     }
 
     /// Reordering inside one list (the outline view's own drag).
-    func reorder(in location: ProjectLocation, from source: IndexSet, to destination: Int) {
+    func reorder(in location: ProjectLocation, from source: IndexSet, to destination: Int, visibleIDs: [ProjectID]? = nil) {
         let ids = location == .ungrouped
             ? workspace.document.ungroupedProjectIDs
             : (workspace.document.groups.first { .group($0.id) == location }?.projectIDs ?? [])
-        guard let first = source.first, source.count == 1, ids.indices.contains(first) else { return }
+        let visible = visibleIDs ?? ids
+        guard let first = source.first, source.count == 1, visible.indices.contains(first) else { return }
+        let target = visibleIDs.map { insertionIndex(destination, in: location, visibleIDs: $0) } ?? destination
         workspace.update(undoManager: undoManager, actionName: String(localized: "undo.move")) {
-            $0.moveProject(ids[first], to: location, at: destination)
+            $0.moveProject(visible[first], to: location, at: target)
         }
+    }
+
+    /// Translate an insertion among visible rows to the persisted list, including hidden projects.
+    func insertionIndex(_ index: Int, in location: ProjectLocation, visibleIDs: [ProjectID]) -> Int {
+        let ids = location == .ungrouped
+            ? workspace.document.ungroupedProjectIDs
+            : (workspace.document.groups.first { .group($0.id) == location }?.projectIDs ?? [])
+        guard visibleIDs.indices.contains(index) else { return ids.count }
+        return ids.firstIndex(of: visibleIDs[index]) ?? ids.count
     }
 
     /// A drop between group rows: groups are reordered among the children of `parent`.

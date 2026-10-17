@@ -8,6 +8,10 @@ import SwiftUI
 
 /// Projects organized in nested groups, with each project's terminals underneath.
 struct SidebarView: View {
+    @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
+    @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
+    @AppStorage(SidebarProjectVisibility.revealKey) private var revealHidden = false
+
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.undoManager) private var undoManager
     @Environment(\.metrics) private var metrics
@@ -47,6 +51,20 @@ struct SidebarView: View {
                         }
                     }
                 } else { projectList(workspace) }
+                if workspace.document.projects.contains(where: {
+                    SidebarProjectVisibility.contains(hiddenProjects, project: $0.id, profile: environment.profileID)
+                    || SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
+                }) {
+                    Menu { visibilityControls(workspace) } label: {
+                        Label("sidebar.web.projectVisibility", systemImage: "eye")
+                            .font(metrics.font(size: 11))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(metrics.size(8))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .padding(.horizontal, metrics.size(8))
+                    .accessibilityIdentifier("sidebar.projectVisibility")
+                }
             }
         } else { projectList(workspace) }
     }
@@ -54,6 +72,10 @@ struct SidebarView: View {
     private func projectList(_ workspace: WorkspaceModel) -> some View {
         let actions = SidebarActions(workspace: workspace, undoManager: undoManager)
         let doc = workspace.document
+        let projectIDs = doc.ungroupedProjectIDs.filter {
+            !metrics.isWebInterface || SidebarProjectVisibility.visible($0, profile: environment.profileID,
+                hidden: hiddenProjects, archived: archivedProjects, reveal: revealHidden)
+        }
         return List(selection: selection(workspace, actions)) {
             Section {
                 if doc.projects.isEmpty && doc.groups.isEmpty {
@@ -73,14 +95,14 @@ struct SidebarView: View {
                 .onInsert(of: [.plainText]) { index, providers in
                     SidebarDrag.load(providers) { actions.insertGroup($0, under: nil, at: index) }
                 }
-                ForEach(doc.ungroupedProjectIDs, id: \.self) { id in
+                ForEach(projectIDs, id: \.self) { id in
                     if let project = doc.project(id) {
                         ProjectRow(project: project, actions: actions)
                     }
                 }
-                .onMove { source, destination in actions.reorder(in: .ungrouped, from: source, to: destination) }
+                .onMove { source, destination in actions.reorder(in: .ungrouped, from: source, to: destination, visibleIDs: metrics.isWebInterface ? projectIDs : nil) }
                 .onInsert(of: [.plainText]) { index, providers in
-                    SidebarDrag.load(providers) { actions.insert($0, into: .ungrouped, at: index) }
+                    SidebarDrag.load(providers) { actions.insert($0, into: .ungrouped, at: metrics.isWebInterface ? actions.insertionIndex(index, in: .ungrouped, visibleIDs: projectIDs) : index) }
                 }
             } header: {
                 if !metrics.isWebInterface { SidebarProjectsHeader(actions: actions) }
@@ -98,6 +120,34 @@ struct SidebarView: View {
             SidebarMenuButton("menu.file.newProject", symbol: "plus") { environment.editorRequest = .newProject(.ungrouped) }
             SidebarMenuButton("sidebar.addProject", symbol: "folder.badge.plus") { actions.chooseFolders() }
             SidebarMenuButton("menu.file.newGroup", symbol: "folder.badge.plus") { environment.editorRequest = .newGroup(parent: nil) }
+            if metrics.isWebInterface {
+                visibilityControls(workspace)
+            }
+        }
+    }
+
+    @ViewBuilder private func visibilityControls(_ workspace: WorkspaceModel) -> some View {
+        let hidden = workspace.document.projects.filter {
+            SidebarProjectVisibility.contains(hiddenProjects, project: $0.id, profile: environment.profileID)
+                && !SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
+        }
+        let archived = workspace.document.projects.filter {
+            SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
+        }
+        if !hidden.isEmpty || revealHidden {
+            Divider()
+            SidebarMenuButton(revealHidden ? "sidebar.web.hideHidden" : "sidebar.web.revealHidden",
+                              symbol: revealHidden ? "eye.slash" : "eye") { revealHidden.toggle() }
+        }
+        if !archived.isEmpty {
+            Menu {
+                ForEach(archived) { project in
+                    Button {
+                        archivedProjects = SidebarProjectVisibility.setting(archivedProjects, project: project.id,
+                            profile: environment.profileID, enabled: false)
+                    } label: { Label { Text(verbatim: project.name) } icon: { Image(systemName: "arrow.uturn.backward") } }
+                }
+            } label: { Label("sidebar.web.restoreArchived", systemImage: "archivebox") }
         }
     }
 
@@ -180,6 +230,10 @@ private struct SidebarProjectsHeader: View {
 }
 
 private struct GroupRow: View {
+    @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
+    @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
+    @AppStorage(SidebarProjectVisibility.revealKey) private var revealHidden = false
+
     let group: ProjectGroup
     let actions: SidebarActions
     @Environment(AppEnvironment.self) private var environment
@@ -191,12 +245,16 @@ private struct GroupRow: View {
 
     var body: some View {
         let doc = actions.workspace.document
+        let projectIDs = group.projectIDs.filter {
+            !metrics.isWebInterface || SidebarProjectVisibility.visible($0, profile: environment.profileID,
+                hidden: hiddenProjects, archived: archivedProjects, reveal: revealHidden)
+        }
         SidebarDisclosure(isGroup: true, item: .group(group.id), isExpanded: Binding {
             !group.isCollapsed
         } set: { expanded in
             actions.setCollapsed(group.id, !expanded)
         }) {
-            if group.projectIDs.isEmpty && doc.childGroups(of: group.id).isEmpty {
+            if projectIDs.isEmpty && doc.childGroups(of: group.id).isEmpty {
                 if metrics.isWebInterface {
                     SidebarWebGroupEmpty()
                 } else {
@@ -211,14 +269,14 @@ private struct GroupRow: View {
             .onInsert(of: [.plainText]) { index, providers in
                 SidebarDrag.load(providers) { actions.insertGroup($0, under: group.id, at: index) }
             }
-            ForEach(group.projectIDs, id: \.self) { id in
+            ForEach(projectIDs, id: \.self) { id in
                 if let project = doc.project(id) {
                     ProjectRow(project: project, actions: actions)
                 }
             }
-            .onMove { source, destination in actions.reorder(in: .group(group.id), from: source, to: destination) }
+            .onMove { source, destination in actions.reorder(in: .group(group.id), from: source, to: destination, visibleIDs: metrics.isWebInterface ? projectIDs : nil) }
             .onInsert(of: [.plainText]) { index, providers in
-                SidebarDrag.load(providers) { actions.insert($0, into: .group(group.id), at: index) }
+                SidebarDrag.load(providers) { actions.insert($0, into: .group(group.id), at: metrics.isWebInterface ? actions.insertionIndex(index, in: .group(group.id), visibleIDs: projectIDs) : index) }
             }
         } label: {
             Label {
@@ -389,8 +447,8 @@ private struct ProjectRow: View {
         } icon: {
             if metrics.isWebInterface {
                 Image(systemName: "folder")
-                    .font(metrics.font(size: 16))
-                    .frame(width: metrics.size(15), height: metrics.size(15))
+                    .font(metrics.font(size: 20))
+                    .frame(width: metrics.size(20), height: metrics.size(20))
                     .foregroundStyle(theme[project.color.token])
                     .saturation(dimmed ? 0 : 1)
                     .opacity(dimmed ? 0.6 : 1)
@@ -399,7 +457,7 @@ private struct ProjectRow: View {
                     .opacity(dimmed ? 0.6 : 1)
             }
         }
-        .modifier(SidebarLabelAppearance(isGroup: false))
+        .modifier(SidebarLabelAppearance(isGroup: false, iconSize: 20))
         .modifier(SidebarWebRow(kind: .project))
         .onHover { hovering = $0 }
         .tag(SidebarItem.project(project.id))
@@ -560,6 +618,9 @@ private struct SidebarFileRow: View {
 }
 
 private struct ProjectContextMenu: View {
+    @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
+    @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
+
     let project: Project
     let actions: SidebarActions
     @Environment(AppEnvironment.self) private var environment
@@ -578,7 +639,10 @@ private struct ProjectContextMenu: View {
             }
             Divider()
         }
-        NewTerminalButton(project: project)
+        if metrics.isWebInterface {
+            SidebarMenuButton("terminal.new", symbol: "plus") { environment.editorRequest = .newTerminal(project.id) }
+                .accessibilityIdentifier("terminal.new")
+        } else { NewTerminalButton(project: project) }
         Divider()
         SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") { environment.editorRequest = .layoutDesigner(project.id) }
         SidebarMenuButton("sidebar.rename", symbol: "pencil") {
@@ -640,6 +704,19 @@ private struct ProjectContextMenu: View {
             }
         }
         Divider()
+        if metrics.isWebInterface {
+            SidebarMenuButton("sidebar.web.archiveProject", symbol: "archivebox") {
+                archivedProjects = SidebarProjectVisibility.setting(archivedProjects, project: project.id,
+                    profile: environment.profileID, enabled: true)
+                actions.workspace.update { $0.close(project.id) }
+            }
+            let hidden = SidebarProjectVisibility.contains(hiddenProjects, project: project.id, profile: environment.profileID)
+            SidebarMenuButton(hidden ? "sidebar.web.unhideProject" : "sidebar.web.hideProject",
+                              symbol: hidden ? "eye" : "eye.slash") {
+                hiddenProjects = SidebarProjectVisibility.setting(hiddenProjects, project: project.id,
+                    profile: environment.profileID, enabled: !hidden)
+            }
+        }
         if doc.isProjectDisabled(project.id) {
             SidebarMenuButton("sidebar.enableProject", symbol: "play") { actions.setProjectDisabled(project.id, false) }
         } else {
