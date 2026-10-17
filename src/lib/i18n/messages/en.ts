@@ -842,12 +842,41 @@ export const en = {
   'prefs.voiceHudTopRight': 'Top right',
   'prefs.voiceHudCustom': 'Custom (where you dragged it)',
   'prefs.voiceHudReset': 'Reset to default position',
+  'prefs.voicePanelPosition': 'Panel position',
+  'prefs.voicePanelPositionDesc':
+    "Where the voice panel sits inside Alethe's window while Alethe is in front. Drag the strip at its top to move it.",
   'prefs.voiceConvNarration': 'Narration',
-  'prefs.voiceConvNarrationDesc': 'How much Alethe says while Claude works.',
+  'prefs.voiceConvNarrationDesc':
+    'What Alethe says while an agent works. Pick a preset, or choose each kind below.',
   'prefs.voiceConvNarrationSilent': 'Silent',
   'prefs.voiceConvNarrationFinal': 'Final answer only',
   'prefs.voiceConvNarrationNormal': 'Normal',
   'prefs.voiceConvNarrationDetailed': 'Detailed',
+  'prefs.voiceConvNarrationPreset': 'Preset',
+  'prefs.voiceConvNarrationCustom': 'Custom',
+  'prefs.voiceNarrateProgress': 'Text between steps',
+  'prefs.voiceNarrateProgressDesc':
+    'What the agent writes as it works, between its actions. Claude Code and Codex.',
+  'prefs.voiceNarrateThinking': 'Thinking',
+  'prefs.voiceNarrateThinkingDesc':
+    "Its reasoning, only when the agent writes it to its session: Claude Code with thinking on, and Codex's reasoning summaries. Other harnesses don't expose it.",
+  'prefs.voiceNarrateTools': 'Actions',
+  'prefs.voiceNarrateToolsDesc':
+    'Each action as it starts, such as "Running the tests." or "Editing auth.ts." Claude Code and Codex.',
+  'prefs.voiceNarrateStatus': 'Status after a silence',
+  'prefs.voiceNarrateStatusDesc':
+    'A short status of the running action when nothing was said for a while.',
+  'prefs.voiceNarrateFinal': 'Final answer',
+  'prefs.voiceNarrateFinalDesc':
+    "The agent's answer when it finishes. For harnesses other than Claude Code and Codex, the reply read off the screen.",
+  'prefs.voiceNarratePermissions': 'Permission requests',
+  'prefs.voiceNarratePermissionsDesc':
+    "Claude's permission questions, and a note when another harness asks in its terminal.",
+  'prefs.voiceNarratePermissionsPanelOnly':
+    'Not spoken while permission answers are set to Panel only.',
+  'prefs.voiceNarrateQuestions': 'Questions to you',
+  'prefs.voiceNarrateQuestionsDesc':
+    'When the agent asks you to pick an option (Claude Code and Codex).',
   'prefs.voiceConvFill': 'Status after silence',
   'prefs.voiceConvFillDesc': 'Seconds without speech before a short status is spoken.',
   'prefs.voiceConvVoice': 'Voice',
@@ -3655,6 +3684,7 @@ export const en = {
   'voice.narration.browsing': 'Looking it up on the web.',
   'voice.narration.delegating': 'Handing part of it to a subagent.',
   'voice.narration.working': 'Working with {tool}.',
+  'voice.narration.asking': 'Waiting for your answer.',
   'voice.conv.title': 'Voice conversation',
   'voice.conv.phase.idle': 'Ready',
   'voice.conv.phase.listening': 'Listening…',

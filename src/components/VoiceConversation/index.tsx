@@ -37,6 +37,7 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useVoiceConversationStore } from '../../stores/voiceConversationStore'
+import { useDockPosition } from './useDockPosition'
 import { type VoiceConversationAction, VoiceConversationView } from './VoiceConversationView'
 
 const HUD_PUBLISH_MS = 100
@@ -76,6 +77,7 @@ function VoiceConversationSession() {
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
   const visualStyle = useProjectsStore((s) => s.preferences.visualStyle ?? 'normal')
   const reducedMotion = useProjectsStore((s) => s.preferences.motionPreference === 'reduced')
+  const dockPosition = useProjectsStore((s) => s.preferences.voiceDockPosition)
   const projects = useProjectsStore((s) => s.projects)
   const groups = useProjectsStore((s) => s.groups)
   const ungroupedOrder = useProjectsStore((s) => s.ungroupedOrder)
@@ -365,6 +367,10 @@ function VoiceConversationSession() {
     ],
   )
 
+  const dock = useDockPosition(dockPosition, (voiceDockPosition) =>
+    useProjectsStore.getState().setPreferences({ voiceDockPosition }),
+  )
+
   const hudViewRef = useRef(hudView)
   useEffect(() => {
     hudViewRef.current = hudView
@@ -444,6 +450,9 @@ function VoiceConversationSession() {
       destructiveNeedsHud={destructiveNeedsHud}
       rate={speechRate}
       reducedMotion={reducedMotion}
+      drag={dock.handle}
+      sectionRef={dock.ref}
+      style={dock.style}
       onAction={onAction}
     />
   )

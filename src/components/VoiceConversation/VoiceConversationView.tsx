@@ -1,5 +1,13 @@
 import { Mic, Pause, Play, RotateCw, Square, Volume2, VolumeX, X } from 'lucide-react'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  type HTMLAttributes,
+  type Ref,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useT } from '../../lib/i18n'
 import type { MessageKey } from '../../lib/i18n/messages/en'
@@ -63,6 +71,9 @@ export function VoiceConversationView({
   rate,
   embedded = false,
   reducedMotion = false,
+  drag,
+  sectionRef,
+  style,
   onAction,
 }: {
   state: VoiceConversationViewState
@@ -79,6 +90,11 @@ export function VoiceConversationView({
   embedded?: boolean
   /** The app's reduced-motion preference; the OS one is honored by the stylesheet. */
   reducedMotion?: boolean
+  /** Pointer handlers of a drag strip along the top (the in-app panel; the HUD has its own). */
+  drag?: HTMLAttributes<HTMLDivElement>
+  sectionRef?: Ref<HTMLElement>
+  /** Where the in-app panel was dragged; the stylesheet's bottom center without it. */
+  style?: CSSProperties
   onAction: (action: VoiceConversationAction) => void
 }) {
   const t = useT()
@@ -115,10 +131,20 @@ export function VoiceConversationView({
 
   return (
     <section
-      className={`${styles.dock} ${embedded ? styles.embedded : ''}`}
+      ref={sectionRef}
+      className={`${styles.dock} ${embedded ? styles.embedded : ''} ${drag ? styles.draggable : ''}`}
+      style={style}
       aria-live="polite"
       aria-label={t('voice.conv.title')}
     >
+      {drag ? (
+        <div
+          className={styles.dragStrip}
+          aria-label={t('voice.hud.drag')}
+          title={t('voice.hud.drag')}
+          {...drag}
+        />
+      ) : null}
       <header className={styles.header}>
         <Mic size={14} aria-hidden className={styles.icon} data-phase={phase} />
         <span className={styles.phase}>{t(PHASE_LABEL[phase])}</span>

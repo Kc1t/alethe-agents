@@ -218,18 +218,44 @@ agent pane reports `working`/`waiting`:
 
 ### 3.3 Narration
 
-- **Sources:** `agent-hook` events for the target PTY, and assistant text read with the new
+- **Sources:** `agent-hook` events for the target PTY, and the session transcript read with the
   `agent_transcript_snapshot` command (`handoff.rs`), polled by revision while working. The
-  snapshot now reports `firstIndex`, the absolute index of its first event, so the narrator counts
-  events by position even after the head of a long transcript is dropped.
+  snapshot reports `firstIndex`, the absolute index of its first event, so the narrator counts
+  events by position even after the head of a long transcript is dropped. For voice only
+  (`reasoning: true`; handoffs and the remote view pass `false`) it also carries the agent's
+  thinking as `thinking` events: Claude's `thinking` blocks when they hold text (a redacted or
+  empty block gives nothing) and Codex's `reasoning` summaries (and raw `reasoning_text` for the
+  models that write it). Tool calls carry a `tool` summary (`name`, `command`, `path`,
+  `description`), so a Codex `shell`/`exec_command` call or `apply_patch` reads like Claude's
+  `Bash` or `Edit` (`transcriptToolCall`).
 - **Text cleanup:** markdown is stripped; code blocks, tables, links and long lists become short
   phrases ("a code block", "and 3 more").
-- **Fill:** after `voiceFillAfterMs` (default 8 s, 3–60 s) of silence while a tool runs, a templated
-  status is spoken from the latest `PreToolUse` ("Running the tests.", "Editing auth.ts.").
-- **Verbosity:** `silent` (none of Claude's text), `final` (final answer only), `normal` (text as it
-  works + fills), `detailed` (also each tool start). Permission questions are spoken at every
-  verbosity unless the approval channel is *Panel only*.
-- `Stop` speaks `last_assistant_message`, skipped if the transcript poll already queued it.
+- **Categories** (`voiceNarration`, one toggle each; `Narrator` checks them as each event comes):
+
+  | Category | Spoken from | Harnesses |
+  |---|---|---|
+  | `progress` (text between steps) | assistant text in the transcript | Claude, Codex |
+  | `thinking` | `thinking` events in the transcript | Claude with thinking on, Codex |
+  | `tools` (actions) | `PreToolUse` (Claude); `tool` events in the transcript (Codex) | Claude, Codex |
+  | `status` (after a silence) | the running tool after `voiceFillAfterMs` (default 8 s, 3–60 s) of silence: "Running the tests.", "Editing auth.ts." Ends on `PostToolUse` (Claude) or on whatever event follows the call in the transcript (Codex, which writes no result for a call with no output) | Claude, Codex |
+  | `final` | `Stop`'s `last_assistant_message`, else the transcript's last assistant text, else the reply read off the screen (§3.8) | all |
+  | `permissions` | a held `PermissionRequest` (also off while the approval channel is *Panel only*); `agentAsksInTerminal` when a harness stops on its own menu | Claude; others |
+  | `questions` | `question` events (Claude's AskUserQuestion, Codex's `request_user_input`) | Claude, Codex |
+
+  Claude's transcript tool calls are not narrated (its hooks are), but they still mark the text
+  before them as between steps. User messages and tool output (`tool-result`) are never spoken;
+  neither are hook events other than the four voice adds (§3.4). An AskUserQuestion call, as a
+  tool, fills with "Waiting for your answer."
+- **Final versus progress.** The last text of a turn is its answer, and nothing marks it until the
+  turn stops. With `final` on, text is spoken as it arrives and `Stop` skips an answer the
+  transcript poll already queued. With `final` off and `progress` on, each text is held
+  (`pendingProgress`) until something follows it (another event, a hook's tool start), and dropped
+  when the turn stops on it, so the answer is never spoken.
+- **Presets** (`NARRATION_PRESETS`, `lib/voice/narration.ts`) are quick choices that set every
+  toggle; Preferences shows **Custom** when the toggles match none. Each keeps what its old
+  `voiceVerbosity` spoke: `silent` = permissions; `final` = + final; `normal` = + progress and
+  status; `detailed` = + tools. `thinking` and `questions` came with the toggles and are off in
+  every preset.
 
 ### 3.4 Permissions held for a voice answer — `agent_events.rs`
 
@@ -283,6 +309,16 @@ idle), picker, last narration, controls and hint — because the window stays op
 window hides it; before the first state arrives it shows a placeholder (drag strip, "Ready",
 close). The in-app panel shows while something is happening or there is a notice, transcript or
 card; the last narration alone does not keep it after the turn.
+
+**Moving the in-app panel.** The panel has the HUD's drag strip along its top (`.dragStrip`, which
+the HUD's `.drag` composes; labelled `voice.hud.drag`). `useDockPosition` follows the pointer
+(pointer capture, client coordinates) and saves where the drag ends in `voiceDockPosition`: the
+top-left as shares (0–1) of the room the window leaves once the panel's size is taken out
+(`lib/voice/dockPlacement.ts`, `DOCK_MARGIN` 8 px). The place is recomputed from the window size
+(`resize`) and the panel's (`ResizeObserver`, so a permission card that makes it taller cannot
+push it out), so it stays inside the window; a click with no move saves nothing. Without a saved
+spot the stylesheet keeps it at the bottom center. **Preferences → Voice → Conversation → Panel
+position** resets it, next to the HUD's reset.
 
 A tap of the shortcut too short to record (under ~0.17 s) makes `speech_stop_and_transcribe` fail
 with the code `speech_too_short`; the conversation shows the `voice.conv.holdHint` notice and sends
@@ -376,10 +412,11 @@ drives it through its terminal:
   "Thought: 6.3s" lines, stops at four empty rows in a row (a full-screen TUI's gap above its input
   box and footer), and keeps the last 1500 characters from a sentence start. Checked live against
   OpenCode 1.18 in a real PTY rendered by a headless xterm. That text is
-  spoken through `onStop` at every verbosity but `silent`.
+  spoken through `onStop` when *Final answer* is on. Such a harness exposes no thinking, actions or
+  text between steps.
 - **Its own approval menu.** When the screen ends on a choice menu, voice says
-  `voice.conv.agentAsksInTerminal` ("OpenCode is asking something in the terminal…") instead of
-  reading the screen; the menu is answered in the pane, and the next send is refused while it shows.
+  `voice.conv.agentAsksInTerminal` ("OpenCode is asking something in the terminal…", under
+  *Permission requests*) instead of reading the screen; the menu is answered in the pane, and the next send is refused while it shows.
 - **Interrupt** sends `Esc`, as for Claude; the turn the Esc cut short ends at once.
 
 ### 3.9 Read terminal text aloud — `lib/voice/readAloud.ts`
@@ -408,7 +445,8 @@ drives it through its terminal:
   clipboard, else shows `voice.conv.nothingToRead`.
 - `controller.readAloud`: `readableTerminalText` drops TUI glyphs and joins the lines of each
   paragraph, `chunkForSpeech` cuts it into parts of up to 400 characters at sentence ends, and
-  `Narrator.read` stops what was being narrated and queues the parts, whatever the verbosity.
+  `Narrator.read` stops what was being narrated and queues the parts, whatever narration is set to
+  speak.
   `hudDismissed` is cleared so the HUD shows again.
 - Narration still speaking (`narrationActive`) now counts as activity for the surface and keeps
   the in-app panel visible, so a read-aloud outside a turn shows on the panel (Alethe focused) or
@@ -424,7 +462,8 @@ drives it through its terminal:
   fullScreenAuxiliary`), so clicking Allow keeps the other app focused and the HUD shows over
   full-screen apps. This requires `app.macOSPrivateApi: true` and Tauri's `macos-private-api`
   feature (acceptable: Alethe is not distributed through the Mac App Store).
-- **Which surface shows** (`lib/voice/surface.ts`, pure): Alethe focused → in-window panel;
+- **Which surface shows** (`lib/voice/surface.ts`, pure): Alethe focused → in-window panel (the
+  HUD is hidden then, so the panel is what is dragged; §3.5);
   otherwise the HUD while the turn is active and for 4 s after it; the close button hides the HUD
   until the next press.
 - **Position.** Six presets on the monitor under the pointer, inside its work area, or `custom`
@@ -742,7 +781,7 @@ file version unchanged (backfill, as earlier preference additions).
 | `voiceReadAloudShortcut` | `CmdOrCtrl+Shift+L` | yes |
 | `voiceCommandShortcut` | `CmdOrCtrl+Shift+J` (Jev command bar, in-app only) | yes |
 | `voiceCaptureMode` | `push-to-talk` (`toggle`) | yes |
-| `voiceVerbosity` | `normal` | yes |
+| `voiceNarration` | the `normal` preset: `{ progress, status, final, permissions: true; thinking, tools, questions: false }` (a missing or non-boolean toggle comes from the legacy `voiceVerbosity`, else `normal`) | yes |
 | `voiceFillAfterMs` | `8000` (clamped 3000–60000) | yes |
 | `voiceApprovalChannel` | `both` (`voice`, `hud`) | yes |
 | `voiceDestructiveNeedsHud` | `true` | yes |
@@ -751,6 +790,7 @@ file version unchanged (backfill, as earlier preference additions).
 | `voiceJevTrigger` | `alethe` | yes |
 | `voiceHudPosition` | `bottom-center` (`custom` only when a custom position exists) | no |
 | `voiceHudCustomPosition` | `null` (`{ monitor, x, y, bounds? }`, fractions clamped to 0–1) | no |
+| `voiceDockPosition` | `null` (`{ x, y }`, shares of the room in the window, clamped to 0–1; malformed → `null`) | no |
 | `voiceStt` | `{ dictation, conversation }`, both local Parakeet | no |
 | `voiceTts` | `{ provider: 'system', model: '', voice: null, rate: 1 }` | no |
 | `voiceProviders` | `{}` — flags only, never a key | no |
@@ -759,6 +799,8 @@ file version unchanged (backfill, as earlier preference additions).
 
 **Legacy fields** `dictationModelId`, `dictationNativeLocale`, `voiceTtsVoice` and `voiceTtsRate`
 are folded into `voiceStt` / `voiceTts` (`lib/voice/voicePreferences.ts`) and then removed.
+`voiceVerbosity` becomes the toggles of its preset in `voiceNarration` (`normalizeNarration`), so
+a profile keeps hearing what it heard, and is removed; saved toggles win over a leftover one.
 `voiceCommandApiKey` (Jev's old plaintext key) is moved into the keychain as the OpenRouter key at
 startup (`migrateLegacyJevKey`) and cleared. A keychain that already holds an OpenRouter key wins, and
 a keychain failure keeps the field for the next start. An

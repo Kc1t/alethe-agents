@@ -731,7 +731,18 @@ export const DEFAULT_ROUTING_SETTINGS: RoutingSettings = {
 }
 
 export type VoiceCaptureMode = 'push-to-talk' | 'toggle'
+/** The narration presets: quick choices that set every `VoiceNarration` toggle. */
 export type VoiceVerbosity = 'silent' | 'final' | 'normal' | 'detailed'
+/**
+ * What narration speaks, per kind of event: `progress` is the agent's text between steps,
+ * `thinking` its reasoning (when the harness exposes it), `tools` each action it starts, `status`
+ * the line spoken after a silence while an action runs, `final` its answer at the end,
+ * `permissions` a permission request (or an approval menu in its terminal) and `questions` a
+ * question it asks you (Claude's AskUserQuestion, Codex's request_user_input).
+ */
+export type VoiceNarrationCategory =
+  'progress' | 'thinking' | 'tools' | 'status' | 'final' | 'permissions' | 'questions'
+export type VoiceNarration = Record<VoiceNarrationCategory, boolean>
 export type HudPreset =
   'bottom-center' | 'bottom-left' | 'bottom-right' | 'top-center' | 'top-left' | 'top-right'
 export type VoiceHudPosition = HudPreset | 'custom'
@@ -747,6 +758,12 @@ export type VoiceHudCustomPosition = {
   y: number
   bounds?: MonitorBounds
 }
+
+/**
+ * Top-left of the in-window voice panel as shares (0-1) of the room left in the window once the
+ * panel's size is taken out, so it stays inside the window whatever their sizes.
+ */
+export type VoiceDockPosition = { x: number; y: number }
 
 export type VoiceApprovalChannel = 'both' | 'voice' | 'hud'
 export type VoiceMidTaskDefault = 'queue' | 'interrupt'
@@ -930,7 +947,8 @@ export type Preferences = {
   voiceTts: TtsChoice
   /** Mirror of which cloud keys exist in the keychain. Never holds a key. */
   voiceProviders: VoiceProviderFlags
-  voiceVerbosity: VoiceVerbosity
+  /** What narration speaks; the presets in `lib/voice/narration.ts` set these together. */
+  voiceNarration: VoiceNarration
   /** Silence before a short status is spoken while a tool runs (3–60 s). */
   voiceFillAfterMs: number
   voiceApprovalChannel: VoiceApprovalChannel
@@ -947,6 +965,8 @@ export type Preferences = {
   voiceHudCustomPosition: VoiceHudCustomPosition | null
   /** Keep the microphone live between commands until the bar is closed. */
   voiceKeepListening: boolean
+  /** Where the in-window voice panel was dragged; null keeps it at the bottom center. Not synced. */
+  voiceDockPosition: VoiceDockPosition | null
   /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
@@ -1157,7 +1177,16 @@ export const DEFAULT_PREFERENCES: Preferences = {
   },
   voiceTts: { provider: 'system', model: '', voice: null, rate: 1 },
   voiceProviders: {},
-  voiceVerbosity: 'normal',
+  // The `normal` preset (NARRATION_PRESETS in lib/voice/narration.ts).
+  voiceNarration: {
+    progress: true,
+    thinking: false,
+    tools: false,
+    status: true,
+    final: true,
+    permissions: true,
+    questions: false,
+  },
   voiceFillAfterMs: 8000,
   voiceApprovalChannel: 'both',
   voiceDestructiveNeedsHud: true,
@@ -1167,6 +1196,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   voiceHudPosition: 'bottom-center',
   voiceHudCustomPosition: null,
   voiceKeepListening: false,
+  voiceDockPosition: null,
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',

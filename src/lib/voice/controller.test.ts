@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { TranscriptSnapshot } from '../tauri/handoff'
+import type { VoiceNarration } from '../types'
+import { NARRATION_PRESETS } from './narration'
 
 const tauri = vi.hoisted(() => ({
   speechPrepare: vi.fn(async () => true),
@@ -137,7 +139,7 @@ const prefs = {
   voiceJevTrigger: 'alethe',
   voiceInterruptWords: ['stop', 'espera', 'cancela'],
   voiceMidTaskDefault: 'queue',
-  voiceVerbosity: 'silent',
+  voiceNarration: { ...NARRATION_PRESETS.silent } as VoiceNarration,
   voiceFillAfterMs: 8000,
   voiceTts: { provider: 'system', model: '', voice: null as string | null, rate: 1 },
   voiceApprovalChannel: 'both',
@@ -220,7 +222,7 @@ describe('VoiceConversationController', () => {
     vi.clearAllMocks()
     useVoiceConversationStore.setState(INITIAL_VOICE_CONVERSATION)
     tauri.speechStopAndTranscribe.mockResolvedValue('fix the build')
-    prefs.voiceVerbosity = 'silent'
+    prefs.voiceNarration = { ...NARRATION_PRESETS.silent }
     setStt('local', 'parakeet-tdt-0.6b-v3-int8', null)
     currentTarget = target
     realResolve = false
@@ -291,7 +293,7 @@ describe('VoiceConversationController', () => {
   it('ends the turn on an interrupt-only utterance, with no status fill after it', async () => {
     vi.useFakeTimers()
     try {
-      prefs.voiceVerbosity = 'normal'
+      prefs.voiceNarration = { ...NARRATION_PRESETS.normal }
       await speak('fix the build')
       hook({
         payload: {
@@ -645,7 +647,7 @@ describe('VoiceConversationController', () => {
     vi.useFakeTimers()
     prefs.voiceTts = { provider: 'openai', model: 'gpt-4o-mini-tts', voice: null, rate: 1 }
     try {
-      prefs.voiceVerbosity = 'normal'
+      prefs.voiceNarration = { ...NARRATION_PRESETS.normal }
       await speak('fix the build')
       hook({
         payload: { hook_event_name: 'Stop', plannerId: 'pty-1', last_assistant_message: 'Done.' },
@@ -712,7 +714,7 @@ describe('VoiceConversationController', () => {
     vi.useFakeTimers()
     prefs.voiceTts = { provider: 'openai', model: 'gpt-4o-mini-tts', voice: null, rate: 1 }
     try {
-      prefs.voiceVerbosity = 'normal'
+      prefs.voiceNarration = { ...NARRATION_PRESETS.normal }
       await speak('fix the build')
       hook({
         payload: { hook_event_name: 'Stop', plannerId: 'pty-1', last_assistant_message: 'Done.' },
@@ -727,7 +729,7 @@ describe('VoiceConversationController', () => {
 
   describe('narration controls', () => {
     const finalAnswer = async (text: string) => {
-      prefs.voiceVerbosity = 'normal'
+      prefs.voiceNarration = { ...NARRATION_PRESETS.normal }
       await speak('fix the build')
       hook({
         payload: { hook_event_name: 'Stop', plannerId: 'pty-1', last_assistant_message: text },
@@ -1182,7 +1184,7 @@ describe('VoiceConversationController', () => {
   })
 
   it('a held request that arrives while the turn ends still blocks the next send', async () => {
-    prefs.voiceVerbosity = 'normal'
+    prefs.voiceNarration = { ...NARRATION_PRESETS.normal }
     await speak('fix the build')
     hook({
       payload: { hook_event_name: 'Stop', plannerId: 'pty-1', last_assistant_message: 'Done.' },
@@ -1308,7 +1310,7 @@ describe('VoiceConversationController', () => {
 
   describe('narration', () => {
     it('does not narrate the previous pane after switching target mid-turn', async () => {
-      prefs.voiceVerbosity = 'normal'
+      prefs.voiceNarration = { ...NARRATION_PRESETS.normal }
       await speak('fix the build')
       const finishPoll = pendingPoll([{ role: 'assistant', text: 'Old pane text' }])
       await vi.waitFor(() => expect(tauri.agentTranscriptSnapshot).toHaveBeenCalledTimes(2), {
@@ -1323,7 +1325,7 @@ describe('VoiceConversationController', () => {
     })
 
     it('speaks the final answer once when a poll is in flight at Stop', async () => {
-      prefs.voiceVerbosity = 'normal'
+      prefs.voiceNarration = { ...NARRATION_PRESETS.normal }
       await speak('fix the build')
       const finishPoll = pendingPoll([{ role: 'assistant', text: 'Done.' }])
       await vi.waitFor(() => expect(tauri.agentTranscriptSnapshot).toHaveBeenCalledTimes(2), {
@@ -1360,7 +1362,7 @@ describe('VoiceConversationController', () => {
     beforeEach(() => {
       extraTargets = [opencode, codex]
       terminals.byPtyId = { ...LIVE_RUNTIME, 'pty-5': { alive: true }, 'pty-6': { alive: true } }
-      prefs.voiceVerbosity = 'final'
+      prefs.voiceNarration = { ...NARRATION_PRESETS.final }
     })
 
     afterEach(() => {
@@ -1420,6 +1422,48 @@ describe('VoiceConversationController', () => {
       )
     })
 
+    it('keeps a choice menu quiet when permission requests are not narrated', async () => {
+      prefs.voiceNarration = { ...NARRATION_PRESETS.final, permissions: false }
+      currentTarget = opencode
+      await speak('delete the cache')
+      input.readScreen.mockReturnValue(
+        ['Permission required', 'Allow once   Allow always   Reject'].join('\n'),
+      )
+      quiet('pty-5')
+      await vi.waitFor(() => expect(state().turn).toBe('idle'))
+      expect(tauri.ttsSpeak).not.toHaveBeenCalled()
+    })
+
+    // Codex has no hooks: its thinking and tool calls come from its transcript.
+    it("narrates a Codex turn's thinking and tool calls from its transcript", async () => {
+      prefs.voiceNarration = { ...NARRATION_PRESETS.silent, thinking: true, tools: true }
+      currentTarget = codex
+      await speak('fix the build')
+      tauri.agentTranscriptSnapshot.mockResolvedValue({
+        sessionId: 's1',
+        revision: 2,
+        unchanged: false,
+        firstIndex: 0,
+        messages: [
+          { role: 'thinking', text: '**Checking the build**' },
+          { role: 'tool', text: 'shell', tool: { name: 'shell', command: 'cargo test' } },
+          { role: 'assistant', text: 'Done, the build passes.' },
+        ],
+      })
+      quiet('pty-6')
+      await vi.waitFor(() =>
+        expect(tauri.ttsSpeak).toHaveBeenCalledWith('Checking the build', expect.anything()),
+      )
+      ttsEnd(1)
+      await vi.waitFor(() =>
+        expect(tauri.ttsSpeak).toHaveBeenLastCalledWith('Running the tests.', expect.anything()),
+      )
+      ttsEnd(1)
+      await vi.waitFor(() => expect(state().turn).toBe('idle'))
+      // The final answer is off.
+      expect(tauri.ttsSpeak).toHaveBeenCalledTimes(2)
+    })
+
     it('ignores a quiet Claude pane: its turn ends on the Stop hook', async () => {
       await speak('fix the build')
       quiet('pty-1')
@@ -1447,7 +1491,7 @@ describe('VoiceConversationController', () => {
 
   describe('read aloud', () => {
     it('reads a terminal selection as prose, whatever the verbosity', async () => {
-      prefs.voiceVerbosity = 'silent'
+      prefs.voiceNarration = { ...NARRATION_PRESETS.silent }
       useVoiceConversationStore.setState({ hudDismissed: true })
       controller.readAloud('│ The build failed because the\n│ import path was wrong. │')
       await vi.waitFor(() =>

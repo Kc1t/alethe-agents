@@ -403,6 +403,21 @@ export function PreferencesModal() {
       },
       {
         category: 'voice',
+        target: 'voice-conversation-panel',
+        label: t('prefs.voicePanelPosition'),
+        description: t('prefs.voicePanelPositionDesc'),
+        keywords: 'panel drag move position reset painel arrastar mover posição 面板 拖动 位置',
+      },
+      {
+        category: 'voice',
+        target: 'voice-conversation-narration',
+        label: t('prefs.voiceConvNarration'),
+        description: t('prefs.voiceConvNarrationDesc'),
+        keywords:
+          'narration speak thinking actions tools status final answer questions permissions preset verbosity narração raciocínio ações resposta perguntas 旁白 思考 操作 回答',
+      },
+      {
+        category: 'voice',
         target: 'voice-conversation-voice',
         label: t('prefs.voiceConvVoice'),
         description: t('prefs.voiceConvVoiceDesc'),

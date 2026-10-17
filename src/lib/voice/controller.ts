@@ -40,7 +40,8 @@ import {
 } from '../tauri'
 import { cloudFailureMessage } from './cloudErrors'
 import { isJevKeyConfigured } from './jevKey'
-import { estimateSpeechMs, Narrator, newAssistantTexts, type Translate } from './narrator'
+import { normalizeNarration } from './narration'
+import { estimateSpeechMs, Narrator, newTranscriptEvents, type Translate } from './narrator'
 import { PausableTimer } from './pausableTimer'
 import {
   answerAllowed,
@@ -189,7 +190,8 @@ export class VoiceConversationController {
       onPausedChange: (paused) => store().patch({ narrationPaused: paused }),
       onActiveChange: (active) => store().patch({ narrationActive: active }),
       t,
-      verbosity: () => prefs().voiceVerbosity,
+      // Cloud sync writes the toggles as it got them.
+      narration: () => normalizeNarration(prefs().voiceNarration, undefined),
       fillAfterMs: () => prefs().voiceFillAfterMs,
     })
   }
@@ -705,7 +707,9 @@ export class VoiceConversationController {
     // A poll already in flight may hold this turn's last text; then one more read for the rest.
     if (this.pollInFlight) await this.pollInFlight
     await this.pollTranscript()
-    await this.narrator.onStop(finalText || this.lastAssistantText || this.screenAnswer())
+    const reply = finalText || this.lastAssistantText
+    const screen = reply ? null : this.screenAnswer()
+    await this.narrator.onStop(screen?.text ?? reply, screen?.category)
     await this.closeTurn()
   }
 
@@ -713,17 +717,16 @@ export class VoiceConversationController {
    * The reply of a harness without hooks, read off its screen; when the screen ends on one of its
    * own choice menus, a line saying it is asking there instead (the menu is answered in the pane).
    */
-  private screenAnswer(): string {
+  private screenAnswer(): { text: string; category: 'final' | 'permissions' } {
     const turn = this.screenTurn
     const target = store().target
-    if (!turn || !target) return ''
-    const screen = agentInputFor(target.ptyId)?.readScreen()
-    if (!screen) return ''
+    const screen = turn && target ? agentInputFor(target.ptyId)?.readScreen() : ''
+    if (!turn || !target || !screen) return { text: '', category: 'final' }
     const agent = agentLabel(target.agent)
     if (looksLikeChoicePrompt(screen.split('\n').slice(-30).join('\n'))) {
-      return t('voice.conv.agentAsksInTerminal', { agent })
+      return { text: t('voice.conv.agentAsksInTerminal', { agent }), category: 'permissions' }
     }
-    return screenReply(turn.before, screen, turn.prompt)
+    return { text: screenReply(turn.before, screen, turn.prompt), category: 'final' }
   }
 
   /**
@@ -831,10 +834,12 @@ export class VoiceConversationController {
       if (generation !== this.generation || this.cursor === null) return
       this.revision = snapshot.revision
       if (snapshot.unchanged) return
-      const next = newAssistantTexts(snapshot, this.cursor)
+      const next = newTranscriptEvents(snapshot, this.cursor)
       this.cursor = next.cursor
-      this.lastAssistantText = next.texts[next.texts.length - 1] ?? this.lastAssistantText
-      this.narrator.onAssistantText(next.texts)
+      const texts = next.events.filter((event) => event.role === 'assistant')
+      this.lastAssistantText = texts[texts.length - 1]?.text ?? this.lastAssistantText
+      // Claude's tool calls come from its hooks; Codex has only its transcript.
+      this.narrator.onTranscript(next.events, { tools: !hasVoiceHooks(fresh.agent) })
     } catch {
       // An unreadable transcript only costs intermediate narration.
     }

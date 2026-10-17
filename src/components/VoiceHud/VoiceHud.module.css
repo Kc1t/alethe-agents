@@ -14,29 +14,7 @@
 }
 
 .drag {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 1;
-  height: 14px;
-  cursor: grab;
-}
-
-.drag::after {
-  content: '';
-  position: absolute;
-  top: 5px;
-  left: 50%;
-  width: 36px;
-  height: 4px;
-  background: var(--border-strong);
-  border-radius: 2px;
-  transform: translateX(-50%);
-}
-
-.drag:active {
-  cursor: grabbing;
+  composes: dragStrip from '../VoiceConversation/VoiceConversation.module.css';
 }
 
 .placeholder {

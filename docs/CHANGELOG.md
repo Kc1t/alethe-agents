@@ -50,6 +50,19 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   sentence with a send phrase such as "thanks Jev" or "send it" and it fires as soon as
   the phrase is recognised, and a pause of about two seconds sends by itself. Releasing
   F9 or clicking the stop button still works.
+
+- **Choose what narration speaks.** Preferences → Voice → Narration has a toggle for each kind of
+  thing voice can say: text between steps, the agent's thinking, the actions it runs ("Running the
+  tests.", "Editing auth.ts."), a status after a silence, the final answer, permission requests and
+  questions the agent asks you. Silent, Final answer only, Normal and Detailed stay as presets that
+  set the toggles, and any other mix shows as Custom; your current choice carries over unchanged.
+  Thinking is spoken only where the agent writes it down (Claude Code with thinking on, Codex's
+  reasoning summaries). Codex turns are now narrated with their actions and the status after a
+  silence too, not only their answer.
+- **Move the voice panel.** While Alethe is in front, the voice panel has the same drag strip as
+  the floating HUD: drag it anywhere inside the window. It comes back to that spot, stays inside
+  the window when the window is resized, and Preferences → Voice → Conversation → Panel position
+  puts it back at the bottom center.
 - **Voice conversation with every agent.** Voice now talks to any agent Alethe runs in a pane —
   Codex, OpenCode, Cursor, Kiro, Kimi, Grok, the other built-ins and custom agents — not only
   Claude Code. The session picker lists them all with the agent's name. Claude Code keeps its full

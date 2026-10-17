@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EMPTY_PROJECTS_FILE } from '../../../lib/types'
@@ -130,6 +130,22 @@ describe('VoiceConversationSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset to default position' }))
     expect(prefs().voiceHudPosition).toBe('bottom-center')
     expect(prefs().voiceHudCustomPosition).toBeNull()
+  })
+
+  it('resets the in-window panel to the bottom center once it was dragged', () => {
+    useProjectsStore.getState().setPreferences({
+      voiceConversationEnabled: true,
+      voiceDockPosition: { x: 0.1, y: 0.2 },
+    })
+    render(<VoiceConversationSection />)
+    const section = screen
+      .getByRole('button', { name: 'Panel position' })
+      .closest('section') as HTMLElement
+    expect(within(section).getByText('Custom (where you dragged it)')).toBeTruthy()
+    fireEvent.click(within(section).getByRole('button', { name: 'Reset to default position' }))
+    expect(prefs().voiceDockPosition).toBeNull()
+    expect(within(section).getByText('Bottom center')).toBeTruthy()
+    expect(within(section).queryByRole('button', { name: 'Reset to default position' })).toBeNull()
   })
 
   it('hides the position reset unless the HUD was dragged', () => {

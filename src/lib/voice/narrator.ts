@@ -1,6 +1,6 @@
 import type { MessageKey } from '../i18n/messages/en'
-import type { TranscriptEvent } from '../tauri/handoff'
-import type { VoiceVerbosity } from '../types'
+import type { TranscriptEvent, TranscriptToolSummary } from '../tauri/handoff'
+import type { VoiceNarration } from '../types'
 
 export type Translate = (key: MessageKey, params?: Record<string, string | number>) => string
 export type ToolCall = { tool_name?: string; tool_input?: Record<string, unknown> }
@@ -89,9 +89,41 @@ export function statusFill(tool: ToolCall, t: Translate): string {
     case 'Task':
     case 'Agent':
       return t('voice.narration.delegating')
+    case 'AskUserQuestion':
+      return t('voice.narration.asking')
     default:
       return t('voice.narration.working', { tool: tool.tool_name ?? '?' })
   }
+}
+
+/** Codex's tool names, as the Claude tools `statusFill` knows. */
+const CODEX_TOOLS: Record<string, string> = {
+  shell: 'Bash',
+  shell_command: 'Bash',
+  local_shell: 'Bash',
+  exec_command: 'Bash',
+  apply_patch: 'Edit',
+  view_image: 'Read',
+  web_search: 'WebSearch',
+  request_user_input: 'AskUserQuestion',
+}
+
+/** A tool call read from a transcript (Codex has no hooks), in the shape a hook gives. */
+export function transcriptToolCall(tool: TranscriptToolSummary): ToolCall {
+  return {
+    tool_name: CODEX_TOOLS[tool.name] ?? tool.name,
+    tool_input: { command: tool.command, file_path: tool.path, description: tool.description },
+  }
+}
+
+/** Events at or past `cursor` (an absolute event index), and where the next read starts. */
+export function newTranscriptEvents(
+  snapshot: { firstIndex: number; messages: TranscriptEvent[] },
+  cursor: number,
+): { events: TranscriptEvent[]; cursor: number } {
+  const end = snapshot.firstIndex + snapshot.messages.length
+  const events = snapshot.messages.filter((_, offset) => snapshot.firstIndex + offset >= cursor)
+  return { events, cursor: Math.max(cursor, end) }
 }
 
 /** Assistant text at or past `cursor` (an absolute event index), and where the next read starts. */
@@ -99,13 +131,11 @@ export function newAssistantTexts(
   snapshot: { firstIndex: number; messages: TranscriptEvent[] },
   cursor: number,
 ): { texts: string[]; cursor: number } {
-  const end = snapshot.firstIndex + snapshot.messages.length
-  const texts = snapshot.messages
-    .filter(
-      (message, offset) => snapshot.firstIndex + offset >= cursor && message.role === 'assistant',
-    )
+  const next = newTranscriptEvents(snapshot, cursor)
+  const texts = next.events
+    .filter((message) => message.role === 'assistant')
     .map((message) => message.text)
-  return { texts, cursor: Math.max(cursor, end) }
+  return { texts, cursor: next.cursor }
 }
 
 /** Ends of sentences: `.`, `!`, `?` or `…` before a space (so `auth.ts` stays whole), CJK marks. */
@@ -158,7 +188,8 @@ export type NarratorDeps = {
   /** Something is speaking or queued (a paused item counts); only then can it be paused. */
   onActiveChange?: (active: boolean) => void
   t: Translate
-  verbosity: () => VoiceVerbosity
+  /** What to speak, per category (`Preferences.voiceNarration`). */
+  narration: () => VoiceNarration
   fillAfterMs: () => number
   now?: () => number
 }
@@ -180,6 +211,11 @@ export class Narrator {
   private tool: ToolCall | null = null
   private lastActivityAt = 0
   private lastQueued = ''
+  /**
+   * Text between steps held back while `final` is off: the last text of a turn is its answer, so
+   * a text is spoken only once something follows it, and dropped when the turn stops on it.
+   */
+  private pendingProgress: string | null = null
   private fillTimer: ReturnType<typeof setInterval> | null = null
   private idleWaiters: Array<() => void> = []
 
@@ -192,44 +228,84 @@ export class Narrator {
   beginTurn(): void {
     this.tool = null
     this.lastQueued = ''
+    this.pendingProgress = null
     this.lastActivityAt = this.now()
     this.clearFill()
     this.fillTimer = setInterval(() => this.maybeFill(), FILL_CHECK_MS)
   }
 
   onAssistantText(texts: string[]): void {
-    const level = this.deps.verbosity()
-    if (level !== 'normal' && level !== 'detailed') return
-    for (const text of texts) this.enqueue(speakableText(text, this.deps.t))
+    this.onTranscript(
+      texts.map((text) => ({ role: 'assistant', text })),
+      { tools: false },
+    )
+  }
+
+  /**
+   * New transcript events, in order. `tools`: its tool calls are the only ones this turn gets
+   * (Codex); Claude's come from its hooks, so its transcript's tool calls are not said twice.
+   */
+  onTranscript(events: TranscriptEvent[], options: { tools: boolean }): void {
+    for (const event of events) {
+      if (event.role === 'user') continue
+      // Anything after a held text means the turn went on: that text was between steps.
+      this.confirmProgress()
+      // Whatever follows a transcript tool call ends it: a call with no output has no result.
+      if (options.tools) this.onToolEnd()
+      const on = this.deps.narration()
+      switch (event.role) {
+        case 'assistant':
+          if (!on.progress) break
+          if (on.final) this.enqueue(speakableText(event.text, this.deps.t))
+          else this.pendingProgress = speakableText(event.text, this.deps.t)
+          break
+        case 'thinking':
+          if (on.thinking) this.enqueue(speakableText(event.text, this.deps.t))
+          break
+        case 'question':
+          if (on.questions) this.enqueue(speakableText(event.text, this.deps.t))
+          break
+        case 'tool':
+          if (options.tools && event.tool) this.onToolStart(transcriptToolCall(event.tool))
+          break
+      }
+    }
   }
 
   onToolStart(tool: ToolCall): void {
+    this.confirmProgress()
     this.tool = tool
-    if (this.deps.verbosity() === 'detailed') this.enqueue(statusFill(tool, this.deps.t))
+    if (this.deps.narration().tools) this.enqueue(statusFill(tool, this.deps.t))
   }
 
   onToolEnd(): void {
     this.tool = null
   }
 
-  /** Permission questions are heard whatever the verbosity, ahead of anything queued. */
+  /** Permission questions are heard ahead of anything queued. */
   announce(text: string): void {
-    this.enqueue(text, true)
+    if (this.deps.narration().permissions) this.enqueue(text, true)
   }
 
   /**
    * Text the person asked to hear (a terminal selection): read now, in place of anything queued,
-   * whatever the verbosity.
+   * whatever narration is set to speak.
    */
   read(parts: string[]): void {
     this.stop()
     for (const part of parts) this.enqueue(part)
   }
 
-  onStop(finalText: string): Promise<void> {
+  /**
+   * The turn ended on `finalText`: its answer, or (`permissions`) a line saying the agent is
+   * asking in its terminal.
+   */
+  onStop(finalText: string, category: 'final' | 'permissions' = 'final'): Promise<void> {
     this.tool = null
     this.clearFill()
-    if (this.deps.verbosity() !== 'silent') {
+    // Nothing followed it: the text held back was the answer.
+    this.pendingProgress = null
+    if (this.deps.narration()[category]) {
       const spoken = speakableText(finalText, this.deps.t)
       if (spoken && spoken !== this.lastQueued) this.enqueue(spoken)
     }
@@ -242,6 +318,7 @@ export class Narrator {
     this.queue = []
     this.current = null
     this.tool = null
+    this.pendingProgress = null
     this.lastActivityAt = this.now()
     this.held = false
     this.setPaused(false)
@@ -307,6 +384,12 @@ export class Narrator {
   dispose(): void {
     this.endTurn()
     this.resolveIdle()
+  }
+
+  private confirmProgress(): void {
+    const text = this.pendingProgress
+    this.pendingProgress = null
+    if (text) this.enqueue(text)
   }
 
   private enqueue(text: string, front = false): void {
@@ -393,9 +476,8 @@ export class Narrator {
   }
 
   private maybeFill(): void {
-    const level = this.deps.verbosity()
     if (!this.tool || this.speaking || this.paused || this.current || this.queue.length > 0) return
-    if (level !== 'normal' && level !== 'detailed') return
+    if (!this.deps.narration().status) return
     if (this.now() - this.lastActivityAt < this.deps.fillAfterMs()) return
     this.enqueue(statusFill(this.tool, this.deps.t))
   }

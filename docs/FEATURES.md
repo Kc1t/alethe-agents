@@ -186,12 +186,16 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 - Target: the active agent pane by default, changeable from the picker on the panel, which names
   the agent of each session.
 - Panel: docked at the bottom of the main window with a live waveform, transcript, narration text and
-  a permission card (Allow / Deny / Answer in the terminal).
-- Narration: Silent speaks none of Claude's text; Final answer only speaks just the reply; Normal and Detailed also
-  speak Claude's text as it works and add a status line after a silence. The narration provider, voice
-  and speed are selectable, and "Speaking while Claude works" chooses whether your message queues for
-  Claude's next turn or interrupts it first. Permission questions are spoken at every verbosity unless
-  the approval channel is Panel only.
+  a permission card (Allow / Deny / Answer in the terminal). Drag the strip at its top to move it
+  anywhere inside the window; it comes back there and stays inside the window when it is resized.
+  Preferences → Voice → Conversation → Panel position puts it back at the bottom center.
+- Narration: one toggle per kind of thing spoken — text between steps, thinking (Claude Code with
+  thinking on, Codex's reasoning summaries; other agents don't expose it), actions ("Running the
+  tests."), status after a silence, the final answer, permission requests and questions the agent
+  asks you. The presets Silent, Final answer only, Normal and Detailed set the toggles at once;
+  any other mix shows as Custom. The narration provider, voice and speed are selectable, and
+  "Speaking while Claude works" chooses whether your message queues for Claude's next turn or
+  interrupts it first. Permission requests are not spoken while the approval channel is Panel only.
 - Permissions: answer by voice in English or Portuguese; "no, <reason>" sends the reason to Claude.
   Destructive commands (`rm -rf`, `git push --force`, `git reset --hard`, SQL `DROP`, writes outside
   the project, ...) need a click by default. Voice holds back its Enter while Claude's own numbered
@@ -265,7 +269,7 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
   model whose voices do not include the current one selects a voice in the app language.
 - Keys are stored in the system keychain per profile and are never shown again after saving; a
   provider page can save, test and remove a key. A key is read from the keychain only when a cloud
-  voice is used (at most once per run), so a keychain prompt never appears at launch. Narration verbosity and filler delay live in the
+  voice is used (at most once per run), so a keychain prompt never appears at launch. What narration speaks and the filler delay live in the
   Narration tab, and **Test voice** previews the chosen voice.
 - Fallback: if a cloud provider fails, dictation and conversation use Apple Speech (when ready with
   a language set), otherwise the first downloaded local model; narration uses the system voice. A

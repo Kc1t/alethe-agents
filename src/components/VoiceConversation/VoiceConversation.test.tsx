@@ -465,6 +465,89 @@ describe('VoiceConversation session', () => {
     })
   })
 
+  describe('dragging the in-window panel', () => {
+    // jsdom lays nothing out: the panel is given a size, in a 1024 x 768 window.
+    const panelSize = (width: number, height: number) => {
+      vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(width)
+      vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(height)
+    }
+    const panel = () => screen.getByLabelText('voice.conv.title')
+
+    beforeEach(() => {
+      Element.prototype.setPointerCapture = vi.fn()
+      // jsdom has no PointerEvent, and a plain Event would drop the coordinates.
+      vi.stubGlobal(
+        'PointerEvent',
+        class extends MouseEvent {
+          pointerId: number
+          constructor(type: string, init: PointerEventInit = {}) {
+            super(type, init)
+            this.pointerId = init.pointerId ?? 0
+          }
+        },
+      )
+    })
+    afterEach(() => {
+      vi.unstubAllGlobals()
+      window.innerWidth = 1024
+      window.innerHeight = 768
+    })
+
+    it('sits at the bottom center until it is dragged', async () => {
+      await mount()
+      focus(true)
+      voice({ turn: 'working' })
+      expect(panel().getAttribute('style')).toBeNull()
+      expect(screen.getByLabelText('voice.hud.drag')).toBeTruthy()
+    })
+
+    it('follows the pointer from its top strip, inside the window, and saves where it ends', async () => {
+      await mount()
+      focus(true)
+      voice({ turn: 'working' })
+      const strip = screen.getByLabelText('voice.hud.drag')
+      fireEvent.pointerDown(strip, { clientX: 100, clientY: 100, pointerId: 1 })
+      fireEvent.pointerMove(strip, { clientX: 300, clientY: 50 })
+      // Dragged 200 px right; 50 px up would leave the window, so it stops at the margin.
+      expect(panel().style.left).toBe('200px')
+      expect(panel().style.top).toBe('8px')
+      expect(mocks.setPreferences).not.toHaveBeenCalledWith(
+        expect.objectContaining({ voiceDockPosition: expect.anything() }),
+      )
+      fireEvent.pointerUp(strip)
+      const saved = mocks.setPreferences.mock.calls.at(-1)?.[0].voiceDockPosition
+      expect(saved.x).toBeCloseTo(192 / 1008)
+      expect(saved.y).toBe(0)
+    })
+
+    it('saves nothing for a click on the strip', async () => {
+      await mount()
+      focus(true)
+      voice({ turn: 'working' })
+      const strip = screen.getByLabelText('voice.hud.drag')
+      fireEvent.pointerDown(strip, { clientX: 100, clientY: 100, pointerId: 1 })
+      fireEvent.pointerUp(strip)
+      expect(mocks.setPreferences).not.toHaveBeenCalled()
+    })
+
+    it('returns to the saved spot and stays inside a smaller window', async () => {
+      panelSize(560, 200)
+      setPrefs({ voiceDockPosition: { x: 1, y: 1 } })
+      await mount()
+      focus(true)
+      voice({ turn: 'working' })
+      expect(panel().style.left).toBe('456px')
+      expect(panel().style.top).toBe('560px')
+      act(() => {
+        window.innerWidth = 800
+        window.innerHeight = 500
+        window.dispatchEvent(new Event('resize'))
+      })
+      expect(panel().style.left).toBe('232px')
+      expect(panel().style.top).toBe('292px')
+    })
+  })
+
   it('hides the HUD 4 s after the turn goes idle', async () => {
     vi.useFakeTimers()
     await mount()

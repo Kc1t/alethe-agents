@@ -1,12 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { VoiceNarration } from '../types'
+import { NARRATION_PRESETS } from './narration'
 import {
   estimateSpeechMs,
   Narrator,
   newAssistantTexts,
+  newTranscriptEvents,
   resumeFrom,
   speakableText,
   statusFill,
+  transcriptToolCall,
   type Translate,
 } from './narrator'
 
@@ -55,6 +59,24 @@ describe('statusFill', () => {
     expect(statusFill({ tool_name: 'Mystery' }, t)).toBe(
       'voice.narration.working:{"tool":"Mystery"}',
     )
+    expect(statusFill({ tool_name: 'AskUserQuestion' }, t)).toBe('voice.narration.asking')
+  })
+})
+
+describe('transcriptToolCall', () => {
+  // Codex has no hooks: its tool calls come from the transcript, under its own names.
+  it("says a Codex tool call the way Claude's are said", () => {
+    const say = (tool: Parameters<typeof transcriptToolCall>[0]) =>
+      statusFill(transcriptToolCall(tool), t)
+    expect(say({ name: 'shell', command: 'cargo test' })).toBe('voice.narration.runningTests')
+    expect(say({ name: 'exec_command', command: 'ls' })).toBe('voice.narration.runningShell')
+    expect(say({ name: 'apply_patch', path: 'src/auth.ts' })).toBe(
+      'voice.narration.editing:{"file":"auth.ts"}',
+    )
+    expect(say({ name: 'request_user_input' })).toBe('voice.narration.asking')
+    expect(say({ name: 'Read', path: '/x/README.md' })).toBe(
+      'voice.narration.reading:{"file":"README.md"}',
+    )
   })
 })
 
@@ -78,6 +100,17 @@ describe('newAssistantTexts', () => {
   it('never returns events from before the cursor, even when the tail moved', () => {
     const snapshot = { firstIndex: 50, messages: [event('assistant', 'repeat answer')] }
     expect(newAssistantTexts(snapshot, 51)).toEqual({ texts: [], cursor: 51 })
+  })
+
+  it('has every kind of event past the cursor in newTranscriptEvents', () => {
+    const snapshot = {
+      firstIndex: 0,
+      messages: [event('user', 'go'), event('tool', 'Bash: x'), event('assistant', 'done')],
+    }
+    expect(newTranscriptEvents(snapshot, 1)).toEqual({
+      events: [event('tool', 'Bash: x'), event('assistant', 'done')],
+      cursor: 3,
+    })
   })
 })
 
@@ -112,20 +145,22 @@ describe('resumeFrom', () => {
   })
 })
 
+const normal = () => NARRATION_PRESETS.normal
+
 describe('Narrator', () => {
   let spoken: string[]
-  let verbosity: 'silent' | 'final' | 'normal' | 'detailed'
+  let narration: VoiceNarration
   let narrator: Narrator
 
   beforeEach(() => {
     vi.useFakeTimers()
     spoken = []
-    verbosity = 'normal'
+    narration = NARRATION_PRESETS.normal
     narrator = new Narrator({
       speak: async (text) => void spoken.push(text),
       stop: vi.fn(),
       t,
-      verbosity: () => verbosity,
+      narration: () => narration,
       fillAfterMs: () => 8000,
       now: () => Date.now(),
     })
@@ -159,7 +194,7 @@ describe('Narrator', () => {
   })
 
   it('speaks only the final answer in final mode', async () => {
-    verbosity = 'final'
+    narration = NARRATION_PRESETS.final
     narrator.onAssistantText(['Thinking out loud.'])
     narrator.onToolStart({ tool_name: 'Grep' })
     await vi.advanceTimersByTimeAsync(20000)
@@ -178,7 +213,7 @@ describe('Narrator', () => {
   })
 
   it('says nothing in silent mode but still announces permission questions', async () => {
-    verbosity = 'silent'
+    narration = NARRATION_PRESETS.silent
     narrator.onAssistantText(['Hidden.'])
     narrator.announce('Allow npm install?')
     const done = narrator.onStop('Hidden too.')
@@ -195,7 +230,7 @@ describe('Narrator', () => {
       stop: vi.fn(),
       prefetch,
       t,
-      verbosity: () => 'normal',
+      narration: normal,
       fillAfterMs: () => 8000,
     })
     slow.read(['One.', 'Two.'])
@@ -210,17 +245,131 @@ describe('Narrator', () => {
   })
 
   it('reads text asked for in order, even in silent mode', async () => {
-    verbosity = 'silent'
+    narration = { ...NARRATION_PRESETS.silent, permissions: false }
     narrator.read(['First part.', 'Second part.'])
     await vi.runOnlyPendingTimersAsync()
     expect(spoken).toEqual(['First part.', 'Second part.'])
   })
 
   it('also speaks every tool start in detailed mode', async () => {
-    verbosity = 'detailed'
+    narration = NARRATION_PRESETS.detailed
     narrator.onToolStart({ tool_name: 'Read', tool_input: { file_path: '/x/README.md' } })
     await vi.runOnlyPendingTimersAsync()
     expect(spoken).toEqual(['voice.narration.reading:{"file":"README.md"}'])
+  })
+
+  describe('categories', () => {
+    const finish = async (text: string) => {
+      const done = narrator.onStop(text)
+      await vi.runOnlyPendingTimersAsync()
+      await done
+    }
+
+    it('keeps the status after a silence off on its own', async () => {
+      narration = { ...NARRATION_PRESETS.normal, status: false }
+      narrator.onToolStart({ tool_name: 'Bash', tool_input: { command: 'npm test' } })
+      await vi.advanceTimersByTimeAsync(20000)
+      expect(spoken).toEqual([])
+    })
+
+    it('speaks the status after a silence without the text in between', async () => {
+      narration = { ...NARRATION_PRESETS.silent, status: true }
+      narrator.onAssistantText(['Between steps.'])
+      narrator.onToolStart({ tool_name: 'Bash', tool_input: { command: 'npm test' } })
+      await vi.advanceTimersByTimeAsync(9000)
+      expect(spoken).toEqual(['voice.narration.runningTests'])
+    })
+
+    it('speaks thinking only when its toggle is on', async () => {
+      narrator.onTranscript([{ role: 'thinking', text: 'The bug is in auth.' }], { tools: false })
+      await vi.runOnlyPendingTimersAsync()
+      expect(spoken).toEqual([])
+      narration = { ...NARRATION_PRESETS.silent, thinking: true }
+      narrator.onTranscript([{ role: 'thinking', text: 'The bug is in auth.' }], { tools: false })
+      await vi.runOnlyPendingTimersAsync()
+      expect(spoken).toEqual(['The bug is in auth.'])
+    })
+
+    it('speaks a question the agent asks only when its toggle is on', async () => {
+      const question = { role: 'question' as const, text: 'Scope: Which scope? (A, B)' }
+      narrator.onTranscript([question], { tools: false })
+      await vi.runOnlyPendingTimersAsync()
+      expect(spoken).toEqual([])
+      narration = { ...NARRATION_PRESETS.silent, questions: true }
+      narrator.onTranscript([question], { tools: false })
+      await vi.runOnlyPendingTimersAsync()
+      expect(spoken).toEqual(['Scope: Which scope? (A, B)'])
+    })
+
+    it('keeps permission questions off when their toggle is off', async () => {
+      narration = { ...NARRATION_PRESETS.normal, permissions: false }
+      narrator.announce('Allow npm install?')
+      await vi.runOnlyPendingTimersAsync()
+      expect(spoken).toEqual([])
+    })
+
+    // Codex: its tool calls arrive in the transcript, not from hooks.
+    it('narrates tool calls from the transcript when asked to', async () => {
+      narration = { ...NARRATION_PRESETS.silent, tools: true, status: true }
+      const tool = { role: 'tool' as const, text: 'shell', tool: { name: 'shell', command: 'ls' } }
+      narrator.onTranscript([tool], { tools: false })
+      await vi.advanceTimersByTimeAsync(20000)
+      expect(spoken).toEqual([])
+      narrator.onTranscript([tool], { tools: true })
+      await vi.runOnlyPendingTimersAsync()
+      expect(spoken).toEqual(['voice.narration.runningShell'])
+      // The tool result ends it: no status follows.
+      narrator.onTranscript([{ role: 'tool-result', text: 'a b' }], { tools: true })
+      await vi.advanceTimersByTimeAsync(20000)
+      expect(spoken).toEqual(['voice.narration.runningShell'])
+    })
+
+    // Codex writes no result for a call with no output: what it does next ends the call.
+    it('ends a transcript tool call on whatever follows it', async () => {
+      narration = { ...NARRATION_PRESETS.silent, status: true, thinking: true }
+      const tool = { role: 'tool' as const, text: 'shell', tool: { name: 'shell', command: 'ls' } }
+      narrator.onTranscript([tool, { role: 'thinking', text: 'Next.' }], { tools: true })
+      await vi.advanceTimersByTimeAsync(20000)
+      expect(spoken).toEqual(['Next.'])
+    })
+
+    // Text between steps, without the final answer: the last text of a turn is its answer, so
+    // each text waits until something follows it.
+    it('speaks text between steps but not the answer when only the final answer is off', async () => {
+      narration = { ...NARRATION_PRESETS.normal, final: false }
+      narrator.onAssistantText(['Looking at the tests.'])
+      await vi.runOnlyPendingTimersAsync()
+      expect(spoken).toEqual([])
+      narrator.onToolStart({ tool_name: 'Grep' })
+      await vi.runOnlyPendingTimersAsync()
+      expect(spoken).toEqual(['Looking at the tests.'])
+      narrator.onTranscript([{ role: 'assistant', text: 'All fixed.' }], { tools: false })
+      await finish('All fixed.')
+      expect(spoken).toEqual(['Looking at the tests.'])
+    })
+
+    it('treats text followed by more of the transcript as between steps', async () => {
+      narration = { ...NARRATION_PRESETS.normal, final: false }
+      narrator.onTranscript(
+        [
+          { role: 'assistant', text: 'First.' },
+          { role: 'tool', text: 'Bash: ls' },
+          { role: 'assistant', text: 'Second.' },
+          { role: 'assistant', text: 'Answer.' },
+        ],
+        { tools: false },
+      )
+      await finish('Answer.')
+      expect(spoken).toEqual(['First.', 'Second.'])
+    })
+
+    it('speaks an approval menu read off the screen under permissions, not the final answer', async () => {
+      narration = { ...NARRATION_PRESETS.silent }
+      const done = narrator.onStop('OpenCode is asking in the terminal.', 'permissions')
+      await vi.runOnlyPendingTimersAsync()
+      await done
+      expect(spoken).toEqual(['OpenCode is asking in the terminal.'])
+    })
   })
 
   describe('pause and resume', () => {
@@ -247,7 +396,7 @@ describe('Narrator', () => {
         onPausedChange: vi.fn(),
         onActiveChange: vi.fn(),
         t,
-        verbosity: () => 'normal' as const,
+        narration: normal,
         fillAfterMs: () => 8000,
       }
       const held = new Narrator(deps)
@@ -349,7 +498,7 @@ describe('Narrator', () => {
         stop,
         restartsOnPause: () => true,
         t,
-        verbosity: () => 'normal',
+        narration: normal,
         fillAfterMs: () => 8000,
       })
       bare.beginTurn()
@@ -455,7 +604,7 @@ describe('Narrator', () => {
         },
         stop,
         t,
-        verbosity: () => 'normal',
+        narration: normal,
         fillAfterMs: () => 8000,
       })
       slow.beginTurn()

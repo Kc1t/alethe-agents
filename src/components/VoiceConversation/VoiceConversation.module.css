@@ -32,6 +32,39 @@
   flex-shrink: 0;
 }
 
+/* Clears the drag strip, as the HUD's padding does. */
+.draggable {
+  padding-top: 18px;
+}
+
+/* The grab strip along the top of the panel and of the HUD window (which composes it). */
+.dragStrip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 1;
+  height: 14px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.dragStrip::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  background: var(--border-strong);
+  border-radius: 2px;
+  transform: translateX(-50%);
+}
+
+.dragStrip:active {
+  cursor: grabbing;
+}
+
 .playback {
   display: flex;
   align-items: center;

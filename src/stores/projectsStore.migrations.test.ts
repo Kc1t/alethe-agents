@@ -6,6 +6,7 @@ import {
   EMPTY_PROJECTS_FILE,
   type Preferences,
 } from '../lib/types'
+import { NARRATION_PRESETS } from '../lib/voice/narration'
 import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
@@ -76,6 +77,34 @@ describe('preference normalization', () => {
     }
   })
 
+  it('backfills the in-window panel position and clamps or drops a saved one', () => {
+    expect(normalizePreferences({}).voiceDockPosition).toBeNull()
+    expect(
+      normalizePreferences({ voiceDockPosition: { x: 0.25, y: 0.75 } }).voiceDockPosition,
+    ).toEqual({ x: 0.25, y: 0.75 })
+    expect(normalizePreferences({ voiceDockPosition: { x: 4, y: -1 } }).voiceDockPosition).toEqual({
+      x: 1,
+      y: 0,
+    })
+    for (const bad of [{ x: 0.5 }, { x: 'a', y: 0 }, { x: Number.NaN, y: 0 }, 3]) {
+      expect(normalizePreferences({ voiceDockPosition: bad as never }).voiceDockPosition).toBeNull()
+    }
+  })
+
+  // The presets became per-category toggles; a saved verbosity keeps speaking the same things.
+  it('migrates a saved narration verbosity to its toggles and drops it', () => {
+    for (const level of ['silent', 'final', 'normal', 'detailed'] as const) {
+      const preferences = normalizePreferences({ voiceVerbosity: level } as never)
+      expect(preferences.voiceNarration).toEqual(NARRATION_PRESETS[level])
+      expect(preferences).not.toHaveProperty('voiceVerbosity')
+    }
+    const custom = { ...NARRATION_PRESETS.silent, thinking: true }
+    expect(
+      normalizePreferences({ voiceNarration: custom, voiceVerbosity: 'detailed' } as never)
+        .voiceNarration,
+    ).toEqual(custom)
+  })
+
   it('keeps custom only when a custom position exists', () => {
     expect(
       normalizePreferences({ voiceHudPosition: 'custom', voiceHudCustomPosition: null })
@@ -90,7 +119,7 @@ describe('preference normalization', () => {
       voiceShortcut: 'CmdOrCtrl+Shift+Space',
       voiceReadAloudShortcut: 'CmdOrCtrl+Shift+L',
       voiceCaptureMode: 'push-to-talk',
-      voiceVerbosity: 'normal',
+      voiceNarration: NARRATION_PRESETS.normal,
       voiceFillAfterMs: 8000,
       voiceApprovalChannel: 'both',
       voiceDestructiveNeedsHud: true,
@@ -114,7 +143,7 @@ describe('preference normalization', () => {
     } as unknown as Partial<Preferences>)
     expect(preferences).toMatchObject({
       voiceCaptureMode: 'push-to-talk',
-      voiceVerbosity: 'normal',
+      voiceNarration: NARRATION_PRESETS.normal,
       voiceFillAfterMs: 3000,
       voiceApprovalChannel: 'both',
       voiceMidTaskDefault: 'queue',

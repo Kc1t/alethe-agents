@@ -41,9 +41,20 @@ export function completeAgentHandoff(handoffId: string): Promise<void> {
   return invoke('complete_agent_handoff', { handoffId })
 }
 
+/** A tool call's name and the parts of its input the narrator says. */
+export type TranscriptToolSummary = {
+  name: string
+  command?: string
+  path?: string
+  description?: string
+}
+
 export type TranscriptEvent = {
-  role: 'user' | 'assistant' | 'tool' | 'tool-result' | 'question'
+  /** `thinking`: the agent's reasoning, when its transcript keeps it (Claude thinking, Codex summaries). */
+  role: 'user' | 'assistant' | 'thinking' | 'tool' | 'tool-result' | 'question'
   text: string
+  /** On `tool` events. */
+  tool?: TranscriptToolSummary
 }
 
 export type TranscriptSnapshot = {

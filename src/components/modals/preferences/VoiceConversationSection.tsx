@@ -207,6 +207,28 @@ export function VoiceConversationSection() {
             </button>
           ) : null}
         </SettingsSection>
+
+        <SettingsSection
+          id="voice-conversation-panel"
+          title={t('prefs.voicePanelPosition')}
+          description={t('prefs.voicePanelPositionDesc')}
+        >
+          <p>
+            {t(
+              preferences.voiceDockPosition ? 'prefs.voiceHudCustom' : 'prefs.voiceHudBottomCenter',
+            )}
+          </p>
+          {preferences.voiceDockPosition ? (
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnSm}`}
+              disabled={!enabled}
+              onClick={() => setPreferences({ voiceDockPosition: null })}
+            >
+              {t('prefs.voiceHudReset')}
+            </button>
+          ) : null}
+        </SettingsSection>
       </>
 
       <>

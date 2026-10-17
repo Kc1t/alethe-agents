@@ -26,11 +26,13 @@ import {
   type ProjectsFile,
   type TodoItem,
   type UsageProviderId,
+  type VoiceDockPosition,
   type VoiceHudCustomPosition,
   type WorkspaceContainer,
   type WorkspaceRecentTab,
   type WorkspaceTab,
 } from '../lib/types'
+import { normalizeNarration } from '../lib/voice/narration'
 import { type LegacyVoiceFields, normalizeVoicePreferences } from '../lib/voice/voicePreferences'
 import {
   captureWorkspaceSnapshot,
@@ -44,7 +46,11 @@ import {
   MAX_RECENT_PROJECT_TABS,
 } from './projectsStore.constants'
 
-type LegacyPreferences = Partial<Preferences> & { showGitControl?: boolean } & LegacyVoiceFields
+type LegacyPreferences = Partial<Preferences> & {
+  showGitControl?: boolean
+  /** Narration presets before the per-category toggles (`voiceNarration`). */
+  voiceVerbosity?: unknown
+} & LegacyVoiceFields
 
 function normalizeStoredAccent(value: unknown, fallback?: string): string | undefined {
   if (typeof value !== 'string') return fallback
@@ -119,7 +125,6 @@ function usageAccessOfSavedFile(rawPreferences: unknown): Preferences['usageAcce
   ) as Preferences['usageAccess']
 }
 
-const VOICE_VERBOSITIES = ['silent', 'final', 'normal', 'detailed'] as const
 const VOICE_APPROVAL_CHANNELS = ['both', 'voice', 'hud'] as const
 const HUD_POSITIONS = [
   'bottom-center',
@@ -148,6 +153,14 @@ function normalizeHudCustom(value: unknown): VoiceHudCustomPosition | null {
   const position = { monitor, x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
   const validBounds = normalizeMonitorBounds(bounds)
   return validBounds ? { ...position, bounds: validBounds } : position
+}
+
+function normalizeDockPosition(value: unknown): VoiceDockPosition | null {
+  if (!value || typeof value !== 'object') return null
+  const { x, y } = value as Record<string, unknown>
+  if (typeof x !== 'number' || typeof y !== 'number') return null
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
 }
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
@@ -183,7 +196,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     ...(raw ?? {}),
   } as Preferences & { showGitControl?: boolean }
   delete preferences.showGitControl
-  // Pre-provider voice fields; their values move into voiceStt / voiceTts below.
+  // Legacy voice fields; their values move into voiceStt / voiceTts / voiceNarration below.
   for (const legacy of [
     'dictationModelId',
     'dictationNativeLocale',
@@ -191,6 +204,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     'dictationCloudModel',
     'voiceTtsVoice',
     'voiceTtsRate',
+    'voiceVerbosity',
   ]) {
     delete (preferences as Record<string, unknown>)[legacy]
   }
@@ -284,7 +298,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       DEFAULT_PREFERENCES.voiceCommandShortcut,
     ),
     voiceCaptureMode: preferences.voiceCaptureMode === 'toggle' ? 'toggle' : 'push-to-talk',
-    voiceVerbosity: oneOf(preferences.voiceVerbosity, VOICE_VERBOSITIES, 'normal'),
+    voiceNarration: normalizeNarration(raw?.voiceNarration, raw?.voiceVerbosity),
     voiceFillAfterMs: Math.round(
       clampNumber(preferences.voiceFillAfterMs, 3000, 60000, DEFAULT_PREFERENCES.voiceFillAfterMs),
     ),
@@ -297,6 +311,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       DEFAULT_PREFERENCES.voiceJevTrigger,
     ).toLowerCase(),
     voiceHudCustomPosition: normalizeHudCustom(preferences.voiceHudCustomPosition),
+    voiceDockPosition: normalizeDockPosition(preferences.voiceDockPosition),
     voiceHudPosition: (() => {
       const position = oneOf(preferences.voiceHudPosition, HUD_POSITIONS, 'bottom-center')
       return position === 'custom' && !normalizeHudCustom(preferences.voiceHudCustomPosition)

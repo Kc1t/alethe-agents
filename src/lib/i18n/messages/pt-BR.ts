@@ -856,12 +856,41 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceHudTopRight': 'Superior direita',
   'prefs.voiceHudCustom': 'Personalizado (onde você arrastou)',
   'prefs.voiceHudReset': 'Voltar à posição padrão',
+  'prefs.voicePanelPosition': 'Posição do painel',
+  'prefs.voicePanelPositionDesc':
+    'Onde o painel de voz fica dentro da janela do Alethe quando o Alethe está na frente. Arraste a faixa no topo dele para movê-lo.',
   'prefs.voiceConvNarration': 'Narração',
-  'prefs.voiceConvNarrationDesc': 'Quanto o Alethe fala enquanto o Claude trabalha.',
+  'prefs.voiceConvNarrationDesc':
+    'O que o Alethe fala enquanto um agente trabalha. Escolha uma predefinição ou marque cada tipo abaixo.',
   'prefs.voiceConvNarrationSilent': 'Silencioso',
   'prefs.voiceConvNarrationFinal': 'Só a resposta final',
   'prefs.voiceConvNarrationNormal': 'Normal',
   'prefs.voiceConvNarrationDetailed': 'Detalhado',
+  'prefs.voiceConvNarrationPreset': 'Predefinição',
+  'prefs.voiceConvNarrationCustom': 'Personalizado',
+  'prefs.voiceNarrateProgress': 'Texto entre etapas',
+  'prefs.voiceNarrateProgressDesc':
+    'O que o agente escreve enquanto trabalha, entre uma ação e outra. Claude Code e Codex.',
+  'prefs.voiceNarrateThinking': 'Raciocínio',
+  'prefs.voiceNarrateThinkingDesc':
+    'O raciocínio do agente, só quando ele o grava na sessão: Claude Code com o raciocínio ligado e os resumos de raciocínio do Codex. Outros harnesses não o expõem.',
+  'prefs.voiceNarrateTools': 'Ações',
+  'prefs.voiceNarrateToolsDesc':
+    'Cada ação quando começa, como "Rodando os testes." ou "Editando auth.ts." Claude Code e Codex.',
+  'prefs.voiceNarrateStatus': 'Status após um silêncio',
+  'prefs.voiceNarrateStatusDesc':
+    'Um status curto da ação em andamento quando nada foi dito por um tempo.',
+  'prefs.voiceNarrateFinal': 'Resposta final',
+  'prefs.voiceNarrateFinalDesc':
+    'A resposta do agente quando ele termina. Em harnesses que não são o Claude Code nem o Codex, a resposta lida da tela.',
+  'prefs.voiceNarratePermissions': 'Pedidos de permissão',
+  'prefs.voiceNarratePermissionsDesc':
+    'As perguntas de permissão do Claude, e um aviso quando outro harness pergunta no terminal.',
+  'prefs.voiceNarratePermissionsPanelOnly':
+    'Não são faladas enquanto as respostas de permissão estão em Só painel.',
+  'prefs.voiceNarrateQuestions': 'Perguntas para você',
+  'prefs.voiceNarrateQuestionsDesc':
+    'Quando o agente pede que você escolha uma opção (Claude Code e Codex).',
   'prefs.voiceConvFill': 'Status após silêncio',
   'prefs.voiceConvFillDesc': 'Segundos sem fala antes de dizer um status curto.',
   'prefs.voiceConvVoice': 'Voz',
@@ -3692,6 +3721,7 @@ export const ptBR: Record<MessageKey, string> = {
   'voice.narration.browsing': 'Pesquisando na web.',
   'voice.narration.delegating': 'Passando uma parte para um subagente.',
   'voice.narration.working': 'Trabalhando com {tool}.',
+  'voice.narration.asking': 'Esperando a sua resposta.',
   'voice.conv.title': 'Conversa por voz',
   'voice.conv.phase.idle': 'Pronto',
   'voice.conv.phase.listening': 'Ouvindo…',
