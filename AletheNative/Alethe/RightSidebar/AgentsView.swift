@@ -59,7 +59,7 @@ struct AgentsView: View {
                         } label: {
                             Label("rightSidebar.maximize", systemImage: "arrow.up.left.and.arrow.down.right").font(metrics.font(size: 13))
                         }
-                        .buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 22))
+                        .buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 24, height: 22))
                         .accessibilityIdentifier("agents.maximize")
                         .disabled(environment.workspace?.document.workspace.selectedProjectID == nil)
                     }
@@ -215,7 +215,7 @@ private struct AgentSidebarCard: View {
                 } label: {
                     Label("orchestrator.cancelAction", systemImage: "stop").font(metrics.font(size: 11))
                 }
-                .buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 22)).disabled(acting)
+                .buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 24, height: 22)).disabled(acting)
             }
         }
         .foregroundStyle(theme[.fg])

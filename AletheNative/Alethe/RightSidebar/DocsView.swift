@@ -99,7 +99,7 @@ struct DocsView: View {
                             Label("markdown.copySource", systemImage: "doc.on.clipboard").font(metrics.font(size: 15))
                         }
                         .disabled(!file.isLoaded || file.loadError != nil).accessibilityIdentifier("docs.copy")
-                    }.buttonStyle(AletheRightSidebarTabStyle(width: 24, height: 24))
+                    }.buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 24, height: 24))
                 }
                 if opened.count > 1 {
                     ScrollView(.horizontal) {

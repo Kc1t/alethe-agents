@@ -15,6 +15,7 @@ struct QueueView: View {
     @State private var items: [QueueItem] = []
     @State private var persistenceFailed = false
     @State private var fitnessSession = UUID()
+    @State private var dropTarget: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -48,8 +49,10 @@ struct QueueView: View {
                         LazyVStack(spacing: metrics.size(6)) {
                             ForEach(items) { item in
                                 row(item, now: context.date)
+                                    .modifier(AletheSidebarDropIndicator(targeted: dropTarget == item.id))
                                     .draggable(item.id)
                                     .dropDestination(for: String.self) { ids, _ in
+                                        defer { dropTarget = nil }
                                         guard let dragged = ids.first, dragged != item.id,
                                               items.contains(where: { $0.id == dragged }) else { return false }
                                         var order = items.map(\.id).filter { $0 != dragged }
@@ -57,6 +60,9 @@ struct QueueView: View {
                                         order.insert(dragged, at: target)
                                         Task { await queue?.reorder(order) }
                                         return true
+                                    } isTargeted: { targeted in
+                                        if targeted { dropTarget = item.id }
+                                        else if dropTarget == item.id { dropTarget = nil }
                                     }
                             }
                         }.padding(metrics.size(8))

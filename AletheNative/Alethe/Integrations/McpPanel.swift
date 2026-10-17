@@ -141,6 +141,7 @@ private struct McpPanelContent: View {
                 .padding(metrics.size(3))
                 .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
                 .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                .animation(Motion.sidebarColor(reduceMotion: metrics.reducesMotion), value: section)
                 .accessibilityIdentifier("mcp.panel.section")
             } else {
                 Picker("mcp.view", selection: $section) {
@@ -170,6 +171,7 @@ private struct McpPanelContent: View {
             } label: {
                 if metrics.isWebInterface {
                     Image(systemName: "arrow.clockwise").font(metrics.font(size: 13))
+                        .modifier(AletheSidebarSpinner(active: model.loading, kind: .mcp))
                 } else { Image(systemName: "arrow.clockwise") }
             }
             .modifier(McpRefreshPresentation())
@@ -604,10 +606,11 @@ private struct McpWebRowBackground: ViewModifier {
             theme[.panelHover].opacity(metrics.isWebInterface && hovering ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.md))
         )
         .overlay {
-            if metrics.isWebInterface && hovering {
-                RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.borderSubtle], lineWidth: metrics.size(1))
-            }
-        }.onHover { hovering = $0 }
+            RoundedRectangle(cornerRadius: metrics.radius(.md))
+                .strokeBorder(theme[.borderSubtle].opacity(metrics.isWebInterface && hovering ? 1 : 0), lineWidth: metrics.size(1))
+        }
+        .animation(metrics.isWebInterface ? Motion.sidebarColor(reduceMotion: metrics.reducesMotion) : nil, value: hovering)
+        .onHover { hovering = $0 }
     }
 }
 
@@ -647,7 +650,7 @@ private struct McpRefreshPresentation: ViewModifier {
     @Environment(\.metrics) private var metrics
     func body(content: Content) -> some View {
         if metrics.isWebInterface {
-            content.buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
+            content.buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 26, height: 26))
         } else { content.buttonStyle(.borderless) }
     }
 }

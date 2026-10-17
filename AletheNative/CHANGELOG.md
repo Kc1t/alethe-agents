@@ -16,6 +16,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style right sidebar tabs and MCP/GSD rows fade hover and selection colors with the web
+  timings. MCP and pull-request refresh icons rotate at their original speeds without shifting
+  the header; GSD busy sessions use the stepped dot-matrix indicator. Reduce Motion pauses these
+  indicators and disables the new transitions.
+- Web-style Todo sections have rotating collapse chevrons and count pills. Todo and Queue drag
+  targets show an insertion marker without changing row layout; the native interface retains
+  its existing controls and lists.
 - Web-style profile menus use flat, full-width hover rows, bounded sidebar-relative width and a
   trailing checkmark for the active profile instead of native checkbox controls.
 - Images and menu icons in Home, sidebar, Settings and terminal surfaces retain explicit bounds
