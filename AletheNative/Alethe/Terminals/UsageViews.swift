@@ -4,7 +4,7 @@ import AletheModel
 import SwiftUI
 
 /// A toolbar usage pill (upstream topbar pills): the provider's busiest window, tinted as it fills;
-/// clicking opens AI Usage. Empty until the provider's usage is known.
+/// clicking opens AI Usage. Signed-in providers retain a placeholder while usage is unavailable.
 struct UsagePill: View {
     let provider: AgentKind
     @Environment(AppEnvironment.self) private var environment
@@ -12,32 +12,37 @@ struct UsagePill: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        if let peak = environment.usage.usage[provider]?.peak {
+        if environment.usage.showsPill(provider) {
+            let peak = environment.usage.usage[provider]?.peak
             Button { environment.editorRequest = .aiUsage } label: {
                 if metrics.isWebInterface {
                     HStack(spacing: metrics.size(6)) {
                         AgentLogo(agent: provider.rawValue, size: 13)
-                        Text(verbatim: "\(Int(peak.usedPercent.rounded()))%")
+                        Text(verbatim: peak.map { "\(Int($0.usedPercent.rounded()))%" } ?? "…")
                             .font(metrics.monoFont(size: 11, weight: .semibold))
                             .lineLimit(1)
                     }
                     .padding(.horizontal, metrics.size(8))
                     .padding(.vertical, metrics.size(2))
                     .frame(minHeight: metrics.size(22))
-                    .foregroundStyle(theme[UsageLevel.token(peak.usedPercent)])
+                    .foregroundStyle(theme[peak.map { UsageLevel.token($0.usedPercent) } ?? .textTertiary])
                     .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.size(8)))
                     .fixedSize()
                 } else {
-                    Text(verbatim: "\(AgentLabels.name(for: provider.rawValue).split(separator: " ").first ?? "") \(Int(peak.usedPercent.rounded()))%")
+                    HStack(spacing: metrics.size(6)) {
+                        AgentLogo(agent: provider.rawValue, size: 13)
+                        Text(verbatim: peak.map { "\(Int($0.usedPercent.rounded()))%" } ?? "…")
+                    }
                         .font(metrics.font(.caption).monospacedDigit())
                         .padding(.horizontal, metrics.space(.s))
                         .padding(.vertical, metrics.space(.xxs))
-                        .background(theme[UsageLevel.token(peak.usedPercent)].opacity(0.18), in: Capsule())
-                        .foregroundStyle(theme[UsageLevel.token(peak.usedPercent)])
+                        .background(theme[peak.map { UsageLevel.token($0.usedPercent) } ?? .textTertiary].opacity(0.18), in: Capsule())
+                        .foregroundStyle(theme[peak.map { UsageLevel.token($0.usedPercent) } ?? .textTertiary])
                 }
             }
+            .opacity(environment.usage.stale.contains(provider) ? 0.55 : 1)
             .buttonStyle(.plain)
-            .help(Text(String(format: String(localized: "usage.pill.help"), AgentLabels.name(for: provider.rawValue), peak.label)))
+            .help(Text(String(format: String(localized: "usage.pill.help"), AgentLabels.name(for: provider.rawValue), peak?.label ?? "…")))
             .accessibilityIdentifier("usage.pill.\(provider.rawValue)")
         }
     }

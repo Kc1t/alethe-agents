@@ -3,6 +3,32 @@ import Testing
 @testable import AletheAgents
 
 struct AIUsageTests {
+    @Test func codexCredentialDetection() {
+        for json in [#"{"tokens":{"access_token":"token"}}"#, #"{"tokens":{"refresh_token":"refresh"}}"#] {
+            #expect(AIUsage.codexAuthenticated(Data(json.utf8)))
+        }
+        for json in ["{}", "null", "invalid", #"{"tokens":{"access_token":""}}"#, #"{"OPENAI_API_KEY":"key"}"#] {
+            #expect(!AIUsage.codexAuthenticated(Data(json.utf8)))
+        }
+    }
+
+    @Test func authenticatedVisibilityRespectsOptOut() {
+        #expect(AIUsage.showsPill(authenticated: true, enabled: true))
+        #expect(!AIUsage.showsPill(authenticated: true, enabled: false))
+        #expect(!AIUsage.showsPill(authenticated: false, enabled: true))
+        #expect(!AIUsage.showsPill(authenticated: false, enabled: false))
+    }
+
+    @Test func failedReadRetainsFiguresButSignOutClearsThem() {
+        let good = ProviderUsage(agent: .claude, status: .ready,
+                                 windows: [UsageWindow(label: "5h", usedPercent: 42, resetsAt: nil)])
+        let failed = ProviderUsage(agent: .claude, status: .unavailable("network"))
+        #expect(AIUsage.retainedReading(previous: good, fresh: failed) == good)
+        #expect(AIUsage.retainedReading(previous: nil, fresh: failed) == failed)
+        let signedOut = ProviderUsage(agent: .claude, status: .noAuth)
+        #expect(AIUsage.retainedReading(previous: good, fresh: signedOut) == signedOut)
+    }
+
     @Test func claudeWindows() throws {
         let body = Data(#"{"five_hour":{"utilization":42.5,"resets_at":"2026-09-25T15:00:00.123Z"},"seven_day":{"utilization":100,"resets_at":"2026-09-30T00:00:00Z"},"seven_day_opus":null}"#.utf8)
         let usage = try #require(AIUsage.parseClaude(body))

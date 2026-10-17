@@ -15,17 +15,19 @@ struct WebTitleBarUsagePill: View {
     @State private var dismissal: Task<Void, Never>?
 
     var body: some View {
-        if let usage = environment.usage.usage[provider], let headline = headline(usage) {
+        if environment.usage.showsPill(provider) {
+            let usage = environment.usage.usage[provider]
+            let headline = usage.flatMap { self.headline($0) }
             Button {
                 showsDetails = false
                 environment.editorRequest = .aiUsage
             } label: {
                 HStack(spacing: metrics.size(6)) {
                     AgentLogo(agent: provider.rawValue, size: 13)
-                    Text(verbatim: "\(Int(headline.usedPercent.rounded()))%")
+                    Text(verbatim: headline.map { "\(Int($0.usedPercent.rounded()))%" } ?? "…")
                         .font(metrics.monoFont(size: 11, weight: metrics.style == .clean ? .medium : .semibold))
                 }
-                .foregroundStyle(theme[level(headline.usedPercent)])
+                .foregroundStyle(theme[headline.map { level($0.usedPercent) } ?? .fgFaint])
                 .padding(.horizontal, metrics.size(8)).padding(.vertical, metrics.size(2))
                 .frame(minHeight: metrics.size(22))
                 .background(theme[hovering ? .panelHover : .bgSunken].opacity(metrics.style == .clean && !hovering ? 0 : 1),
@@ -33,6 +35,7 @@ struct WebTitleBarUsagePill: View {
                 .overlay(RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 8))
                     .strokeBorder(theme[AgentTokens.accent(for: provider.rawValue)].opacity(metrics.style == .clean ? 0 : 0.2), lineWidth: metrics.size(1)))
             }
+            .opacity(environment.usage.stale.contains(provider) ? 0.55 : 1)
             .buttonStyle(.plain)
             .fixedSize()
             .help(Text("usage.title"))
@@ -43,7 +46,15 @@ struct WebTitleBarUsagePill: View {
                 if value { showsDetails = true } else { scheduleDismissal() }
             }
             .webTitleBarPopover(isPresented: $showsDetails, width: 240) {
-                details(usage)
+                Group {
+                    if let usage, headline != nil { details(usage) }
+                    else {
+                        Text("usage.reading.pending")
+                            .font(metrics.font(size: 11))
+                            .foregroundStyle(theme[.fgFaint])
+                            .padding(metrics.size(12))
+                    }
+                }
                     .onHover { value in
                         detailsHovered = value
                         dismissal?.cancel()

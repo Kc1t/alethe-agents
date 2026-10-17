@@ -36870,6 +36870,22 @@
           }
         }
       }
+    },
+    "usage.reading.pending" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usage reading pending"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aguardando leitura de uso"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

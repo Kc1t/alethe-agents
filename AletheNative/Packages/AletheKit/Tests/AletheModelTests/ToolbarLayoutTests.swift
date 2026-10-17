@@ -27,7 +27,7 @@ import Testing
         #expect(preferences.themeID == "nord")
         #expect(preferences.usagePillProviders == ["claude", "codex"], "toolbar order; unknown providers dropped")
         #expect(preferences.showsToolbarItem(.usageCodex) && !preferences.showsToolbarItem(.usageAntigravity))
-        #expect(preferences.toolbarItems == ["usage.claude": true, "usage.codex": true])
+        #expect(preferences.toolbarItems == ["usage.claude": true, "usage.codex": true, "usage.antigravity": false])
         #expect(written["usagePills"] == nil, "the old key is not written back")
         #expect(written["schemaVersion"]?.intValue == 2)
     }
@@ -36,21 +36,21 @@ import Testing
         let json = #"{"schemaVersion":1,"themeID":"nord","uiScale":1,"alwaysStartUnrestricted":false}"#
         let (preferences, _, _) = try await migrated(json)
         #expect(preferences.toolbarItems == nil)
-        #expect(preferences.usagePillProviders.isEmpty)
+        #expect(preferences.usagePillProviders == ToolbarItemKind.usageProviders)
     }
 
     @Test func emptyUsagePillsKeepsDefaults() async throws {
         let json = #"{"schemaVersion":1,"themeID":"nord","uiScale":1,"alwaysStartUnrestricted":false,"usagePills":[]}"#
         let (preferences, _, written) = try await migrated(json)
-        #expect(preferences.toolbarItems == nil)
+        #expect(preferences.usagePillProviders.isEmpty)
         #expect(written["usagePills"] == nil)
     }
 
-    @Test func defaultsHideOnlyTheUsagePillsAndRouter9() {
+    @Test func defaultsShowUsageAndHideOnlyRouter9() {
         let preferences = PreferencesDocument()
         let hidden = ToolbarItemKind.allCases.filter { !preferences.showsToolbarItem($0) }
-        #expect(hidden == [.usageClaude, .usageCodex, .usageAntigravity, .router9])
-        #expect(ToolbarItemKind.usageProviders.compactMap(ToolbarItemKind.usagePill(for:)) == hidden.filter { $0 != .router9 })
+        #expect(hidden == [.router9])
+        #expect(ToolbarItemKind.usageProviders.compactMap(ToolbarItemKind.usagePill(for:)) == [.usageClaude, .usageCodex, .usageAntigravity])
         #expect(ToolbarItemKind.memory.usageProvider == nil && ToolbarItemKind.usageCodex.usageProvider == "codex")
         #expect(ToolbarItemKind.aiUsage.usageProvider == nil)
     }
@@ -58,12 +58,12 @@ import Testing
     @Test func onlyChoicesAgainstTheDefaultAreStored() throws {
         var preferences = PreferencesDocument()
         preferences.setToolbarItem(.memory, shown: false)
-        preferences.setToolbarItem(.usageClaude, shown: true)
-        #expect(preferences.toolbarItems == ["memory": false, "usage.claude": true])
-        let decoded = try JSONDecoder().decode(PreferencesDocument.self, from: JSONEncoder().encode(preferences))
-        #expect(!decoded.showsToolbarItem(.memory) && decoded.usagePillProviders == ["claude"])
-        preferences.setToolbarItem(.memory, shown: true)
         preferences.setToolbarItem(.usageClaude, shown: false)
+        #expect(preferences.toolbarItems == ["memory": false, "usage.claude": false])
+        let decoded = try JSONDecoder().decode(PreferencesDocument.self, from: JSONEncoder().encode(preferences))
+        #expect(!decoded.showsToolbarItem(.memory) && decoded.usagePillProviders == ["codex", "antigravity"])
+        preferences.setToolbarItem(.memory, shown: true)
+        preferences.setToolbarItem(.usageClaude, shown: true)
         #expect(preferences.toolbarItems == nil)
     }
 

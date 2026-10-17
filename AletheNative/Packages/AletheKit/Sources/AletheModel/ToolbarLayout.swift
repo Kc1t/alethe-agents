@@ -35,10 +35,8 @@ public enum ToolbarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
         return String(rawValue.dropFirst("usage.".count))
     }
 
-    /// Usage pills start hidden: reading Claude's and Antigravity's tokens can make macOS ask for
-    /// Keychain access, so nothing is fetched until the user shows one (P3-13). 9router's pill starts
-    /// hidden as upstream's does.
-    public var shownByDefault: Bool { usageProvider == nil && self != .router9 }
+    /// Authenticated usage providers are visible unless explicitly disabled.
+    public var shownByDefault: Bool { self != .router9 }
 
     /// When the window is too narrow, lower ranks go to the overflow menu first (ADR-7a
     /// `ToolbarItemVisibilityPriority`, macOS 26.1 and later).
@@ -82,8 +80,8 @@ extension PreferencesDocument {
         guard let pills = object.removeValue(forKey: "usagePills") else { return }
         let shown = Set(pills.arrayValue?.compactMap(\.stringValue) ?? [])
         var items = object["toolbarItems"]?.objectValue ?? [:]
-        for provider in ToolbarItemKind.usageProviders where shown.contains(provider) {
-            if let item = ToolbarItemKind.usagePill(for: provider) { items[item.rawValue] = .bool(true) }
+        for provider in ToolbarItemKind.usageProviders {
+            if let item = ToolbarItemKind.usagePill(for: provider) { items[item.rawValue] = .bool(shown.contains(provider)) }
         }
         if !items.isEmpty { object["toolbarItems"] = .object(items) }
     }

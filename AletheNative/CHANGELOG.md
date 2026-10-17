@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Authenticated Claude, Codex and Antigravity agents appear in both title bar styles by default.
+  Local sign-ins are detected automatically; toolbar opt-outs stop background usage reads.
+  Loading or unavailable usage keeps a neutral logo pill, and stale figures remain dimmed.
 - The web interface keeps a full-width, 40-point title bar above both sidebars and the workspace.
   Traffic lights stay centered in their reserved area; fullscreen hides them and releases that space.
   Sidebar toggles leave the title bar in place, with the native interface layout preserved.

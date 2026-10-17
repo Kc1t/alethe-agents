@@ -65,6 +65,35 @@ public enum AIUsage {
         return fractional.date(from: text) ?? ISO8601DateFormatter().date(from: text)
     }
 
+    /// Local credential discovery is independent of the usage endpoint and CLI availability.
+    /// Keychain reads never display an authorization prompt during background discovery.
+    public static func isAuthenticated(_ provider: AgentKind, homeDirectory: String = NSHomeDirectory()) -> Bool {
+        switch provider {
+        case .claude:
+            return claudeToken(homeDirectory: homeDirectory, allowInteraction: false) != nil || keychainContains(service: "Claude Code-credentials")
+        case .codex:
+            let home = ProcessInfo.processInfo.environment["CODEX_HOME"] ?? "\(homeDirectory)/.codex"
+            guard let data = FileManager.default.contents(atPath: "\(home)/auth.json") else { return false }
+            return codexAuthenticated(data)
+        case .antigravity: return keychainContains(service: "gemini", account: "antigravity")
+        default: return false
+        }
+    }
+
+    static func codexAuthenticated(_ data: Data) -> Bool {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let tokens = object["tokens"] as? [String: Any] else { return false }
+        return ["access_token", "refresh_token"].contains { (tokens[$0] as? String)?.isEmpty == false }
+    }
+
+    /// A failed refresh keeps valid figures, but a sign-out clears them.
+    public static func retainedReading(previous: ProviderUsage?, fresh: ProviderUsage) -> ProviderUsage {
+        if case .unavailable = fresh.status, let previous, previous.status == .ready { return previous }
+        return fresh
+    }
+
+    public static func showsPill(authenticated: Bool, enabled: Bool) -> Bool { authenticated && enabled }
+
     // MARK: - Claude Code
 
     /// `/api/oauth/usage` body: `five_hour`, `seven_day`, `seven_day_opus` windows (upstream
@@ -83,14 +112,17 @@ public enum AIUsage {
 
     /// Claude Code's OAuth token: `CLAUDE_OAUTH_TOKEN`, `~/.claude/.credentials.json`, then the
     /// Keychain item Claude Code writes (upstream `discover_token`). Never logged.
-    public static func claudeToken(homeDirectory: String = NSHomeDirectory()) -> String? {
+    public static func claudeToken(homeDirectory: String = NSHomeDirectory(), allowInteraction: Bool = true) -> String? {
         if let token = ProcessInfo.processInfo.environment["CLAUDE_OAUTH_TOKEN"], !token.isEmpty { return token }
         if let data = FileManager.default.contents(atPath: "\(homeDirectory)/.claude/.credentials.json"),
            let token = claudeToken(fromSecret: data) { return token }
         for account in [NSUserName(), "default", "user", "claude", ""] {
-            if let secret = keychainSecret(service: "Claude Code-credentials", account: account) {
-                return claudeToken(fromSecret: secret) ?? String(data: secret, encoding: .utf8)
+            if let secret = keychainSecret(service: "Claude Code-credentials", account: account, allowInteraction: allowInteraction) {
+                if let token = claudeToken(fromSecret: secret) { return token }
             }
+        }
+        if let secret = keychainSecret(service: "Claude Code-credentials", allowInteraction: allowInteraction) {
+            return claudeToken(fromSecret: secret)
         }
         return nil
     }
@@ -272,12 +304,27 @@ public enum AIUsage {
 
     // MARK: - Keychain
 
-    /// A generic password another tool stored (macOS asks the user to allow Alethe to read it).
-    static func keychainSecret(service: String, account: String) -> Data? {
-        let query: [String: Any] = [
+    /// Attribute lookup detects sign-in even when Keychain denies access to the secret.
+    static func keychainContains(service: String, account: String? = nil) -> Bool {
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-            kSecAttrAccount as String: account, kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
         ]
+        if let account { query[kSecAttrAccount as String] = account }
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        return status == errSecSuccess || status == errSecInteractionNotAllowed
+    }
+
+    /// A generic password another tool stored (macOS asks the user to allow Alethe to read it).
+    static func keychainSecret(service: String, account: String? = nil, allowInteraction: Bool = true) -> Data? {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+            kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        if !allowInteraction { query[kSecUseAuthenticationUI as String] = kSecUseAuthenticationUIFail }
+        if let account { query[kSecAttrAccount as String] = account }
         var result: AnyObject?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data,
               !data.isEmpty else { return nil }
