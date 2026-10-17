@@ -13,8 +13,10 @@ struct ProjectEditor: View {
     let initialLocation: ProjectLocation
     /// Folder filled in for a new project (an `alethe` open request for an unknown folder).
     var initialFolder: String? = nil
+    var closeOverlay: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focused: Bool
+    @FocusState private var webPathFocused: Bool
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(AppEnvironment.self) private var environment
@@ -41,6 +43,12 @@ struct ProjectEditor: View {
     @State private var graphifyEnabled = false
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface { webBody } else { nativeBody }
+        }
+    }
+
+    private var nativeBody: some View {
         Form {
             if editing == nil {
                 Picker(selection: $source) {
@@ -136,6 +144,101 @@ struct ProjectEditor: View {
             focused = true
             loadInitial()
         }
+    }
+
+    private func close() {
+        if metrics.isWebInterface, let closeOverlay { closeOverlay() } else { dismiss() }
+    }
+
+    private var webBody: some View {
+        ProjectGroupWebModal(title: editing == nil ? "editor.project.newTitle" : "editor.project.editTitle",
+                             confirm: confirmTitle, disabled: problem != nil || model.cloning,
+                             close: { if model.cloning { model.cancelClone() } else { close() } }, submit: submitWeb) {
+            ProjectGroupWebField(title: "editor.web.name") {
+                TextField(text: Binding { name } set: { name = $0; nameEdited = true },
+                          prompt: Text("editor.project.web.namePlaceholder")) { Text("editor.project.name") }
+                    .modifier(ProjectGroupWebInput(focus: $focused))
+                    .accessibilityIdentifier("editor.project.name")
+                    .onSubmit(submitWeb)
+            }
+            if editing == nil {
+                ProjectGroupWebField(title: "editor.project.source") {
+                    AletheSelect(selection: $source, options: [.folder, .clone]) { value in
+                        Text(value == .folder ? "editor.project.source.folder" : "editor.project.source.clone")
+                    }
+                    .accessibilityIdentifier("editor.project.source").disabled(model.cloning)
+                }
+            }
+            if isCloning {
+                ProjectGroupWebField(title: "editor.project.cloneURL") {
+                    TextField(text: $cloneURL, prompt: Text(verbatim: "https://github.com/owner/repository")) {
+                        Text("editor.project.cloneURL")
+                    }
+                    .modifier(ProjectGroupWebInput()).accessibilityIdentifier("editor.project.cloneURL")
+                    .disabled(model.cloning).onSubmit(submitWeb)
+                    .onChange(of: cloneURL) { _, value in
+                        if !nameEdited { name = GitCloneURL.folderName(for: GitCloneURL.normalize(value)) }
+                    }
+                }
+            }
+            if !workspace.document.groups.isEmpty {
+                ProjectGroupWebField(title: "editor.project.group") {
+                    AletheSelect(selection: $location,
+                                 options: [.ungrouped] + workspace.document.groups.map { .group($0.id) }) { value in
+                        if case .group(let id) = value, let group = workspace.document.group(id) {
+                            Text(verbatim: group.name)
+                        } else { Text("sidebar.ungrouped") }
+                    }
+                }
+            }
+            ProjectGroupWebField(title: isCloning ? "editor.project.cloneInto" : "editor.project.web.folder") {
+                HStack(spacing: metrics.size(6)) {
+                    HStack(spacing: metrics.size(8)) {
+                        Image(systemName: "folder").font(metrics.font(size: 15)).foregroundStyle(theme[.fgMuted])
+                        TextField(text: $folder, prompt: Text(verbatim: "~/Projects/app")) { Text("editor.project.folder") }
+                            .textFieldStyle(.plain).font(metrics.monoFont(size: 12))
+                            .accessibilityIdentifier("editor.project.folder").focused($webPathFocused).onSubmit(submitWeb)
+                            .onChange(of: folder) { _, value in
+                                if !nameEdited, editing == nil, !isCloning { name = URL(filePath: expanded(value)).lastPathComponent }
+                            }
+                    }
+                    .padding(.horizontal, metrics.size(10)).frame(height: metrics.size(32))
+                    .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                        .strokeBorder(theme[webPathFocused ? .accent : .border], lineWidth: metrics.size(1)))
+                    Button("editor.web.browse", action: chooseFolder).buttonStyle(AletheButtonStyle())
+                }.disabled(model.cloning)
+                if !isCloning { folderDetails }
+            }
+            ProjectGroupWebField(title: "editor.project.web.color") {
+                ColorSwatchPicker(selection: $color, webSwatchSize: editing == nil ? 24 : 28)
+            }
+            ProjectGroupWebField(title: "editor.project.worktrees") {
+                AletheSelect(selection: $worktreeMode, options: [.gitWorktree, .localCopy]) { value in
+                    Text(value == .gitWorktree ? "newTerminal.worktree.mode.gitWorktree" : "newTerminal.worktree.mode.localCopy")
+                }.accessibilityIdentifier("editor.project.worktreeMode")
+                Toggle("editor.project.autoWorktree", isOn: $autoWorktree)
+                    .toggleStyle(.checkbox).font(metrics.font(size: 11))
+                    .foregroundStyle(theme[.fgMuted]).accessibilityIdentifier("editor.project.autoWorktree")
+            }
+            if environment.features.isOn(.graphify) {
+                Toggle("editor.project.graphify", isOn: $graphifyEnabled)
+                    .toggleStyle(.checkbox).font(metrics.font(size: 11))
+                    .foregroundStyle(theme[.fgMuted]).accessibilityIdentifier("editor.project.graphify")
+            }
+            if isCloning { cloneStatus }
+            if let problem, !model.cloning {
+                Text(problem).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                    .accessibilityIdentifier("editor.problem")
+            }
+        }
+        .task(id: isCloning ? "" : expanded(folder)) { await model.inspect(isCloning ? "" : expanded(folder)) }
+        .onAppear { loadInitial(); focused = true }
+    }
+
+    private func submitWeb() {
+        guard problem == nil, !model.cloning else { return }
+        save()
     }
 
     private var confirmTitle: LocalizedStringKey {
@@ -312,7 +415,7 @@ struct ProjectEditor: View {
                 if doc.location(of: editing) != location { doc.moveProject(editing, to: location, at: Int.max) }
             }
             writeMarker(editing)
-            dismiss()
+            close()
         } else {
             create(folder: path, githubURL: nil)
         }
@@ -345,7 +448,7 @@ struct ProjectEditor: View {
             created = id
         }
         if let created { writeMarker(created) }
-        dismiss()
+        close()
     }
 
     /// Mirrors the project into its folder's `.alethe/project.json` (upstream `write_project_marker`),

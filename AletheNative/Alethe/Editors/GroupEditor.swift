@@ -8,6 +8,8 @@ struct GroupEditor: View {
     let undoManager: UndoManager?
     let editing: GroupID?
     let initialParent: GroupID?
+    var closeOverlay: (() -> Void)? = nil
+    @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
     @FocusState private var focused: Bool
     @Environment(\.metrics) private var metrics
@@ -17,6 +19,12 @@ struct GroupEditor: View {
     @State private var parent: GroupID?
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface { webBody } else { nativeBody }
+        }
+    }
+
+    private var nativeBody: some View {
         Form {
             TextField(text: $name) { Text("editor.group.name") }
                 .accessibilityIdentifier("editor.group.name")
@@ -53,6 +61,57 @@ struct GroupEditor: View {
         }
     }
 
+    private var webBody: some View {
+        ProjectGroupWebModal(title: editing == nil ? "editor.group.newTitle" : "editor.group.editTitle",
+                             confirm: editing == nil ? "editor.group.create" : "editor.save",
+                             disabled: name.trimmingCharacters(in: .whitespaces).isEmpty,
+                             close: close, submit: submitWeb) {
+            ProjectGroupWebField(title: "editor.web.name") {
+                TextField(text: $name, prompt: Text("editor.group.web.namePlaceholder")) { Text("editor.group.name") }
+                    .modifier(ProjectGroupWebInput(focus: $focused))
+                    .accessibilityIdentifier("editor.group.name").onSubmit(submitWeb)
+            }
+            ProjectGroupWebField(title: editing == nil ? "editor.group.web.color" : "editor.color") {
+                ColorSwatchPicker(selection: $color, webSwatchSize: editing == nil ? 24 : 28)
+            }
+            ProjectGroupWebField(title: "editor.group.parent") {
+                AletheSelect(selection: $parent, options: [nil] + parentCandidates.map { Optional($0.id) }) { value in
+                    if let value, let group = workspace.document.group(value) {
+                        Text(verbatim: group.name)
+                    } else { Text("editor.group.topLevel") }
+                }
+            }
+            if editing != nil {
+                HStack(spacing: metrics.size(6)) {
+                    Circle().fill(theme[color?.token ?? .fgMuted])
+                        .frame(width: metrics.size(8), height: metrics.size(8))
+                    Text("editor.group.web.preview").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                }
+                .padding(.vertical, metrics.size(10)).padding(.horizontal, metrics.size(12))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                    .strokeBorder(theme[color?.token ?? .border].opacity(0.5), lineWidth: metrics.size(2)))
+                .padding(.top, metrics.size(6))
+            }
+        }
+        .onAppear {
+            parent = initialParent
+            if let editing, let group = workspace.document.group(editing) {
+                name = group.name; color = group.color; parent = group.parentID
+            } else { color = .blue }
+            focused = true
+        }
+    }
+
+    private func close() {
+        if metrics.isWebInterface, let closeOverlay { closeOverlay() } else { dismiss() }
+    }
+
+    private func submitWeb() {
+        guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        save()
+    }
+
     /// A group cannot be nested inside itself or its descendants.
     private var parentCandidates: [ProjectGroup] {
         workspace.document.groups.filter { candidate in
@@ -76,6 +135,6 @@ struct GroupEditor: View {
                 _ = $0.addGroup(name: trimmed, color: color, parent: parent)
             }
         }
-        dismiss()
+        close()
     }
 }

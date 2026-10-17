@@ -41,6 +41,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed the unsupported sidebar list-spacing modifier to restore macOS API compatibility.
 
 ### Changed
+- Web-style New/Edit Project and Group use centered overlays with the shared Motion entrance,
+  440-point creation/group and 760-point project-edit widths, compact labeled fields, folder
+  browsing, wrapping color swatches, footer actions and Return/Escape handling. Native-style
+  sheets retain their existing forms and creation behavior.
+- Project/group editor parity remains limited to existing model settings: image fields,
+  conflict-provider cards, validation/health-check settings and the web edit-project navigation
+  are not ported. Existing theme-backed colors and clone controls remain available.
 - Web-style New Terminal and Add Sub-tab use a centered overlay, branded agent dropdowns,
   compact folder and mode selectors, collapsible advanced options and keyboard shortcuts.
   The native interface retains its system sheet and existing form.

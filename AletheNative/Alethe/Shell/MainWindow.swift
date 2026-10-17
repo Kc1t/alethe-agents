@@ -51,9 +51,7 @@ struct MainWindow: View {
         }
         .overlay {
             if webTerminalPresented, let request = environment.editorRequest, let workspace = environment.workspace {
-                NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }) { close in
-                    editor(for: request, workspace: workspace, closeOverlay: close)
-                }
+                editorOverlay(for: request, workspace: workspace)
                 .id(request.id)
             }
         }
@@ -62,9 +60,29 @@ struct MainWindow: View {
     private var webTerminalPresented: Bool {
         guard metrics.isWebInterface, let request = environment.editorRequest else { return false }
         switch request {
-        case .newTerminal, .newSubTab: return true
+        case .newTerminal, .newSubTab, .newProject, .editProject, .newGroup, .editGroup: return true
         default: return false
         }
+    }
+
+    @ViewBuilder
+    private func editorOverlay(for request: EditorRequest, workspace: WorkspaceModel) -> some View {
+        switch request {
+        case .newProject, .newGroup, .editGroup, .editProject:
+            ProjectGroupWebOverlay(width: projectGroupModalWidth(request),
+                                   onClose: { environment.editorRequest = nil }) { close in
+                editor(for: request, workspace: workspace, closeOverlay: close)
+            }
+        default:
+            NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }) { close in
+                editor(for: request, workspace: workspace, closeOverlay: close)
+            }
+        }
+    }
+
+    private func projectGroupModalWidth(_ request: EditorRequest) -> CGFloat {
+        if case .editProject = request { return 760 }
+        return 440
     }
 
     private var systemEditorRequest: Binding<EditorRequest?> {
@@ -130,13 +148,13 @@ struct MainWindow: View {
         switch request {
         case .newProject(let location, let folder):
             ProjectEditor(workspace: workspace, undoManager: undoManager, editing: nil, initialLocation: location,
-                          initialFolder: folder)
+                          initialFolder: folder, closeOverlay: closeOverlay)
         case .editProject(let id):
-            ProjectEditor(workspace: workspace, undoManager: undoManager, editing: id, initialLocation: .ungrouped)
+            ProjectEditor(workspace: workspace, undoManager: undoManager, editing: id, initialLocation: .ungrouped, closeOverlay: closeOverlay)
         case .newGroup(let parent):
-            GroupEditor(workspace: workspace, undoManager: undoManager, editing: nil, initialParent: parent)
+            GroupEditor(workspace: workspace, undoManager: undoManager, editing: nil, initialParent: parent, closeOverlay: closeOverlay)
         case .editGroup(let id):
-            GroupEditor(workspace: workspace, undoManager: undoManager, editing: id, initialParent: nil)
+            GroupEditor(workspace: workspace, undoManager: undoManager, editing: id, initialParent: nil, closeOverlay: closeOverlay)
         case .newTerminal(let project):
             NewTerminalSheet(workspace: workspace, undoManager: undoManager,
                              initialProject: project ?? workspace.document.workspace.selectedProjectID, closeOverlay: closeOverlay)
