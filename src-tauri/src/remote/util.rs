@@ -108,15 +108,32 @@ fn is_tailscale_range(ip: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Default install locations of the Tailscale CLI, checked when it isn't on
+/// PATH. On macOS the app launches with Launch Services' minimal PATH, so
+/// neither a Homebrew install nor the CLI bundled inside Tailscale.app (the
+/// standalone and App Store builds) is visible to a plain `which`.
+const TAILSCALE_FALLBACKS: &[&str] = &[
+    r"C:\Program Files\Tailscale\tailscale.exe",
+    "/Applications/Tailscale.app/Contents/MacOS/Tailscale",
+    "/opt/homebrew/bin/tailscale",
+    "/usr/local/bin/tailscale",
+];
+
+fn find_tailscale_cli() -> Option<std::path::PathBuf> {
+    which::which("tailscale").ok().or_else(|| {
+        TAILSCALE_FALLBACKS
+            .iter()
+            .map(std::path::PathBuf::from)
+            .find(|path| path.is_file())
+    })
+}
+
 /// Resolves this machine's Tailscale address by shelling out to the
 /// Tailscale CLI, if it's installed and the daemon is up. Returns `None`
 /// (never a guess) when Tailscale isn't available — callers must fail
 /// closed rather than fall back to a broader bind.
 pub(crate) fn tailscale_ip() -> Option<String> {
-    let exe = which::which("tailscale").ok().or_else(|| {
-        let default = std::path::PathBuf::from(r"C:\Program Files\Tailscale\tailscale.exe");
-        default.exists().then_some(default)
-    })?;
+    let exe = find_tailscale_cli()?;
     let mut command = std::process::Command::new(exe);
     command.args(["ip", "-4"]);
     #[cfg(windows)]
