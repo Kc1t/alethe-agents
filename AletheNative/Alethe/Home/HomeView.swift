@@ -36,9 +36,9 @@ struct HomeView: View {
                                 Label { Text(metrics.isWebInterface ? "home.web.newProject" : "home.action.newProject") } icon: { Image(systemName: "folder.badge.plus").webProfileSized(14) }
                             }
                         }
-                        .buttonStyle(AletheHomeActionStyle())
+                        .buttonStyle(HomeHeroActionStyle())
                     }
-                    .padding(.horizontal, geometry.size.width <= metrics.size(620) ? 0 : metrics.size(18))
+                    .padding(.horizontal, geometry.size.width - 2 * min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03)) <= metrics.size(620) ? 0 : metrics.size(18))
                     .padding(.top, metrics.size(28))
                     .padding(.bottom, metrics.size(42))
                     .frame(maxWidth: .infinity)
@@ -167,6 +167,7 @@ enum HomeFormat {
 // MARK: - Hero
 
 private struct HomeHero: View {
+    @AppStorage("sidebar.web.avatarImages") private var avatarImages = "{}"
     let streak: Int
     var availableWidth: CGFloat = .infinity
     @Environment(AppEnvironment.self) private var environment
@@ -198,7 +199,9 @@ private struct HomeHero: View {
                 }
                 }
                 Text(verbatim: "\(greeting(context.date)), \(metrics.isWebInterface ? firstName.lowercased() : firstName).")
-                    .font(metrics.font(size: 34, weight: .medium))
+                    .font(metrics.font(size: metrics.isWebInterface
+                                       ? max(25, min(34, (NSApp.keyWindow?.frame.width ?? availableWidth) / metrics.scale * 0.03))
+                                       : 34, weight: .medium))
                     .tracking(metrics.isWebInterface ? -metrics.size(0.34) : 0)
                     .minimumScaleFactor(25.0 / 34.0)
                     .lineLimit(1)
@@ -218,6 +221,15 @@ private struct HomeHero: View {
         .accessibilityIdentifier("home.greeting")
     }
 
+    private var profileImage: Image {
+        let avatars = (try? JSONDecoder().decode([String: String].self, from: Data(avatarImages.utf8))) ?? [:]
+        if let encoded = avatars[environment.profileID?.rawValue ?? "default"],
+           let data = Data(base64Encoded: encoded), let image = NSImage(data: data) {
+            return Image(nsImage: image)
+        }
+        return Image("DefaultProfile")
+    }
+
     private func webDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
@@ -227,13 +239,13 @@ private struct HomeHero: View {
 
     private var firstName: String {
         let profile = environment.activeProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !profile.isEmpty { return profile }
+        if !profile.isEmpty { return metrics.isWebInterface ? String(profile.split(separator: " ").first ?? Substring(profile)) : profile }
         return NSFullUserName().split(separator: " ").first.map(String.init) ?? NSUserName()
     }
 
     @ViewBuilder private var avatar: some View {
         if metrics.isWebInterface {
-            Image("DefaultProfile")
+            profileImage
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(width: metrics.size(44), height: metrics.size(44))
@@ -255,7 +267,8 @@ private struct HomeHero: View {
                                 .background(theme[.bgSunken], in: Capsule())
                                 .offset(y: -metrics.size(6))
                         }
-                        .offset(x: -metrics.size(46))
+                        .offset(x: -metrics.size(31), y: -metrics.size(1))
+                        .help(Text(String(format: String(localized: "home.activity.streak"), streak)))
                         .accessibilityLabel(Text(String(format: String(localized: "home.activity.streak"), streak)))
                 }
         } else {
@@ -302,12 +315,29 @@ private struct QuickLaunch: View {
     @FocusState private var focused: Bool
 
     private var agents: [AgentKind] {
-        AgentRegistry.builtin.enabledKinds(environment.preferences?.document.enabledAgents).filter { $0 != .shell }
+        let enabled = AgentRegistry.builtin.enabledKinds(environment.preferences?.document.enabledAgents)
+        if metrics.isWebInterface {
+            return [AgentKind.claude, .codex, .copilot, .cursor, .antigravity, .opencode]
+                .filter { enabled.contains($0) }
+        }
+        return enabled.filter { $0 != .shell }
     }
     private var project: Project? {
         workspace.document.recentProjectIDs(limit: 1).first.flatMap(workspace.document.project)
     }
     private var descriptor: AgentDescriptor? { AgentRegistry.builtin.descriptor(for: agent) }
+
+    private func webAgentName(_ kind: AgentKind) -> String {
+        kind == .claude ? "Claude" : AgentLabels.name(for: kind.rawValue)
+    }
+
+    private func compactWebPath(_ path: String) -> String {
+        let parts = path.split(whereSeparator: { $0 == "/" || $0 == "\\" })
+        guard parts.count > 4 else { return path }
+        let separator = path.contains("\\") ? "\\" : "/"
+        return (path.hasPrefix("~") ? "~" + separator : "") + "…" + separator
+            + parts.suffix(3).joined(separator: separator)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: metrics.size(4)) {
@@ -317,24 +347,36 @@ private struct QuickLaunch: View {
                 AletheStatusDot(.statusWorking, side: 7)
                 Text("home.quick.title")
                     .font(metrics.monoFont(size: 9))
-                    .foregroundStyle(theme[.textTertiary])
+                    .foregroundStyle(theme[metrics.isWebInterface ? .fg : .textTertiary])
+                    .padding(.leading, metrics.size(metrics.isWebInterface ? 4 : 0))
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, metrics.size(11))
             .frame(height: metrics.size(27))
             .background(theme[.bgSunken].opacity(metrics.isWebInterface ? 0.78 : 1))
+            .modifier(HomeWebTerminalBarClip())
             .padding(.horizontal, -metrics.size(7))
             .padding(.top, -metrics.size(7))
             .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
             HStack(spacing: metrics.size(8)) {
                 Text(verbatim: "›").font(metrics.monoFont(size: 17)).foregroundStyle(theme[.accent])
-                TextField("home.quick.placeholder", text: $prompt, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(metrics.monoFont(size: 12))
-                    .lineLimit(1...(focused ? 6 : 1))
-                    .focused($focused)
-                    .onSubmit(send)
-                    .accessibilityIdentifier("home.quick.prompt")
+                Group {
+                    if metrics.isWebInterface {
+                        TextField(text: $prompt) {
+                            Text("home.quick.placeholder").foregroundStyle(theme[.fg])
+                        }
+                        .lineLimit(1)
+                        .foregroundStyle(theme[.fg])
+                    } else {
+                        TextField("home.quick.placeholder", text: $prompt, axis: .vertical)
+                            .lineLimit(1...(focused ? 6 : 1))
+                    }
+                }
+                .textFieldStyle(.plain)
+                .font(metrics.monoFont(size: 12))
+                .focused($focused)
+                .onSubmit(send)
+                .accessibilityIdentifier("home.quick.prompt")
             }
             .padding(.horizontal, metrics.size(9))
             .frame(minHeight: metrics.size(42))
@@ -354,11 +396,16 @@ private struct QuickLaunch: View {
                 radius: metrics.size(metrics.isWebInterface ? 36 : theme.shadow(.lg).blur),
                 x: metrics.isWebInterface ? 0 : metrics.size(theme.shadow(.lg).x),
                 y: metrics.size(metrics.isWebInterface ? 14 : theme.shadow(.lg).y))
-        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(focused ? theme[.accentBorder] : .clear))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(focused && !metrics.isWebInterface ? theme[.accentBorder] : .clear))
         .onAppear {
-            let last = AgentRegistry.builtin.parse(environment.preferences?.document.lastAgent)
-            agent = last.flatMap { agents.contains($0) ? $0 : nil } ?? agents.first ?? .claude
-            unrestricted = environment.preferences?.document.alwaysStartUnrestricted == true
+            if metrics.isWebInterface {
+                agent = agents.contains(.claude) ? .claude : agents.first ?? .claude
+                unrestricted = false
+            } else {
+                let last = AgentRegistry.builtin.parse(environment.preferences?.document.lastAgent)
+                agent = last.flatMap { agents.contains($0) ? $0 : nil } ?? agents.first ?? .claude
+                unrestricted = environment.preferences?.document.alwaysStartUnrestricted == true
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.quick")
@@ -382,7 +429,7 @@ private struct QuickLaunch: View {
                 }
                 HStack(spacing: metrics.size(5)) {
                     modeControl
-                    Spacer(minLength: 0)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     sendControl
                 }
             }
@@ -397,7 +444,7 @@ private struct QuickLaunch: View {
                 Menu {
                     ForEach(agents, id: \.self) { kind in
                         Button { agent = kind } label: {
-                            Label { Text(verbatim: AgentLabels.name(for: kind.rawValue)) } icon: {
+                            Label { Text(verbatim: webAgentName(kind)) } icon: {
                                 if let image = AgentLogo.menuImage(for: kind.rawValue, isLight: theme.isLight,
                                                                   side: metrics.size(19)) {
                                     Image(nsImage: image).resizable().scaledToFit()
@@ -414,14 +461,14 @@ private struct QuickLaunch: View {
                         AgentLogo(agent: agent.rawValue, size: 15,
                                   templateColor: theme[AgentTokens.accent(for: agent.rawValue)])
                             .frame(width: metrics.size(15), height: metrics.size(15)).clipped()
-                        Text("home.web.agent").fixedSize()
-                        Text(verbatim: AgentLabels.name(for: agent.rawValue)).lineLimit(1)
+                        Text("home.web.agent").foregroundStyle(theme[.fgMuted]).fixedSize()
+                        Text(verbatim: webAgentName(agent)).lineLimit(1)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.down").webProfileSized(10).font(metrics.font(size: 10))
                     }
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                .buttonStyle(AletheQuickFieldStyle())
+                .buttonStyle(HomeQuickFieldStyle(sans: true))
             } else {
                 AletheSelect(selection: $agent, options: agents) {
                     Text(verbatim: AgentLabels.name(for: $0.rawValue))
@@ -429,6 +476,7 @@ private struct QuickLaunch: View {
             }
         }
         .frame(width: metrics.size(145))
+        .modifier(HomeWebHelp(text: String(localized: "home.quick.agent")))
         .accessibilityLabel(Text("home.quick.agent"))
         .accessibilityIdentifier("home.quick.agent")
     }
@@ -438,10 +486,10 @@ private struct QuickLaunch: View {
             if metrics.isWebInterface {
             HStack(spacing: metrics.size(5)) {
                 Image(systemName: "folder").webProfileSized(13).font(metrics.font(size: 13))
-                if metrics.isWebInterface { Text("home.web.path") }
+                if metrics.isWebInterface { Text("home.web.path").foregroundStyle(theme[.fgMuted]).fixedSize() }
                 if let folder = workingDirectory ?? project?.folder {
-                    Text(verbatim: (folder as NSString).abbreviatingWithTildeInPath)
-                        .lineLimit(1).truncationMode(.middle)
+                    Text(verbatim: compactWebPath(folder))
+                        .lineLimit(1).truncationMode(.tail)
                 } else { Text("home.quick.project") }
                 if metrics.isWebInterface {
                     Spacer(minLength: 0)
@@ -458,12 +506,13 @@ private struct QuickLaunch: View {
             }
         }
         .modifier(QuickProjectStyle())
+        .modifier(HomeWebHelp(text: workingDirectory ?? project?.folder ?? String(localized: "home.quick.project")))
         .accessibilityLabel(Text("home.quick.project"))
         .accessibilityIdentifier("home.quick.project")
     }
 
     @ViewBuilder private var modeControl: some View {
-        if descriptor?.unrestrictedFlag != nil {
+        if metrics.isWebInterface || descriptor?.unrestrictedFlag != nil {
             Group {
                 if metrics.isWebInterface {
                     Menu {
@@ -472,15 +521,15 @@ private struct QuickLaunch: View {
                     } label: {
                         HStack(spacing: metrics.size(5)) {
                             AletheStatusDot(.accent, side: 5)
-                            Text("home.web.mode").fixedSize()
+                            Text("home.web.mode").foregroundStyle(theme[.fgMuted]).fixedSize()
                             Text(unrestricted ? "home.quick.unrestricted" : "home.quick.normal").lineLimit(1)
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.down").webProfileSized(10).font(metrics.font(size: 10))
                         }
                     }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                    .buttonStyle(AletheQuickFieldStyle())
-                    .frame(width: metrics.size(132))
+                    .buttonStyle(HomeQuickFieldStyle())
+                    .frame(width: compactToolbar ? nil : metrics.size(132))
                 } else {
                     Picker("home.quick.mode", selection: $unrestricted) {
                         Text("home.quick.normal").tag(false)
@@ -488,13 +537,24 @@ private struct QuickLaunch: View {
                     }
                 }
             }
-            .fixedSize()
+            .fixedSize(horizontal: !metrics.isWebInterface || !compactToolbar, vertical: true)
             .accessibilityLabel(Text("home.quick.mode"))
             .accessibilityIdentifier("home.quick.mode")
         }
     }
 
     @ViewBuilder private var sendControl: some View {
+        if metrics.isWebInterface {
+            Button(action: send) {
+                Image(systemName: "paperplane").webProfileSized(14)
+            }
+            .buttonStyle(HomeQuickSendStyle())
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(project == nil || agents.isEmpty)
+            .help(Text("home.quick.send"))
+            .accessibilityLabel(Text("home.quick.send"))
+            .accessibilityIdentifier("home.quick.send")
+        } else {
         Button(action: send) { Label { Text("home.quick.send") } icon: { Image(systemName: "paperplane").webProfileSized(14) }
             .labelStyle(.iconOnly)
             .frame(width: metrics.size(38), height: metrics.size(30))
@@ -506,6 +566,7 @@ private struct QuickLaunch: View {
             .opacity(project == nil || agents.isEmpty || (!metrics.isWebInterface && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? (metrics.isWebInterface ? 0.45 : 0.5) : 1)
             .accessibilityLabel(Text("home.quick.send"))
             .accessibilityIdentifier("home.quick.send")
+        }
     }
 
     private func chooseFolder() {
@@ -807,7 +868,7 @@ extension AppEnvironment {
 private struct QuickProjectStyle: ViewModifier {
     @Environment(\.metrics) private var metrics
     func body(content: Content) -> some View {
-        if metrics.isWebInterface { content.buttonStyle(AletheQuickFieldStyle()) }
+        if metrics.isWebInterface { content.buttonStyle(HomeQuickFieldStyle()) }
         else { content }
     }
 }
@@ -871,5 +932,24 @@ private struct HomeWebNotifications: View {
                 .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
         }
         .accessibilityElement(children: .contain).accessibilityIdentifier("notifications.list")
+    }
+}
+
+private struct HomeWebHelp: ViewModifier {
+    let text: String
+    @Environment(\.metrics) private var metrics
+    func body(content: Content) -> some View {
+        if metrics.isWebInterface { content.help(Text(verbatim: text)) }
+        else { content }
+    }
+}
+
+private struct HomeWebTerminalBarClip: ViewModifier {
+    @Environment(\.metrics) private var metrics
+    func body(content: Content) -> some View {
+        if metrics.isWebInterface {
+            content.clipShape(UnevenRoundedRectangle(
+                topLeadingRadius: metrics.radius(.lg), topTrailingRadius: metrics.radius(.lg)))
+        } else { content }
     }
 }
