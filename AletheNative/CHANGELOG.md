@@ -27,6 +27,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   scroll positions and shows loading, copy and file-drop feedback. MCP filters, input focus,
   disabled controls, agent logos and error states follow the web styling. Installed native plugins
   appear as searchable cards; the native macOS interface keeps its existing controls.
+- Web-style Home aligns the streak badge with the profile avatar, follows the selected profile
+  image, and matches the web quick-launch fonts, compact toolbar, path labels and button states.
+  The greeting scales with the window width while the native interface keeps its existing layout.
 - Web-style sidebars retain their state while opening and closing with smooth panel resizing,
   content fades and directional motion matching the web interface. Separators fade on collapse;
   dragging stays immediate, Reduce Motion disables transitions, and the title bar stays fixed.
