@@ -37718,6 +37718,38 @@
           }
         }
       }
+    },
+    "workspaceTabs.openIndividually" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open individually"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir individualmente"
+          }
+        }
+      }
+    },
+    "workspaceTabs.addToCurrent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add to current view"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar à visualização atual"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

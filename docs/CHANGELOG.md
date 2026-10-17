@@ -12,6 +12,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Fixed a native macOS workspace-tab event handler compilation error.
 - Fixed a native macOS Settings compilation error in the tabbed layout.
 - Removed an unsupported sidebar list-spacing modifier that prevented the native macOS app from compiling,
   including its reintroduction during sidebar polish.

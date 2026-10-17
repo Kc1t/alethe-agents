@@ -8,6 +8,7 @@ import SwiftUI
 struct SubTabsLane: View {
     let pane: Pane
     let isFocused: Bool
+    var onDrag: (CGSize?) -> Void = { _ in }
     let onActivate: (TabID) -> Void
     let onClose: (TabID) -> Void
     let onRestart: (PaneTab) -> Void
@@ -19,14 +20,26 @@ struct SubTabsLane: View {
         if metrics.isWebInterface { webLane } else { nativeLane }
     }
 
+    @State private var addHovered = false
+
     private var webLane: some View {
         ScrollView(.vertical) {
             VStack(spacing: metrics.size(5)) {
+                Image(systemName: "circle.grid.2x3.fill")
+                    .font(metrics.font(size: 12))
+                    .foregroundStyle(theme[.fgFaint]).opacity(0.55)
+                    .frame(width: metrics.size(26), height: metrics.size(26))
+                    .overlay(alignment: .bottom) { theme[.shapeTabsLaneBorder].frame(height: metrics.size(1)) }
+                    .padding(.bottom, metrics.size(1))
+                    .contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
+                        .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
                 ForEach(pane.tabs) { tab in
                     SubTabItem(tab: tab, isActive: tab.id == pane.activeTab?.id, isFocused: isFocused,
                                canClose: pane.tabs.count > 1,
                                onActivate: { onActivate(tab.id) }, onClose: { onClose(tab.id) },
                                onRestart: { onRestart(tab) })
+                        .transition(.opacity)
                 }
                 Button(action: onAdd) {
                     Image(systemName: "plus")
@@ -36,12 +49,16 @@ struct SubTabsLane: View {
                             .strokeBorder(theme[.borderStrong], style: StrokeStyle(lineWidth: metrics.size(1), dash: [metrics.size(3), metrics.size(2)])))
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(theme[.fgFaint])
+                .foregroundStyle(theme[addHovered ? .fg : .fgFaint])
+                .background(theme[.accentSoft].opacity(addHovered ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.size(6)))
+                .onHover { addHovered = $0 }
+                .animation(Motion.WorkspaceEffect.action.animation(reduceMotion: metrics.reducesMotion), value: addHovered)
                 .padding(.top, metrics.size(6))
                 .help(Text("subtabs.new"))
                 .accessibilityLabel(Text("subtabs.new"))
                 .accessibilityIdentifier("subtabs.new")
             }
+            .animation(metrics.style == .clean ? nil : Motion.WorkspaceEffect.insertion.animation(reduceMotion: metrics.reducesMotion), value: pane.tabs.map(\.id))
             .padding(.vertical, metrics.size(6))
             .frame(maxWidth: .infinity)
         }
@@ -51,6 +68,16 @@ struct SubTabsLane: View {
         .overlay(alignment: .trailing) { theme[.shapeTabsLaneBorder].frame(width: metrics.size(1)) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("subtabs.lane")
+        .onMoveCommand { direction in
+            guard let index = pane.tabs.firstIndex(where: { $0.id == pane.activeTab?.id }), !pane.tabs.isEmpty else { return }
+            let delta: Int
+            switch direction {
+            case .up, .left: delta = -1
+            case .down, .right: delta = 1
+            default: return
+            }
+            onActivate(pane.tabs[(index + delta + pane.tabs.count) % pane.tabs.count].id)
+        }
     }
 
     private var nativeLane: some View {
@@ -134,13 +161,13 @@ private struct SubTabItem: View {
                         .fill(isActive ? theme[.surfaceCardSelected] : theme[.accentSoft].opacity(isHovered ? 1 : 0))
                 )
                 .overlay {
-                    if isActive { RoundedRectangle(cornerRadius: metrics.size(6)).strokeBorder(theme[.border]) }
+                    if isActive && (!metrics.isWebInterface || metrics.style != .clean) { RoundedRectangle(cornerRadius: metrics.size(6)).strokeBorder(theme[.border], lineWidth: metrics.isWebInterface ? metrics.size(1) : 1) }
                 }
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .overlay(alignment: .leading) {
-            if isActive {
+            if isActive && (!metrics.isWebInterface || metrics.style != .clean) {
                 // Accent bar on the lane's leading edge (upstream `.active::before`).
                 RoundedRectangle(cornerRadius: metrics.size(1))
                     .fill(theme[metrics.isWebInterface || isFocused ? .accent : .borderStrong])
@@ -150,11 +177,24 @@ private struct SubTabItem: View {
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            AgentStatusGlyph(tab: tab.id)
-                .allowsHitTesting(false)
+            Group {
+                if metrics.isWebInterface {
+                    if environment.terminals.unread.contains(tab.id) {
+                        Text(verbatim: "!")
+                            .font(metrics.font(size: 8, weight: .heavy))
+                            .foregroundStyle(theme[.accentOn])
+                            .frame(width: metrics.size(10), height: metrics.size(10))
+                            .background(theme[.statusWorking], in: Circle())
+                            .overlay(Circle().strokeBorder(theme[.bgSunken], lineWidth: metrics.size(1)))
+                            .padding(metrics.size(2))
+                            .accessibilityLabel(Text("agentStatus.done"))
+                    }
+                } else { AgentStatusGlyph(tab: tab.id) }
+            }
+            .allowsHitTesting(false)
         }
         .overlay(alignment: .topTrailing) {
-            if canClose && isHovered {
+            if canClose && (metrics.isWebInterface || isHovered) {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(metrics.font(size: 7, weight: .bold))
@@ -168,8 +208,15 @@ private struct SubTabItem: View {
                 .help(Text("subtabs.close"))
                 .accessibilityLabel(Text("subtabs.close"))
                 .accessibilityIdentifier("subtabs.close")
+                .opacity(isHovered ? 1 : 0)
+                .allowsHitTesting(isHovered)
+                .accessibilityHidden(!isHovered)
+                .animation(metrics.isWebInterface ? Motion.WorkspaceEffect.action.animation(reduceMotion: metrics.reducesMotion) : nil, value: isHovered)
             }
         }
+        .opacity(metrics.isWebInterface && metrics.style == .clean && !isActive ? 0.46 : 1)
+        .animation(metrics.isWebInterface ? Motion.WorkspaceEffect.tab.animation(reduceMotion: metrics.reducesMotion) : nil, value: isHovered)
+        .animation(metrics.isWebInterface ? Motion.WorkspaceEffect.laneSelection.animation(reduceMotion: metrics.reducesMotion) : nil, value: isActive)
         .onHover { isHovered = $0 }
         .help(Text(verbatim: name))
         .contextMenu {
