@@ -13,6 +13,9 @@ struct MainWindow: View {
     @SceneStorage("main.columnVisibility") private var sidebarVisible = true
     @AppStorage("main.rightSidebarWidth") private var rightSidebarWidth = 280.0
     @AppStorage("main.webLeftWidth") private var webLeftWidth = 286.0
+    @State private var showsTitleBarNews = false
+    @State private var showsTitleBarMemory = false
+    @State private var showsTitleBarCustomization = false
     @AppStorage("main.webRightWidth") private var webRightWidth = 300.0
 
     var body: some View {
@@ -23,6 +26,20 @@ struct MainWindow: View {
                 nativeShell
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .aletheOpenTitleBarMemory)) { _ in
+            if metrics.isWebInterface { showsTitleBarMemory = true }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .aletheCustomizeTitleBar)) { _ in
+            if metrics.isWebInterface { showsTitleBarCustomization = true }
+        }
+        .onChange(of: metrics.isWebInterface) { _, web in
+            if !web {
+                showsTitleBarMemory = false
+                showsTitleBarNews = false
+                showsTitleBarCustomization = false
+            }
+        }
+        .onPreferenceChange(WebTitleBarNewsKey.self) { showsTitleBarNews = $0 }
         .onAppear {
             if metrics.isWebInterface, UserDefaults.standard.object(forKey: "main.webRightSidebarInitialized") == nil {
                 environment.rightSidebarVisible = true
@@ -33,7 +50,7 @@ struct MainWindow: View {
             if metrics.isWebInterface { sidebarVisible.toggle() }
         }
         .overlay {
-            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(40))
+            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(metrics.isWebInterface ? 32 : 40))
                 .ignoresSafeArea(.container, edges: .top)
         }
         .accessibilityHidden(!environment.startupFinished)
@@ -43,9 +60,9 @@ struct MainWindow: View {
         // Keep the window usable at 800×500 even when its controls are zoomed.
         .frame(minWidth: metrics.isWebInterface ? metrics.size(800 / metrics.scale) : 800,
                minHeight: metrics.isWebInterface ? metrics.size(500 / metrics.scale) : 500)
-        .blur(radius: webTerminalPresented ? metrics.size(10) : 0)
-        .allowsHitTesting(!webTerminalPresented)
-        .accessibilityHidden(webTerminalPresented)
+        .blur(radius: webTerminalPresented || showsTitleBarMemory || showsTitleBarNews || showsTitleBarCustomization ? metrics.size(10) : 0)
+        .allowsHitTesting(!webTerminalPresented && !showsTitleBarMemory && !showsTitleBarNews && !showsTitleBarCustomization)
+        .accessibilityHidden(webTerminalPresented || showsTitleBarMemory || showsTitleBarNews || showsTitleBarCustomization)
         .sheet(item: systemEditorRequest) { request in
             if let workspace = environment.workspace { editor(for: request, workspace: workspace) }
         }
@@ -55,12 +72,34 @@ struct MainWindow: View {
                 .id(request.id)
             }
         }
+        .overlay {
+            if metrics.isWebInterface, showsTitleBarCustomization {
+                ProjectGroupWebOverlay(width: 440, onClose: { showsTitleBarCustomization = false }) { close in
+                    WebTitleBarCustomization(close: close)
+                }
+            }
+            if metrics.isWebInterface, showsTitleBarMemory {
+                ProjectGroupWebOverlay(width: 760, onClose: { showsTitleBarMemory = false }) { close in
+                    WebTitleBarMemory(close: close)
+                }
+            }
+            if metrics.isWebInterface, showsTitleBarNews {
+                ProjectGroupWebOverlay(width: 480, onClose: closeTitleBarNews) { close in
+                    WebTitleBarNews(close: close)
+                }
+            }
+        }
+    }
+
+    private func closeTitleBarNews() {
+        showsTitleBarNews = false
+        NotificationCenter.default.post(name: .aletheCloseTitleBarNews, object: nil)
     }
 
     private var webTerminalPresented: Bool {
         guard metrics.isWebInterface, let request = environment.editorRequest else { return false }
         switch request {
-        case .newTerminal, .newSubTab, .newProject, .editProject, .newGroup, .editGroup: return true
+        case .newTerminal, .newSubTab, .newProject, .editProject, .newGroup, .editGroup, .aiUsage, .findJump: return true
         default: return false
         }
     }
@@ -68,6 +107,14 @@ struct MainWindow: View {
     @ViewBuilder
     private func editorOverlay(for request: EditorRequest, workspace: WorkspaceModel) -> some View {
         switch request {
+        case .findJump:
+            ProjectGroupWebOverlay(width: 520, onClose: { environment.editorRequest = nil }) { close in
+                WebTitleBarSearch(workspace: workspace, undoManager: undoManager, close: close)
+            }
+        case .aiUsage:
+            ProjectGroupWebOverlay(width: 920, onClose: { environment.editorRequest = nil }) { close in
+                WebTitleBarUsage(close: close)
+            }
         case .newProject, .newGroup, .editGroup, .editProject:
             ProjectGroupWebOverlay(width: projectGroupModalWidth(request),
                                    onClose: { environment.editorRequest = nil }) { close in
@@ -114,6 +161,7 @@ struct MainWindow: View {
                 .frame(maxHeight: .infinity)
             }
         }
+        .modifier(WebTitleBarPopoverLayer())
         .background(theme[.bg])
         .ignoresSafeArea(.container, edges: .top)
         .toolbarVisibility(.hidden, for: .windowToolbar)
