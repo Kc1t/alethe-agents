@@ -16,6 +16,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style title-bar controls reserve only visible macOS traffic lights, followed by the web
+  left padding. Hidden or absent buttons and fullscreen no longer leave an empty leading gap.
 - Fixed sidebar menu compilation by composing its conditional actions with a view builder.
 - Web-style terminal headers replace the extra add button and overflow menu with direct pin,
   recent chats, handoff, VS Code, focus, restart and delete actions. Unpinned headers float on
