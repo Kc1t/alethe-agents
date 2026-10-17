@@ -11,6 +11,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ## [Unreleased]
 
 ### Fixed
+- Fixed a native macOS sidebar menu compilation error caused by a missing view builder.
 - Fixed the web-style Home usage enable action to save its toolbar preference through the supported setter.
 
 - Fixed a native macOS workspace-tab event handler compilation error.

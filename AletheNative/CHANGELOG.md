@@ -16,8 +16,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Fixed sidebar menu compilation by composing its conditional actions with a view builder.
+- Web-style terminal headers replace the extra add button and overflow menu with direct pin,
+  recent chats, handoff, VS Code, focus, restart and delete actions. Unpinned headers float on
+  hover; terminal-row menus follow the Windows action order and exited panes use the web restart
+  overlay. Native macOS controls remain unchanged.
 - Web-style terminal and agent panes keep their 32-point headers pinned, including shell titles,
-  bounded agent logos, compact action buttons and an overflow menu. Solo panes no longer show a
+  bounded agent logos and compact action buttons. Solo panes no longer show a
   project container title, border or extra padding; grouped projects retain their title and count.
   Workspace gutters, collapsed strips, resize indicators, sub-tab add states and empty-project
   actions follow the web metrics. Native macOS styling and terminal lifecycle callbacks are retained.

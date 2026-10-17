@@ -1,5 +1,6 @@
 import AletheDesign
 import AletheModel
+import AppKit
 import SwiftUI
 
 /// Title bar of a project container: color, name, collapse, show alone (fullscreen), close. Dragging
@@ -267,7 +268,15 @@ struct PaneHeader: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
-    @State private var webHeaderWidth: CGFloat = 240
+    var topbarPinned: Bool = true
+    var canDragPane: Bool = true
+    var onToggleTopbar: () -> Void = {}
+    private var location: (project: Project, pane: Pane)? {
+        environment.workspace?.document.paneHolding(tab.id)
+    }
+    private var isShell: Bool { ["shell", "wsl"].contains(tab.agent) }
+    private var hasProcess: Bool { environment.terminals.states[tab.id] != nil }
+
     @State private var renaming = false
     @State private var renameDraft = ""
     @FocusState private var renameFocused: Bool
@@ -286,13 +295,9 @@ struct PaneHeader: View {
 
     private var webHeader: some View {
         HStack(spacing: metrics.size(8)) {
-            Group {
+            if !isShell || topbarPinned {
                 HStack(spacing: metrics.size(6)) {
-                    if !isLaneVisible {
-                        Image(systemName: "circle.grid.2x3.fill")
-                            .font(metrics.font(size: 12))
-                            .foregroundStyle(theme[.fgFaint]).opacity(0.55)
-                    }
+                    if canDragPane && !isLaneVisible { webGrip }
                     AgentLogo(agent: tab.agent, size: 16,
                               templateColor: theme[AgentTokens.accent(for: tab.agent)])
                         .frame(width: metrics.size(18), height: metrics.size(18))
@@ -310,10 +315,11 @@ struct PaneHeader: View {
                                 .padding(.vertical, metrics.size(1))
                                 .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(4)))
                                 .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.accent], lineWidth: metrics.size(1)))
-                                .frame(maxWidth: metrics.size(160))
+                                .frame(width: metrics.size(160))
                         } else {
                             Text(verbatim: environment.terminals.displayName(of: tab))
                                 .lineLimit(1)
+                                .help(Text(verbatim: environment.terminals.displayName(of: tab)))
                                 .onTapGesture(count: 2) {
                                     renameDraft = environment.terminals.displayName(of: tab)
                                     renaming = true
@@ -323,85 +329,83 @@ struct PaneHeader: View {
                     }
                     .font(metrics.font(size: 12, weight: .medium))
                     .foregroundStyle(theme[.fg])
-                    AgentStatusGlyph(tab: tab.id)
-                    if isRemoteShared { RemoteSharedGlyph() }
                 }
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                 .clipped()
-                .layoutPriority(1)
-            }
-            Spacer(minLength: 0)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: metrics.size(2)) {
-                    webAction("plus", "subtabs.newEllipsis", action: onNewSubTab)
-                    webAction("sidebar.left", isLaneVisible ? "subtabs.hideLane" : "subtabs.showLane", action: onToggleLane)
-                        .disabled(isLaneVisible && !canHideLane)
-                    webAction(isInFocusMode ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right", isInFocusMode ? "focusMode.exit" : "focusMode.enter", action: onToggleFocus)
-                    Menu {
-                        Button(action: onToggleIsolation) {
-                            Label(isIsolated ? LocalizedStringKey("pane.showAll") : "pane.showAlone", systemImage: "rectangle.expand.vertical")
-                        }
-                        if let onFillFreeSpace {
-                            Button(action: onFillFreeSpace) { Label("pane.fillFreeSpace", systemImage: "arrow.up.left.and.arrow.down.right") }
-                        }
-                        if let onSessionCost {
-                            Button(action: onSessionCost) { Label("menu.terminal.sessionCost", systemImage: "dollarsign") }
-                        }
-                        if let onHandoff {
-                            Button(action: onHandoff) { Label("menu.terminal.handoff", systemImage: "arrow.left.arrow.right") }
-                        }
-                        Button(action: onDisable) { Label("pane.disable", systemImage: "pause") }
-                    } label: {
-                        Label("pane.actions", systemImage: "ellipsis")
-                            .labelStyle(.iconOnly)
-                            .font(metrics.font(size: 12))
-                            .frame(width: metrics.size(22), height: metrics.size(22))
+                .padding(.horizontal, metrics.size(topbarPinned ? 0 : 6))
+                .frame(height: metrics.size(26))
+                .background(theme[.bgElevated].opacity(topbarPinned ? 0 : 0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
+                .onTapGesture(count: 2, perform: onToggleFocus)
+            } else { Spacer(minLength: 0) }
+            HStack(spacing: metrics.size(2)) {
+                if canDragPane && isShell && !topbarPinned && !isLaneVisible { webGrip }
+                webAction(topbarPinned ? "pin.slash" : "pin", topbarPinned ? "pane.web.unpinTopbar" : "pane.web.pinTopbar", active: topbarPinned, action: onToggleTopbar)
+                webAction(isLaneVisible ? "sidebar.left" : "sidebar.leading", isLaneVisible ? "pane.web.hideTabsLane" : "pane.web.showTabsLane", action: onToggleLane)
+                    .disabled(!canHideLane)
+                    .accessibilityAddTraits(isLaneVisible ? .isSelected : [])
+                if !isShell {
+                    webAction("clock", "pane.web.recentChats") {
+                        environment.editorRequest = .conversations(location?.project.id)
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .buttonStyle(AlethePinnedPaneActionStyle())
-                    .help(Text("pane.actions"))
-                    .accessibilityLabel(Text("pane.actions"))
-                    webAction("xmark", "pane.close", action: onClose).accessibilityIdentifier("pane.close")
                 }
-                .fixedSize(horizontal: true, vertical: false)
+                if let onHandoff {
+                    webAction("arrow.left.arrow.right", "pane.web.handoff", action: onHandoff)
+                }
+                webAction("chevron.left.forwardslash.chevron.right", "pane.web.openInVscode") {
+                    if let project = location?.project {
+                        OpenInActions.vsCode(tab.workingDirectory ?? project.folder, launchers: environment.launchers)
+                    }
+                }
+                webAction(isInFocusMode ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                          isInFocusMode ? "pane.web.exitFocusModeEsc" : "pane.web.focusModeFullscreen", action: onToggleFocus)
+                if hasProcess {
+                    webAction("arrow.clockwise", "pane.web.restart") {
+                        if let project = location?.project { environment.terminals.restart(tab, in: project, environment: environment) }
+                    }
+                    .disabled(location?.pane.isDisabled == true)
+                }
+                webAction("trash", "pane.web.deleteTerminal") {
+                    let alert = NSAlert()
+                    alert.messageText = format("pane.web.confirmDeleteTerminal", environment.terminals.displayName(of: tab))
+                    alert.addButton(withTitle: String(localized: "pane.web.deleteTerminal"))
+                    alert.addButton(withTitle: String(localized: "editor.cancel"))
+                    if alert.runModal() == .alertFirstButtonReturn { onClose() }
+                }
+                    .accessibilityIdentifier("pane.close")
             }
-            .frame(width: min(metrics.size(118), max(0, (webHeaderWidth - metrics.size(16)) * 0.6)))
-            .frame(height: metrics.size(32))
+            .fixedSize()
+            .padding(.horizontal, metrics.size(topbarPinned ? 0 : 3))
+            .frame(height: metrics.size(26))
+            .background(theme[.bgElevated].opacity(topbarPinned ? 0 : 0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
         }
-        .padding(.horizontal, metrics.size(8))
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { webHeaderWidth = $0 }
-        .frame(height: metrics.size(32))
-        .background(theme[.shapeTabsLaneBg])
-        .overlay(alignment: .bottom) { theme[.shapeTabsLaneBorder].frame(height: metrics.size(1)) }
-        .contentShape(Rectangle())
-        .onTapGesture(count: 2, perform: onToggleFocus)
-        .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
-            .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
-        .contextMenu {
-            if !gridTargets.isEmpty {
-                Menu("pane.moveToGrid") {
-                    ForEach(gridTargets) { target in
-                        Button { onMoveToGrid(target.grid) } label: {
-                            if let name = target.name { Text(verbatim: name) } else { Text("projectGrid.main") }
-                        }
-                    }
-                }
-            }
-            Toggle(isOn: Binding(get: { isRemoteShared }, set: { _ in onToggleRemoteShared() })) {
-                Label("remote.share", systemImage: "antenna.radiowaves.left.and.right")
-            }
-                .accessibilityIdentifier("remote.share")
+        .padding(.horizontal, metrics.size(topbarPinned ? 8 : 4))
+        .frame(height: metrics.size(topbarPinned ? 32 : 26))
+        .background(theme[.shapeTabsLaneBg].opacity(topbarPinned ? 1 : 0))
+        .overlay(alignment: .bottom) {
+            if topbarPinned { theme[.shapeTabsLaneBorder].frame(height: metrics.size(1)) }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pane.header.\(tab.title ?? tab.agent)")
     }
 
-    private func webAction(_ symbol: String, _ label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+    private var webGrip: some View {
+        Image(systemName: "circle.grid.2x3.fill")
+            .font(metrics.font(size: 12))
+            .foregroundStyle(theme[.fgFaint]).opacity(0.55)
+            .frame(width: metrics.size(topbarPinned ? 22 : 20), height: metrics.size(topbarPinned ? 22 : 20))
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
+                .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
+            .help(Text("pane.web.dragToReorder"))
+            .accessibilityLabel(Text("pane.web.dragToReorder"))
+    }
+
+    private func webAction(_ symbol: String, _ label: LocalizedStringKey, active: Bool = false,
+                           action: @escaping () -> Void) -> some View {
         Button(action: action) { Label(label, systemImage: symbol) }
-            .buttonStyle(AlethePinnedPaneActionStyle(danger: symbol == "xmark"))
+            .buttonStyle(AletheTerminalHeaderActionStyle(pinned: topbarPinned, active: active, danger: symbol == "trash"))
             .help(Text(label)).accessibilityLabel(Text(label))
+            .accessibilityAddTraits(active ? .isSelected : [])
     }
 
     private var nativeHeader: some View {

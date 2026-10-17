@@ -55,3 +55,57 @@ remain separate; new controls and styling are confined to the web interface.
   insertion uses the web duration with an opacity transition. Focus-border layer changes remain
   immediate; AppKit header reveal uses the matching 120ms timing and honors Reduce Motion.
 - SF Symbols substitute for Lucide. No new assets, theme colors or shared Components.swift edits.
+
+
+## Pane header and terminal menu follow-up (2026-10-17)
+
+This section supersedes the earlier header action and pinning notes above. Changes are unstaged;
+no commit, push, build, app restart or dev-server restart was performed. The session has no
+ai-memory skill or memory write tool, so this versioned record preserves the outcome and next steps.
+
+Source reads used `git show origin/main:` for `TerminalPane/index.tsx`, `TerminalPane.module.css`,
+`SubTabsLane/index.tsx`, `ProjectSidebar/NormalTerminalNode.tsx`, `ProjectSidebar/ContextMenu.tsx`,
+`ProjectSidebar/sidebarMenus.tsx` and the English/Portuguese message modules. The requested
+`src/i18n/en.json` does not exist at this ref; `src/lib/i18n/messages/en.ts` is the actual catalog.
+
+- Removed the web header's add-subtab action, overflow menu and header context menu. Native-only
+  header isolation, grid, session-cost, remote sharing and disable controls remain in the mac path.
+- Added direct pin/unpin, non-shell recent chats, Claude/Codex handoff, VS Code and process-backed
+  restart actions. Kept lane toggle, focus and delete in upstream order. Delete asks for confirmation.
+  Pinning is retained in per-pane UserDefaults without modifying the document schema.
+- Matched 32-point pinned / 26-point floating headers, 22/20-point targets, 12-point symbols,
+  2-point action gaps, active pin fill, disabled opacity and destructive hover tokens. Shell titles
+  disappear when unpinned. Reordering is limited to multi-pane, non-focus presentations.
+- Terminal sidebar menus now order grid move, reveal, restart, file manager, VS Code, focus and lane;
+  workspace actions; rename, sharing, disable and kill; destructive delete. Web subtab context menus
+  are removed because upstream has none. Existing lifecycle actions are reused.
+- Exited web terminals use the full-area 86% sunken overlay, 24-point restart icon, 10-point gap,
+  13-point label and 7-by-18-point restart padding. The native overlay retains CLI troubleshooting.
+- Retained accessibility IDs for kept controls. Header remote-sharing/glyph UI tests now explicitly
+  launch mac interface mode because web headers no longer expose those controls.
+
+Validation: `python3 AletheNative/Scripts/check-strings.py` and `git diff --check` pass.
+The sandbox prohibits builds; reviewer compilation and UI checks remain required.
+
+### Remaining parity gaps
+
+Exact Windows parity is not achieved for the following existing model/flow constraints:
+
+- No parked-PTY or resume-pending state is exposed by TerminalRegistry. Restart remains Restart;
+  the overlay cannot distinguish a parked process or render Resuming/disabled pending state.
+- No per-pane orchestration membership, read-only GSD viewer or handoff-packet metadata exists in
+  Pane/PaneTab. Open orchestration is omitted rather than guessing its eligibility or changing launches.
+- Recent chats opens the existing project conversations sheet, which lacks the web action's
+  terminal/agent-scoped route. Handoff usage-limit suggestion styling is not wired here.
+- Per-terminal split visibility is absent from the native model. The sidebar omits Show in split /
+  Close split and stop PTY. Add to current view uses the existing project composition operation,
+  which adds the project's panes rather than only this terminal. Move to grid remains a submenu
+  rather than the web modal. Exact equivalents need model/navigation work outside this task's scope.
+- Sidebar menus and confirmation dialogs use AppKit presentation. They retain platform menu sizing
+  rather than reproducing the DOM context menu CSS. SF Symbols replace Lucide/VS Code glyphs.
+- Pin state uses local UserDefaults keyed by pane ID; it is not imported/exported with web preferences.
+  Floating reveal is immediate and does not yet retain focus-within visibility during pointer exit.
+
+Reviewer next steps: compile outside the sandbox; check hover hit targets and inline rename at
+narrow pane widths and all zoom settings; run pane/subtab and remote-sharing UI suites. Resolve
+remaining model/flow gaps before declaring the terminal control set 1:1 with Windows.

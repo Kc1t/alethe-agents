@@ -820,6 +820,89 @@ private struct TabContextMenu: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
+        if metrics.isWebInterface { webMenu } else { nativeMenu }
+    }
+
+    @ViewBuilder private var webMenu: some View {
+        if let pane = actions.workspace.document.paneHolding(tab.id)?.pane {
+            if !project.namedGrids.isEmpty {
+                Menu("pane.moveToGrid") {
+                    Button("projectGrid.main") { move(pane.id, to: nil) }
+                    ForEach(project.namedGrids) { grid in
+                        Button { move(pane.id, to: grid.id) } label: { Text(verbatim: grid.name) }
+                    }
+                }
+            }
+            SidebarMenuButton("sidebar.web.revealTerminal", symbol: "rectangle.topthird.inset.filled") {
+                reveal(pane.id)
+            }
+            if environment.terminals.states[tab.id] != nil && !pane.isDisabled {
+                SidebarMenuButton("pane.web.restart", symbol: "power") {
+                    environment.terminals.restart(tab, in: project, environment: environment)
+                }
+            }
+            SidebarMenuButton("pane.web.openInExplorer", symbol: "folder") {
+                OpenInActions.revealInFinder(tab.workingDirectory ?? project.folder)
+            }
+            SidebarMenuButton("pane.web.openInVscode", symbol: "folder") {
+                OpenInActions.vsCode(tab.workingDirectory ?? project.folder, launchers: environment.launchers)
+            }
+            SidebarMenuButton("pane.web.focusMode", symbol: "rectangle.topthird.inset.filled") {
+                reveal(pane.id)
+                environment.focusModePaneID = pane.id
+            }
+            if pane.tabs.count <= 1 {
+                Button(pane.isLaneVisible ? LocalizedStringKey("pane.web.hideTabsLane") : "pane.web.showTabsLane") {
+                    actions.setLaneVisible(!pane.isLaneVisible, for: pane.id)
+                }
+            }
+            Divider()
+            Button("sidebar.web.openIndividually") {
+                actions.workspace.update { $0.openWebPane(pane.id) }
+                environment.showingHome = false
+            }
+            Button("pane.web.addToCurrent") {
+                actions.workspace.update { $0.addWebProject(project.id); $0.focusWebPane(pane.id) }
+                environment.showingHome = false
+            }
+            Divider()
+            SidebarMenuButton("sidebar.rename", symbol: "pencil") {
+                guard let name = SidebarRenamePrompt.name(initial: environment.terminals.displayName(of: tab),
+                    width: metrics.size(280), height: metrics.size(24)),
+                    !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                actions.workspace.update { $0.updateTab(tab.id) { $0.title = name.trimmingCharacters(in: .whitespacesAndNewlines) } }
+            }
+            SidebarMenuButton(pane.isRemoteShared ? "pane.web.hideFromRemote" : "pane.web.shareWithRemote", symbol: "iphone") {
+                environment.remoteControl.setShared(pane.id, !pane.isRemoteShared)
+            }
+            .accessibilityIdentifier("remote.share")
+            SidebarMenuButton(pane.isDisabled ? "pane.web.reactivate" : "pane.web.disable", symbol: "power") {
+                actions.setTabDisabled(tab.id, !pane.isDisabled)
+            }
+            SidebarMenuButton("pane.web.killTerminal", symbol: "power") {
+                environment.terminals.view(for: tab.id)?.terminate()
+            }
+            Divider()
+            SidebarMenuButton("pane.web.deleteTerminal", symbol: "trash", role: .destructive) {
+                let alert = NSAlert()
+                alert.messageText = format("pane.web.confirmDeleteTerminal", environment.terminals.displayName(of: tab))
+                alert.addButton(withTitle: String(localized: "pane.web.deleteTerminal"))
+                alert.addButton(withTitle: String(localized: "editor.cancel"))
+                if alert.runModal() == .alertFirstButtonReturn {
+                    for entry in pane.tabs { actions.closeTab(entry.id) }
+                }
+            }
+        }
+    }
+
+    private func reveal(_ pane: PaneID) {
+        actions.workspace.update { $0.focusWebPane(pane) }
+        environment.showingHome = false
+        environment.terminals.markRead(tab.id)
+        DispatchQueue.main.async { environment.terminals.view(for: tab.id)?.focus() }
+    }
+
+    @ViewBuilder private var nativeMenu: some View {
         if metrics.isWebInterface, let pane = actions.workspace.document.paneHolding(tab.id)?.pane {
             SidebarMenuButton("sidebar.web.revealTerminal", symbol: "rectangle.topthird.inset.filled") {
                 actions.workspace.update { $0.focusWebPane(pane.id) }

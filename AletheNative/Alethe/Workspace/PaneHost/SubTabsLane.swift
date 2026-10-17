@@ -8,6 +8,7 @@ import SwiftUI
 struct SubTabsLane: View {
     let pane: Pane
     let isFocused: Bool
+    var canDragPane: Bool = true
     var onDrag: (CGSize?) -> Void = { _ in }
     let onActivate: (TabID) -> Void
     let onClose: (TabID) -> Void
@@ -25,6 +26,7 @@ struct SubTabsLane: View {
     private var webLane: some View {
         ScrollView(.vertical) {
             VStack(spacing: metrics.size(5)) {
+                if canDragPane {
                 Image(systemName: "circle.grid.2x3.fill")
                     .font(metrics.font(size: 12))
                     .foregroundStyle(theme[.fgFaint]).opacity(0.55)
@@ -34,6 +36,7 @@ struct SubTabsLane: View {
                     .contentShape(Rectangle())
                     .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
                         .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
+                }
                 ForEach(pane.tabs) { tab in
                     SubTabItem(tab: tab, isActive: tab.id == pane.activeTab?.id, isFocused: isFocused,
                                canClose: pane.tabs.count > 1,
@@ -220,13 +223,7 @@ private struct SubTabItem: View {
         .onHover { isHovered = $0 }
         .help(Text(verbatim: name))
         .contextMenu {
-            if metrics.isWebInterface {
-                Button(action: onRestart) { Label("terminal.restart", systemImage: "arrow.clockwise") }
-                if canClose {
-                    Divider()
-                    Button(action: onClose) { Label("subtabs.close", systemImage: "xmark") }
-                }
-            } else {
+            if !metrics.isWebInterface {
                 Button("terminal.restart", action: onRestart)
                 if canClose {
                     Divider()

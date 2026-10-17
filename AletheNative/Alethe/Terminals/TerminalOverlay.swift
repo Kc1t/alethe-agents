@@ -23,6 +23,29 @@ struct TerminalOverlay: View {
     }
 
     var body: some View {
+        if metrics.isWebInterface { webOverlay } else { nativeOverlay }
+    }
+
+    private var webOverlay: some View {
+        VStack(spacing: metrics.size(10)) {
+            Image(systemName: "arrow.clockwise")
+                .font(metrics.font(size: 24))
+                .foregroundStyle(theme[.fgMuted]).opacity(0.5)
+            Text("pane.web.processEnded")
+                .font(metrics.font(size: 13, weight: .medium))
+                .foregroundStyle(theme[.fg])
+            Button("pane.web.restart") { environment.terminals.restart(tab, in: project, environment: environment) }
+                .buttonStyle(AletheTerminalRestartStyle())
+                .padding(.top, metrics.size(4))
+                .accessibilityIdentifier("terminal.restart")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme[.bgSunken].opacity(0.86))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("terminal.overlay")
+    }
+
+    private var nativeOverlay: some View {
         ZStack {
             Color.clear
             switch environment.terminals.states[tab.id] {

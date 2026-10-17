@@ -45,6 +45,7 @@ final class PaneView: NSView {
 
     override var isFlipped: Bool { true }
 
+    private var webTopbarPinned = true
     private var headerHeight: CGFloat = 28
     private var laneWidth: CGFloat = 36
     private let focusInset = CALayer()
@@ -72,7 +73,7 @@ final class PaneView: NSView {
 
     private func updateHeaderVisibility() {
         guard let context, context.metrics.isWebInterface else { return }
-        header.alphaValue = 1
+        header.alphaValue = webTopbarPinned || pointerInside ? 1 : 0
     }
 
     private func style(focused: Bool, dropTarget: Bool, context: PaneHostContext) {
@@ -106,7 +107,8 @@ final class PaneView: NSView {
         guard let tab = pane.activeTab else { return }
         self.context = context
         let environment = context.environment
-        headerHeight = context.metrics.size(context.metrics.isWebInterface ? 32 : 28)
+        webTopbarPinned = !UserDefaults.standard.bool(forKey: "pane.web.unpinned." + pane.id.rawValue)
+        headerHeight = context.metrics.size(context.metrics.isWebInterface ? (webTopbarPinned ? 32 : 0) : 28)
         header.alphaValue = 1
         alphaValue = context.metrics.isWebInterface && pane.isDisabled ? 0.85 : 1
         laneWidth = context.metrics.size(36)
@@ -128,7 +130,15 @@ final class PaneView: NSView {
             onToggleRemoteShared: { environment.remoteControl.setShared(pane.id, !pane.isRemoteShared) },
             onSessionCost: tab.sessionID == nil ? nil : { context.environment.editorRequest = .sessionCost(tab.id) },
             onHandoff: Handoff.supports(AgentKind(rawValue: tab.agent)) ? { context.environment.editorRequest = .handoff(tab.id) } : nil,
-            onDrag: onDrag))
+            onDrag: onDrag,
+            topbarPinned: webTopbarPinned,
+            canDragPane: project.visiblePanes.count > 1 && environment.focusModePaneID != pane.id,
+            onToggleTopbar: { [weak self] in
+                guard let self else { return }
+                UserDefaults.standard.set(self.webTopbarPinned, forKey: "pane.web.unpinned." + pane.id.rawValue)
+                self.configure(pane: pane, project: project, focused: focused, dropTarget: dropTarget, context: context, onDrag: onDrag)
+            }))
+        updateHeaderVisibility()
         onPaneDrag = onDrag
         configureLane(pane: pane, project: project, focused: focused, context: context)
 
@@ -249,6 +259,7 @@ final class PaneView: NSView {
         }
         let root = context.hosted(SubTabsLane(
             pane: pane, isFocused: focused,
+            canDragPane: project.visiblePanes.count > 1 && context.environment.focusModePaneID != pane.id,
             onDrag: onPaneDrag,
             onActivate: { context.activateTab($0) },
             onClose: { context.closeTab($0) },
@@ -388,7 +399,9 @@ final class PaneView: NSView {
             return
         }
         let web = context?.metrics.isWebInterface == true
-        header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: headerHeight)
+        let floating = web && !webTopbarPinned
+        header.frame = CGRect(x: 0, y: floating ? context?.metrics.size(4) ?? 4 : 0,
+                              width: bounds.width, height: floating ? context?.metrics.size(26) ?? 26 : headerHeight)
         let body = CGRect(x: 0, y: headerHeight, width: bounds.width, height: max(0, bounds.height - headerHeight))
         let leading = lane == nil ? 0 : min(laneWidth, body.width)
         lane?.frame = CGRect(x: 0, y: body.minY, width: leading, height: body.height)

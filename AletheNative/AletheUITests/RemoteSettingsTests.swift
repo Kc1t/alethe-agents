@@ -15,8 +15,8 @@ final class RemoteSettingsTests: XCTestCase {
         app.descendants(matching: .any)[identifier].firstMatch
     }
 
-    private func launchSeeded() -> XCUIApplication {
-        let (app, _) = launchAlethe(arguments: ["-AletheUITestSeed", "remote"])
+    private func launchSeeded(nativeHeader: Bool = false) -> XCUIApplication {
+        let (app, _) = launchAlethe(arguments: ["-AletheUITestSeed", "remote"] + (nativeHeader ? ["-interfaceStyle", "mac"] : []))
         XCTAssertTrue(element(app, "pane.header.shared").waitForExistence(timeout: 10))
         return app
     }
@@ -101,7 +101,7 @@ final class RemoteSettingsTests: XCTestCase {
     }
 
     func testPaneHeaderMenuSharesATerminal() {
-        let app = launchSeeded()
+        let app = launchSeeded(nativeHeader: true)
         let header = element(app, "pane.header.private")
         XCTAssertTrue(header.waitForExistence(timeout: 5))
         XCTAssertFalse(header.descendants(matching: .any)["remote.sharedGlyph"].exists, "private by default")
@@ -126,7 +126,7 @@ final class RemoteSettingsTests: XCTestCase {
     }
 
     func testSidebarMenuSharesATerminal() {
-        let app = launchSeeded()
+        let app = launchSeeded(nativeHeader: true)
         var row = app.outlines.staticTexts["private"].firstMatch
         if !row.waitForExistence(timeout: 2) {
             element(app, "sidebar.project.remote").click()
