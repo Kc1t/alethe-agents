@@ -117,7 +117,7 @@ struct HomeBackdrop: View {
         let values = (0..<(columns * rows)).map { cell -> Double in
             let row = cell / columns
             let column = cell % columns
-            let index = ((rows - 1 - row) * columns + column) * 4
+            let index = (row * columns + column) * 4
             let alpha = Double(pixels[index + 3]) / 255
             guard alpha > 0 else { return 0 }
             // CGContext stores premultiplied channels; undo that before applying web contrast.
