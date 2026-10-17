@@ -36,7 +36,8 @@ struct AgentsView: View {
             VStack(spacing: metrics.isWebInterface ? 0 : metrics.space(.s)) {
                 if metrics.isWebInterface {
                     WebSidebarHeader(trailing: 8) {
-                        Image(systemName: "cpu").font(metrics.font(size: 15))
+                        Image(systemName: "head.square").resizable().scaledToFit()
+                            .frame(width: metrics.size(15), height: metrics.size(15))
                         Text("rightSidebar.agents").lineLimit(1)
                         Text((planner == nil ? "rightSidebar.agents.scopeAll" : "rightSidebar.agents.scopeFocused") as LocalizedStringKey)
                             .lineLimit(1).fixedSize()
@@ -60,13 +61,14 @@ struct AgentsView: View {
                             Label("rightSidebar.maximize", systemImage: "arrow.up.left.and.arrow.down.right").font(metrics.font(size: 13))
                         }
                         .buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 24, height: 22))
+                        .help(Text("rightSidebar.web.agentsExpand"))
                         .accessibilityIdentifier("agents.maximize")
                         .disabled(environment.workspace?.document.workspace.selectedProjectID == nil)
                     }
                 } else { nativeHeader }
                 if jobs.isEmpty {
                     if metrics.isWebInterface {
-                        WebSidebarEmpty(title: "rightSidebar.agents.empty", detail: "rightSidebar.agents.emptyDetail", symbol: "cpu")
+                        WebSidebarEmpty(title: "rightSidebar.agents.empty", detail: "rightSidebar.agents.emptyDetail", symbol: "head.square")
                     } else {
                         ContentUnavailableView {
                             Label("agents.empty", systemImage: "person.3")
@@ -180,19 +182,20 @@ private struct AgentSidebarCard: View {
                         verbatim: job.spec.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
                             .first { !$0.isEmpty } ?? job.runLabel ?? job.id
                     )
-                    .font(metrics.font(size: 11, weight: .semibold)).lineLimit(1)
+                    .font(metrics.font(size: 11, weight: .semibold)).lineLimit(1).help(job.spec)
                     Spacer(minLength: 0)
                     if let elapsed = BoardFormat.elapsed(
                         job.seconds.map { $0 + (job.status == .running ? max(0, now.timeIntervalSince(snapshotTime)) : 0) })
                     {
-                        Text(verbatim: elapsed).fixedSize().font(metrics.font(size: 10)).foregroundStyle(theme[.fgFaint])
+                        Text(verbatim: elapsed).monospacedDigit().fixedSize().font(metrics.font(size: 10)).foregroundStyle(theme[.fgFaint])
                     }
                 }
                 HStack(spacing: metrics.size(6)) {
                     Text(verbatim: job.agent).font(metrics.font(size: 10, weight: .semibold)).lineLimit(1)
                         .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(1))
                         .overlay(Capsule().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                    Text(job.status.title).lineLimit(1).foregroundStyle(
+                    Text(job.status.title).lineLimit(1)
+                        .font(metrics.font(size: 10, weight: job.status == .blocked ? .bold : .regular)).foregroundStyle(
                         theme[job.status == .blocked ? .statusWaiting : job.status == .failed ? .statusOffline : .fgMuted])
                     Spacer(minLength: 0)
                     if let cost = job.costUSD { Text(verbatim: cost.formatted(.currency(code: "USD"))).foregroundStyle(theme[.fgFaint]) }
@@ -209,13 +212,14 @@ private struct AgentSidebarCard: View {
                 }
                 if let failure { Text(verbatim: failure).foregroundStyle(theme[.statusOffline]) }
             }
-            if WorkerActions.canCancel(job) {
+            if WorkerActions.canCancel(job) && !job.native {
                 Button {
                     act(decision: nil)
                 } label: {
                     Label("orchestrator.cancelAction", systemImage: "stop").font(metrics.font(size: 11))
                 }
                 .buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 24, height: 22)).disabled(acting)
+                .help(Text("orchestrator.cancelAction"))
             }
         }
         .foregroundStyle(theme[.fg])

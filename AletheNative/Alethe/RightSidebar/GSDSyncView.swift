@@ -26,7 +26,7 @@ struct GSDSyncView: View {
         Group {
             if metrics.isWebInterface {
                 if sessions.isEmpty {
-                    WebSidebarEmpty(title: "gsdSync.empty", detail: "rightSidebar.gsd.emptyDetail", symbol: "sparkles", minimumHeight: 220, gap: 7, centeredInPanel: false)
+                    WebSidebarEmpty(title: "gsdSync.empty", detail: "rightSidebar.gsd.emptyDetail", symbol: "sparkles", iconSize: 20, minimumHeight: 220, gap: 7, centeredInPanel: false)
                         .frame(maxHeight: .infinity, alignment: .top)
                         .accessibilityIdentifier("gsdSync.empty")
                 } else {
@@ -57,7 +57,7 @@ struct GSDSyncView: View {
 }
 
 /// A child session: its state glyph, checkout, state and roadmap progress.
-private struct GSDSyncRow: View {
+struct GSDSyncRow: View {
     let session: GSDSyncSession
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
@@ -106,7 +106,7 @@ private struct GSDSyncRow: View {
                 VStack(alignment: .leading, spacing: metrics.size(1)) {
                     Text(verbatim: session.name).font(
                         metrics.font(size: 12, weight: .medium)
-                    ).lineLimit(1).truncationMode(.middle)
+                    ).lineLimit(1).truncationMode(.tail)
                     Group {
                         if let progress = GSDPlanningText.progress(session) {
                             Text(verbatim: progress)
@@ -148,6 +148,12 @@ struct GSDSyncStateGlyph: View {
     var body: some View {
         if metrics.isWebInterface && session.busy && session.error == nil {
             AletheSidebarBusyMatrix()
+                .help(Text(Self.label(for: session)))
+                .accessibilityLabel(Text(Self.label(for: session)))
+                .accessibilityIdentifier("gsdSync.state")
+        } else if metrics.isWebInterface {
+            Circle().fill(theme[session.error != nil ? .statusOffline : .statusIdle])
+                .frame(width: metrics.size(7), height: metrics.size(7))
                 .help(Text(Self.label(for: session)))
                 .accessibilityLabel(Text(Self.label(for: session)))
                 .accessibilityIdentifier("gsdSync.state")

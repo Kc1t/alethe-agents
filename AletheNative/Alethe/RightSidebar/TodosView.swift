@@ -29,6 +29,10 @@ struct TodosView: View {
 
     var body: some View {
         if let store = environment.todoStore {
+            Group {
+                if metrics.isWebInterface {
+                    TodosWebPanel(store: store) { showingSettings = true }
+                } else {
             VStack(spacing: 0) {
                 PomodoroPill(store: store)
                     .padding(.top, 8)
@@ -52,6 +56,8 @@ struct TodosView: View {
                     section(store, scope: .global, title: Text("todos.global"))
                 }
                 .listStyle(.sidebar)
+                }
+            }
                 }
             }
             .onChange(of: environment.newTodoRequest) { focus = .draft }
