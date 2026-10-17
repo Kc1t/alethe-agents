@@ -8,8 +8,9 @@ struct WebTitleBar: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
-    @Environment(\.openSettings) private var openSettings
     @State private var showsNews = false
+    @State private var showsMenu = false
+    @State private var statusHovered = false
     @State private var accessoryWidth: CGFloat = 0
 
     var body: some View {
@@ -17,27 +18,22 @@ struct WebTitleBar: View {
             HStack(spacing: metrics.size(4)) {
                 // The standard AppKit buttons are hosted above this reserved region.
                 Color.clear.frame(width: metrics.size(72))
-                Menu {
-                    Button { environment.editorRequest = .newProject(.ungrouped) } label: { Label("menu.file.newProject", systemImage: "folder.badge.plus") }
-                    Button { environment.editorRequest = .newGroup(parent: nil) } label: { Label("menu.file.newGroup", systemImage: "square.3.layers.3d") }
-                    Button { environment.editorRequest = .newTerminal(nil) } label: { Label("menu.file.newTerminal", systemImage: "terminal") }
-                    Divider()
-                    Button { environment.showingHome = true } label: { Label("menu.view.showHome", systemImage: "house") }
-                    Button { openSettings() } label: { Label("leftSidebar.preferences", systemImage: "gearshape") }
-                } label: {
+                Button { showsMenu.toggle() } label: {
                     Image(systemName: "line.3.horizontal")
                         .resizable().scaledToFit()
                         .frame(width: metrics.size(14), height: metrics.size(14))
                 }
-                .buttonStyle(AletheIconButtonStyle(side: 28))
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .frame(width: metrics.size(28), height: metrics.size(28))
+                .buttonStyle(AletheIconButtonStyle(side: 28, isOn: showsMenu))
+                .help(Text("chrome.mainMenu"))
                 .accessibilityLabel(Text("chrome.mainMenu"))
                 .accessibilityIdentifier("chrome.mainMenu")
-                icon("sidebar.left", label: "chrome.toggleSidebar", id: "chrome.toggleSidebar", isOn: sidebarVisible, side: 32) {
+                .webTitleBarPopover(isPresented: $showsMenu, width: 220, trailing: false) {
+                    WebWindowMenu { showsMenu = false }
+                }
+                icon("sidebar.left", label: "chrome.toggleSidebar", id: "chrome.toggleSidebar", isOn: sidebarVisible, side: 28) {
                     sidebarVisible.toggle()
                 }
+                .help(Text(sidebarVisible ? "titlebar.sidebar.close" : "titlebar.sidebar.open"))
 
             }
             .padding(.leading, metrics.size(6))
@@ -54,40 +50,42 @@ struct WebTitleBar: View {
                 HStack(spacing: metrics.size(7)) {
                     HStack(spacing: metrics.size(4)) {
                         icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
-                            .popover(isPresented: $showsNews) {
-                            VStack(alignment: .leading, spacing: metrics.size(8)) {
-                                Text("chrome.whatsNew").font(metrics.font(size: 13, weight: .semibold))
-                                Text("chrome.news.chrome").font(metrics.font(size: 12))
-                            }
-                            .foregroundStyle(theme[.fg])
-                            .padding(metrics.size(16))
-                            .frame(width: metrics.size(300))
-                        }
                         if shown(.sync) {
                             SyncToolbarItem()
                                 .labelStyle(.iconOnly)
                                 .font(metrics.font(size: 12))
+                                .frame(width: metrics.size(26), height: metrics.size(22))
                                 .buttonStyle(AletheTitleBarPillStyle(iconOnly: true))
                         }
                         PomodoroToolbarPill()
                         if shown(.profile) {
                             ProfileToolbarMenu()
                                 .labelStyle(.titleAndIcon)
-                                .font(metrics.monoFont(size: 11, weight: .regular))
-                                .padding(.horizontal, metrics.size(8))
-                                .frame(maxWidth: metrics.size(180), minHeight: metrics.size(22))
-                                .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.size(8)))
+                                .buttonStyle(AletheTitleBarPillStyle())
+                                .frame(maxWidth: metrics.size(180))
                         }
                     }
                     HStack(spacing: metrics.size(4)) {
-                        if shown(.usageClaude) { UsagePill(provider: .claude) }
-                        if shown(.usageCodex) { UsagePill(provider: .codex) }
-                        if shown(.usageAntigravity) { UsagePill(provider: .antigravity) }
-                        if shown(.memory) { MemoryIndicator(webTitleBar: true) }
+                        if shown(.usageClaude) { WebTitleBarUsagePill(provider: .claude) }
+                        if shown(.usageCodex) { WebTitleBarUsagePill(provider: .codex) }
+                        if shown(.usageAntigravity) { WebTitleBarUsagePill(provider: .antigravity) }
+                        if shown(.memory) { WebTitleBarMemoryPill() }
 
                         if shown(.router9) { Router9ToolbarItem() }
+                        Button { NotificationCenter.default.post(name: .aletheCustomizeTitleBar, object: nil) } label: {
+                            Image(systemName: "pencil").resizable().scaledToFit()
+                                .frame(width: metrics.size(12), height: metrics.size(12))
+                        }
+                        .buttonStyle(AletheIconButtonStyle(side: 24))
+                        .frame(width: statusHovered ? metrics.size(24) : 0)
+                        .opacity(statusHovered ? 1 : 0).clipped()
+                        .help(Text("settings.toolbar"))
+                        .accessibilityLabel(Text("settings.toolbar"))
+                        .accessibilityIdentifier("chrome.customizeToolbar")
                     }
                     .buttonStyle(AletheTitleBarPillStyle())
+                    .onHover { statusHovered = $0 }
+                    .animation(Motion.animation(Motion.quick, reduceMotion: metrics.reducesMotion), value: statusHovered)
                     .padding(.leading, metrics.size(8))
                     .overlay(alignment: .leading) { theme[.border].frame(width: metrics.size(1), height: metrics.size(24)) }
                 }
@@ -100,15 +98,18 @@ struct WebTitleBar: View {
             icon("sidebar.right", label: "menu.view.showRightSidebar", id: "chrome.toggleRightSidebar", isOn: environment.rightSidebarVisible) {
                 environment.rightSidebarVisible.toggle()
             }
+            .help(Text(environment.rightSidebarVisible ? "titlebar.right.close" : "titlebar.right.open"))
             .padding(.leading, metrics.size(2))
             .padding(.trailing, metrics.size(6))
         }
         .foregroundStyle(theme[.fgMuted])
-        .frame(height: metrics.size(40))
+        .frame(height: metrics.size(32))
         .background(WindowDragRegion())
         .background(theme[.bgElevated])
         .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
         .accessibilityIdentifier("chrome.titleBar")
+        .preference(key: WebTitleBarNewsKey.self, value: showsNews)
+        .onReceive(NotificationCenter.default.publisher(for: .aletheCloseTitleBarNews)) { _ in showsNews = false }
     }
 
     private func shown(_ item: ToolbarItemKind) -> Bool {

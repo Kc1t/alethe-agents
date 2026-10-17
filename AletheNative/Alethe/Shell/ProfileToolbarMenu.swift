@@ -11,8 +11,66 @@ struct ProfileToolbarMenu: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var switching: ProfileEntry?
+    @State private var showsWebMenu = false
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface, !sidebar {
+                Button { showsWebMenu.toggle() } label: {
+                    HStack(spacing: metrics.size(6)) {
+                        Image(systemName: "person.2").resizable().scaledToFit()
+                            .frame(width: metrics.size(12), height: metrics.size(12))
+                        Text(verbatim: environment.activeProfileName).lineLimit(1)
+                    }
+                }
+                .buttonStyle(AletheTitleBarPillStyle())
+                .webTitleBarPopover(isPresented: $showsWebMenu, width: 220) { webMenu }
+                .help(Text(verbatim: String(format: String(localized: "profiles.menu.help"), environment.activeProfileName)))
+                .accessibilityIdentifier("profiles.menu")
+                .confirmationDialog(Text(verbatim: String(format: String(localized: "settings.profiles.switch.confirm"),
+                                                          switching.map(environment.profileName) ?? "")),
+                                    isPresented: Binding { switching != nil } set: { if !$0 { switching = nil } }) {
+                    Button("settings.profiles.switch") {
+                        guard let entry = switching else { return }
+                        Task { try? await environment.switchProfile(to: entry.id) }
+                    }
+                } message: { Text("settings.profiles.switch.message") }
+            } else { nativeMenu }
+        }
+    }
+
+    private var webMenu: some View {
+        VStack(spacing: metrics.size(2)) {
+            ForEach(environment.profiles?.document.ordered(defaultName: AppEnvironment.defaultProfileName) ?? []) { entry in
+                Button {
+                    showsWebMenu = false
+                    if entry.id != environment.profileID { switching = entry }
+                } label: {
+                    HStack(spacing: metrics.size(8)) {
+                        Text(verbatim: environment.profileName(entry)).lineLimit(1)
+                        Spacer(minLength: 0)
+                        if entry.id == environment.profileID {
+                            Image(systemName: "checkmark").resizable().scaledToFit()
+                                .frame(width: metrics.size(14), height: metrics.size(14))
+                        }
+                    }
+                }
+                .accessibilityAddTraits(entry.id == environment.profileID ? [.isSelected] : [])
+            }
+            theme[.border].frame(height: metrics.size(1)).padding(.vertical, metrics.size(4))
+            Button("profiles.menu.manage") {
+                showsWebMenu = false
+                environment.settingsTab = .profiles
+                openSettings()
+            }.accessibilityIdentifier("profiles.menu.manage")
+        }
+        .buttonStyle(AletheTitleBarMenuRowStyle())
+        .padding(metrics.size(4)).frame(width: metrics.size(220))
+        .modifier(AletheTitleBarSurface())
+        .onExitCommand { showsWebMenu = false }
+    }
+
+    private var nativeMenu: some View {
         Menu {
             if sidebar {
                 Button("leftSidebar.preferences") { openSettings() }

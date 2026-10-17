@@ -45,6 +45,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed the unsupported sidebar list-spacing modifier to restore macOS API compatibility.
 
 ### Changed
+- Web-style title bars use the web's 32-point height, 28-point sidebar controls, compact status
+  spacing, themed hamburger/profile dropdowns and live provider hover details with agent logos.
+  Memory analytics, AI usage, terminal search, widget customization and What's New open centered
+  overlays; native interface menus, sheets and toolbar remain available unchanged.
 - Web-style New/Edit Project and Group use centered overlays with the shared Motion entrance,
   440-point creation/group and 760-point project-edit widths, compact labeled fields, folder
   browsing, wrapping color swatches, footer actions and Return/Escape handling. Native-style
