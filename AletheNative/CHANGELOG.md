@@ -16,6 +16,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style right sidebar uses the web tab-strip height, compact icons, panel spacing and tooltips.
+  Todos now has completion progress, filters, a dashed composer, project pickers and compact rows;
+  Files has web-style rows, keyboard navigation, hover actions and Markdown-sidebar shortcuts.
+- Sidebar Markdown follows the web document typography, tables and code-block spacing, remembers
+  scroll positions and shows loading, copy and file-drop feedback. MCP filters, input focus,
+  disabled controls, agent logos and error states follow the web styling. Installed native plugins
+  appear as searchable cards; the native macOS interface keeps its existing controls.
 - Web-style sidebars retain their state while opening and closing with smooth panel resizing,
   content fades and directional motion matching the web interface. Separators fade on collapse;
   dragging stays immediate, Reduce Motion disables transitions, and the title bar stays fixed.

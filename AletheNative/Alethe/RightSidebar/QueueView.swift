@@ -21,7 +21,8 @@ struct QueueView: View {
         VStack(spacing: 0) {
             if metrics.isWebInterface {
                 WebSidebarHeader(trailing: 8) {
-                    Image(systemName: "list.bullet.rectangle").font(metrics.font(size: 15))
+                    Image(systemName: "list.bullet.rectangle").resizable().scaledToFit()
+                        .frame(width: metrics.size(15), height: metrics.size(15))
                     Text("queue.title")
                     Spacer(minLength: 0)
                 }
@@ -110,6 +111,7 @@ struct QueueView: View {
         .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
         .contentShape(Rectangle())
+        .modifier(AletheSidebarRowHover())
         .contextMenu {
             Button {
                 Task { await queue?.runNow([item.id]) }

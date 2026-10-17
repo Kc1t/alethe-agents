@@ -50,6 +50,7 @@ private struct McpPanelContent: View {
     @State private var query = ""
     @State private var picked: Set<McpAgent> = []
     @State private var skills: [SkillGroup]?
+    @FocusState private var searchFocused: Bool
 
     private var visibleServers: [McpServerGroup] {
         model.groups.filter { $0.matches(query) && $0.isOn(anyOf: picked) }
@@ -71,17 +72,17 @@ private struct McpPanelContent: View {
             Group {
                 if metrics.isWebInterface {
                     HStack(spacing: metrics.size(7)) {
-                        Image(systemName: "magnifyingglass").font(metrics.font(size: 13)).foregroundStyle(theme[.fgFaint])
+                        Image(systemName: "magnifyingglass").resizable().scaledToFit()
+                            .frame(width: metrics.size(13), height: metrics.size(13)).foregroundStyle(theme[.fgFaint])
                         TextField(
                             text: $query, prompt: Text((section == .servers ? "mcp.search" : "mcp.searchSkills") as LocalizedStringKey)
                         ) {
                             Text("mcp.search")
-                        }.textFieldStyle(.plain)
+                        }.textFieldStyle(.plain).focused($searchFocused)
                     }
                     .font(metrics.font(size: 12.5)).foregroundStyle(theme[.fg])
                     .padding(.vertical, metrics.size(6)).padding(.horizontal, metrics.size(10))
-                    .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
-                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                    .modifier(AletheSidebarFieldBorder(focused: searchFocused))
                     .accessibilityIdentifier("mcp.panel.search")
                 } else {
                     TextField(text: $query, prompt: Text((section == .servers ? "mcp.search" : "mcp.searchSkills") as LocalizedStringKey)) {
@@ -99,7 +100,15 @@ private struct McpPanelContent: View {
                 .padding(.top, metrics.isWebInterface ? metrics.size(8) : 0)
                 .padding(.bottom, metrics.isWebInterface ? metrics.size(6) : 0)
             if section == .servers, let error = model.error {
-                banner(error, symbol: "exclamationmark.triangle.fill", token: .statusStopped, id: "mcp.panel.error")
+                if metrics.isWebInterface {
+                    Text(verbatim: error).font(metrics.font(size: 12)).foregroundStyle(theme[.statusWaiting])
+                        .padding(metrics.size(10)).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                        .padding(metrics.size(10)).accessibilityIdentifier("mcp.panel.error")
+                } else {
+                    banner(error, symbol: "exclamationmark.triangle.fill", token: .statusStopped, id: "mcp.panel.error")
+                }
             }
             list
             addButton
@@ -120,7 +129,7 @@ private struct McpPanelContent: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(spacing: metrics.space(.s)) {
+        HStack(spacing: metrics.isWebInterface ? metrics.size(8) : metrics.space(.s)) {
             if metrics.isWebInterface {
                 HStack(spacing: metrics.size(2)) {
                     ForEach([Section.servers, .skills], id: \.self) { option in
@@ -128,14 +137,9 @@ private struct McpPanelContent: View {
                             section = option
                         } label: {
                             Text((option == .servers ? "mcp.tab.servers" : "mcp.tab.skills") as LocalizedStringKey)
-                                .font(metrics.font(size: 12))
-                                .foregroundStyle(theme[section == option ? .fg : .fgMuted])
-                                .padding(.vertical, metrics.size(4)).padding(.horizontal, metrics.size(8))
-                                .frame(maxWidth: .infinity)
-                                .background(
-                                    theme[.bgElevated].opacity(section == option ? 1 : 0),
-                                    in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-                        }.buttonStyle(.plain)
+                        }
+                        .buttonStyle(AletheSidebarFilterStyle(selected: section == option, kind: .segment))
+                        .accessibilityAddTraits(section == option ? .isSelected : [])
                     }
                 }
                 .padding(metrics.size(3))
@@ -153,7 +157,7 @@ private struct McpPanelContent: View {
                 .fixedSize()
                 .accessibilityIdentifier("mcp.panel.section")
             }
-            Spacer(minLength: 0)
+            if !metrics.isWebInterface { Spacer(minLength: 0) }
             if !metrics.isWebInterface, section == .servers, model.healthAvailable {
                 Button {
                     model.checkAllHealth()
@@ -197,17 +201,19 @@ private struct McpPanelContent: View {
                     }.scrollIndicators(.hidden)
                 } else { agentFilters }
             }
-            Spacer(minLength: metrics.space(.s))
+            if !metrics.isWebInterface { Spacer(minLength: metrics.space(.s)) }
             if section == .servers {
                 if metrics.isWebInterface {
                     HStack(spacing: metrics.size(6)) {
                         Button("mcp.scope.project") { scope.wrappedValue = .project }
                             .disabled(folder == nil)
-                            .foregroundStyle(theme[scope.wrappedValue == .project ? .accent : .fgFaint])
+                            .buttonStyle(AletheSidebarFilterStyle(selected: scope.wrappedValue == .project, kind: .scope))
+                            .help(Text((folder == nil ? "mcp.scope.projectUnavailable" : "mcp.scope.help") as LocalizedStringKey))
                         Rectangle().fill(theme[.borderStrong]).frame(width: metrics.size(1), height: metrics.size(10))
                         Button("mcp.scope.global") { scope.wrappedValue = .global }
-                            .foregroundStyle(theme[scope.wrappedValue == .global ? .accent : .fgFaint])
-                    }.font(metrics.font(size: 11)).buttonStyle(.plain).fixedSize()
+                            .buttonStyle(AletheSidebarFilterStyle(selected: scope.wrappedValue == .global, kind: .scope))
+                            .help(Text("mcp.scope.help"))
+                    }.font(metrics.font(size: 11)).fixedSize()
                         .accessibilityIdentifier("mcp.panel.scope")
                 } else {
                     Picker("mcp.scope", selection: scope) {
@@ -234,13 +240,6 @@ private struct McpPanelContent: View {
                     Group {
                         if metrics.isWebInterface {
                             AgentLogo(agent: agent.rawValue, size: 13)
-                            .frame(width: metrics.size(24), height: metrics.size(24))
-                            .background(theme[.panel].opacity(on ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(
-                                    theme[.borderStrong].opacity(on ? 1 : 0), lineWidth: metrics.size(1))
-                            )
-                            .opacity(on ? 1 : 0.45)
                         } else {
                             Circle()
                                 .fill(theme[agent.colorToken].opacity(on || picked.isEmpty ? 1 : 0.3))
@@ -251,7 +250,7 @@ private struct McpPanelContent: View {
                         }
                     }
                 }
-                .buttonStyle(.plain)
+                .modifier(McpFilterPresentation(selected: on))
                 .help(Text(verbatim: agent.label))
                 .accessibilityLabel(Text(verbatim: agent.label))
                 .accessibilityValue(Text((on ? "mcp.filter.on" : "mcp.filter.off") as LocalizedStringKey))
@@ -287,7 +286,7 @@ private struct McpPanelContent: View {
         let loaded = section == .servers ? model.snapshots != nil : skills != nil
         let empty = section == .servers ? visibleServers.isEmpty : visibleSkills.isEmpty
         let none = section == .servers ? model.groups.isEmpty : (skills ?? []).isEmpty
-        if !loaded {
+        if !loaded && !metrics.isWebInterface {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if empty {
             Group {
@@ -334,9 +333,10 @@ private struct McpPanelContent: View {
                         McpHealthDot(status: status)
                     }
                     Text(verbatim: group.name)
+                        .frame(maxWidth: metrics.isWebInterface ? .infinity : nil, alignment: .leading)
                         .font(metrics.isWebInterface ? metrics.font(size: 12.5, weight: .medium) : metrics.font(.body).weight(.medium))
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(metrics.isWebInterface ? .tail : .middle)
                     if group.hasDisabled { McpBadge(title: "mcp.badge.disabled") }
                     if group.records.contains(where: { $0.managedByImport != nil }) {
                         McpBadge(title: "mcp.badge.imported", token: .statusWaiting)
@@ -348,7 +348,7 @@ private struct McpPanelContent: View {
                     .font(metrics.isWebInterface ? metrics.monoFont(size: 10.5, weight: .regular) : metrics.font(.caption).monospaced())
                     .foregroundStyle(theme[metrics.isWebInterface ? .fgFaint : .textSecondary])
                     .lineLimit(1)
-                    .truncationMode(.middle)
+                    .truncationMode(metrics.isWebInterface ? .tail : .middle)
             }
             .padding(metrics.isWebInterface ? metrics.size(8) : metrics.space(.s))
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -374,16 +374,22 @@ private struct McpPanelContent: View {
             environment.editorRequest = .mcpManager(McpManagerRoute(tab: .skills))
         } label: {
             VStack(alignment: .leading, spacing: metrics.isWebInterface ? metrics.size(5) : metrics.space(.xxs)) {
-                HStack(spacing: metrics.space(.xs)) {
+                HStack(spacing: metrics.isWebInterface ? metrics.size(8) : metrics.space(.xs)) {
                     Text(verbatim: group.name)
                         .font(metrics.isWebInterface ? metrics.font(size: 12.5, weight: .medium) : metrics.font(.body).weight(.medium))
                         .lineLimit(1)
                     if group.bundled {
-                        Image(systemName: "lock.fill").foregroundStyle(theme[.textTertiary])
-                            .accessibilityLabel(Text("skills.badge.bundled"))
+                        Group {
+                            if metrics.isWebInterface {
+                                Image(systemName: "lock").resizable().scaledToFit()
+                                    .frame(width: metrics.size(11), height: metrics.size(11))
+                            } else { Image(systemName: "lock.fill") }
+                        }
+                        .foregroundStyle(theme[.textTertiary])
+                        .accessibilityLabel(Text("skills.badge.bundled"))
                     }
                     Spacer(minLength: 0)
-                    HStack(spacing: metrics.space(.xxs)) {
+                    HStack(spacing: metrics.isWebInterface ? metrics.size(3) : metrics.space(.xxs)) {
                         ForEach(group.agents, id: \.self) { agent in
                             Group {
                                 if metrics.isWebInterface { AgentLogo(agent: agent.rawValue, size: 13) }
@@ -416,15 +422,12 @@ private struct McpPanelContent: View {
                     environment.editorRequest = .mcpManager(
                         section == .servers ? McpManagerRoute(add: true) : McpManagerRoute(tab: .skills))
                 } label: {
-                    Label((section == .servers ? "mcp.addServer" : "mcp.manageSkills") as LocalizedStringKey, systemImage: "plus")
-                        .font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, metrics.size(7)).padding(.horizontal, metrics.size(10))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(
-                                theme[.borderStrong], style: StrokeStyle(lineWidth: metrics.size(1), dash: [metrics.size(3)])))
-                }.buttonStyle(.plain)
-                    .disabled(section == .servers && model.writableAgents.isEmpty)
+                    HStack(spacing: metrics.size(6)) {
+                        Image(systemName: "plus").resizable().scaledToFit()
+                            .frame(width: metrics.size(13), height: metrics.size(13))
+                        Text((section == .servers ? "rightSidebar.mcp.addMore" : "mcp.manageSkills") as LocalizedStringKey)
+                    }
+                }.buttonStyle(AletheSidebarFilterStyle(kind: .add))
                     .accessibilityIdentifier("mcp.panel.add")
             } else {
                 nativeAddButton
@@ -560,8 +563,9 @@ struct McpBadge: View {
 
     var body: some View {
         Text(title)
+            .lineLimit(metrics.isWebInterface ? 1 : nil)
             .font(metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.caption))
-            .foregroundStyle(theme[token])
+            .foregroundStyle(theme[metrics.isWebInterface && token == .textSecondary ? .fgFaint : token])
             .padding(.horizontal, metrics.isWebInterface ? metrics.size(6) : metrics.space(.xs))
             .padding(.vertical, metrics.isWebInterface ? metrics.size(3) : metrics.space(.xxs))
             .background(theme[.bgSunken].opacity(metrics.isWebInterface ? 0 : 1), in: Capsule())
@@ -579,11 +583,12 @@ struct McpAgentDots: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        HStack(spacing: metrics.space(.xxs)) {
+        HStack(spacing: metrics.isWebInterface ? metrics.size(3) : metrics.space(.xxs)) {
             ForEach(McpAgent.allCases.filter { present.contains($0) || missing.contains($0) }, id: \.self) { agent in
                 if metrics.isWebInterface {
                     AgentLogo(agent: agent.rawValue, size: 13)
                         .opacity(present.contains(agent) ? 1 : 0.22)
+                        .saturation(present.contains(agent) ? 1 : 0)
                 } else if present.contains(agent) {
                     Circle().fill(theme[agent.colorToken])
                         .frame(width: metrics.size(7), height: metrics.size(7))
@@ -593,6 +598,7 @@ struct McpAgentDots: View {
                 }
             }
         }
+        .fixedSize(horizontal: metrics.isWebInterface, vertical: false)
         .accessibilityHidden(true)
     }
 }
@@ -629,7 +635,7 @@ private struct WebMcpEmpty: View {
                 .background(theme[.accentSoft], in: RoundedRectangle(cornerRadius: metrics.size(18)))
                 .overlay(RoundedRectangle(cornerRadius: metrics.size(18)).strokeBorder(theme[.accentBorder], lineWidth: metrics.size(1)))
             VStack(spacing: metrics.size(6)) {
-                Text(title).font(metrics.font(size: 15, weight: 650))
+                Text(title).font(metrics.font(size: 15, weight: 650)).tracking(metrics.size(-0.3))
                 if let detail {
                     Text(detail).font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
                         .lineSpacing(metrics.size(3))
@@ -650,7 +656,16 @@ private struct McpRefreshPresentation: ViewModifier {
     @Environment(\.metrics) private var metrics
     func body(content: Content) -> some View {
         if metrics.isWebInterface {
-            content.buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 26, height: 26))
+            content.buttonStyle(AletheSidebarUtilityStyle(disabledOpacity: 1, faintWhenDisabled: true))
         } else { content.buttonStyle(.borderless) }
+    }
+}
+
+private struct McpFilterPresentation: ViewModifier {
+    let selected: Bool
+    @Environment(\.metrics) private var metrics
+    func body(content: Content) -> some View {
+        if metrics.isWebInterface { content.buttonStyle(AletheSidebarFilterStyle(selected: selected, kind: .agent)) }
+        else { content.buttonStyle(.plain) }
     }
 }

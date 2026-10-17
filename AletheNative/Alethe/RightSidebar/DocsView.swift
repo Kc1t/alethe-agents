@@ -19,6 +19,10 @@ struct DocsView: View {
     @State private var opened: [MarkdownFile] = []
     @State private var selectedPath: String?
     @State private var files: [String] = []
+    @State private var dropActive = false
+    @State private var copied = false
+    @State private var scrollPosition = ScrollPosition(edge: .top)
+    @State private var scrollOffsets: [String: CGFloat] = [:]
 
     static let tabID = "docs"
     static let tab = SidebarTabContribution(id: tabID, title: "Markdown", symbol: "doc.text", side: .right, viewID: tabID)
@@ -60,6 +64,26 @@ struct DocsView: View {
             let markdown = urls.filter { ["md", "markdown"].contains($0.pathExtension.lowercased()) && $0.isFileURL }
             for url in markdown { openInSidebar(url.path) }
             return !markdown.isEmpty
+        } isTargeted: { dropActive = $0 }
+        .overlay {
+            if metrics.isWebInterface && dropActive {
+                ZStack {
+                    Rectangle().strokeBorder(theme[.accent], lineWidth: metrics.size(2))
+                    Text("rightSidebar.markdown.drop")
+                        .font(metrics.font(size: 12, weight: .bold))
+                        .multilineTextAlignment(.center).foregroundStyle(theme[.fg])
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(metrics.size(20))
+                        .background(theme[.bgElevated].opacity(0.9))
+                        .background(theme[.accent].opacity(0.1))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                            .strokeBorder(theme[.accent], style: StrokeStyle(lineWidth: metrics.size(1), dash: [metrics.size(4)])))
+                        .padding(metrics.size(8))
+                }.allowsHitTesting(false)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .sidebarOpenMarkdown)) { notification in
+            if metrics.isWebInterface, let url = notification.object as? URL { openInSidebar(url.path) }
         }
         .onChange(of: droppedFiles) {
             for url in droppedFiles { openInSidebar(url.path) }
@@ -91,13 +115,20 @@ struct DocsView: View {
                         } label: {
                             Label("markdown.refresh", systemImage: "arrow.clockwise").font(metrics.font(size: 15))
                         }
+                        .help(Text("markdown.refresh"))
                         .accessibilityIdentifier("docs.refresh")
                         Button {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(file.source, forType: .string)
+                            copied = true
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(1500))
+                                copied = false
+                            }
                         } label: {
                             Label("markdown.copySource", systemImage: "doc.on.clipboard").font(metrics.font(size: 15))
                         }
+                        .help(Text((copied ? "rightSidebar.markdown.copied" : "markdown.copySource") as LocalizedStringKey))
                         .disabled(!file.isLoaded || file.loadError != nil).accessibilityIdentifier("docs.copy")
                     }.buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 24, height: 24))
                 }
@@ -126,7 +157,7 @@ struct DocsView: View {
                                             .frame(width: metrics.size(10), height: metrics.size(10))
                                             .padding(.leading, metrics.size(3)).padding(.trailing, metrics.size(6))
                                             .padding(.vertical, metrics.size(5))
-                                    }.accessibilityLabel(Text("docs.closeTab")).accessibilityIdentifier("docs.tab.close")
+                                    }.help(Text("docs.closeTab")).accessibilityLabel(Text("docs.closeTab")).accessibilityIdentifier("docs.tab.close")
                                 }
                                 .buttonStyle(.plain).font(metrics.font(size: 10))
                                 .foregroundStyle(theme[selectedPath == tab.path ? .fg : .fgMuted])
@@ -135,7 +166,7 @@ struct DocsView: View {
                                     Rectangle().fill(theme[.accent].opacity(selectedPath == tab.path ? 1 : 0)).frame(
                                         height: metrics.size(2))
                                 }
-                                .frame(maxWidth: metrics.size(180))
+                                .frame(maxWidth: metrics.size(180)).help(tab.path)
                             }
                         }.padding(.horizontal, metrics.size(8)).padding(.top, metrics.size(5))
                     }
@@ -152,18 +183,36 @@ struct DocsView: View {
                         Image(systemName: "doc.text")
                             .resizable().scaledToFit()
                             .frame(width: metrics.size(20), height: metrics.size(20))
-                        Text(verbatim: format("markdown.loadError", file.path)).font(metrics.font(size: 12, weight: .bold))
+                        Text("rightSidebar.markdown.error").font(metrics.font(size: 12, weight: .bold)).foregroundStyle(theme[.fg])
                         Text(verbatim: error).font(metrics.font(size: 11))
-                        Button("markdown.refresh") { file.reload() }.buttonStyle(AletheButtonStyle(size: .small))
                     }
                     .foregroundStyle(theme[.fgMuted]).padding(metrics.size(24))
-                    .frame(maxWidth: .infinity, minHeight: metrics.size(220), maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, minHeight: metrics.size(220))
+                    .padding(metrics.size(12))
+                    .frame(maxHeight: .infinity, alignment: .top)
                     .accessibilityIdentifier("markdown.error")
+                } else if !file.isLoaded {
+                    Text("rightSidebar.markdown.loading").font(metrics.font(size: 11))
+                        .foregroundStyle(theme[.fgMuted])
+                        .padding(metrics.size(24))
+                        .frame(maxWidth: .infinity, minHeight: metrics.size(220))
+                        .frame(maxHeight: .infinity, alignment: .top)
                 } else {
                     ScrollView {
-                        MarkdownBlocksView(blocks: file.blocks)
+                        MarkdownSidebarBody(blocks: file.blocks)
                             .padding(metrics.size(12)).frame(maxWidth: .infinity, alignment: .leading)
-                    }.accessibilityIdentifier("markdown.rendered")
+                    }
+                    .scrollPosition($scrollPosition)
+                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.contentOffset.y + geometry.contentInsets.top
+                    } action: { _, offset in
+                        if scrollPosition.isPositionedByUser { scrollOffsets[file.path] = max(0, offset) }
+                    }
+                    .task(id: file.path) {
+                        await Task.yield()
+                        scrollPosition.scrollTo(y: scrollOffsets[file.path] ?? 0)
+                    }
+                    .accessibilityIdentifier("markdown.rendered")
                 }
             }
         } else {
@@ -248,4 +297,8 @@ struct DocsView: View {
         }
         return found.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
+}
+
+extension Notification.Name {
+    static let sidebarOpenMarkdown = Notification.Name("alethe.sidebar.openMarkdown")
 }

@@ -32,8 +32,8 @@ enum PluginViewRegistry {
         case QueueView.tabID: QueueView()
         case GSDSyncView.tabID: GSDSyncView()
         case McpPanel.tabID: McpPanel()
-        case "jev": WebUnavailableSidebar(voice: true)
-        case "plugins": WebUnavailableSidebar(voice: false)
+        case "jev": WebVoiceHistoryPanel()
+        case "plugins": PluginsWebPanel()
         default: ExtensionOrUnavailable(viewID: viewID)
         }
     }
@@ -102,7 +102,8 @@ struct RightSidebar: View {
     private var tabs: [SidebarTabContribution] {
         guard metrics.isWebInterface else { return nativeContributions }
         let native = nativeContributions
-        return native.filter { $0.viewID != TodosPlugin.viewID && $0.viewID != PullRequestsView.tabID && $0.viewID != AgentsView.tabID }
+        return native.filter { $0.viewID != PullRequestsView.tabID && $0.viewID != AgentsView.tabID && $0.viewID != McpPanel.tabID }
+            + native.filter { $0.viewID == McpPanel.tabID }
             + [SidebarTabContribution(id: "jev", title: "Jev", symbol: "mic", side: .right, viewID: "jev")]
             + native.filter { $0.viewID == PullRequestsView.tabID || $0.viewID == AgentsView.tabID }
             + [SidebarTabContribution(id: "plugins", title: "Plugins", symbol: "square.3.layers.3d", side: .right, viewID: "plugins")]
@@ -188,7 +189,7 @@ struct RightSidebar: View {
                             }
                         }
                         .buttonStyle(AletheAnimatedRightSidebarTabStyle(selected: selected?.id == tab.id))
-                        .help(Text(PluginViewRegistry.title(for: tab)))
+                        .help(Text(webTitle(tab)))
                         .accessibilityAddTraits(selected?.id == tab.id ? .isSelected : [])
                     }
                 }
@@ -207,7 +208,7 @@ struct RightSidebar: View {
                     }
                 }
                 .buttonStyle(AletheAnimatedRightSidebarTabStyle())
-                .help(Text("rightSidebar.maximize"))
+                .help(Text("rightSidebar.web.mcpExpand"))
                 .accessibilityIdentifier("rightSidebar.maximize")
             }
             Rectangle().fill(theme[.border])
@@ -228,13 +229,22 @@ struct RightSidebar: View {
         }
         .padding(.horizontal, metrics.size(10))
         .padding(.vertical, metrics.size(4))
-        .frame(height: metrics.size(40))
+        .frame(height: metrics.size(34))
         .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+    }
+
+    private func webTitle(_ tab: SidebarTabContribution) -> LocalizedStringKey {
+        switch tab.viewID {
+        case PullRequestsView.tabID: "rightSidebar.web.prs"
+        case "jev": "rightSidebar.web.jevHistory"
+        default: PluginViewRegistry.title(for: tab)
+        }
     }
 
     private func webSymbol(_ tab: SidebarTabContribution) -> String {
         switch tab.viewID {
         case AgentsView.tabID: "head.square"
+        case McpPanel.tabID: "powerplug"
         case "plugins": "square.grid.2x2"
         case GSDSyncView.tabID: "sparkles"
         default: tab.symbol
@@ -268,7 +278,7 @@ struct WebSidebarEmpty: View {
     var detail: LocalizedStringKey? = nil
     var symbol = "doc.text"
     var boxed = false
-    var iconSize: CGFloat = 24
+    var iconSize: CGFloat = 20
     var minimumHeight: CGFloat? = nil
     var gap: CGFloat? = nil
     var centeredInPanel = true
@@ -300,67 +310,33 @@ struct WebSidebarEmpty: View {
     }
 }
 
-/// Backend-free tabs retain the web toolbar and explain their platform availability.
-private struct WebUnavailableSidebar: View {
-    let voice: Bool
+/// Voice-command history retains an honest availability state until Jev has a native backend.
+private struct WebVoiceHistoryPanel: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: metrics.size(7)) {
-                Image(systemName: voice ? "mic" : "square.grid.2x2")
-                    .resizable().scaledToFit()
-                    .frame(width: metrics.size(voice ? 15 : 16), height: metrics.size(voice ? 15 : 16))
-                Text((voice ? "rightSidebar.jev" : "rightSidebar.plugins") as LocalizedStringKey)
-                    .font(metrics.font(size: 14, weight: .medium)).lineLimit(1)
+                Image(systemName: "mic").resizable().scaledToFit()
+                    .frame(width: metrics.size(15), height: metrics.size(15))
+                Text("rightSidebar.jev").font(metrics.font(size: 14, weight: .medium)).lineLimit(1)
                 Spacer(minLength: 0)
                 Button {} label: {
-                    Label((voice ? "rightSidebar.jev.clear" : "rightSidebar.plugins.refresh") as LocalizedStringKey,
-                          systemImage: voice ? "trash" : "arrow.clockwise")
-                        .font(metrics.font(size: voice ? 14 : 13))
+                    Label("rightSidebar.jev.clear", systemImage: "trash").font(metrics.font(size: 14))
                 }
-                .buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 26, height: 26))
-                .disabled(true)
-                .accessibilityIdentifier(voice ? "jev.clear" : "plugins.refresh")
+                .buttonStyle(AletheSidebarUtilityStyle())
+                .disabled(true).help(Text("rightSidebar.jev.clear"))
+                .accessibilityIdentifier("jev.clear")
             }
-            .foregroundStyle(theme[.fg])
-            .padding(.horizontal, metrics.size(10))
+            .foregroundStyle(theme[.fg]).padding(.horizontal, metrics.size(10))
             .frame(height: metrics.size(44))
             .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
-            if !voice {
-                HStack(spacing: metrics.size(6)) {
-                    Image(systemName: "magnifyingglass")
-                        .resizable().scaledToFit()
-                        .frame(width: metrics.size(13), height: metrics.size(13))
-                    TextField("rightSidebar.plugins.search", text: .constant(""))
-                        .textFieldStyle(.plain).font(metrics.font(size: 12))
-                        .padding(.horizontal, metrics.size(8)).frame(height: metrics.size(26))
-                        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                        .disabled(true)
-                }
-                .foregroundStyle(theme[.fgMuted])
-                .padding(.vertical, metrics.size(8)).padding(.horizontal, metrics.size(10))
-                .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
-            }
             ScrollView {
-                if voice {
-                    WebSidebarEmpty(title: "rightSidebar.jev.empty", detail: "rightSidebar.jev.unavailable", symbol: "mic", boxed: true, iconSize: 18)
-                } else {
-                    VStack(spacing: metrics.size(8)) {
-                        Image(systemName: "square.grid.2x2")
-                            .resizable().scaledToFit()
-                            .frame(width: metrics.size(24), height: metrics.size(24))
-                        Text("rightSidebar.plugins.empty").font(metrics.font(size: 12, weight: .bold)).foregroundStyle(theme[.fg])
-                        Text("rightSidebar.plugins.unavailable").font(metrics.font(size: 11))
-                            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                    }
-                    .foregroundStyle(theme[.fgMuted]).padding(.vertical, metrics.size(24)).padding(.horizontal, metrics.size(12))
-                    .frame(maxWidth: .infinity)
-                }
+                WebSidebarEmpty(title: "rightSidebar.jev.empty", detail: "rightSidebar.jev.unavailable",
+                                symbol: "mic", boxed: true, iconSize: 18, centeredInPanel: false)
             }.padding(metrics.size(10))
         }
-        .accessibilityIdentifier(voice ? "jev.panel" : "plugins.panel")
+        .accessibilityIdentifier("jev.panel")
     }
 }

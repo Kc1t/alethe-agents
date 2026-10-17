@@ -30,7 +30,8 @@ struct PullRequestsView: View {
         VStack(spacing: 0) {
             if metrics.isWebInterface {
                 HStack(spacing: metrics.size(7)) {
-                    Image(systemName: "arrow.triangle.pull").font(metrics.font(size: 16))
+                    Image(systemName: "arrow.triangle.pull").resizable().scaledToFit()
+                        .frame(width: metrics.size(16), height: metrics.size(16))
                     Text("rightSidebar.pr.title").font(metrics.font(size: 14, weight: .medium)).lineLimit(1)
                     Text("rightSidebar.prScopeAll").lineLimit(1).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
                     Spacer(minLength: 0)
@@ -38,11 +39,12 @@ struct PullRequestsView: View {
                         reload += 1
                     } label: {
                         Label { Text("pullRequests.refresh") } icon: {
-                            Image(systemName: "arrow.clockwise").font(metrics.font(size: 13))
+                            Image(systemName: "arrow.clockwise").resizable().scaledToFit()
+                                .frame(width: metrics.size(13), height: metrics.size(13))
                                 .modifier(AletheSidebarSpinner(active: phase == .loading, kind: .pullRequests))
                         }
                     }
-                    .buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 26, height: 26))
+                    .buttonStyle(AletheSidebarUtilityStyle())
                     .help("pullRequests.refresh").disabled(phase == .loading)
                 }
                 .foregroundStyle(theme[.fg]).padding(.horizontal, metrics.size(10))
@@ -106,7 +108,7 @@ struct PullRequestsView: View {
                 Text(verbatim: message).foregroundStyle(theme[.statusStopped])
             }
             }
-        case .loading where prs.isEmpty:
+        case .loading where prs.isEmpty || metrics.isWebInterface:
             if metrics.isWebInterface {
                 HStack(spacing: metrics.size(8)) {
                     Image(systemName: "progress.indicator")
@@ -124,7 +126,7 @@ struct PullRequestsView: View {
             if prs.isEmpty {
                 if metrics.isWebInterface {
                     ScrollView {
-                        WebSidebarEmpty(title: "rightSidebar.pr.empty", detail: "rightSidebar.prEmptyDetail", symbol: "arrow.triangle.pull", boxed: true)
+                        WebSidebarEmpty(title: "rightSidebar.pr.empty", detail: "rightSidebar.prEmptyDetail", symbol: "arrow.triangle.pull", boxed: true, iconSize: 20, centeredInPanel: false)
                     }.padding(metrics.size(10))
                 } else {
                     ContentUnavailableView("pullRequests.empty", systemImage: "arrow.triangle.pull")
@@ -174,19 +176,22 @@ struct PullRequestsView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: metrics.size(8)) {
                 Text(verbatim: pr.repo).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                Text(verbatim: "#\(pr.number)")
+                Text(verbatim: "#\(pr.number)").fixedSize()
                 if pr.isDraft {
-                    Text("pullRequests.draft").textCase(.uppercase)
+                    Text("pullRequests.draft").textCase(.uppercase).tracking(metrics.size(0.3))
                         .foregroundStyle(theme[.statusWaiting])
                         .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(1))
                         .background(theme[.statusWaitingSoft], in: Capsule())
                 }
             }.font(metrics.monoFont(size: 10, weight: .regular)).foregroundStyle(theme[.fgFaint])
-            Text(verbatim: pr.title).lineLimit(1).font(metrics.font(size: 13, weight: .medium))
+            Text(verbatim: pr.title).lineLimit(1).font(metrics.font(size: 13, weight: .medium)).help(pr.title)
                 .foregroundStyle(theme[.fg]).padding(.vertical, metrics.size(6))
             HStack(spacing: metrics.size(4)) {
                 Text(verbatim: pr.author)
-                if let updated = pr.updatedAt { Text(verbatim: "·"); Text(updated, style: .date) }
+                if let updated = pr.updatedAt {
+                    Text(verbatim: "·")
+                    Text(verbatim: format("rightSidebar.pr.updated", updated.formatted(date: .numeric, time: .omitted)))
+                }
             }.font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint]).lineLimit(1)
             HStack(spacing: metrics.size(6)) {
                 Button {
@@ -194,6 +199,7 @@ struct PullRequestsView: View {
                 } label: {
                     Label("pullRequests.open", systemImage: "arrow.up.right.square").font(metrics.font(size: 13))
                 }.buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 26, height: 26))
+                    .help(Text("pullRequests.open")).disabled(pr.browserURL == nil)
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 Button {
                     guard let url = pr.browserURL else { return }
