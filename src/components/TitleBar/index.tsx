@@ -33,7 +33,7 @@ import { getCachedKimiUsage } from '../../lib/kimiUsageCache'
 import { useT } from '../../lib/i18n'
 import { useSidebarViews } from '../../lib/viewPlacement'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
-import { formatShortcut } from '../../lib/platform'
+import { formatShortcut, isMacOS } from '../../lib/platform'
 import { codexHeadlineWindow, hasCodexWindow, killPty, remoteControlInfo } from '../../lib/tauri'
 import { usePomodoroStore } from '../../stores/pomodoroStore'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -45,6 +45,10 @@ import styles from './TitleBar.module.css'
 const CLAUDE_POLL_INTERVAL_MS = 5 * 60_000
 const REMOTE_CONTROL_POLL_INTERVAL_MS = 2_000
 const APP_TITLE = import.meta.env.DEV ? '(DEV) Alethe' : 'Alethe'
+// macOS draws its own close/minimize/zoom buttons (`tauri.macos.conf.json`): the bar leaves
+// room for them on the left instead of drawing a second set on the right.
+const NATIVE_WINDOW_CONTROLS = isMacOS()
+const TRAFFIC_LIGHTS_INSET = 72
 
 function usagePillColor(utilization: number): string {
   if (utilization >= 80) return 'var(--status-offline)'
@@ -468,6 +472,33 @@ export function TitleBar() {
     void win.setTitle(APP_TITLE)
   }, [win])
 
+  // The traffic lights hide in native full screen, so their gap goes with them.
+  const [fullscreen, setFullscreen] = useState(false)
+  useEffect(() => {
+    if (!NATIVE_WINDOW_CONTROLS) return
+    const appWindow = getCurrentWindow()
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+    const sync = () => {
+      void appWindow
+        .isFullscreen()
+        .then((value) => {
+          if (!cancelled) setFullscreen(value)
+        })
+        .catch(() => {})
+    }
+    sync()
+    void appWindow.onResized(sync).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [])
+  const trafficLightsInset = NATIVE_WINDOW_CONTROLS && !fullscreen ? TRAFFIC_LIGHTS_INSET : 0
+
   return (
     <div
       className={styles.bar}
@@ -476,15 +507,16 @@ export function TitleBar() {
       style={
         {
           '--topbar-left-width': preferences.leftSidebarVisible
-            ? `${preferences.leftSidebarWidth}px`
-            : '38px',
+            ? `${Math.max(preferences.leftSidebarWidth, 38 + trafficLightsInset)}px`
+            : `${38 + trafficLightsInset}px`,
+          '--traffic-lights-inset': `${trafficLightsInset}px`,
           '--topbar-right-width': preferences.rightSidebarVisible
             ? `${preferences.rightSidebarWidth}px`
             : '38px',
         } as React.CSSProperties
       }
     >
-      <div className={styles.barStart}>
+      <div className={styles.barStart} data-tauri-drag-region>
         <button
           type="button"
           className={styles.iconBtn}
@@ -686,8 +718,8 @@ export function TitleBar() {
         </div>
       ) : null}
       <div className={styles.spacer} data-tauri-drag-region />
-      <div className={styles.barEnd}>
-        <div className={styles.widgets}>
+      <div className={styles.barEnd} data-tauri-drag-region>
+        <div className={styles.widgets} data-tauri-drag-region>
           <div className={styles.utilityGroup}>
             {!threeAreas ? (
               <button
@@ -992,33 +1024,37 @@ export function TitleBar() {
             )}
           </button>
         ) : null}
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win.minimize()}
-          title={t('ui.titlebar.minimize')}
-          aria-label={t('ui.titlebar.minimize')}
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win.toggleMaximize()}
-          title={t('ui.titlebar.maximize')}
-          aria-label={t('ui.titlebar.maximize')}
-        >
-          <Maximize2 size={12} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.windowBtn} ${styles.close}`}
-          onClick={() => void requestAppClose()}
-          title={t('ui.titlebar.close')}
-          aria-label={t('ui.titlebar.close')}
-        >
-          <X size={14} />
-        </button>
+        {NATIVE_WINDOW_CONTROLS ? null : (
+          <>
+            <button
+              type="button"
+              className={styles.windowBtn}
+              onClick={() => void win.minimize()}
+              title={t('ui.titlebar.minimize')}
+              aria-label={t('ui.titlebar.minimize')}
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              type="button"
+              className={styles.windowBtn}
+              onClick={() => void win.toggleMaximize()}
+              title={t('ui.titlebar.maximize')}
+              aria-label={t('ui.titlebar.maximize')}
+            >
+              <Maximize2 size={12} />
+            </button>
+            <button
+              type="button"
+              className={`${styles.windowBtn} ${styles.close}`}
+              onClick={() => void requestAppClose()}
+              title={t('ui.titlebar.close')}
+              aria-label={t('ui.titlebar.close')}
+            >
+              <X size={14} />
+            </button>
+          </>
+        )}
       </div>
       {tabMenu ? (
         <ContextMenu

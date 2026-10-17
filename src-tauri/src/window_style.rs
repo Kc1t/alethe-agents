@@ -16,6 +16,11 @@ pub fn apply_rounded_corners(app: &tauri::AppHandle) {
         let Some(window) = app.get_webview_window("main") else {
             return;
         };
+        // Com a moldura nativa (`tauri.macos.conf.json`) o próprio macOS arredonda a janela
+        // e desenha a sombra; recortar o `contentView` por cima deixaria os cantos desencontrados.
+        if window.is_decorated().unwrap_or(false) {
+            return;
+        }
         if let Err(e) = round_macos_window(&window) {
             eprintln!("[window_style] falha ao arredondar a janela: {e}");
         }
