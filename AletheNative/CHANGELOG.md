@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style sidebars retain their state while opening and closing with smooth panel resizing,
+  content fades and directional motion matching the web interface. Separators fade on collapse;
+  dragging stays immediate, Reduce Motion disables transitions, and the title bar stays fixed.
 - Claude usage polling no longer repeatedly asks for Keychain access. Credential reads use Apple's
   stable system tool and are cached until expiry, authorization failure or explicit reconnect;
   denied reads are not retried by polling. Sign-in checks remain prompt-free, and Antigravity

@@ -13,6 +13,7 @@ struct MainWindow: View {
     @SceneStorage("main.columnVisibility") private var sidebarVisible = true
     @AppStorage("main.rightSidebarWidth") private var rightSidebarWidth = 280.0
     @AppStorage("main.webLeftWidth") private var webLeftWidth = 286.0
+    @State private var webSidebarDragging = false
     @State private var webFullScreen = false
     @State private var showsTitleBarNews = false
     @State private var showsTitleBarMemory = false
@@ -147,24 +148,35 @@ struct MainWindow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 GeometryReader { geometry in
                     HStack(spacing: 0) {
-                        if sidebarVisible {
+                        WebShellPanel(visible: sidebarVisible,
+                                      width: min(metrics.size(webLeftWidth), geometry.size.width * 0.30)) {
                             LeftSidebar()
-                                .frame(width: min(metrics.size(webLeftWidth), geometry.size.width * 0.30))
-                                .background(theme[.bg])
-                            WebShellSeparator(width: $webLeftWidth, limits: 220...380)
                         }
+                        WebShellSeparator(width: $webLeftWidth, limits: 220...380,
+                                          visible: sidebarVisible, dragging: $webSidebarDragging)
                         WorkspaceView()
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .clipped()
                             .overlay(alignment: .bottom) { DictationHUD() }
-                        if environment.rightSidebarVisible {
-                            WebShellSeparator(width: $webRightWidth, limits: 260...420, trailing: true)
+                        WebShellSeparator(width: $webRightWidth, limits: 260...420, trailing: true,
+                                          visible: environment.rightSidebarVisible, dragging: $webSidebarDragging)
+                        WebShellPanel(visible: environment.rightSidebarVisible,
+                                      width: min(metrics.size(webRightWidth), geometry.size.width * 0.30),
+                                      trailing: true) {
                             RightSidebar()
-                                .frame(width: min(metrics.size(webRightWidth), geometry.size.width * 0.30))
-                                .background(theme[.bg])
                         }
                     }
                     .frame(maxHeight: .infinity)
+                    .animation(Motion.webShellCurve(duration: 0.22, reduceMotion: metrics.reducesMotion),
+                               value: sidebarVisible)
+                    .animation(Motion.webShellCurve(duration: 0.22, reduceMotion: metrics.reducesMotion),
+                               value: environment.rightSidebarVisible)
+                    .transaction { transaction in
+                        if webSidebarDragging || metrics.reducesMotion {
+                            transaction.animation = nil
+                            transaction.disablesAnimations = true
+                        }
+                    }
                 }
             }
             .frame(width: windowGeometry.size.width, height: windowGeometry.size.height, alignment: .topLeading)
