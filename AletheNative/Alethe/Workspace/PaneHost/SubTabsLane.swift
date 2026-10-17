@@ -93,7 +93,7 @@ struct SubTabsLane: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .background(theme[.shapeTabsLaneBg])
         .overlay(alignment: .trailing) {
-            Rectangle().fill(theme[.shapeTabsLaneBorder]).frame(width: 1)
+            Rectangle().fill(theme[.shapeTabsLaneBorder]).frame(width: metrics.size(1))
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("subtabs.lane")
@@ -142,10 +142,10 @@ private struct SubTabItem: View {
         .overlay(alignment: .leading) {
             if isActive {
                 // Accent bar on the lane's leading edge (upstream `.active::before`).
-                RoundedRectangle(cornerRadius: 1)
+                RoundedRectangle(cornerRadius: metrics.size(1))
                     .fill(theme[metrics.isWebInterface || isFocused ? .accent : .borderStrong])
                     .frame(width: metrics.size(2), height: metrics.size(16))
-                    .shadow(color: isFocused ? theme[.accentRing] : .clear, radius: metrics.size(4))
+                    .shadow(color: isFocused && (!metrics.isWebInterface || metrics.style != .clean) ? theme[.accentRing] : .clear, radius: metrics.size(4))
                     .offset(x: -metrics.size(5))
             }
         }
@@ -157,7 +157,7 @@ private struct SubTabItem: View {
             if canClose && isHovered {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
-                        .font(.system(size: metrics.size(7), weight: .bold))
+                        .font(metrics.font(size: 7, weight: .bold))
                         .frame(width: metrics.size(12), height: metrics.size(12))
                         .background(Circle().fill(theme[.bgElevated]))
                         .overlay(Circle().strokeBorder(theme[.border]))

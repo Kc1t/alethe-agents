@@ -53,7 +53,10 @@ struct TerminalFindBar: View {
         .padding(.vertical, metrics.space(.xs))
         .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border]))
-        .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+        .shadow(color: metrics.isWebInterface
+                ? (metrics.style == .clean ? .clear : theme.shadow(.md).color.color) : .black.opacity(0.18),
+                radius: metrics.isWebInterface ? metrics.size(8) : 8,
+                y: metrics.isWebInterface ? metrics.size(2) : 2)
         .onAppear {
             text = search.needle
             fieldFocused = true

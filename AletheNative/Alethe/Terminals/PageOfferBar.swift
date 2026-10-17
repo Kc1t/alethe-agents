@@ -47,7 +47,7 @@ struct PageOfferBar: View {
         .padding(.horizontal, metrics.space(.m))
         .padding(.vertical, metrics.space(.xs))
         .background(theme[.bgElevated])
-        .overlay(alignment: .bottom) { Rectangle().fill(theme[.borderSubtle]).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(theme[.borderSubtle]).frame(height: metrics.size(1)) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pageOffer")
     }

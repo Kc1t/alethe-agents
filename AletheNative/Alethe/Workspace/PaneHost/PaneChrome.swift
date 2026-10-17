@@ -43,7 +43,7 @@ struct ContainerHeader: View {
         .padding(.horizontal, metrics.space(.m))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme[.bgElevated])
-        .overlay(alignment: .bottom) { theme[.border].frame(height: 1) }
+        .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 4, coordinateSpace: .global)

@@ -149,6 +149,8 @@ struct ResourcePolicyPicker: View {
 /// Settings › Resources: the policy and its idle limits.
 struct ResourceSettings: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
 
     private var policy: ResourcePolicy { environment.preferences?.document.resources ?? ResourcePolicy() }
 
@@ -157,8 +159,8 @@ struct ResourceSettings: View {
             Section {
                 ResourcePolicyPicker()
                 Text(policy.mode.detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .font(metrics.isWebInterface ? metrics.font(.footnote) : .footnote)
+                    .foregroundStyle(metrics.isWebInterface ? theme[.textSecondary] : .secondary)
             }
             Section("resources.idleLimits") {
                 Stepper(value: minutes(\.hiddenAgentIdleMinutes), in: ResourcePolicy.agentIdleRange, step: 5) {

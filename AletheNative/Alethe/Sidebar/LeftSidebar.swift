@@ -80,7 +80,7 @@ struct LeftSidebar: View {
         VStack(spacing: 0) {
             ScrollView(.horizontal) {
                 HStack(spacing: metrics.size(4)) {
-                    Button { environment.showingHome = true } label: {
+                    Button { selectedTab = "projects"; environment.showingHome = true } label: {
                         Label("leftSidebar.home", systemImage: "house")
                     }
                     .buttonStyle(AletheSidebarTabStyle(isSelected: environment.showingHome))
@@ -136,6 +136,10 @@ struct LeftSidebar: View {
         }
         .foregroundStyle(theme[.fg])
         .background(theme[.bg])
+        .onChange(of: environment.showingHome) { _, showing in
+            if showing { selectedTab = "projects" }
+        }
+        .onAppear { if environment.showingHome { selectedTab = "projects" } }
     }
 
     private var rule: some View {

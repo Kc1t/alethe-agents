@@ -16,7 +16,7 @@ struct WebTitleBar: View {
         HStack(spacing: 0) {
             HStack(spacing: metrics.size(4)) {
                 // The standard AppKit buttons are hosted above this reserved region.
-                Color.clear.frame(width: metrics.size(64))
+                Color.clear.frame(width: metrics.size(72))
                 Menu {
                     Button { environment.editorRequest = .newProject(.ungrouped) } label: { Label("menu.file.newProject", systemImage: "folder.badge.plus") }
                     Button { environment.editorRequest = .newGroup(parent: nil) } label: { Label("menu.file.newGroup", systemImage: "square.3.layers.3d") }

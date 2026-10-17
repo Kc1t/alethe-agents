@@ -40,7 +40,7 @@ struct ContentPaneHeader<Actions: View>: View {
                 .onChanged { onDrag($0.translation) }
                 .onEnded { _ in onDrag(nil) }
         )
-        .overlay(alignment: .bottom) { Rectangle().fill(theme[.borderSubtle]).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(theme[.borderSubtle]).frame(height: metrics.size(1)) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pane.header.\(url.lastPathComponent)")
     }

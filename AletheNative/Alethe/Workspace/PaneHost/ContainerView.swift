@@ -401,7 +401,7 @@ final class ContainerView: NSView {
         let shadow = context?.theme.shadow(.lg)
         layer.masksToBounds = !lifted
         layer.shadowColor = shadow?.color.nsColor.cgColor
-        layer.shadowOpacity = lifted ? 1 : 0
+        layer.shadowOpacity = lifted && !(context?.metrics.isWebInterface == true && context?.metrics.style == .clean) ? 1 : 0
         layer.shadowRadius = lifted ? CGFloat(shadow?.blur ?? 0) / 2 : 0
         layer.shadowOffset = CGSize(width: shadow?.x ?? 0, height: -(shadow?.y ?? 0))
         view.alphaValue = lifted ? 0.94 : 1

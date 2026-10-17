@@ -152,7 +152,7 @@ struct OrchestratorPaneView: View {
                 .onChanged { onDrag($0.translation) }
                 .onEnded { _ in onDrag(nil) }
         )
-        .overlay(alignment: .bottom) { Rectangle().fill(theme[.borderSubtle]).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(theme[.borderSubtle]).frame(height: metrics.size(1)) }
     }
 
     /// Upstream `counts`: the open planner's spend (P6-17), what waits on the person anywhere on

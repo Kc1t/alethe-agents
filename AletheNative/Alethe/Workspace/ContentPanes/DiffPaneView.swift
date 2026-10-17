@@ -131,7 +131,7 @@ struct DiffPaneView: View {
                 ForEach(Array(DiffParser.split(hunk).enumerated()), id: \.offset) { _, row in
                     HStack(spacing: 0) {
                         splitCell(row.left, number: row.left?.oldNumber)
-                        Rectangle().fill(theme[.borderSubtle]).frame(width: 1)
+                        Rectangle().fill(theme[.borderSubtle]).frame(width: metrics.size(1))
                         splitCell(row.right, number: row.right?.newNumber)
                     }
                 }
