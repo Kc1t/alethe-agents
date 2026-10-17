@@ -137,3 +137,80 @@ checks pass. No compilation, app execution/restart, UI test, staging, commit or 
 The reviewer must build outside the nested sandbox and inspect rapid disclosure toggles, hover
 slots, tab changes, group/project drops, clean style, Reduce Motion and zoom. No ai-memory skill
 or connector is available; this existing versioned handoff records the state and remaining work.
+
+## Group click behavior audit (Windows 1.7.0)
+
+Reference: `origin/main:package.json` reports `1.7.0`. The implementation was compared with
+`ProjectSidebar/{NormalProjectSidebar,NormalGroupNode,NormalProjectNode,NormalTerminalNode,
+GroupNode,ProjectGrids,ContextMenu,MergeTree,sidebarMenus}.tsx`, their CSS, the workspace
+navigation store, workspace surface rendering, and the navigation/selector/drag tests.
+All source reads used `git show origin/main:<path>`; no checkout, server restart, staging,
+commit or push was performed. This section supersedes earlier click-behavior claims above.
+
+| Interaction | Web source and contract | Native before | Native after |
+| --- | --- | --- | --- |
+| Group single click, including modified click | `NormalGroupNode:onTagClick`, `GroupNode:onTagClick`: toggle disclosure only | Disclosure toggled, but List selection still participated | Workspace selection binding is inert in web mode; disclosure does not open a view or leave Home |
+| Group double click | `NormalGroupNode:onDoubleClick`: open group only; clean `GroupNode` has no double-click opener | Opened first project tab, then mutated it into a group composition | Normal opens/reuses a group-sourced composition; clean keeps disclosure-only behavior |
+| Group chevron | `NormalGroupNode:groupChevronBtn`: toggle collapse, stop propagation | Toggle persisted group collapse | Retained; no workspace navigation |
+| Group context open only | `sidebarMenus:groupMenu`, `openGroupWorkspace`: own saved group tab, including empty group | Disabled for empty group; reused a project tab | Separate reusable group source; empty group gets an empty tab and leaves Home |
+| Group context append | `openGroupWorkspace`: append once, preserve active tab, select first openable member; empty scope is a no-op | Opened every project and selected the last one | Filters projects without panes, recursively includes descendants in document order, selects first, clears flat/fullscreen, converts active tab to composition |
+| Reopen group | `openGroupWorkspace`: restore existing group snapshot | Rebuilt group by opening projects | Restores saved open projects, widths, focus and collapse state; active project grids are still global (see limitations) |
+| Project name/folder, including modified or repeated click | `NormalProjectSidebar:activateProject`, `openProjectGrid`: own project tab regardless of current visibility | Visible project stayed in composition; Option appended | Explicit web gesture opens/reuses project tab and leaves Home; modifier flags do not append |
+| Project chevron | `NormalProjectNode:onToggleCollapsed`: persist project disclosure independently of activation | View-local expansion | Profile/project scoped `sidebar.web.collapsedProjects` preference, separate from container collapse |
+| Empty project | `openProjectGrid`, `WorkspaceView:surfaces`: empty workspace, no terminal creation | Empty container | Empty workspace rendering; no terminal auto-creation |
+| Terminal single/repeated click | `NormalProjectSidebar:onTerminalClick`, `focusWorkspaceTerminal`: preserve visible composition; otherwise open its grid; request focus, read completion | Selected project through `openInTab`, then activated sub-tab; repeated List selection could do nothing | Web visibility check, grid reveal, active project/focused pane update, explicit repeated keyboard-focus request, completion marked read, leave Home |
+| Terminal double click | `NormalProjectSidebar:onTerminalDoubleClick`, `openTerminalWorkspace`: reusable pane-only tab | No distinct double-click path | Reusable pane-sourced composition rendered with one pane independently of active grid |
+| Context-menu reveal/open | `sidebarMenus:terminalMenu`: explicit reveal and open individually | No reveal or pane-only opening action | Added localized reveal and individual-pane opening; native menu path unchanged |
+| Terminal drag onto project | `NormalProjectSidebar:onDragEnd`, `moveTerminal`: move sessions to destination active grid | No pane drag payload | Dedicated own-process payload, preserved pane/tab IDs, destination active grid, inside-drop highlight |
+| Terminal drag onto group | `sidebarCollisionDetection`: terminal candidates are projects only | No terminal drag support | Group accepts plain-text project/group payloads only; terminal payload cannot target it |
+| Cmd+1…9 | `useKeybindings`: projects in document order, independent of workspace-tab positions; does not explicitly leave Home | Workspace-tab position | Project-index event monitors on workspace root; tab events retain middle-click close only |
+| Sidebar Projects/Files buttons | `NormalProjectSidebar`: preserve Home; clean `ProjectSidebar`: leave Home | Preserved Home in both styles | Normal preserves Home; clean leaves Home |
+| Middle click sidebar row | Row components have no auxiliary-click navigation | No explicit handler | Retained; workspace tab middle-click close remains separate |
+| Arrows, Enter, Space, Left/Right, F2, Delete | Sidebar row components have no tree navigation, rename or delete key handlers; pointer-only drag sensor | List selection could navigate via binding | Web List selection cannot navigate; existing control/accessibility keyboard handling remains platform-native. No invented F2/Delete actions |
+| Hidden/archived projects | Sidebar filters rows; `openGroupWorkspace` does not filter hidden/archived membership | Local visibility controls; group opened every project | Local row visibility retained; group action uses all members that contain panes, as web store does |
+
+### Storage and native-path boundaries
+
+- `WebSidebarNavigation.swift` adds pure selection/open operations. Existing `openInTab`,
+  `open`, `activateTab` and native group opener remain unchanged. UI callers opt into web methods
+  only with `metrics.isWebInterface`; clean versus normal differences are handled separately.
+- Existing composition tabs have an unused optional `projectID` source slot. Web group/pane tabs
+  use reserved `web-group:<id>` / `web-pane:<id>` values in that slot to retain source identity
+  without adding persisted fields, Codable cases or migrations. Project tabs still store real
+  project IDs. Appending clears the source marker. Label/color helpers resolve markers before
+  ordinary composition fallback; the serialization regression test covers repair after decoding.
+- Terminal-only views use existing isolated-pane/fullscreen snapshot fields and a presentation
+  copy in PaneHost. Stored project panes and active grid are not rewritten for double-click views.
+- `ProjectEditorModel.swift` has no workspace selection/open methods; its folder inspection,
+  cloning and Git initialization paths were left untouched.
+- Existing row accessibility identifiers, theme tokens, metrics and Components.swift are retained.
+  Reveal terminal uses one new dotted key with English and pt-BR translations.
+
+### Validation and remaining deviations
+
+- `python3 AletheNative/Scripts/check-strings.py`: passed after implementation.
+- `git diff --check`: passed before this documentation update; rerun for final handoff.
+- Added 14 model tests for navigation contracts, recursive/empty groups, append/reuse, focus,
+  source encoding, rename, pane moves and the unchanged native project selection path. Tests
+  were reviewed but not executed: sandbox builds and the UI harness are prohibited for this task.
+- Explicit project/group reopening moves the saved tab to the end of the tab bar, following
+  `applyTabNavigation`; activation through the tab bar preserves its position. Terminal context
+  focus mode now calls the web focus path while the native action remains unchanged.
+- Reviewer must compile with Swift 6 and exercise actual single/double-click recognition,
+  chevron/menu event isolation, repeated terminal focus, drop feedback and scroll behavior.
+- Exact per-container grid/pane membership snapshots, arbitrary pane-subset append, and custom
+  group grid layouts remain unsupported by the existing native schema. Group tabs restore
+  snapshot fields the native model can represent, but grid changes are global per project.
+  Terminal context-menu Add to current is still absent; it must not silently add an entire grid.
+- Group archive controls and archived-parent promotion remain absent in the native model/UI;
+  existing project hide/archive flags remain local preferences. Named-grid disclosure grouping,
+  non-file content rows and the full web menu inventory are not completed by this change.
+- Native project/group reordering retains its prior insertion behavior; the project drop delegate
+  adds inside feedback for terminal payloads but does not implement web before/after half-row
+  reordering. Terminal moves into an already open destination still follow native visible-grid
+  membership rather than retaining the web container's exact previous pane subset.
+- Tree keyboard and automatic sidebar scrolling still use SwiftUI/AppKit infrastructure; parity
+  is not claimed for browser scrolling or keyboard focus traversal. Workspace tab overflow
+  scrolling remains unchanged. Visual focus styling uses existing pane/row renderers.
+- No ai-memory or graphify-query skill/connector was available. This existing versioned report
+  records decisions, limitations and reviewer next steps as the memory handoff.

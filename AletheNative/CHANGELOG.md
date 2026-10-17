@@ -16,6 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style group, project and terminal navigation follows Windows 1.7.0: group tabs are reused,
+  empty groups can open, project clicks leave compositions, terminal clicks preserve visible
+  layouts and double clicks open individual panes. Project disclosure persists per profile,
+  terminal drops move sessions between projects, and numbered shortcuts open projects.
 - The Home ASCII art is no longer drawn upside down.
 - Fixed workspace-tab event monitoring compilation under Swift's strict concurrency checks.
 - Web-style workspace tabs show pinned borders, pane counts and clean-style selection, support

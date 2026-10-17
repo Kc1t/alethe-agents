@@ -4,6 +4,7 @@ import SwiftUI
 /// Handles pointer buttons and numbered shortcuts without intercepting terminal text input.
 struct WorkspaceTabEvents: NSViewRepresentable {
     var number: Int? = nil
+    var listensForMiddleClick = true
     let activate: () -> Void
     let close: () -> Void
 
@@ -11,6 +12,7 @@ struct WorkspaceTabEvents: NSViewRepresentable {
 
     func updateNSView(_ view: TabEventView, context: Context) {
         view.number = number
+        view.listensForMiddleClick = listensForMiddleClick
         view.activate = activate
         view.close = close
         view.install()
@@ -21,6 +23,7 @@ struct WorkspaceTabEvents: NSViewRepresentable {
     @MainActor
     final class TabEventView: NSView {
         var number: Int?
+        var listensForMiddleClick = true
         var activate: () -> Void = {}
         var close: () -> Void = {}
         private var monitor: Any?
@@ -33,7 +36,7 @@ struct WorkspaceTabEvents: NSViewRepresentable {
                 let handled = MainActor.assumeIsolated {
                     guard let self, let window = self.window, window.isKeyWindow,
                           event.window === window else { return false }
-                    if event.type == .otherMouseDown, event.buttonNumber == 2,
+                    if self.listensForMiddleClick, event.type == .otherMouseDown, event.buttonNumber == 2,
                        self.bounds.contains(self.convert(event.locationInWindow, from: nil)) {
                         self.close()
                         return true

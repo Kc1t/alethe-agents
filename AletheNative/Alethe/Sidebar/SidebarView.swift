@@ -153,6 +153,7 @@ struct SidebarView: View {
 
     private func selection(_ workspace: WorkspaceModel, _ actions: SidebarActions) -> Binding<SidebarItem?> {
         Binding {
+            if metrics.isWebInterface { return nil }
             let state = workspace.document.workspace
             if let focused = state.focusedPaneID, let (project, pane) = workspace.document.pane(focused),
                project.id == state.selectedProjectID, let tab = pane.activeTab {
@@ -160,7 +161,7 @@ struct SidebarView: View {
             }
             return state.selectedProjectID.map(SidebarItem.project)
         } set: { item in
-            actions.select(item)
+            if !metrics.isWebInterface { actions.select(item) }
         }
     }
 }
@@ -321,7 +322,7 @@ private struct GroupRow: View {
             }
             .modifier(SidebarLabelAppearance(isGroup: true))
             .modifier(SidebarWebGroupOpen {
-                actions.openGroup(group.id, adding: false)
+                actions.openGroup(group.id, adding: false, web: metrics.isWebInterface)
                 environment.showingHome = false
             })
             .modifier(SidebarWebRow(kind: .group, first: doc.childGroups(of: nil).first?.id == group.id))
@@ -332,10 +333,16 @@ private struct GroupRow: View {
             }
             .onHover { hovering = $0 }
             .contextMenu {
-                SidebarMenuButton("sidebar.openOnlyGroup", symbol: "rectangle") { actions.openGroup(group.id, adding: false) }
-                    .disabled(!doc.groups.contains { doc.isGroup($0.id, inside: group.id) && !$0.projectIDs.isEmpty })
-                SidebarMenuButton("sidebar.addGroupToTab", symbol: "rectangle.badge.plus") { actions.openGroup(group.id, adding: true) }
-                    .disabled(!doc.groups.contains { doc.isGroup($0.id, inside: group.id) && !$0.projectIDs.isEmpty })
+                SidebarMenuButton("sidebar.openOnlyGroup", symbol: "rectangle") {
+                    actions.openGroup(group.id, adding: false, web: metrics.isWebInterface)
+                    if metrics.isWebInterface { environment.showingHome = false }
+                }
+                    .disabled(!metrics.isWebInterface && !doc.groups.contains { doc.isGroup($0.id, inside: group.id) && !$0.projectIDs.isEmpty })
+                SidebarMenuButton("sidebar.addGroupToTab", symbol: "rectangle.badge.plus") {
+                    actions.openGroup(group.id, adding: true, web: metrics.isWebInterface)
+                    if metrics.isWebInterface { environment.showingHome = false }
+                }
+                    .disabled(!metrics.isWebInterface && !doc.groups.contains { doc.isGroup($0.id, inside: group.id) && !$0.projectIDs.isEmpty })
                 Divider()
                 SidebarMenuButton("sidebar.editGroup", symbol: "pencil") { environment.editorRequest = .editGroup(group.id) }
                 SidebarMenuButton("sidebar.newProjectHere", symbol: "plus") { environment.editorRequest = .newProject(.group(group.id)) }
@@ -357,6 +364,8 @@ private struct GroupRow: View {
 }
 
 private struct ProjectRow: View {
+    @State private var dropInside = false
+    @AppStorage("sidebar.web.collapsedProjects") private var collapsedProjects = "[]"
     let project: Project
     let actions: SidebarActions
     @Environment(AppEnvironment.self) private var environment
@@ -373,7 +382,11 @@ private struct ProjectRow: View {
             if !metrics.isWebInterface && tabs.isEmpty && merges.sessions.isEmpty && planning.isEmpty {
                 label
             } else {
-                SidebarDisclosure(isGroup: false, item: .project(project.id)) {
+                SidebarDisclosure(isGroup: false, item: .project(project.id), isExpanded: metrics.isWebInterface ? Binding(
+                    get: { !SidebarProjectVisibility.contains(collapsedProjects, project: project.id, profile: environment.profileID) },
+                    set: { collapsedProjects = SidebarProjectVisibility.setting(collapsedProjects, project: project.id,
+                        profile: environment.profileID, enabled: !$0) }
+                ) : nil) {
                     if metrics.isWebInterface {
                         ForEach(project.panes) { pane in
                             if let tab = pane.activeTab {
@@ -487,14 +500,16 @@ private struct ProjectRow: View {
         }
         .modifier(SidebarLabelAppearance(isGroup: false, iconSize: 16))
         .modifier(SidebarWebRow(kind: .project))
+        .modifier(SidebarWebClick(single: {
+            actions.workspace.update { $0.openWebProject(project.id) }
+            environment.showingHome = false
+        }))
         .onHover { hovering = $0 }
         .tag(SidebarItem.project(project.id))
         .help(Text(verbatim: project.folder))
-        .modifier(SidebarDropAppearance(targeted: dropTarget, insertion: true))
-        .onDrop(of: [.plainText], isTargeted: $dropTarget) { providers in
-            SidebarDrag.load(providers) { actions.drop($0, onProject: project.id) }
-            return true
-        }
+        .modifier(SidebarDropAppearance(targeted: dropTarget, insertion: !dropInside))
+        .onDrop(of: [.plainText, SidebarDrag.paneType], delegate: SidebarProjectDrop(
+            targeted: $dropTarget, inside: $dropInside, project: project.id, actions: actions))
         .contextMenu { ProjectContextMenu(project: project, actions: actions) }
         .accessibilityIdentifier("sidebar.project.\(project.name)")
     }
@@ -520,7 +535,9 @@ private struct SidebarTerminalRow: View {
         let pane = actions.workspace.document.paneHolding(tab.id)?.pane
         let disabled = pane?.isDisabled == true
         let working = pane?.tabs.contains { environment.terminals.activity[$0.id] == .working } == true
-        let hidden = !actions.workspace.document.workspace.openProjectIDs.contains(project.id)
+        let hidden = metrics.isWebInterface
+            ? !(pane.map { actions.workspace.document.webPaneIsVisible($0.id) } ?? false)
+            : !actions.workspace.document.workspace.openProjectIDs.contains(project.id)
         let statusTab = pane?.tabs.first { environment.terminals.activity[$0.id] == .working }
             ?? pane?.tabs.first { environment.terminals.unread.contains($0.id) } ?? tab
         Label {
@@ -606,9 +623,23 @@ private struct SidebarTerminalRow: View {
             focused: actions.workspace.document.workspace.focusedPaneID == pane?.id))
         .onHover { hovering = $0 }
         .tag(SidebarItem.tab(tab.id))
+        .modifier(SidebarWebClick(single: { selectWebPane(individually: false) },
+                                  double: { selectWebPane(individually: true) }))
+        .modifier(SidebarWebPaneDrag(pane: pane?.id))
         .modifier(SidebarWebHelp(text: environment.terminals.displayName(of: tab)))
         .contextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }
         .accessibilityIdentifier("sidebar.tab.\(tab.agent)")
+    }
+
+    private func selectWebPane(individually: Bool) {
+        guard let pane = actions.workspace.document.paneHolding(tab.id)?.pane else { return }
+        actions.workspace.update {
+            if individually { $0.openWebPane(pane.id) } else { $0.focusWebPane(pane.id) }
+        }
+        environment.terminals.markRead(tab.id)
+        environment.showingHome = false
+        // Also refocus on repeated clicks: the focused pane ID may already be unchanged.
+        DispatchQueue.main.async { environment.terminals.view(for: tab.id)?.focus() }
     }
 }
 
@@ -617,6 +648,7 @@ private struct SidebarFileRow: View {
     let pane: Pane
     let project: Project
     let actions: SidebarActions
+    @Environment(AppEnvironment.self) private var environment
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var hovering = false
@@ -650,10 +682,15 @@ private struct SidebarFileRow: View {
         .foregroundStyle(theme[.fg])
         .contentShape(Rectangle())
         .onTapGesture {
-            actions.select(.project(project.id))
-            actions.workspace.update {
-                $0.activateGrid(pane.gridID, in: project.id)
-                $0.workspace.focusedPaneID = pane.id
+            if metrics.isWebInterface {
+                actions.workspace.update { $0.focusWebPane(pane.id) }
+                environment.showingHome = false
+            } else {
+                actions.select(.project(project.id))
+                actions.workspace.update {
+                    $0.activateGrid(pane.gridID, in: project.id)
+                    $0.workspace.focusedPaneID = pane.id
+                }
             }
         }
         .modifier(SidebarWebRow(kind: .terminal,
@@ -677,11 +714,11 @@ private struct ProjectContextMenu: View {
         let doc = actions.workspace.document
         if metrics.isWebInterface {
             SidebarMenuButton("sidebar.web.openIndividually", symbol: "folder") {
-                actions.workspace.update { $0.openInTab(project.id) }
+                actions.workspace.update { $0.openWebProject(project.id) }
                 environment.showingHome = false
             }
             SidebarMenuButton("sidebar.web.addToCurrent", symbol: "plus") {
-                actions.workspace.update { $0.open(project.id) }
+                actions.workspace.update { $0.addWebProject(project.id) }
                 environment.showingHome = false
             }
             Divider()
@@ -783,6 +820,19 @@ private struct TabContextMenu: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
+        if metrics.isWebInterface, let pane = actions.workspace.document.paneHolding(tab.id)?.pane {
+            SidebarMenuButton("sidebar.web.revealTerminal", symbol: "rectangle.topthird.inset.filled") {
+                actions.workspace.update { $0.focusWebPane(pane.id) }
+                environment.showingHome = false
+                environment.terminals.markRead(tab.id)
+                DispatchQueue.main.async { environment.terminals.view(for: tab.id)?.focus() }
+            }
+            SidebarMenuButton("sidebar.web.openIndividually", symbol: "folder") {
+                actions.workspace.update { $0.openWebPane(pane.id) }
+                environment.showingHome = false
+            }
+            Divider()
+        }
         SidebarMenuButton("sidebar.rename", symbol: "pencil") {
             guard let name = SidebarRenamePrompt.name(initial: tab.title ?? "", width: metrics.size(280), height: metrics.size(24)) else { return }
             actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "sidebar.rename")) {
@@ -801,7 +851,10 @@ private struct TabContextMenu: View {
                 if environment.focusModePaneID == pane.id {
                     environment.focusModePaneID = nil
                 } else {
-                    actions.select(.tab(tab.id))
+                    if metrics.isWebInterface {
+                        actions.workspace.update { $0.focusWebPane(pane.id) }
+                        environment.showingHome = false
+                    } else { actions.select(.tab(tab.id)) }
                     environment.focusModePaneID = pane.id
                 }
             }
