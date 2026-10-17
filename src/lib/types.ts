@@ -775,14 +775,7 @@ export interface VoiceServer {
   hasKey: boolean
 }
 export type VoiceServerErrorKind =
-  | 'policy'
-  | 'network'
-  | 'timeout'
-  | 'auth'
-  | 'badRequest'
-  | 'badAudio'
-  | 'missing'
-  | 'other'
+  'policy' | 'network' | 'timeout' | 'auth' | 'badRequest' | 'badAudio' | 'missing' | 'other'
 export type VoiceProviderFlags = Partial<
   Record<CloudVoiceProviderId, { configured: boolean; invalid: boolean }>
 >
@@ -910,8 +903,6 @@ export type Preferences = {
   dictationMicrophoneId: string | null
   /** Cached microphone label when the preferred device is unplugged. */
   dictationMicrophoneLabel: string | null
-  /** In-app accelerator that opens the Jev command bar, e.g. `CmdOrCtrl+Shift+J`. */
-  voiceCommandShortcut: string
   /** The one-time switch of a Mac profile to the Apple engine has run. */
   speechEngineMigrated: boolean
   /**
@@ -919,6 +910,8 @@ export type Preferences = {
    * here is moved there once at startup and then cleared.
    */
   voiceCommandApiKey: string
+  /** In-app accelerator that opens the Jev command bar, e.g. `CmdOrCtrl+Shift+J`. */
+  voiceCommandShortcut: string
   /** Talk to the active Claude pane and hear it narrate. Uses the dictation model and mic. */
   voiceConversationEnabled: boolean
   /** Accelerator for voice conversation, e.g. `CmdOrCtrl+Shift+Space`. */
@@ -1137,7 +1130,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
   rightSidebarVisible: true,
   leftSidebarWidth: 286,
   rightSidebarWidth: 300,
-  voiceCommandShortcut: 'CmdOrCtrl+Shift+J',
   notifyOnLimitReset: true,
   dictationEnabled: false,
   dictationMode: 'toggle',
@@ -1145,6 +1137,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   dictationMicrophoneLabel: null,
   speechEngineMigrated: false,
   voiceCommandApiKey: '',
+  voiceCommandShortcut: 'CmdOrCtrl+Shift+J',
   voiceConversationEnabled: false,
   voiceShortcut: 'CmdOrCtrl+Shift+Space',
   voiceReadAloudShortcut: 'CmdOrCtrl+Shift+L',

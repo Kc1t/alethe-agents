@@ -3675,8 +3675,7 @@ export const ptBR: Record<MessageKey, string> = {
     'Nenhum agente aberto em um painel. Abra um, ou diga "{trigger}, abre o Claude em …".',
   'voice.conv.targetHidden':
     'Esse painel do agente estava fora de vista. Ele está aparecendo agora — diga de novo.',
-  'voice.conv.nothingToRead':
-    'Nada para ler: selecione um texto no terminal ou copie-o antes.',
+  'voice.conv.nothingToRead': 'Nada para ler: selecione um texto no terminal ou copie-o antes.',
   'voice.conv.agentAsksInTerminal': 'O {agent} está perguntando algo no terminal. Responda lá.',
   'voice.conv.unknownTool': 'uma ferramenta',
   'voice.conv.modelMissing': 'Baixe antes o modelo de fala em Preferências → Voz.',
@@ -3738,7 +3737,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceGroupServers': 'Servidores locais',
   'prefs.voiceServerAdd': 'Adicionar servidor',
   'prefs.voiceServerVoiceFree': 'Id da voz',
-  'prefs.voiceServerVoiceFreeHint': 'Este servidor não lista as vozes; digite o id da voz ou da referência.',
+  'prefs.voiceServerVoiceFreeHint':
+    'Este servidor não lista as vozes; digite o id da voz ou da referência.',
   'prefs.voiceServerSendsText': 'O texto narrado é enviado para {server}.',
   'prefs.voiceServerNew': 'Novo servidor',
   'prefs.voiceServerKind': 'Tipo',
@@ -3746,10 +3746,12 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceServerKindFish': 'Fish Speech',
   'prefs.voiceServerName': 'Nome',
   'prefs.voiceServerAddress': 'Endereço',
-  'prefs.voiceServerAddressHint': 'Por exemplo Chatterbox http://localhost:4123 · Fish Speech http://localhost:8080 · Kokoro-FastAPI http://localhost:8880',
+  'prefs.voiceServerAddressHint':
+    'Por exemplo Chatterbox http://localhost:4123 · Fish Speech http://localhost:8080 · Kokoro-FastAPI http://localhost:8880',
   'prefs.voiceServerModel': 'Modelo (opcional)',
   'prefs.voiceServerKey': 'Chave (opcional)',
-  'prefs.voiceServerKeyHint': 'Guardada no chaveiro do sistema. Deixe vazio para manter a chave atual.',
+  'prefs.voiceServerKeyHint':
+    'Guardada no chaveiro do sistema. Deixe vazio para manter a chave atual.',
   'prefs.voiceServerSave': 'Salvar',
   'prefs.voiceServerSaved': 'Salvo.',
   'prefs.voiceServerTest': 'Testar conexão',
@@ -3758,7 +3760,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceServerRemoveKey': 'Remover chave',
   'prefs.voiceServerRemove': 'Remover servidor',
   'prefs.voiceServerUse': 'Usar na narração',
-  'prefs.voiceServerLanNotice': 'Este servidor está na sua rede local: o texto narrado passa por ela, sem criptografia em http.',
+  'prefs.voiceServerLanNotice':
+    'Este servidor está na sua rede local: o texto narrado passa por ela, sem criptografia em http.',
   'prefs.voiceServerRemoved': 'Servidor removido — usando a voz do sistema',
   'prefs.voiceProviderElevenlabsDesc': 'Vozes realistas e transcrição Scribe com sua chave de API.',
   'prefs.voiceProviderGeminiDesc': 'Compreensão de áudio e fala do Gemini com sua chave de API.',
@@ -3802,13 +3805,17 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.voiceTestFailed.timeout': 'O provedor demorou demais para responder.',
   'prefs.voiceTestFailed.badAudio': 'O provedor não conseguiu ler o áudio.',
   'prefs.voiceTestFailed.other': 'O provedor retornou um erro.',
-  'prefs.voiceServerError.policy': 'Só são aceitos endereços deste computador ou da sua rede local.',
-  'prefs.voiceServerError.invalidUrl': 'Digite o endereço completo, começando com http:// — por exemplo http://localhost:4123.',
+  'prefs.voiceServerError.policy':
+    'Só são aceitos endereços deste computador ou da sua rede local.',
+  'prefs.voiceServerError.invalidUrl':
+    'Digite o endereço completo, começando com http:// — por exemplo http://localhost:4123.',
   'prefs.voiceServerError.network': 'Não foi possível acessar o servidor. Ele está rodando?',
   'prefs.voiceServerError.timeout': 'O servidor demorou demais para responder.',
   'prefs.voiceServerError.auth': 'O servidor recusou a chave.',
-  'prefs.voiceServerError.badRequest': 'O servidor recusou o pedido. Confira o tipo, o modelo e a voz.',
-  'prefs.voiceServerError.badAudio': 'O servidor devolveu um áudio que o Alethe não consegue tocar.',
+  'prefs.voiceServerError.badRequest':
+    'O servidor recusou o pedido. Confira o tipo, o modelo e a voz.',
+  'prefs.voiceServerError.badAudio':
+    'O servidor devolveu um áudio que o Alethe não consegue tocar.',
   'prefs.voiceServerError.missing': 'Este servidor foi removido.',
   'prefs.voiceServerError.invalidName': 'Dê ao servidor um nome de até 64 caracteres.',
   'prefs.voiceServerError.invalidModel': 'O nome do modelo é longo demais.',

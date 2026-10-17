@@ -828,7 +828,7 @@ export const en = {
     'Opens the Jev command bar to type or say a workspace command. Works inside Alethe, whether voice conversation is on or off.',
   'prefs.voiceReadAloudShortcut': 'Read aloud shortcut',
   'prefs.voiceReadAloudShortcutDesc':
-    'Reads the focused terminal\'s selection aloud, or what is on the clipboard when nothing is selected. Works inside Alethe.',
+    "Reads the focused terminal's selection aloud, or what is on the clipboard when nothing is selected. Works inside Alethe.",
   'prefs.voiceShortcutTaken': 'That shortcut is taken by another app or by the system.',
   'prefs.voiceShortcutReset': 'Reset to default',
   'prefs.voiceHudPosition': 'HUD position',
@@ -3697,7 +3697,8 @@ export const en = {
   'prefs.voiceGroupServers': 'Local servers',
   'prefs.voiceServerAdd': 'Add server',
   'prefs.voiceServerVoiceFree': 'Voice id',
-  'prefs.voiceServerVoiceFreeHint': 'This server does not list its voices; type the voice or reference id.',
+  'prefs.voiceServerVoiceFreeHint':
+    'This server does not list its voices; type the voice or reference id.',
   'prefs.voiceServerSendsText': 'Narration text is sent to {server}.',
   'prefs.voiceServerNew': 'New server',
   'prefs.voiceServerKind': 'Kind',
@@ -3705,7 +3706,8 @@ export const en = {
   'prefs.voiceServerKindFish': 'Fish Speech',
   'prefs.voiceServerName': 'Name',
   'prefs.voiceServerAddress': 'Address',
-  'prefs.voiceServerAddressHint': 'For example Chatterbox http://localhost:4123 · Fish Speech http://localhost:8080 · Kokoro-FastAPI http://localhost:8880',
+  'prefs.voiceServerAddressHint':
+    'For example Chatterbox http://localhost:4123 · Fish Speech http://localhost:8080 · Kokoro-FastAPI http://localhost:8880',
   'prefs.voiceServerModel': 'Model (optional)',
   'prefs.voiceServerKey': 'Key (optional)',
   'prefs.voiceServerKeyHint': 'Stored in the system keychain. Leave empty to keep the current key.',
@@ -3717,7 +3719,8 @@ export const en = {
   'prefs.voiceServerRemoveKey': 'Remove key',
   'prefs.voiceServerRemove': 'Remove server',
   'prefs.voiceServerUse': 'Use for narration',
-  'prefs.voiceServerLanNotice': 'This server is on your local network: narrated text crosses it, unencrypted over http.',
+  'prefs.voiceServerLanNotice':
+    'This server is on your local network: narrated text crosses it, unencrypted over http.',
   'prefs.voiceServerRemoved': 'Server removed — using the system voice',
   'prefs.voiceProviderOpenaiDesc':
     'Transcription and natural voices from OpenAI with your API key.',
@@ -3764,12 +3767,15 @@ export const en = {
   'prefs.voiceTestFailed.timeout': 'The provider took too long to answer.',
   'prefs.voiceTestFailed.badAudio': 'The provider could not read the audio.',
   'prefs.voiceTestFailed.other': 'The provider returned an error.',
-  'prefs.voiceServerError.policy': 'Only addresses on this computer or your local network are allowed.',
-  'prefs.voiceServerError.invalidUrl': 'Enter the full address, starting with http:// — for example http://localhost:4123.',
+  'prefs.voiceServerError.policy':
+    'Only addresses on this computer or your local network are allowed.',
+  'prefs.voiceServerError.invalidUrl':
+    'Enter the full address, starting with http:// — for example http://localhost:4123.',
   'prefs.voiceServerError.network': 'Could not reach the server. Is it running?',
   'prefs.voiceServerError.timeout': 'The server took too long to answer.',
   'prefs.voiceServerError.auth': 'The server rejected the key.',
-  'prefs.voiceServerError.badRequest': 'The server refused the request. Check the kind, model and voice.',
+  'prefs.voiceServerError.badRequest':
+    'The server refused the request. Check the kind, model and voice.',
   'prefs.voiceServerError.badAudio': 'The server returned audio Alethe cannot play.',
   'prefs.voiceServerError.missing': 'This server was removed.',
   'prefs.voiceServerError.invalidName': 'Give the server a name of up to 64 characters.',

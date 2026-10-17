@@ -3278,7 +3278,8 @@ export const zhCN: Record<MessageKey, string> = {
   'voice.conv.restartNeeded': '{count} 个 Claude 会话需要重启才能使用语音',
   'voice.conv.restartNeededOne': '{count} 个 Claude 会话需要重启才能使用语音',
   'voice.conv.restartNow': '立即重启',
-  'voice.conv.noTarget': '没有在窗格中打开的智能体。请打开一个，或说"{trigger}，在…中打开 Claude"。',
+  'voice.conv.noTarget':
+    '没有在窗格中打开的智能体。请打开一个，或说"{trigger}，在…中打开 Claude"。',
   'voice.conv.targetHidden': '该智能体面板之前不在视图中，现已显示，请再说一次。',
   'voice.conv.nothingToRead': '没有可朗读的内容：请先在终端中选择文本或复制文本。',
   'voice.conv.agentAsksInTerminal': '{agent} 正在终端中提问，请在终端中回答。',
@@ -3487,7 +3488,8 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.voiceServerKindFish': 'Fish Speech',
   'prefs.voiceServerName': '名称',
   'prefs.voiceServerAddress': '地址',
-  'prefs.voiceServerAddressHint': '例如 Chatterbox http://localhost:4123 · Fish Speech http://localhost:8080 · Kokoro-FastAPI http://localhost:8880',
+  'prefs.voiceServerAddressHint':
+    '例如 Chatterbox http://localhost:4123 · Fish Speech http://localhost:8080 · Kokoro-FastAPI http://localhost:8880',
   'prefs.voiceServerModel': '模型（可选）',
   'prefs.voiceServerKey': '密钥（可选）',
   'prefs.voiceServerKeyHint': '保存在系统钥匙串中。留空则保留当前密钥。',
@@ -3542,7 +3544,8 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.voiceTestFailed.badAudio': '提供方无法读取音频。',
   'prefs.voiceTestFailed.other': '提供方返回了错误。',
   'prefs.voiceServerError.policy': '只允许本机或局域网内的地址。',
-  'prefs.voiceServerError.invalidUrl': '请输入完整地址，以 http:// 开头，例如 http://localhost:4123。',
+  'prefs.voiceServerError.invalidUrl':
+    '请输入完整地址，以 http:// 开头，例如 http://localhost:4123。',
   'prefs.voiceServerError.network': '无法连接到服务器。它在运行吗？',
   'prefs.voiceServerError.timeout': '服务器响应超时。',
   'prefs.voiceServerError.auth': '服务器拒绝了该密钥。',
@@ -3625,7 +3628,8 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.voiceHubOpen': '在 Hugging Face 上打开',
   'prefs.voiceModelLanguagesMulti': '多种语言',
   'voice.family.vits.summary': 'Piper/VITS 语音：轻量快速，任何 CPU 都能运行。',
-  'voice.family.vits.details': '大多数模型只有一个音色。低、中质量的语音听起来较机械；高质量语音更清晰但更慢。',
+  'voice.family.vits.details':
+    '大多数模型只有一个音色。低、中质量的语音听起来较机械；高质量语音更清晰但更慢。',
   'voice.family.kokoro.summary': 'Kokoro：最自然的本地语音，一个模型包含多个音色。',
   'voice.family.kokoro.details':
     '约 330 MB。1.0 版支持英语、西班牙语、法语、印地语、意大利语、日语、巴西葡萄牙语和中文。在较旧的 CPU 上比 Piper 慢。',
@@ -3634,9 +3638,11 @@ export const zhCN: Record<MessageKey, string> = {
   'voice.family.transducer.summary': 'Zipformer：在其训练语言上快速、准确地识别。',
   'voice.family.transducer.details': '每个模型覆盖一种或少数几种语言。适合在任何 CPU 上听写。',
   'voice.family.nemoTransducer.summary': 'NVIDIA NeMo Transducer（Parakeet）：高准确度，带标点。',
-  'voice.family.nemoTransducer.details': '比 Zipformer 更大更慢，但更准确。多语言版本可自动识别语言。',
+  'voice.family.nemoTransducer.details':
+    '比 Zipformer 更大更慢，但更准确。多语言版本可自动识别语言。',
   'voice.family.whisper.summary': 'OpenAI Whisper：支持多种语言，模型越大越准确。',
-  'voice.family.whisper.details': 'tiny 和 base 速度快但错误较多；turbo 和 large 准确但占用资源多。音频按 28 秒窗口处理。',
+  'voice.family.whisper.details':
+    'tiny 和 base 速度快但错误较多；turbo 和 large 准确但占用资源多。音频按 28 秒窗口处理。',
   'voice.family.moonshine.summary': 'Moonshine：快速识别英语短指令。',
   'voice.family.moonshine.details': '小巧快速；最适合短句。',
   'voice.family.senseVoice.summary': 'SenseVoice：快速识别中文、英语、日语、韩语和粤语。',
