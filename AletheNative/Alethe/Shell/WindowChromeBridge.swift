@@ -9,16 +9,16 @@ extension Notification.Name {
 struct WindowChromeBridge: NSViewRepresentable {
     let web: Bool
     let barHeight: CGFloat
-    @Binding var fullScreen: Bool
+    @Binding var trafficLightTrailingEdge: CGFloat
 
     func makeNSView(context: Context) -> ChromeView { ChromeView() }
 
     func updateNSView(_ view: ChromeView, context: Context) {
-        let fullScreenBinding = $fullScreen
-        view.fullScreenChanged = { value in
+        let trailingEdgeBinding = $trafficLightTrailingEdge
+        view.trafficLightTrailingEdgeChanged = { value in
             // AppKit can notify during a SwiftUI update; publish on the next main turn.
             Task { @MainActor in
-                if fullScreenBinding.wrappedValue != value { fullScreenBinding.wrappedValue = value }
+                if trailingEdgeBinding.wrappedValue != value { trailingEdgeBinding.wrappedValue = value }
             }
         }
         view.web = web
@@ -29,7 +29,9 @@ struct WindowChromeBridge: NSViewRepresentable {
     final class ChromeView: NSView {
         var web = false
         var barHeight: CGFloat = 40
-        var fullScreenChanged: (@MainActor (Bool) -> Void)?
+        var trafficLightTrailingEdgeChanged: (@MainActor (CGFloat) -> Void)?
+        private var previousTrailingEdge: CGFloat?
+        private var hiddenBeforeFullScreen: [NSWindow.ButtonType: Bool] = [:]
         private var previousFullScreen: Bool?
         private var previousWeb: Bool?
         private var savedToolbar: NSToolbar?
@@ -117,6 +119,8 @@ struct WindowChromeBridge: NSViewRepresentable {
                     savedLightHosts.removeAll()
                     savedLightFrames.removeAll()
                     savedLightVisibility.removeAll()
+                    hiddenBeforeFullScreen.removeAll()
+                    previousFullScreen = nil
                 }
                 previousWeb = web
             }
@@ -126,20 +130,35 @@ struct WindowChromeBridge: NSViewRepresentable {
         private func positionLights() {
             guard web, let window else { return }
             let fullScreen = window.styleMask.contains(.fullScreen)
-            if previousFullScreen != fullScreen {
-                previousFullScreen = fullScreen
-                fullScreenChanged?(fullScreen)
-            }
+            let fullScreenChanged = previousFullScreen != fullScreen
+            defer { previousFullScreen = fullScreen }
+            var trailingEdge: CGFloat = 0
             for (index, kind) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].enumerated() {
                 guard let button = window.standardWindowButton(kind) else { continue }
                 // SwiftUI hides the system title-bar host when its toolbar is hidden. Keep the
                 // real buttons in our overlay so their target/actions and accessibility survive.
                 if button.superview !== self { addSubview(button) }
-                button.isHidden = fullScreen
+                if fullScreen {
+                    if hiddenBeforeFullScreen[kind] == nil {
+                        hiddenBeforeFullScreen[kind] = savedLightVisibility[kind] ?? button.isHidden
+                    }
+                    button.isHidden = true
+                } else if fullScreenChanged, previousFullScreen == true {
+                    button.isHidden = hiddenBeforeFullScreen[kind] ?? savedLightVisibility[kind] ?? true
+                }
+                if !fullScreen { hiddenBeforeFullScreen[kind] = button.isHidden }
                 let scale = barHeight / 40
                 let origin = NSPoint(x: (12 + CGFloat(index) * 20) * scale,
                                      y: (barHeight - button.frame.height) / 2)
                 if button.frame.origin != origin { button.setFrameOrigin(origin) }
+                if !fullScreen, !button.isHiddenOrHasHiddenAncestor, button.alphaValue > 0 {
+                    trailingEdge = max(trailingEdge, button.frame.maxX)
+                }
+            }
+            // Reserve only the actual visible buttons, never a nominal traffic-light width.
+            if previousTrailingEdge != trailingEdge {
+                previousTrailingEdge = trailingEdge
+                trafficLightTrailingEdgeChanged?(trailingEdge)
             }
         }
     }

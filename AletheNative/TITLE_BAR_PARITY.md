@@ -36,8 +36,10 @@ The `.mac` branch retains its toolbar, sheets and profile menu implementation.
 
 ## Known differences and follow-up
 
-- macOS traffic lights remain on the left, with 72 points reserved; Windows window controls
-  are not duplicated. SF Symbols substitute for Lucide icons.
+- macOS traffic lights remain on the left; their visible right edge is measured in AppKit points,
+  followed by the web CSS's scaled 6-point padding. Hidden or absent buttons and fullscreen reserve
+  no traffic-light space. Windows window controls are not duplicated. SF Symbols substitute for
+  Lucide icons.
 - The hamburger exposes supported native actions. Web backup/log-reset commands have no matching
   native action here; no fake or destructive replacement was added.
 - Profile switching retains the native relaunch confirmation and Manage Profiles settings entry.
@@ -65,3 +67,33 @@ Xcode synchronized source group and Swift package source discovery.
 No ai-memory skill, MCP tool or CLI is available in this session. This handoff records the
 implementation decisions, validation limits and remaining differences for subsequent work;
 it has not been submitted to an external ai-memory service.
+
+## Leading-gap correction (F2, 2026-10-17)
+
+The previous `WebTitleBar` reserved 72 scaled points plus its HStack's 4-point spacing whenever
+`fullScreen` was false. That boolean could not describe absent or independently hidden buttons.
+`WindowChromeBridge` also forcibly revealed every standard button outside fullscreen.
+
+The bridge now publishes the rightmost visible button edge after positioning the real buttons.
+`MainWindow` passes that measured point coordinate to `WebTitleBar`, which adds exactly
+`metrics.size(6)` from `origin/main:src/components/TitleBar/TitleBar.module.css` (`.bar`).
+`TitleBar/index.tsx` confirms that the hamburger and sidebar toggle are the first two controls;
+their 4-point gap remains, while the artificial spacer and its extra stack gap are removed.
+Fullscreen hides the lights and restores their previous hidden states on exit. Outside fullscreen,
+independently hidden buttons stay hidden. Resize, window updates and zoom-driven layout recompute
+the extent. The native shell and window setup are unchanged.
+
+Layout reasoning: the title bar is a full-width sibling above the sidebar/workspace split, so
+collapsing either sidebar cannot add a leading inset. The bridge and web shell already ignore the
+top safe area, and the bridge already removes NSToolbar in web mode. No extra safe-area or toolbar
+reserve is added. At zoom 0.8–1.5 the CSS gap is 4.8–9 points; AppKit button widths are already
+points and are not scaled twice. Window width does not enter the leading-edge calculation, so
+the same rule applies from 800 to 1920 points.
+
+Validation: the strings gate and `git diff --check` pass. Added
+`TitleBarLeadingLayoutTests.testFullscreenUsesWebPaddingAtEveryZoomEndpointAndSidebarState`
+for reviewer execution outside the sandbox. It checks fullscreen padding at 80%, 100% and 150%,
+sidebar toggling, and restoration of the reserve on fullscreen exit. No build or UI run was
+performed here; the reviewer still needs to inspect hidden/absent-button windows and widths
+800–1920 visually. No ai-memory service or skill is available; this existing handoff document
+records the decision and remaining checks. Changes remain unstaged and uncommitted.

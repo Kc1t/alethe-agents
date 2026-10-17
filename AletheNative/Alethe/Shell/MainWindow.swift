@@ -14,7 +14,7 @@ struct MainWindow: View {
     @AppStorage("main.rightSidebarWidth") private var rightSidebarWidth = 280.0
     @AppStorage("main.webLeftWidth") private var webLeftWidth = 286.0
     @State private var webSidebarDragging = false
-    @State private var webFullScreen = false
+    @State private var webTrafficLightTrailingEdge: CGFloat = 0
     @State private var showsTitleBarNews = false
     @State private var showsTitleBarMemory = false
     @State private var showsTitleBarCustomization = false
@@ -53,7 +53,7 @@ struct MainWindow: View {
         }
         .overlay {
             WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(40),
-                               fullScreen: $webFullScreen)
+                               trafficLightTrailingEdge: $webTrafficLightTrailingEdge)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .ignoresSafeArea(.container, edges: .top)
         }
@@ -143,7 +143,7 @@ struct MainWindow: View {
     private var webShell: some View {
         GeometryReader { windowGeometry in
             VStack(spacing: 0) {
-                WebTitleBar(sidebarVisible: $sidebarVisible, fullScreen: webFullScreen)
+                WebTitleBar(sidebarVisible: $sidebarVisible, trafficLightTrailingEdge: webTrafficLightTrailingEdge)
                     .frame(maxWidth: .infinity)
                     .fixedSize(horizontal: false, vertical: true)
                 GeometryReader { geometry in
