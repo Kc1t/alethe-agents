@@ -147,8 +147,7 @@ struct GSDSyncStateGlyph: View {
 
     var body: some View {
         if metrics.isWebInterface && session.busy && session.error == nil {
-            ProgressView().controlSize(.mini)
-                .frame(width: metrics.size(13), height: metrics.size(13))
+            AletheSidebarBusyMatrix()
                 .help(Text(Self.label(for: session)))
                 .accessibilityLabel(Text(Self.label(for: session)))
                 .accessibilityIdentifier("gsdSync.state")
@@ -189,10 +188,10 @@ private struct WebGSDRowBackground: ViewModifier {
                 in: RoundedRectangle(cornerRadius: metrics.radius(.sm))
             )
             .overlay {
-                if metrics.isWebInterface && hovering {
-                    RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1))
-                }
+                RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                    .strokeBorder(theme[.border].opacity(metrics.isWebInterface && hovering ? 1 : 0), lineWidth: metrics.size(1))
             }
+            .animation(metrics.isWebInterface ? Motion.sidebarColor(reduceMotion: metrics.reducesMotion) : nil, value: hovering)
             .onHover { hovering = $0 }
     }
 }

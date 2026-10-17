@@ -34,13 +34,15 @@ struct PullRequestsView: View {
                     Text("rightSidebar.pr.title").font(metrics.font(size: 14, weight: .medium)).lineLimit(1)
                     Text("rightSidebar.prScopeAll").lineLimit(1).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
                     Spacer(minLength: 0)
-                    if phase == .loading { ProgressView().controlSize(.small) }
                     Button {
                         reload += 1
                     } label: {
-                        Label("pullRequests.refresh", systemImage: "arrow.clockwise").font(metrics.font(size: 13))
+                        Label { Text("pullRequests.refresh") } icon: {
+                            Image(systemName: "arrow.clockwise").font(metrics.font(size: 13))
+                                .modifier(AletheSidebarSpinner(active: phase == .loading, kind: .pullRequests))
+                        }
                     }
-                    .buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
+                    .buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 26, height: 26))
                     .help("pullRequests.refresh").disabled(phase == .loading)
                 }
                 .foregroundStyle(theme[.fg]).padding(.horizontal, metrics.size(10))
@@ -107,7 +109,11 @@ struct PullRequestsView: View {
         case .loading where prs.isEmpty:
             if metrics.isWebInterface {
                 HStack(spacing: metrics.size(8)) {
-                    ProgressView().controlSize(.small)
+                    Image(systemName: "progress.indicator")
+                        .resizable().scaledToFit()
+                        .frame(width: metrics.size(16), height: metrics.size(16))
+                        .modifier(AletheSidebarSpinner(active: true, kind: .pullRequests))
+                        .accessibilityHidden(true)
                     Text("rightSidebar.pr.loading").font(metrics.font(size: 12)).lineLimit(1)
                 }
                 .foregroundStyle(theme[.fgMuted]).padding(metrics.size(16))
@@ -187,7 +193,7 @@ struct PullRequestsView: View {
                     if let url = pr.browserURL { NSWorkspace.shared.open(url) }
                 } label: {
                     Label("pullRequests.open", systemImage: "arrow.up.right.square").font(metrics.font(size: 13))
-                }.buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
+                }.buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 26, height: 26))
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 Button {
                     guard let url = pr.browserURL else { return }

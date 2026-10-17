@@ -187,7 +187,7 @@ struct RightSidebar: View {
                                     .frame(width: metrics.size(14), height: metrics.size(14))
                             }
                         }
-                        .buttonStyle(AletheRightSidebarTabStyle(selected: selected?.id == tab.id))
+                        .buttonStyle(AletheAnimatedRightSidebarTabStyle(selected: selected?.id == tab.id))
                         .help(Text(PluginViewRegistry.title(for: tab)))
                         .accessibilityAddTraits(selected?.id == tab.id ? .isSelected : [])
                     }
@@ -206,7 +206,7 @@ struct RightSidebar: View {
                             .frame(width: metrics.size(14), height: metrics.size(14))
                     }
                 }
-                .buttonStyle(AletheRightSidebarTabStyle())
+                .buttonStyle(AletheAnimatedRightSidebarTabStyle())
                 .help(Text("rightSidebar.maximize"))
                 .accessibilityIdentifier("rightSidebar.maximize")
             }
@@ -222,7 +222,7 @@ struct RightSidebar: View {
                         .frame(width: metrics.size(14), height: metrics.size(14))
                 }
             }
-            .buttonStyle(AletheRightSidebarTabStyle())
+            .buttonStyle(AletheAnimatedRightSidebarTabStyle())
             .help(Text("rightSidebar.close"))
             .accessibilityIdentifier("rightSidebar.close")
         }
@@ -320,7 +320,7 @@ private struct WebUnavailableSidebar: View {
                           systemImage: voice ? "trash" : "arrow.clockwise")
                         .font(metrics.font(size: voice ? 14 : 13))
                 }
-                .buttonStyle(AletheRightSidebarTabStyle(width: 26, height: 26))
+                .buttonStyle(AletheAnimatedRightSidebarTabStyle(width: 26, height: 26))
                 .disabled(true)
                 .accessibilityIdentifier(voice ? "jev.clear" : "plugins.refresh")
             }

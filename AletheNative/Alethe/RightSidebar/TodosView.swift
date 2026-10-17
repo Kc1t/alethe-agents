@@ -8,6 +8,7 @@ import SwiftUI
 struct TodosView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
     @State private var draft = ""
     @State private var addToProject = true
     @State private var editingID: String?
@@ -15,6 +16,7 @@ struct TodosView: View {
     @State private var taggingID: String?
     @State private var tagDraft = ""
     @State private var showingSettings = false
+    @State private var dropTarget: String?
     @FocusState private var focus: Field?
 
     private enum Field: Hashable { case draft, rename, tags }
@@ -31,6 +33,18 @@ struct TodosView: View {
                 PomodoroPill(store: store)
                     .padding(.top, 8)
                 addRow(store)
+                if metrics.isWebInterface {
+                    ScrollView {
+                        VStack(spacing: metrics.size(16)) {
+                            if let project {
+                                section(store, scope: .project(project.id.rawValue), title: Text(verbatim: project.name))
+                            }
+                            section(store, scope: .global, title: Text("todos.global"))
+                        }
+                        .padding(.horizontal, metrics.size(8))
+                        .padding(.top, metrics.size(4)).padding(.bottom, metrics.size(14))
+                    }
+                } else {
                 List {
                     if let project {
                         section(store, scope: .project(project.id.rawValue), title: Text(project.name))
@@ -38,6 +52,7 @@ struct TodosView: View {
                     section(store, scope: .global, title: Text("todos.global"))
                 }
                 .listStyle(.sidebar)
+                }
             }
             .onChange(of: environment.newTodoRequest) { focus = .draft }
             .sheet(isPresented: $showingSettings) { TodosSettingsSheet(store: store) }
@@ -74,6 +89,25 @@ struct TodosView: View {
     @ViewBuilder
     private func section(_ store: TodoStore, scope: TodoScope, title: Text) -> some View {
         let items = store.todos(in: scope)
+        if metrics.isWebInterface {
+            AletheSidebarTodoSection(title: title, count: items.count) {
+                ForEach(items) { todo in
+                    row(store, todo)
+                        .modifier(AletheSidebarRowHover())
+                        .modifier(AletheSidebarDropIndicator(targeted: dropTarget == todo.id))
+                        .draggable(todo.id)
+                        .dropDestination(for: String.self) { ids, _ in
+                            defer { dropTarget = nil }
+                            guard let dragged = ids.first else { return false }
+                            store.reorder(dragged, onto: todo.id)
+                            return true
+                        } isTargeted: { targeted in
+                            if targeted { dropTarget = todo.id }
+                            else if dropTarget == todo.id { dropTarget = nil }
+                        }
+                }
+            }
+        } else {
         Section {
             if items.isEmpty {
                 Text("todos.empty").foregroundStyle(.secondary)
@@ -89,6 +123,7 @@ struct TodosView: View {
             }
         } header: {
             title
+        }
         }
     }
 
