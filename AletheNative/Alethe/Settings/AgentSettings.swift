@@ -8,19 +8,20 @@ import SwiftUI
 /// be turned off (it leaves New Terminal and the launcher) and shows the CLI it will run, with the
 /// version it reports; Choose… points it at another CLI, Reset goes back to automatic lookup.
 struct AgentSettings: View {
+    @Environment(\.metrics) private var metrics
     @Environment(AppEnvironment.self) private var environment
 
     private var agents: [AgentDescriptor] { AgentRegistry.builtin.descriptors.filter { !$0.isShell } }
 
     var body: some View {
-        Form {
+        AletheSettingsForm {
             Section {
                 ForEach(agents) { agent in
                     AgentSettingsRow(agent: agent)
                 }
             } footer: {
                 Text("settings.agents.footer")
-                    .font(.footnote)
+                    .font(metrics.isWebInterface ? metrics.font(size: 10) : .footnote)
                     .foregroundStyle(.secondary)
             }
         }
@@ -48,6 +49,10 @@ struct AgentSettingsRow: View {
     }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.xs)) {
             Toggle(isOn: Binding(get: { isEnabled }, set: setEnabled)) {
                 HStack(spacing: metrics.space(.s)) {
@@ -57,11 +62,11 @@ struct AgentSettingsRow: View {
                     Text(verbatim: agent.displayName)
                     if let version {
                         Text(verbatim: version)
-                            .font(.footnote.monospacedDigit())
+                            .font(metrics.isWebInterface ? metrics.font(size: 10).monospacedDigit() : .footnote.monospacedDigit())
                             .foregroundStyle(.secondary)
                         if let latest, AgentVersions.isOutdated(version, latest: latest) {
                             Text(verbatim: String(format: String(localized: "settings.agents.updateAvailable"), latest))
-                                .font(.footnote)
+                                .font(metrics.isWebInterface ? metrics.font(size: 10) : .footnote)
                                 .foregroundStyle(theme[.statusWaiting])
                         }
                     } else if probing {
@@ -72,7 +77,7 @@ struct AgentSettingsRow: View {
             .accessibilityIdentifier("settings.agent.\(agent.kind.rawValue)")
             HStack(spacing: metrics.space(.s)) {
                 Text(verbatim: path ?? String(format: String(localized: "settings.agents.notFound"), agent.cliCommand ?? ""))
-                    .font(.footnote.monospaced())
+                    .font(metrics.isWebInterface ? metrics.monoFont(size: 10, weight: .regular) : .footnote.monospaced())
                     .foregroundStyle(path == nil ? theme[.statusStopped] : .secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -80,7 +85,7 @@ struct AgentSettingsRow: View {
                 Spacer()
                 if override != nil {
                     Text("settings.agents.custom")
-                        .font(.footnote)
+                        .font(metrics.isWebInterface ? metrics.font(size: 10) : .footnote)
                         .foregroundStyle(.secondary)
                     Button("settings.agents.reset") { setOverride(nil) }
                         .accessibilityIdentifier("settings.agent.reset.\(agent.kind.rawValue)")
@@ -96,6 +101,84 @@ struct AgentSettingsRow: View {
                 .environment(environment)
                 .environment(\.theme, theme)
                 .environment(\.metrics, metrics)
+        }
+    }
+
+    private var webBody: some View {
+        VStack(alignment: .leading, spacing: metrics.space(.xs)) {
+            Toggle(isOn: Binding(get: { isEnabled }, set: setEnabled)) {
+                HStack(spacing: metrics.space(.s)) {
+                    if metrics.isWebInterface {
+                        AgentLogo(agent: agent.kind.rawValue, size: 20)
+                            .frame(width: metrics.size(36), height: metrics.size(36))
+                            .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.size(9)))
+                    } else {
+                        Circle()
+                            .fill(theme[AgentTokens.accent(for: agent.kind.rawValue)])
+                            .frame(width: metrics.size(8), height: metrics.size(8))
+                    }
+                    Text(verbatim: agent.displayName)
+                    if let version {
+                        Text(verbatim: version)
+                            .font(metrics.font(size: 10).monospacedDigit())
+                            .foregroundStyle(theme[.fgMuted])
+                        if let latest, AgentVersions.isOutdated(version, latest: latest) {
+                            Text(verbatim: String(format: String(localized: "settings.agents.updateAvailable"), latest))
+                                .font(metrics.font(size: 10))
+                                .foregroundStyle(theme[.statusWaiting])
+                        }
+                    } else if probing {
+                        ProgressView().controlSize(.mini)
+                    }
+                }
+            }
+            .accessibilityIdentifier("settings.agent.\(agent.kind.rawValue)")
+            ViewThatFits(in: .horizontal) {
+                pathActions
+                VStack(alignment: .leading, spacing: metrics.size(8)) {
+                    pathText
+                    actionButtons
+                }
+            }
+        }
+        .task(id: path) { await probe() }
+        .sheet(item: $sheet, onDismiss: { environment.launchers.invalidate(); Task { await probe() } }) { mode in
+            AgentInstallSheet(agent: agent, mode: mode)
+                .environment(environment)
+                .environment(\.theme, theme)
+                .environment(\.metrics, metrics)
+        }
+    }
+
+    private var pathText: some View {
+        Text(verbatim: path ?? String(format: String(localized: "settings.agents.notFound"), agent.cliCommand ?? ""))
+                    .font(metrics.monoFont(size: 10, weight: .regular))
+                    .foregroundStyle(path == nil ? theme[.statusStopped] : theme[.fgMuted])
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+    }
+
+    private var pathActions: some View {
+        HStack(spacing: metrics.space(.s)) {
+            pathText
+            Spacer()
+            actionButtons.fixedSize()
+        }
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: metrics.space(.s)) {
+            if override != nil {
+                Text("settings.agents.custom")
+                    .font(metrics.font(size: 10))
+                    .foregroundStyle(theme[.fgMuted])
+                Button("settings.agents.reset") { setOverride(nil) }
+                    .accessibilityIdentifier("settings.agent.reset.\(agent.kind.rawValue)")
+            }
+            Button("settings.agents.choose") { choose() }
+                .accessibilityIdentifier("settings.agent.choose.\(agent.kind.rawValue)")
+            installMenu
         }
     }
 

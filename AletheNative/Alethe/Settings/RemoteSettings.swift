@@ -29,7 +29,7 @@ struct RemoteSettings: View {
     private var tailscaleAvailable: Bool { controller.tailscale?.available == true }
 
     var body: some View {
-        Form {
+        AletheSettingsForm {
             serviceSection
             reachSection
             if controller.isEnabled { pairingSection }
@@ -76,7 +76,7 @@ struct RemoteSettings: View {
             if UserDefaults.standard.string(forKey: "AletheDataRoot") != nil {
                 // UI tests read what the controller and its hub hold, not just what the form shows.
                 Text(verbatim: probe)
-                    .font(metrics.font(.caption))
+                    .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.caption)))
                     .foregroundStyle(theme[.textTertiary])
                     .accessibilityIdentifier("settings.remote.probe")
             }
@@ -88,7 +88,7 @@ struct RemoteSettings: View {
                 Text("settings.remote.startupNote")
                 Text("settings.remote.sharingNote")
             }
-            .font(metrics.font(.footnote))
+            .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
             .foregroundStyle(theme[.textSecondary])
         }
     }
@@ -106,7 +106,7 @@ struct RemoteSettings: View {
             .accessibilityIdentifier("settings.remote.reach")
             if tailscaleAvailable {
                 Text("settings.remote.reach.tailscaleHint")
-                    .font(metrics.font(.footnote))
+                    .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                     .foregroundStyle(theme[.textSecondary])
             } else {
                 VStack(alignment: .leading, spacing: metrics.space(.xs)) {
@@ -123,7 +123,7 @@ struct RemoteSettings: View {
                         .accessibilityIdentifier("settings.remote.reach.copyLink")
                     }
                 }
-                .font(metrics.font(.footnote))
+                .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                 .accessibilityIdentifier("settings.remote.reach.unavailable")
             }
         } header: {
@@ -190,7 +190,7 @@ struct RemoteSettings: View {
             Text("settings.remote.security")
         } footer: {
             Text(remote.useTailscale ? "settings.remote.securityNoteTailscale" : "settings.remote.securityNote")
-                .font(metrics.font(.footnote))
+                .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                 .foregroundStyle(theme[.textSecondary])
         }
     }
@@ -228,7 +228,7 @@ struct RemoteSettings: View {
             Text("settings.remote.devices")
         } footer: {
             Text("settings.remote.devices.help")
-                .font(metrics.font(.footnote))
+                .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                 .foregroundStyle(theme[.textSecondary])
         }
     }

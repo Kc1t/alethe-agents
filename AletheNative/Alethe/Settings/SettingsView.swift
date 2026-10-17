@@ -5,10 +5,15 @@ import SwiftUI
 /// The standard Settings window (⌘,).
 struct SettingsView: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
 
     var body: some View {
+        if metrics.isWebInterface { WebSettingsView() } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         @Bindable var environment = environment
-        TabView(selection: $environment.settingsTab) {
+        return TabView(selection: $environment.settingsTab) {
             Tab("settings.general.tab", systemImage: "gearshape", value: SettingsTab.general) {
                 GeneralSettings()
             }
@@ -49,7 +54,7 @@ struct SettingsView: View {
             }
         }
         // Wide enough for every tab in the toolbar, none in its overflow menu.
-        .frame(width: 720)
+        .frame(width: metrics.size(720) / metrics.scale)
         .scenePadding()
         .onChange(of: environment.features.isOn(.orchestrator)) { _, isOn in
             if !isOn, environment.settingsTab == .multiagent { environment.settingsTab = .general }
@@ -62,12 +67,12 @@ enum SettingsTab: Hashable {
     case general, appearance, toolbar, agents, resources, features, plugins, integrations, remote, multiagent, profiles
 }
 
-private struct GeneralSettings: View {
+struct GeneralSettings: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var confirmClear = false
 
     var body: some View {
-        Form {
+        AletheSettingsForm {
             Toggle(isOn: binding(\.alwaysStartUnrestricted)) {
                 Text("settings.general.alwaysUnrestricted")
                 Text("settings.general.alwaysUnrestricted.help")

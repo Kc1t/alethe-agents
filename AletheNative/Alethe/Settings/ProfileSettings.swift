@@ -22,7 +22,7 @@ struct ProfileSettings: View {
     }
 
     var body: some View {
-        Form {
+        AletheSettingsForm {
             Section {
                 ForEach(entries) { entry in
                     ProfileRow(entry: entry, summary: summaries[entry.id],
@@ -144,13 +144,13 @@ private struct ProfileRow: View {
                         .accessibilityIdentifier("settings.profiles.name.\(name)")
                     if isRunning {
                         Text("settings.profiles.active")
-                            .font(.caption)
+                            .font(metrics.isWebInterface ? metrics.font(size: 10) : .caption)
                             .foregroundStyle(theme[.accent])
                             .accessibilityIdentifier("settings.profiles.active.\(name)")
                     }
                 }
                 Text(verbatim: detail)
-                    .font(.callout)
+                    .font(metrics.isWebInterface ? metrics.font(size: 11) : .callout)
                     .foregroundStyle(theme[.textSecondary])
                     .monospacedDigit()
             }

@@ -19,14 +19,14 @@ struct MultiagentSettings: View {
     private var projects: [Project] { environment.workspace?.document.projects ?? [] }
 
     var body: some View {
-        Form {
+        AletheSettingsForm {
             schedulerSection
             metricsSection
             tracesSection
             auditSection
         }
         .formStyle(.grouped)
-        .frame(minHeight: 520)
+        .frame(minHeight: metrics.isWebInterface ? nil : metrics.size(520) / metrics.scale)
         .accessibilityIdentifier("settings.multiagent")
         .task { await model.run(controller: environment.multiagent) }
         .task(id: projectKey) { await model.select(project: selectedProject, controller: environment.multiagent) }
@@ -68,7 +68,7 @@ struct MultiagentSettings: View {
             }
             if let problem = model.problem {
                 Text(verbatim: problem)
-                    .font(.callout)
+                    .font(metrics.isWebInterface ? metrics.font(size: 11) : .callout)
                     .foregroundStyle(theme[.statusStopped])
                     .textSelection(.enabled)
                     .accessibilityIdentifier("multiagent.problem")
@@ -103,17 +103,17 @@ struct MultiagentSettings: View {
                     ForEach(model.metrics) { metric in
                         VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
                             Text(verbatim: metric.name)
-                                .font(.caption)
+                                .font(metrics.isWebInterface ? metrics.font(size: 10) : .caption)
                                 .foregroundStyle(theme[.textSecondary])
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                             Text(verbatim: String(metric.data.count))
-                                .font(.title3.monospacedDigit())
+                                .font(metrics.isWebInterface ? metrics.font(size: 16).monospacedDigit() : .title3.monospacedDigit())
                                 .id(metric.data.count)
                             if metric.data.lastValue > 0 {
                                 Text(verbatim: format("settings.multiagent.metrics.last",
                                                       metric.data.lastValue.formatted(.number.precision(.fractionLength(2)))))
-                                    .font(.caption)
+                                    .font(metrics.isWebInterface ? metrics.font(size: 10) : .caption)
                                     .foregroundStyle(theme[.textTertiary])
                             }
                         }
@@ -235,7 +235,7 @@ private struct TaskRow: View {
                         .lineLimit(2)
                     Spacer(minLength: 0)
                     Text(task.status.label)
-                        .font(.caption.weight(.semibold))
+                        .font(metrics.isWebInterface ? metrics.font(size: 10).weight(.semibold) : .caption.weight(.semibold))
                         .foregroundStyle(task.status.color(theme))
                         .id(task.status)
                         .accessibilityIdentifier("multiagent.task.\(index).status")
@@ -243,12 +243,12 @@ private struct TaskRow: View {
                 if !task.dependencies.isEmpty {
                     Text(verbatim: format("settings.multiagent.dependsOn",
                                           task.dependencies.map { titles[$0] ?? $0 }.formatted(.list(type: .and))))
-                        .font(.caption)
+                        .font(metrics.isWebInterface ? metrics.font(size: 10) : .caption)
                         .foregroundStyle(theme[.textSecondary])
                 }
                 if let agent = task.assignedAgentID {
                     Text(verbatim: format("settings.multiagent.assignedTo", agent))
-                        .font(.caption.monospaced())
+                        .font(metrics.isWebInterface ? metrics.monoFont(size: 10, weight: .regular) : .caption.monospaced())
                         .foregroundStyle(theme[.textTertiary])
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -275,10 +275,10 @@ private struct TraceRow: View {
             VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
                 HStack(spacing: metrics.space(.s)) {
                     Text(verbatim: event.type)
-                        .font(.callout.monospaced())
+                        .font(metrics.isWebInterface ? metrics.monoFont(size: 11, weight: .regular) : .callout.monospaced())
                     if let task = event.taskID {
                         Text(verbatim: format("settings.multiagent.traces.task", task))
-                            .font(.caption)
+                            .font(metrics.isWebInterface ? metrics.font(size: 10) : .caption)
                             .foregroundStyle(theme[.textSecondary])
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -286,7 +286,7 @@ private struct TraceRow: View {
                 }
                 Button(action: onFilter) {
                     Text(verbatim: format("settings.multiagent.traces.correlation", event.correlationID))
-                        .font(.caption.monospaced())
+                        .font(metrics.isWebInterface ? metrics.monoFont(size: 10, weight: .regular) : .caption.monospaced())
                         .foregroundStyle(theme[.textTertiary])
                 }
                 .buttonStyle(.plain)
@@ -294,7 +294,7 @@ private struct TraceRow: View {
             }
             Spacer(minLength: 0)
             Text(verbatim: event.date.formatted(date: .omitted, time: .standard))
-                .font(.caption.monospacedDigit())
+                .font(metrics.isWebInterface ? metrics.font(size: 10).monospacedDigit() : .caption.monospacedDigit())
                 .foregroundStyle(theme[.textSecondary])
         }
     }
@@ -310,20 +310,20 @@ private struct AuditRow: View {
             VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
                 HStack(spacing: metrics.space(.s)) {
                     Text(verbatim: String(commit.hash.prefix(7)))
-                        .font(.callout.monospaced())
+                        .font(metrics.isWebInterface ? metrics.monoFont(size: 11, weight: .regular) : .callout.monospaced())
                         .foregroundStyle(theme[.accent])
                     Text(verbatim: commit.subject)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
                 Text(verbatim: byline)
-                    .font(.caption)
+                    .font(metrics.isWebInterface ? metrics.font(size: 10) : .caption)
                     .foregroundStyle(theme[.textSecondary])
             }
             Spacer(minLength: 0)
             Text(verbatim: Date(timeIntervalSince1970: Double(commit.timestampMS) / 1000)
                 .formatted(date: .abbreviated, time: .shortened))
-                .font(.caption.monospacedDigit())
+                .font(metrics.isWebInterface ? metrics.font(size: 10).monospacedDigit() : .caption.monospacedDigit())
                 .foregroundStyle(theme[.textSecondary])
         }
         .accessibilityElement(children: .combine)

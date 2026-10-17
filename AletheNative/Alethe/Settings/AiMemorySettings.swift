@@ -17,7 +17,7 @@ struct AiMemoryOptions: View {
             HStack(spacing: metrics.space(.s)) {
                 Text(verbatim: controller.executable
                      ?? String(format: String(localized: "settings.agents.notFound"), AiMemory.defaultCommand))
-                    .font(.footnote.monospaced())
+                    .font(metrics.isWebInterface ? metrics.monoFont(size: 10, weight: .regular) : .footnote.monospaced())
                     .foregroundStyle(controller.executable == nil ? theme[.statusStopped] : .secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -25,7 +25,7 @@ struct AiMemoryOptions: View {
                 Spacer()
                 if controller.override != nil {
                     Text("settings.agents.custom")
-                        .font(.footnote)
+                        .font(metrics.isWebInterface ? metrics.font(size: 10) : .footnote)
                         .foregroundStyle(.secondary)
                     Button("settings.agents.reset") { controller.setOverride(nil) }
                         .accessibilityIdentifier("settings.aiMemory.reset")
@@ -45,7 +45,7 @@ struct AiMemoryOptions: View {
                 .accessibilityIdentifier("settings.aiMemory.documentation")
             }
             Text("settings.aiMemory.wiring")
-                .font(.footnote)
+                .font(metrics.isWebInterface ? metrics.font(size: 10) : .footnote)
                 .foregroundStyle(.secondary)
         }
         .accessibilityIdentifier("settings.aiMemory")
@@ -82,7 +82,7 @@ struct AiMemoryOptions: View {
                 }
             }
         }
-        .font(.footnote)
+        .font(metrics.isWebInterface ? metrics.font(size: 10) : .footnote)
         .accessibilityIdentifier("settings.aiMemory.status")
     }
 

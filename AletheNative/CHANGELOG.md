@@ -13,9 +13,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Fixed opaque return type inference in the native Settings tabbed layout.
 - Removed the unsupported sidebar list-spacing modifier to restore macOS API compatibility.
 
 ### Changed
+- Alethe interface Settings use a searchable sidebar, compact section headings, bordered option
+  rows and scrolling content. Appearance includes web-style theme swatches, visual-style previews
+  and zoom controls; agent rows show brand logos and wrap their actions in narrow windows.
+  Shortcuts and application version are available in the sidebar. Native macOS Settings retain
+  their tabbed layout.
 - The Alethe sidebar uses bundled agent logos (including mixed-agent terminal stacks), the default
   profile image, icon-only row menus and labeled context-menu icons. Long names yield to fixed
   controls; count chips, album art and playback indicators retain their dimensions when zoomed.

@@ -28,11 +28,11 @@ struct CommandLineToolSection: View {
             if let status = tool.status, status.state == .current || status.state == .stale, !status.onPath {
                 VStack(alignment: .leading, spacing: metrics.space(.s)) {
                     Text(verbatim: String(format: String(localized: "settings.cli.path.missing"), status.directory.path))
-                        .font(metrics.font(.footnote))
+                        .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                         .foregroundStyle(theme[.textSecondary])
                     HStack {
                         Text(verbatim: CLIShim.pathExportLine)
-                            .font(metrics.font(.footnote).monospaced())
+                            .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)).monospaced())
                             .textSelection(.enabled)
                         Spacer()
                         Button("settings.cli.copyLine") {
@@ -45,12 +45,12 @@ struct CommandLineToolSection: View {
             }
             if let error = tool.error {
                 Text(verbatim: String(format: String(localized: "settings.cli.error"), error))
-                    .font(metrics.font(.footnote))
+                    .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                     .foregroundStyle(theme[.statusStopped])
             }
         } footer: {
             Text("settings.cli.help")
-                .font(metrics.font(.footnote))
+                .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                 .foregroundStyle(theme[.textTertiary])
         }
         .task { await tool.refresh() }

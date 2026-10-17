@@ -1,3 +1,4 @@
+import AletheDesign
 import AletheModel
 import SwiftUI
 
@@ -7,7 +8,7 @@ struct ToolbarSettings: View {
     @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
-        Form {
+        AletheSettingsForm {
             Section {
                 ForEach(ToolbarItemKind.allCases, id: \.self) { item in
                     Toggle(item.title, isOn: Binding {
@@ -29,8 +30,7 @@ struct ToolbarSettings: View {
             }
         }
         .formStyle(.grouped)
-        .scrollDisabled(true)
-        .fixedSize(horizontal: false, vertical: true)
+        .modifier(AletheSettingsSizing())
         .disabled(environment.preferences == nil)
         .accessibilityIdentifier("settings.toolbar")
     }

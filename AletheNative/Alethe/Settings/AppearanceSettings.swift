@@ -7,12 +7,17 @@ import SwiftUI
 struct AppearanceSettings: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
     @State private var language = LanguageSetting().current()
 
     private var uiScale: Double { environment.preferences?.document.uiScale ?? 1 }
 
     var body: some View {
-        Form {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
+        AletheSettingsForm {
             Section {
                 ThemeGrid()
             } header: {
@@ -33,7 +38,7 @@ struct AppearanceSettings: View {
                     ForEach(InterfaceStyle.allCases, id: \.self) { style in
                         VStack(alignment: .leading) {
                             Text(style.title)
-                            Text(style.detail).font(.footnote).foregroundStyle(.secondary)
+                            Text(style.detail).font(metrics.isWebInterface ? metrics.font(size: 10) : .footnote).foregroundStyle(.secondary)
                         }
                         .tag(style)
                     }
@@ -53,7 +58,7 @@ struct AppearanceSettings: View {
                     ForEach(VisualStyle.allCases, id: \.self) { style in
                         VStack(alignment: .leading) {
                             Text(style.title)
-                            Text(style.detail).font(.footnote).foregroundStyle(.secondary)
+                            Text(style.detail).font(metrics.isWebInterface ? metrics.font(size: 10) : .footnote).foregroundStyle(.secondary)
                         }
                         .tag(style)
                     }
@@ -151,9 +156,138 @@ struct AppearanceSettings: View {
         }
         .formStyle(.grouped)
         // Sized to its content: the Settings window grows instead of hiding controls in a scroll view.
-        .scrollDisabled(true)
-        .fixedSize(horizontal: false, vertical: true)
+        .modifier(AletheSettingsSizing())
         .onChange(of: language) { _, language in LanguageSetting().set(language) }
+    }
+    private var webBody: some View {
+        AletheSettingsForm {
+            Section("settings.appearance.styleAndMotion") {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(160)), spacing: metrics.size(10))], spacing: metrics.size(10)) {
+                    ForEach(VisualStyle.allCases, id: \.self) { style in
+                        Button {
+                            environment.preferences?.update { $0.visualStyle = style == .normal ? nil : style.rawValue }
+                        } label: {
+                            VStack(alignment: .leading, spacing: metrics.size(10)) {
+                                stylePreview(style)
+                                Text(style.title).font(metrics.font(size: 12, weight: .semibold))
+                                Text(style.detail)
+                                    .font(metrics.font(size: 10))
+                                    .foregroundStyle(theme[.fgMuted])
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(metrics.size(10))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(theme[environment.visualStyle == style ? .accentFaint : .bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                                .strokeBorder(theme[environment.visualStyle == style ? .accent : .border], lineWidth: metrics.size(1)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(environment.visualStyle == style ? .isSelected : [])
+                    }
+                }
+                .accessibilityIdentifier("settings.style")
+                Toggle(isOn: Binding {
+                    environment.preferences?.document.reducedMotion == true
+                } set: { reduced in
+                    environment.preferences?.update { $0.reducedMotion = reduced ? true : nil }
+                }) {
+                    Text("settings.appearance.reduceMotion")
+                    Text("settings.appearance.reduceMotion.help")
+                }
+                .accessibilityIdentifier("settings.reduceMotion")
+            }
+            Section("settings.appearance.theme") { ThemeGrid() }
+            Section("settings.appearance.appIcon") { AppIconGrid() }
+            Section("settings.appearance.zoom") {
+                HStack(spacing: metrics.size(8)) {
+                    Button { environment.preferences?.update { $0.zoom(by: -1) } } label: {
+                        Image(systemName: "minus")
+                    }
+                    .disabled(uiScale <= PreferencesDocument.uiScaleRange.lowerBound)
+                    .accessibilityLabel(Text("menu.view.zoomOut"))
+                    .accessibilityIdentifier("settings.zoom.out")
+                    Text(verbatim: uiScale.formatted(.percent.precision(.fractionLength(0))))
+                        .font(metrics.monoFont(size: 12, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .id(uiScale)
+                        .accessibilityIdentifier("settings.zoom.value")
+                    Button { environment.preferences?.update { $0.zoom(by: 1) } } label: {
+                        Image(systemName: "plus")
+                    }
+                    .disabled(uiScale >= PreferencesDocument.uiScaleRange.upperBound)
+                    .accessibilityLabel(Text("menu.view.zoomIn"))
+                    .accessibilityIdentifier("settings.zoom.in")
+                    Button { environment.preferences?.update { $0.uiScale = 1 } } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .disabled(uiScale == 1)
+                    .accessibilityLabel(Text("menu.view.actualSize"))
+                    .accessibilityIdentifier("settings.zoom.reset")
+                }
+                .buttonStyle(SettingsZoomButtonStyle())
+                .frame(maxWidth: metrics.size(320))
+            }
+            Section("settings.appearance.interface") {
+                AletheSelect(selection: Binding { environment.interfaceStyle } set: { environment.interfaceStyle = $0 }, options: InterfaceStyle.allCases) { style in
+                    Text(style.title)
+                }
+                .accessibilityLabel(Text("settings.appearance.interface"))
+                .accessibilityIdentifier("settings.interface")
+            }
+            Section("settings.appearance.language") {
+                AletheSelect(selection: $language, options: AppLanguage.allCases) { option in
+                    if option == .system { Text("settings.appearance.language.system") } else {
+                        Text(verbatim: option.nativeName ?? option.rawValue)
+                    }
+                }
+                .accessibilityLabel(Text("settings.appearance.language"))
+                .accessibilityIdentifier("settings.language")
+                if language != environment.launchLanguage {
+                    VStack(alignment: .leading, spacing: metrics.size(8)) {
+                        Text("settings.appearance.language.restartNote")
+                        Button("settings.appearance.language.restart") { AppRelaunch.relaunch() }
+                            .accessibilityIdentifier("settings.language.restart")
+                    }
+                    .accessibilityIdentifier("settings.language.restartNote")
+                }
+            }
+        }
+        .disabled(environment.preferences == nil)
+        .onChange(of: language) { _, language in LanguageSetting().set(language) }
+    }
+
+    private func stylePreview(_ style: VisualStyle) -> some View {
+        VStack(spacing: 0) {
+            theme[.bgElevated].frame(height: metrics.size(18))
+                .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
+            HStack(spacing: 0) {
+                VStack(spacing: metrics.size(5)) {
+                    ForEach(0..<3) { _ in
+                        RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 6 : 0))
+                            .fill(theme[.panel])
+                            .overlay(RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 6 : 0)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                            .frame(height: metrics.size(15))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, metrics.size(5))
+                .padding(.vertical, metrics.size(7))
+                .frame(maxWidth: metrics.size(80))
+                .overlay(alignment: .trailing) { theme[.border].frame(width: metrics.size(1)) }
+                HStack(spacing: metrics.size(5)) {
+                    ForEach(0..<2) { _ in
+                        RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 6 : 0))
+                            .fill(theme[.panel])
+                            .overlay(RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 6 : 0)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                    }
+                }
+                .padding(metrics.size(6))
+            }
+        }
+        .frame(height: metrics.size(104))
+        .background(theme[.bg])
+        .clipShape(RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 8 : 0)))
+        .accessibilityHidden(true)
     }
 }
 
@@ -173,15 +307,53 @@ struct ThemeGrid: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(100)), spacing: metrics.space(.l))],
-                  spacing: metrics.space(.l)) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(metrics.isWebInterface ? 150 : 100)), spacing: metrics.size(metrics.isWebInterface ? 10 : 12))],
+                  spacing: metrics.size(metrics.isWebInterface ? 10 : 12)) {
             ForEach(themes) { option in
-                tile(option)
+                if metrics.isWebInterface { webTile(option) } else { tile(option) }
             }
         }
         .padding(.vertical, metrics.space(.xs))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("settings.theme")
+    }
+
+    private func webTile(_ option: Theme) -> some View {
+        let selected = option.id == theme.id
+        return Button {
+            environment.preferences?.update { $0.themeID = option.id }
+        } label: {
+            VStack(alignment: .leading, spacing: metrics.size(8)) {
+                HStack(spacing: metrics.size(4)) {
+                    ForEach(Array(option.swatch.enumerated()), id: \.offset) { _, color in
+                        RoundedRectangle(cornerRadius: metrics.size(4))
+                            .fill(color.color)
+                            .frame(width: metrics.size(25), height: metrics.size(17))
+                            .overlay(RoundedRectangle(cornerRadius: metrics.size(4))
+                                .strokeBorder(theme[.fg].opacity(0.16), lineWidth: metrics.size(1)))
+                    }
+                }
+                HStack(spacing: metrics.size(8)) {
+                    option.localizedName.font(metrics.font(size: 12))
+                    Spacer(minLength: 0)
+                    if selected { Image(systemName: "checkmark").font(metrics.font(size: 15)) }
+                }
+                if let summary = option.localizedSummary {
+                    summary.font(metrics.font(size: 10))
+                        .foregroundStyle(theme[.fgMuted])
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(metrics.size(12))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme[selected ? .accentFaint : .bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                .strokeBorder(theme[selected ? .accent : .border], lineWidth: metrics.size(1)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityValue(Text(verbatim: selected ? "1" : "0"))
+        .accessibilityIdentifier("settings.theme.\(option.id)")
     }
 
     private func tile(_ option: Theme) -> some View {
@@ -199,10 +371,10 @@ struct ThemeGrid: View {
                 .clipShape(RoundedRectangle(cornerRadius: metrics.radius(.md)))
                 .overlay {
                     RoundedRectangle(cornerRadius: metrics.radius(.md))
-                        .strokeBorder(isSelected ? theme[.accent] : theme[.borderSubtle], lineWidth: isSelected ? 2 : 1)
+                        .strokeBorder(isSelected ? theme[.accent] : theme[.borderSubtle], lineWidth: metrics.size(isSelected ? 2 : 1))
                 }
                 option.localizedName
-                    .font(metrics.font(.footnote))
+                    .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                     .foregroundStyle(isSelected ? theme[.textPrimary] : theme[.textSecondary])
                     .lineLimit(1)
             }
@@ -226,9 +398,22 @@ private struct AppIconGrid: View {
     private var current: AppIconTheme { environment.preferences?.document.iconTheme ?? .default }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         HStack(spacing: metrics.space(.l)) {
             ForEach(AppIconTheme.allCases, id: \.self) { tile($0) }
             Spacer(minLength: 0)
+        }
+        .padding(.vertical, metrics.space(.xs))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings.appIcon")
+    }
+
+    private var webBody: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(90)), spacing: metrics.space(.l))], spacing: metrics.space(.l)) {
+            ForEach(AppIconTheme.allCases, id: \.self) { tile($0) }
         }
         .padding(.vertical, metrics.space(.xs))
         .accessibilityElement(children: .contain)
@@ -252,10 +437,10 @@ private struct AppIconGrid: View {
                 .padding(metrics.space(.xxs))
                 .overlay {
                     RoundedRectangle(cornerRadius: metrics.radius(.lg))
-                        .strokeBorder(isSelected ? theme[.accent] : .clear, lineWidth: 2)
+                        .strokeBorder(isSelected ? theme[.accent] : .clear, lineWidth: metrics.size(2))
                 }
                 option.localizedName
-                    .font(metrics.font(.footnote))
+                    .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                     .foregroundStyle(isSelected ? theme[.textPrimary] : theme[.textSecondary])
                     .lineLimit(1)
             }
@@ -310,5 +495,20 @@ extension InterfaceStyle {
         case .web: "settings.appearance.interface.web.detail"
         case .mac: "settings.appearance.interface.mac.detail"
         }
+    }
+}
+
+private struct SettingsZoomButtonStyle: ButtonStyle {
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(metrics.font(size: 14))
+            .frame(width: metrics.size(40), height: metrics.size(40))
+            .background(theme[configuration.isPressed ? .panelHover : .bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+            .opacity(enabled ? 1 : 0.38)
     }
 }

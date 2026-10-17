@@ -7,12 +7,13 @@ import SwiftUI
 /// ones under “Show more”. A feature's own options appear under it while it is on (`FeatureOptions`).
 struct FeatureSettings: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
     @State private var showsMore = false
 
     private var secondaryCount: Int { Feature.allCases.filter(\.isSecondary).count }
 
     var body: some View {
-        Form {
+        AletheSettingsForm {
             Section {
                 ForEach(Feature.allCases.filter { !$0.isSecondary }, id: \.self) { FeatureRow(feature: $0) }
             } footer: {
@@ -33,10 +34,10 @@ struct FeatureSettings: View {
             }
         }
         .formStyle(.grouped)
-        .scrollDisabled(true)
-        .fixedSize(horizontal: false, vertical: true)
+        .modifier(AletheSettingsSizing())
         .disabled(environment.preferences == nil)
         .accessibilityIdentifier("settings.features")
+        .onAppear { if metrics.isWebInterface { showsMore = true } }
     }
 }
 
@@ -115,7 +116,7 @@ private struct GraphifyOptions: View {
         } label: {
             Text("features.graphify.status")
             statusText
-                .font(metrics.font(.footnote))
+                .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                 .foregroundStyle(theme[.textSecondary])
                 .textSelection(.enabled)
                 .accessibilityIdentifier("settings.graphify.status")
@@ -175,7 +176,7 @@ private struct GSDSyncOptions: View {
         }
         if models.isEmpty {
             Text("features.gsdSync.models.empty")
-                .font(metrics.font(.footnote))
+                .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
                 .foregroundStyle(theme[.textSecondary])
                 .accessibilityIdentifier("settings.gsdSync.empty")
         }
@@ -204,7 +205,7 @@ private struct GSDSyncOptions: View {
             }
         }
         Text("features.gsdSync.models.hint")
-            .font(metrics.font(.footnote))
+            .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
             .foregroundStyle(theme[.textSecondary])
             .onAppear(perform: load)
             .onDisappear(perform: store)

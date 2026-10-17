@@ -11,7 +11,7 @@ struct PluginSettings: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Form {
+        AletheSettingsForm {
             Section {
                 if let plugins = environment.plugins, !plugins.records.isEmpty {
                     ForEach(plugins.records) { record in
@@ -29,8 +29,7 @@ struct PluginSettings: View {
             }
         }
         .formStyle(.grouped)
-        .scrollDisabled(true)
-        .fixedSize(horizontal: false, vertical: true)
+        .modifier(AletheSettingsSizing())
         .accessibilityIdentifier("settings.plugins")
     }
 }
@@ -59,7 +58,7 @@ private struct PluginRow: View {
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill")
                 }
-                .font(.callout)
+                .font(metrics.isWebInterface ? metrics.font(size: 11) : .callout)
                 .foregroundStyle(theme[.statusStopped])
                 .textSelection(.enabled)
                 .accessibilityIdentifier("settings.plugins.\(record.id).error")

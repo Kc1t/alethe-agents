@@ -36,7 +36,7 @@ struct AgentInstallSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             Text(verbatim: String(format: String(localized: mode.title), agent.displayName))
-                .font(metrics.font(.title3))
+                .font((metrics.isWebInterface ? metrics.font(size: 16) : metrics.font(.title3)))
             if toolchain == nil {
                 ProgressView().frame(maxWidth: .infinity)
             } else if methods.isEmpty {
@@ -47,7 +47,7 @@ struct AgentInstallSheet: View {
                         VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
                             Text(method.kind.title)
                             Text(verbatim: method.command)
-                                .font(.footnote.monospaced())
+                                .font(metrics.isWebInterface ? metrics.monoFont(size: 10, weight: .regular) : .footnote.monospaced())
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
@@ -62,7 +62,7 @@ struct AgentInstallSheet: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         Text(verbatim: installer.log.isEmpty ? " " : installer.log)
-                            .font(.footnote.monospaced())
+                            .font(metrics.isWebInterface ? metrics.monoFont(size: 10, weight: .regular) : .footnote.monospaced())
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
                             .id("log")

@@ -53,7 +53,7 @@ struct PlaywrightOptions: View {
                 Text("settings.playwright.mode.dedicated.hint")
             }
         }
-        .font(metrics.font(.footnote))
+        .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
             .foregroundStyle(theme[.textSecondary])
         switch mode.wrappedValue {
         case .dedicated:
