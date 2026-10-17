@@ -15,19 +15,43 @@ struct MergeCenterSheet: View {
     let undoManager: UndoManager?
     let projectID: ProjectID?
     var resumeID: String?
-    @Environment(AppEnvironment.self) private var environment
-    @State private var agent: AgentKind = .claude
-    @State private var model: MergeCenterModel?
-    @State private var confirmAbort = false
-    @State private var confirmCleanup = false
-    @State private var testingBranch = false
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.theme) private var theme
-    @Environment(\.metrics) private var metrics
+    @Environment(AppEnvironment.self) var environment
+    @State var agent: AgentKind = .claude
+    @State var model: MergeCenterModel?
+    @State var confirmAbort = false
+    @State var confirmCleanup = false
+    @State var testingBranch = false
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.theme) var theme
+    @Environment(\.metrics) var metrics
 
-    private var project: Project? { projectID.flatMap { workspace.document.project($0) } }
+    var project: Project? { projectID.flatMap { workspace.document.project($0) } }
+
+    @Environment(\.gitModalClose) var closeOverlay
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface {
+                webContent
+            } else {
+                nativeContent
+            }
+        }
+    }
+
+    var nativeContent: some View {
+        sheetContent
+        .frame(width: metrics.size(560), height: metrics.size(600))
+        .navigationTitle(Text("merge.title"))
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("merge.close") { dismiss() }
+                    .accessibilityIdentifier("merge.close")
+            }
+        }
+    }
+
+    var sheetContent: some View {
         Group {
             if let model {
                 content(model)
@@ -37,29 +61,23 @@ struct MergeCenterSheet: View {
                     .padding(metrics.space(.xl))
             }
         }
-        .frame(width: metrics.size(560), height: metrics.size(600))
-        .navigationTitle(Text("merge.title"))
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("merge.close") { dismiss() }
-                    .accessibilityIdentifier("merge.close")
-            }
-        }
-        .task {
-            guard let project else { return }
-            let model = MergeCenterModel(folder: URL(filePath: project.folder, directoryHint: .isDirectory),
-                                         projectID: project.id, bus: environment.multiagent.bus)
-            self.model = model
-            let last = AgentRegistry.builtin.parse(environment.preferences?.document.lastAgent)
-            agent = last.flatMap { agents.contains($0) ? $0 : nil } ?? (agents.contains(.claude) ? .claude : agents.first ?? .claude)
-            await model.load(resume: resumeID)
-        }
+        .task { await loadModel() }
         .onDisappear { model?.cancel() }
         .accessibilityIdentifier("merge.center")
     }
 
+    func loadModel() async {
+        guard let project else { return }
+        let model = MergeCenterModel(folder: URL(filePath: project.folder, directoryHint: .isDirectory),
+                                     projectID: project.id, bus: environment.multiagent.bus)
+        self.model = model
+        let last = AgentRegistry.builtin.parse(environment.preferences?.document.lastAgent)
+        agent = last.flatMap { agents.contains($0) ? $0 : nil } ?? (agents.contains(.claude) ? .claude : agents.first ?? .claude)
+        await model.load(resume: resumeID)
+    }
+
     @ViewBuilder
-    private func content(_ model: MergeCenterModel) -> some View {
+    func content(_ model: MergeCenterModel) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             stageHeader(model.stage)
                 .padding(metrics.space(.l))
@@ -99,7 +117,7 @@ struct MergeCenterSheet: View {
 
     /// Progress with cancel while an operation runs, otherwise the given actions.
     @ViewBuilder
-    private func actionRow(_ model: MergeCenterModel, @ViewBuilder _ actions: () -> some View) -> some View {
+    func actionRow(_ model: MergeCenterModel, @ViewBuilder _ actions: () -> some View) -> some View {
         HStack {
             if model.running {
                 ProgressView().controlSize(.small)
@@ -113,7 +131,7 @@ struct MergeCenterSheet: View {
         }
     }
 
-    private func outputBox(_ text: String) -> some View {
+    func outputBox(_ text: String) -> some View {
         ScrollView {
             Text(verbatim: text)
                 .font(.caption.monospaced())
@@ -123,7 +141,7 @@ struct MergeCenterSheet: View {
         .accessibilityIdentifier("merge.output")
     }
 
-    private func abortButton(_ model: MergeCenterModel) -> some View {
+    func abortButton(_ model: MergeCenterModel) -> some View {
         Button("merge.abort", role: .destructive) { confirmAbort = true }
             .disabled(model.environment == nil)
             .accessibilityIdentifier("merge.abort")
@@ -131,7 +149,7 @@ struct MergeCenterSheet: View {
 
     // MARK: Prepare
 
-    private func prepare(_ model: MergeCenterModel) -> some View {
+    func prepare(_ model: MergeCenterModel) -> some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             actionRow(model) {
                 Picker("merge.agent", selection: $agent) {
@@ -170,7 +188,7 @@ struct MergeCenterSheet: View {
     }
 
     /// Enabled agents whose CLI is installed (shells cannot resolve conflicts).
-    private var agents: [AgentKind] {
+    var agents: [AgentKind] {
         let preferences = environment.preferences?.document
         return AgentRegistry.builtin.enabledKinds(preferences?.enabledAgents).filter { kind in
             guard let command = AgentRegistry.builtin.descriptor(for: kind)?.cliCommand else { return false }
@@ -180,7 +198,7 @@ struct MergeCenterSheet: View {
 
     /// Opens a terminal of the chosen agent in the merge environment, primed with the conflict
     /// instruction; the choice becomes the last used agent.
-    private func resolveWithAgent(_ model: MergeCenterModel) {
+    func resolveWithAgent(_ model: MergeCenterModel) {
         guard let project, let path = model.environment?.path.path, agents.contains(agent) else { return }
         let tab = PaneTab(agent: agent.rawValue, title: String(localized: "merge.agentPaneName"),
                           workingDirectory: path, initialPrompt: ConflictResolution.agentInstruction())
@@ -188,12 +206,12 @@ struct MergeCenterSheet: View {
             $0.addPane(to: project.id, tab: tab)
         }
         environment.preferences?.update { $0.lastAgent = agent.rawValue }
-        dismiss()
+        if metrics.isWebInterface, let closeOverlay { closeOverlay() } else { dismiss() }
     }
 
     // MARK: Validate
 
-    private func validate(_ model: MergeCenterModel) -> some View {
+    func validate(_ model: MergeCenterModel) -> some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             Text("merge.validate.commands").font(.headline)
             TextEditor(text: Bindable(model).commandsText)
@@ -216,7 +234,7 @@ struct MergeCenterSheet: View {
 
     /// The last validate/finalize outcome: its message, each command, the probe and the contract check.
     @ViewBuilder
-    private func outcomeDetails(_ model: MergeCenterModel) -> some View {
+    func outcomeDetails(_ model: MergeCenterModel) -> some View {
         if model.note != nil || model.outcome != nil {
             ScrollView {
                 VStack(alignment: .leading, spacing: metrics.space(.m)) {
@@ -241,7 +259,7 @@ struct MergeCenterSheet: View {
 
     // MARK: Finish
 
-    private func finish(_ model: MergeCenterModel) -> some View {
+    func finish(_ model: MergeCenterModel) -> some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             actionRow(model) {
                 Button("merge.finalize") { model.finalize() }
@@ -265,7 +283,7 @@ struct MergeCenterSheet: View {
 
     // MARK: Stage header
 
-    private func stageHeader(_ current: MergeCenterStage) -> some View {
+    func stageHeader(_ current: MergeCenterStage) -> some View {
         HStack(spacing: metrics.space(.s)) {
             ForEach(Array(MergeCenterStage.allCases.enumerated()), id: \.element) { index, stage in
                 if index > 0 {
@@ -282,7 +300,7 @@ struct MergeCenterSheet: View {
         .accessibilityIdentifier("merge.stages")
     }
 
-    private func stageTitle(_ stage: MergeCenterStage) -> LocalizedStringKey {
+    func stageTitle(_ stage: MergeCenterStage) -> LocalizedStringKey {
         switch stage {
         case .analyze: "merge.stage.analyze"
         case .prepare: "merge.stage.prepare"
@@ -293,7 +311,7 @@ struct MergeCenterSheet: View {
 
     // MARK: Analyze
 
-    private func analyze(_ model: MergeCenterModel) -> some View {
+    func analyze(_ model: MergeCenterModel) -> some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             Picker("merge.source", selection: Bindable(model).source) {
                 ForEach(model.branches, id: \.self) { Text(verbatim: $0).tag($0) }
@@ -338,7 +356,7 @@ struct MergeCenterSheet: View {
     }
 
     @ViewBuilder
-    private func result(_ analysis: MergeAnalysis) -> some View {
+    func result(_ analysis: MergeAnalysis) -> some View {
         if analysis.clean {
             Label("merge.clean", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(theme[.statusActive])
@@ -355,7 +373,7 @@ struct MergeCenterSheet: View {
         }
     }
 
-    private func conflictList(_ conflicts: [ConflictFile]) -> some View {
+    func conflictList(_ conflicts: [ConflictFile]) -> some View {
             List(conflicts, id: \.path) { conflict in
                 VStack(alignment: .leading, spacing: metrics.space(.xs)) {
                     HStack {

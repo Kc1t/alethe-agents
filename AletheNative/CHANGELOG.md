@@ -22,6 +22,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   numbered shortcuts and middle-click closing, and reveal the selected tab when overflowing.
   Terminal headers float over the terminal on hover, with inline title editing, compact action
   hover states, lane drag handles and unread completion badges. Native macOS styling is preserved.
+- Web-style Git dialogs use themed modal headers, compact repository and worktree rows, bounded
+  agent artwork, pending-file commit review and pull-request cards. Native macOS sheets and Git
+  operation guards are retained; full-window overlay routing remains pending host integration.
 - Web-style left sidebar matches the web search height, row spacing, folder and pause icons,
   group hover corners and nested-group margins. Search hover colors, unread completion marks,
   group double-click opening and the now-playing/update order follow the web interface;
