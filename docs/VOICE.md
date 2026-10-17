@@ -55,7 +55,7 @@ Alethe had local speech-to-text and nothing that spoke.
 | **Talking to agents** | None. | Hold a shortcut, speak, and the text goes to the agent in front. Claude Code is narrated from hooks and its permission requests can be answered by voice or click. Codex is narrated from its transcript; other harnesses are read off the screen. |
 | **Read text aloud** | None. | `Ctrl+Shift+L` or the terminal's right-click menu reads the selection or the clipboard. |
 | **Outside the app** | Shortcuts worked only with Alethe focused. | The conversation shortcut is system-wide, with a floating, non-activating HUD while Alethe is in the background. |
-| **Jev command bar** | Opened with `Ctrl+Shift+Space`. Its own plaintext decisions key in preferences, local STT only, and a raw `writePty` to hand a task to an open agent. | Opens with `Ctrl+Shift+J` (changeable). Uses the OpenRouter key from the keychain and the conversation speech-to-text choice. It can also be reached by voice (the trigger word or Alt), and hands tasks over through the guarded submit (§3.2). |
+| **Jev command bar** | Opened with `Ctrl+Shift+Space`. Its own plaintext decisions key in preferences, local STT only, and a raw `writePty` to hand a task to an open agent. | `main`'s voice pill (§14), opened with `Ctrl+Shift+J` (changeable). Uses the OpenRouter key from the keychain and the conversation speech-to-text choice. It can also be reached by voice (the trigger word or Alt), and hands tasks over through the guarded submit (§3.2). |
 | **API keys** | One, for Jev, in plaintext preferences. | Every key is in the OS keychain, per profile, and never returned to the webview. |
 | **Model downloads** | Download and SHA-256 check. | Also pause, cancel and resume a `.part` file, with throttled progress. |
 | **macOS microphone permission** | No `Info.plist` usage strings. | `Info.plist` with microphone and speech-recognition usage strings. |
@@ -65,7 +65,8 @@ Alethe had local speech-to-text and nothing that spoke.
 (`speech_capture.rs`), the transcription pipeline (`speech.rs`, now dispatching to sherpa, Apple or
 cloud through `SttProvider`), the model downloader, `secure_store`, the agent hook listener
 (`agent_events.rs`) and agent relaunch. Code that existed twice before the branch was merged into one:
-- the microphone level meter, now `VoiceSpectrum`, shared by the Jev bar and the voice panel;
+- the microphone level meter, now `VoiceSpectrum`, used by the voice panel and the HUD (the Jev
+  pill from `main` draws its own mirrored spectrum, §14);
 - agent tab restart, now `restartAgentTab`;
 - prompt submission, now `pasteAndSubmit`, shared by first prompts and voice.
 
@@ -79,7 +80,8 @@ cloud through `SttProvider`), the model downloader, `secure_store`, the agent ho
 - **Jev key.** Two stores held an OpenRouter key: Jev's in plaintext preferences, and the provider's
   in the keychain.
   - `jev_decide` now reads the OpenRouter provider key from the keychain itself.
-  - The bar saves a typed key there (`lib/voice/jevKey.ts`).
+  - The key is set on the OpenRouter account page of Preferences → Voice; the voice pill from
+    `main` has no text field (§14).
   - A legacy plaintext key is moved to the keychain once and cleared.
 - **Jev sends.** The bar handed a task to an open agent with a raw `writePty(prompt + "\r")`. Its
   Enter could approve an agent's own approval menu.
@@ -858,12 +860,38 @@ so each commit carries its own registration, preference fields and strings. Beca
 **intermediate commits are not standalone builds**; the series builds and its tests pass at the
 last commit.
 
+The Dropdown fix that used to open the series is its own pull request now; without it the
+searchable model and voice pickers in Preferences → Voice cannot keep focus in their search box.
+
 | # | Commit | Read it for |
 |---|---|---|
-| 1 | `fix(ui): keep the Dropdown search usable inside modal dialogs` | `FocusScope` around the portaled menu |
-| 2 | `chore: translate Portuguese comments and logs to English` | comment/log translations only |
+| 2 | `chore: translate Portuguese comments and logs to English` | comment/log translations only (also sent on its own) |
 | 3 | `feat(voice): talk to Claude Code and hear it narrate` | hooks, held permissions, transcript, controller, narrator, PTY input registry, system TTS, panel |
 | 4 | `feat(voice): system-wide voice shortcut and floating HUD` | `voice_hud.rs`, NSPanel, surface rules, placement, shortcut recorder |
 | 5 | `feat(speech): Apple on-device speech recognition on macOS` | Swift bridge, `speech_apple.rs`, build and release changes, Mac default |
 | 6 | `feat(voice): per-use voice providers and a Voice preferences page` | cloud providers, keys, fallback, Piper/Whisper/Moonshine, `audio_out.rs`, resumable downloads, Voice page, legacy preference migration |
 | 7 | `docs(voice): specs, plans and the voice architecture guide` | this document, specs, plans, changelog, features |
+
+---
+
+## 14. Merged with `main`
+
+`main` moved on while this work was in progress (ten commits up to `f6f9557`), and part of it
+changed the same voice code. The merge commit, `Merge Kc1t/main into feat/voice-conversation`,
+keeps both sides:
+
+| Area | On `main` | After the merge |
+|---|---|---|
+| Claude hooks (`agent_events.rs`) | `SessionStart` runs `curl`, because Claude Code skips http handlers there; a planner id that is not header-safe drops it | The voice hook builder (`build_hooks`) adds that `curl` entry; `claude_hooks_settings` wraps it with `teammateMode`, so `main`'s tests still run against it |
+| VAD and partial transcription (`speech.rs`) | Silero VAD downloaded on first use, `speech_transcribe_partial` decoding the last 3 s, both through the old single-model path | Both run on the per-use engine (`transcriber_for`), so partials work with any local model; the VAD model goes through the resumable downloader |
+| OpenRouter transcription (`speech_cloud.rs`) | A `Transcriber` toggle (On-device / OpenRouter) and two chat models, sent with the plain-text Jev key from the webview | The two chat models (GPT Audio Mini, Gemini 3.1 Flash Lite) join OpenRouter's speech-to-text list in Preferences → Voice. `speech_stop_and_transcribe` sends them through chat completions with the keychain key; `speech_stop_and_transcribe_cloud` is gone. A saved `dictationProvider: 'openrouter'` migrates into `voiceStt` |
+| Jev bar (`VoiceCommand`) | A voice-only pill: listens as soon as it opens, continuous listening, send phrases and a pause end the recording, VAD endpointing | `main`'s pill and CSS, plus this branch's keychain key, guarded submit, configurable shortcut, conversation hand-off and capture engine (`openCapture`, `transcribeCapture`) |
+| Jev key field | A plain-text key field in the dictation settings | Removed; the hint points to the OpenRouter page of Preferences → Voice |
+| Restart (`agentTabRestart.ts`) | `runAsAdmin` passed to the relaunch; no guessing of a Codex conversation from the folder | Same, in the shared `restartAgentTab` |
+| Codex session tracking | Typed input and the first prompt noted with `noteCodexPaneInput` | Also a prompt sent by voice |
+
+Tests added for the merge: the curl and header-safety tests from `main` run against the merged
+builder, the Jev pill tests from `main` run against the merged component
+(`VoiceCommand.test.tsx`), this branch's hand-off and guarded-send tests run against the pill
+(`VoiceCommand.handoff.test.tsx`), and the legacy OpenRouter transcriber migration and the chat
+model list each have a test.
