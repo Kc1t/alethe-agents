@@ -284,6 +284,14 @@ private struct GroupRow: View {
             Label {
                 // Upstream group tag: faint, lightly tracked name followed by a hairline rule.
                 HStack(spacing: metrics.isWebInterface ? metrics.size(8) : metrics.space(.s)) {
+                    if metrics.isWebInterface, let icon = group.iconUrl, !icon.isEmpty {
+                        SidebarCoverImage(source: icon, side: 16) {
+                            Image(systemName: "folder").webProfileSized(16)
+                                .foregroundStyle(theme[group.color?.token ?? .fgFaint])
+                        }
+                        .saturation(group.suspended == true ? 0 : 1)
+                        .opacity(group.suspended == true ? 0.6 : 1)
+                    }
                     Text(verbatim: group.name)
                         .font(metrics.font(size: 11))
                         .tracking(metrics.size(11) * 0.04)
@@ -487,12 +495,13 @@ private struct ProjectRow: View {
             }
         } icon: {
             if metrics.isWebInterface {
-                Image(systemName: "folder").webProfileSized(16)
-                    .font(metrics.font(size: 16))
-                    .frame(width: metrics.size(15), height: metrics.size(15))
-                    .foregroundStyle(theme[project.color.token])
-                    .saturation(dimmed ? 0 : 1)
-                    .opacity(dimmed ? 0.6 : 1)
+                SidebarCoverImage(source: project.iconUrl ?? "", side: metrics.style == .normal ? 16 : 15) {
+                    Image(systemName: "folder").webProfileSized(16)
+                        .font(metrics.font(size: 16))
+                        .foregroundStyle(theme[project.color.token])
+                }
+                .saturation(dimmed ? 0 : 1)
+                .opacity(dimmed ? 0.6 : 1)
             } else {
                 AletheMonogram(name: project.name, color: theme[project.color.token])
                     .opacity(dimmed ? 0.6 : 1)

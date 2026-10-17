@@ -217,7 +217,10 @@ public enum TauriImport {
                     mapped[id] = existing.id
                 } else {
                     let created = workspace.addGroup(name: name, color: projectColor(group["color"]), parent: parentID)
-                    workspace.updateGroup(created) { $0.isCollapsed = group["collapsed"] as? Bool ?? false }
+                    workspace.updateGroup(created) {
+                        $0.isCollapsed = group["collapsed"] as? Bool ?? false
+                        $0.iconUrl = group["iconUrl"] as? String
+                    }
                     mapped[id] = created
                     report.groups += 1
                 }
@@ -275,6 +278,7 @@ public enum TauriImport {
             let place = (location[projectID] ?? nil).flatMap { groupIDs[$0] }.map { ProjectLocation.group($0) } ?? .ungrouped
             let created = workspace.addProject(name: name, folder: folder,
                                                color: projectColor(project["color"]) ?? .blue, in: place)
+            workspace.updateProject(created) { $0.iconUrl = project["iconUrl"] as? String }
             report.projects += 1
             var panes: [Pane] = []
             for terminal in terminals {

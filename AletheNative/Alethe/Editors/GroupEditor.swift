@@ -14,6 +14,7 @@ struct GroupEditor: View {
     @FocusState private var focused: Bool
     @Environment(\.metrics) private var metrics
 
+    @State private var iconUrl = ""
     @State private var name = ""
     @State private var color: ProjectColor?
     @State private var parent: GroupID?
@@ -29,6 +30,7 @@ struct GroupEditor: View {
             TextField(text: $name) { Text("editor.group.name") }
                 .accessibilityIdentifier("editor.group.name")
                 .focused($focused)
+            ImageInputField(value: $iconUrl, name: name, color: color)
             LabeledContent("editor.color") { ColorSwatchPicker(selection: $color, allowsNone: true) }
             Picker(selection: $parent) {
                 Text("editor.group.topLevel").tag(GroupID?.none)
@@ -54,6 +56,7 @@ struct GroupEditor: View {
             focused = true
             parent = initialParent
             if let editing, let group = workspace.document.group(editing) {
+                iconUrl = group.iconUrl ?? ""
                 name = group.name
                 color = group.color
                 parent = group.parentID
@@ -74,6 +77,8 @@ struct GroupEditor: View {
             ProjectGroupWebField(title: editing == nil ? "editor.group.web.color" : "editor.color") {
                 ColorSwatchPicker(selection: $color, webSwatchSize: editing == nil ? 24 : 28)
             }
+            ImageInputField(value: $iconUrl, name: name, color: color)
+                .onSubmit(submitWeb)
             ProjectGroupWebField(title: "editor.group.parent") {
                 AletheSelect(selection: $parent, options: [nil] + parentCandidates.map { Optional($0.id) }) { value in
                     if let value, let group = workspace.document.group(value) {
@@ -83,8 +88,15 @@ struct GroupEditor: View {
             }
             if editing != nil {
                 HStack(spacing: metrics.size(6)) {
-                    Circle().fill(theme[color?.token ?? .fgMuted])
-                        .frame(width: metrics.size(8), height: metrics.size(8))
+                    if !iconUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        SidebarCoverImage(source: iconUrl.trimmingCharacters(in: .whitespacesAndNewlines), side: 14, cornerRadius: 3) {
+                            Circle().fill(theme[color?.token ?? .fgMuted])
+                                .frame(width: metrics.size(8), height: metrics.size(8))
+                        }
+                    } else {
+                        Circle().fill(theme[color?.token ?? .fgMuted])
+                            .frame(width: metrics.size(8), height: metrics.size(8))
+                    }
                     Text("editor.group.web.preview").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
                 }
                 .padding(.vertical, metrics.size(10)).padding(.horizontal, metrics.size(12))
@@ -97,6 +109,7 @@ struct GroupEditor: View {
         .onAppear {
             parent = initialParent
             if let editing, let group = workspace.document.group(editing) {
+                iconUrl = group.iconUrl ?? ""
                 name = group.name; color = group.color; parent = group.parentID
             } else { color = .blue }
             focused = true
@@ -125,6 +138,7 @@ struct GroupEditor: View {
         if let editing {
             workspace.update(undoManager: undoManager, actionName: String(localized: "undo.editGroup")) { doc in
                 doc.updateGroup(editing) {
+                    $0.iconUrl = ProjectImageInput.normalized(iconUrl)
                     $0.name = trimmed
                     $0.color = color
                 }
@@ -132,7 +146,8 @@ struct GroupEditor: View {
             }
         } else {
             workspace.update(undoManager: undoManager, actionName: String(localized: "undo.newGroup")) {
-                _ = $0.addGroup(name: trimmed, color: color, parent: parent)
+                let id = $0.addGroup(name: trimmed, color: color, parent: parent)
+                $0.updateGroup(id) { $0.iconUrl = ProjectImageInput.normalized(iconUrl) }
             }
         }
         close()

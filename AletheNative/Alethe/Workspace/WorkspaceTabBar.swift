@@ -56,6 +56,12 @@ struct WorkspaceTabBar: View {
                          enabled: document.canGoForward) { navigate(1) }
     }
 
+    private func coverSource(_ tab: WorkspaceTab) -> String? {
+        if let id = tab.webGroupID { return document.group(id)?.iconUrl }
+        if tab.kind == .project, let id = tab.projectID { return document.project(id)?.iconUrl }
+        return nil
+    }
+
     private func tabView(_ tab: WorkspaceTab) -> some View {
         let isActive = tab.id == document.workspace.activeTabID
         let isHovered = hovered == tab.id
@@ -70,7 +76,12 @@ struct WorkspaceTabBar: View {
                     .rotationEffect(.degrees(45))
                     .foregroundStyle(theme[.accent])
             }
-            if metrics.isWebInterface, tab.kind == .composition, tab.webGroupID == nil, tab.webPaneID == nil {
+            if metrics.isWebInterface, let icon = coverSource(tab), !icon.isEmpty {
+                SidebarCoverImage(source: icon, side: 14, cornerRadius: 3) {
+                    Circle().fill(document.color(of: tab).map { theme[$0.token] } ?? theme[.fgFaint])
+                        .frame(width: metrics.size(8), height: metrics.size(8))
+                }
+            } else if metrics.isWebInterface, tab.kind == .composition, tab.webGroupID == nil, tab.webPaneID == nil {
                 Image(systemName: "point.3.connected.trianglepath.dotted")
                     .font(metrics.font(size: 14))
                     .foregroundStyle(theme[.accent])

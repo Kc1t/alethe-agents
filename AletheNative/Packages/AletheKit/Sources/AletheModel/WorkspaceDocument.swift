@@ -9,6 +9,8 @@ public enum ProjectColor: String, Codable, CaseIterable, Sendable {
 public struct ProjectGroup: Codable, Hashable, Sendable, Identifiable {
     public var id: GroupID
     public var name: String
+    /// Optional web-compatible URL or inline data URL.
+    public var iconUrl: String?
     public var color: ProjectColor?
     /// Nesting: nil for a top-level group.
     public var parentID: GroupID?
@@ -116,6 +118,8 @@ public enum ProjectWorktreeMode: String, Codable, CaseIterable, Sendable {
 public struct Project: Codable, Hashable, Sendable, Identifiable {
     public var id: ProjectID
     public var name: String
+    /// Optional web-compatible URL or inline data URL.
+    public var iconUrl: String?
     public var color: ProjectColor
     /// Absolute path of the project folder; the default working directory of its panes.
     public var folder: String

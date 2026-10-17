@@ -666,11 +666,15 @@ private struct RecentProjects: View {
         } label: {
             HStack(spacing: metrics.size(metrics.isWebInterface ? 9 : 8)) {
                 if metrics.isWebInterface {
-                    Text(verbatim: String(project.name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased())
-                        .font(metrics.font(size: 10, weight: .semibold))
-                        .foregroundStyle(theme[.accentOn])
-                        .frame(width: metrics.size(28), height: metrics.size(28))
-                        .background(theme[project.color.token], in: RoundedRectangle(cornerRadius: metrics.size(6)))
+                    SidebarCoverImage(source: project.iconUrl ?? "", side: 34) {
+                        Text(verbatim: String(project.name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(1)).uppercased())
+                            .font(metrics.font(size: 15, weight: .semibold))
+                            .foregroundStyle(theme[.accentOn])
+                            .frame(width: metrics.size(34), height: metrics.size(34))
+                            .background(theme[project.color.token], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                    }
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                        .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 } else { AletheMonogram(name: project.name, color: theme[project.color.token], side: 28) }
                 VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
                     Text(verbatim: project.name).font(metrics.font(size: 11, weight: .semibold)).lineLimit(1)

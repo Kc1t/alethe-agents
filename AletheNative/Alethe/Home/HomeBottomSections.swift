@@ -106,10 +106,14 @@ private struct WebHomeProjectCard: View {
     var body: some View {
         Button(action: open) {
             HStack(spacing: metrics.size(9)) {
-                Text(verbatim: project.name.trimmingCharacters(in: .whitespacesAndNewlines).first.map { String($0).uppercased() } ?? "·")
-                    .font(metrics.font(size: 10, weight: .semibold)).foregroundStyle(theme[.accentOn])
-                    .frame(width: metrics.size(28), height: metrics.size(28))
-                    .background(theme[project.color.token], in: RoundedRectangle(cornerRadius: metrics.size(6)))
+                SidebarCoverImage(source: project.iconUrl ?? "", side: 34) {
+                    Text(verbatim: project.name.trimmingCharacters(in: .whitespacesAndNewlines).first.map { String($0).uppercased() } ?? "·")
+                        .font(metrics.font(size: 15, weight: .semibold)).foregroundStyle(theme[.accentOn])
+                        .frame(width: metrics.size(34), height: metrics.size(34))
+                        .background(theme[project.color.token], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                }
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                    .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 VStack(alignment: .leading, spacing: metrics.size(2)) {
                     Text(verbatim: project.name).font(metrics.font(size: 11, weight: .semibold))
                         .lineLimit(1).help(Text(verbatim: project.name))

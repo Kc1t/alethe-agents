@@ -26,6 +26,7 @@ struct ProjectEditor: View {
 
     @State private var source: Source = .folder
     @State private var cloneURL = ""
+    @State private var iconUrl = ""
     @State private var name = ""
     @State private var folder = ""
     @State private var color: ProjectColor? = .blue
@@ -86,6 +87,7 @@ struct ProjectEditor: View {
             if !isCloning { folderDetails }
             TextField(text: Binding { name } set: { name = $0; nameEdited = true }) { Text("editor.project.name") }
                 .accessibilityIdentifier("editor.project.name")
+            ImageInputField(value: $iconUrl, name: name, color: color)
             LabeledContent("editor.color") { ColorSwatchPicker(selection: $color) }
             Picker(selection: $location) {
                 Text("sidebar.ungrouped").tag(ProjectLocation.ungrouped)
@@ -213,6 +215,8 @@ struct ProjectEditor: View {
             ProjectGroupWebField(title: "editor.project.web.color") {
                 ColorSwatchPicker(selection: $color, webSwatchSize: editing == nil ? 24 : 28)
             }
+            ImageInputField(value: $iconUrl, name: name, color: color)
+                .onSubmit(submitWeb)
             ProjectGroupWebField(title: "editor.project.worktrees") {
                 AletheSelect(selection: $worktreeMode, options: [.gitWorktree, .localCopy]) { value in
                     Text(value == .gitWorktree ? "newTerminal.worktree.mode.gitWorktree" : "newTerminal.worktree.mode.localCopy")
@@ -359,6 +363,7 @@ struct ProjectEditor: View {
         location = initialLocation
         if editing == nil, let initialFolder { folder = initialFolder }
         guard let editing, let project = workspace.document.project(editing) else { return }
+        iconUrl = project.iconUrl ?? ""
         name = project.name
         folder = project.folder
         color = project.color
@@ -405,6 +410,7 @@ struct ProjectEditor: View {
             let (auto, mode) = worktreeSettings
             workspace.update(undoManager: undoManager, actionName: String(localized: "undo.editProject")) { doc in
                 doc.updateProject(editing) {
+                    $0.iconUrl = ProjectImageInput.normalized(iconUrl)
                     $0.name = trimmed
                     $0.folder = path
                     $0.color = color
@@ -437,6 +443,7 @@ struct ProjectEditor: View {
             let id = doc.addProject(name: trimmed, folder: path, color: color, in: location)
             doc.updateProject(id) {
                 marker?.apply(to: &$0, agents: agents)
+                $0.iconUrl = ProjectImageInput.normalized(iconUrl)
                 $0.name = trimmed
                 $0.color = color
                 $0.autoWorktree = auto

@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Project and group editors accept icon URLs, local images, file drops and clipboard images, with
+  previews and removal. Images persist across relaunch and web imports, and appear in web-style
+  sidebar rows, recent-project cards and workspace tabs. Local uploads retain the web 2 MB limit.
 - Web-style sidebar project menus can hide, reveal, archive and restore projects, with local state
   retained per profile. Profile images can be selected locally or reset to the bundled default.
 - A sidebar update chip links to newer stable native DMG releases on the fork when available.
