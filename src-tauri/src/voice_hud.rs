@@ -237,7 +237,7 @@ pub async fn create_hud(app: AppHandle) -> Result<(), String> {
     if app.get_webview_window(HUD_LABEL).is_some() {
         return Ok(());
     }
-    let window = WebviewWindowBuilder::new(&app, HUD_LABEL, WebviewUrl::App("index.html".into()))
+    let builder = WebviewWindowBuilder::new(&app, HUD_LABEL, WebviewUrl::App("index.html".into()))
         .title("Alethe voice")
         .inner_size(HUD_WIDTH, HUD_HEIGHT)
         .resizable(false)
@@ -248,9 +248,12 @@ pub async fn create_hud(app: AppHandle) -> Result<(), String> {
         // macOS: the first click on the non-key panel (Allow / Deny) reaches the page.
         .accept_first_mouse(true)
         .visible_on_all_workspaces(true)
-        .visible(false)
-        .build()
-        .map_err(|e| e.to_string())?;
+        .visible(false);
+    // macOS: a clear window lets the page draw the rounded shape, so the corners look the same
+    // whether Alethe is active or not.
+    #[cfg(target_os = "macos")]
+    let builder = builder.transparent(true);
+    let window = builder.build().map_err(|e| e.to_string())?;
     #[cfg(target_os = "macos")]
     {
         // AppKit calls must run on the main thread; this task runs on the async runtime.
@@ -266,8 +269,13 @@ pub async fn create_hud(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Matches `border-radius` on the HUD root in `VoiceHud.module.css`.
+#[cfg(target_os = "macos")]
+const HUD_CORNER_RADIUS: f64 = 14.0;
+
 #[cfg(target_os = "macos")]
 mod macos {
+    use super::HUD_CORNER_RADIUS;
     use tauri_nspanel::{tauri_panel, CollectionBehavior, PanelLevel, WebviewWindowExt};
 
     tauri_panel! {
@@ -290,7 +298,16 @@ mod macos {
         panel.set_collection_behavior(
             CollectionBehavior::new().can_join_all_spaces().full_screen_auxiliary().into(),
         );
-        panel.set_corner_radius(14.0);
+        panel.set_transparent(true);
+        panel.set_corner_radius(HUD_CORNER_RADIUS);
+        // The radius alone only rounds the layer's own background; clip the webview to it too.
+        unsafe {
+            use tauri_nspanel::objc2::{msg_send, rc::Retained, runtime::AnyObject};
+            let layer: Option<Retained<AnyObject>> = msg_send![&*panel.content_view(), layer];
+            if let Some(layer) = layer {
+                let _: () = msg_send![&*layer, setMasksToBounds: true];
+            }
+        }
         Ok(())
     }
 }

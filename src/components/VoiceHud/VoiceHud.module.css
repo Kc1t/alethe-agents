@@ -7,6 +7,12 @@
   background: var(--bg-elevated);
 }
 
+/* The macOS HUD window is clear, so the page draws its rounded shape; the radius matches
+   `HUD_CORNER_RADIUS` in `voice_hud.rs`. */
+:global([data-platform='macos']) .root {
+  border-radius: 14px;
+}
+
 .drag {
   position: absolute;
   top: 0;

@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   stateHandler: null as null | ((json: string) => void),
   movedHandler: null as null | (() => void),
   startDragging: vi.fn(),
+  setPosition: vi.fn(),
+  mac: false,
   listen: vi.fn(async () => () => undefined),
   hydrate: vi.fn(async () => undefined),
   store: {
@@ -45,9 +47,19 @@ vi.mock('../../lib/tauri', () => ({
     return () => undefined
   },
 }))
+vi.mock('../../lib/platform', () => ({ isMacOS: () => mocks.mac }))
 vi.mock('@tauri-apps/api/window', () => ({
+  PhysicalPosition: class {
+    constructor(
+      public x: number,
+      public y: number,
+    ) {}
+  },
   getCurrentWindow: () => ({
     startDragging: mocks.startDragging,
+    setPosition: mocks.setPosition,
+    outerPosition: async () => ({ x: 500, y: 200 }),
+    scaleFactor: async () => 2,
     onMoved: async (handler: () => void) => {
       mocks.movedHandler = handler
       return () => undefined
@@ -76,6 +88,8 @@ describe('VoiceHud', () => {
     mocks.action.mockResolvedValue(undefined)
     mocks.moved.mockResolvedValue(undefined)
     mocks.startDragging.mockResolvedValue(undefined)
+    mocks.setPosition.mockResolvedValue(undefined)
+    mocks.mac = false
     mocks.stateHandler = null
     mocks.movedHandler = null
     mocks.store = {
@@ -142,7 +156,7 @@ describe('VoiceHud', () => {
     mocks.snapshot.mockResolvedValue(hudState({ turn: 'working' }))
     render(<VoiceHud />)
     await flush()
-    fireEvent.mouseDown(screen.getByLabelText('voice.hud.drag'))
+    fireEvent.pointerDown(screen.getByLabelText('voice.hud.drag'))
     expect(mocks.startDragging).toHaveBeenCalled()
   })
 
@@ -164,7 +178,7 @@ describe('VoiceHud', () => {
     mocks.snapshot.mockResolvedValue(hudState({ turn: 'working' }))
     render(<VoiceHud />)
     await flush()
-    fireEvent.mouseDown(screen.getByLabelText('voice.hud.drag'))
+    fireEvent.pointerDown(screen.getByLabelText('voice.hud.drag'))
     mocks.movedHandler?.()
     mocks.movedHandler?.()
     expect(mocks.moved).not.toHaveBeenCalled()
@@ -187,7 +201,7 @@ describe('VoiceHud', () => {
     mocks.snapshot.mockResolvedValue(hudState({ turn: 'working' }))
     render(<VoiceHud />)
     await flush()
-    fireEvent.mouseDown(screen.getByLabelText('voice.hud.drag'))
+    fireEvent.pointerDown(screen.getByLabelText('voice.hud.drag'))
     mocks.movedHandler?.()
     await act(async () => {
       vi.advanceTimersByTime(400)
@@ -197,5 +211,48 @@ describe('VoiceHud', () => {
       vi.advanceTimersByTime(300)
     })
     expect(mocks.moved).toHaveBeenCalledTimes(2)
+  })
+
+  // The native drag starts from the app's current event, which is another window's while Alethe
+  // is active: on macOS the HUD follows the pointer itself, so it moves with Alethe in focus too.
+  it('follows the pointer on macOS instead of starting a native drag', async () => {
+    mocks.mac = true
+    const capture = vi.fn()
+    Element.prototype.setPointerCapture = capture
+    // jsdom has no PointerEvent, and a plain Event would drop the screen coordinates.
+    vi.stubGlobal(
+      'PointerEvent',
+      class extends MouseEvent {
+        pointerId: number
+        constructor(type: string, init: PointerEventInit = {}) {
+          super(type, init)
+          this.pointerId = init.pointerId ?? 0
+        }
+      },
+    )
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    })
+    mocks.snapshot.mockResolvedValue(hudState({ turn: 'working' }))
+    render(<VoiceHud />)
+    await flush()
+    const strip = screen.getByLabelText('voice.hud.drag')
+    fireEvent.pointerDown(strip, { screenX: 100, screenY: 100, pointerId: 1 })
+    await flush()
+    expect(mocks.startDragging).not.toHaveBeenCalled()
+    expect(capture).toHaveBeenCalled()
+    fireEvent.pointerMove(strip, { screenX: 110, screenY: 95 })
+    fireEvent.pointerMove(strip, { screenX: 130, screenY: 90 })
+    expect(frames).toHaveLength(1)
+    act(() => frames[0](0))
+    // Points to physical pixels at scale 2, from the window's place when the drag began.
+    expect(mocks.setPosition).toHaveBeenCalledTimes(1)
+    expect(mocks.setPosition.mock.calls[0][0]).toMatchObject({ x: 560, y: 180 })
+    fireEvent.pointerUp(strip)
+    fireEvent.pointerMove(strip, { screenX: 200, screenY: 200 })
+    expect(frames).toHaveLength(1)
+    vi.unstubAllGlobals()
   })
 })

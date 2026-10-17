@@ -480,6 +480,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Voice HUD on macOS: drag it while Alethe is active, and keep its round corners.** The HUD can
+  now be moved by its top strip while Alethe is the app in front, not only while another app is.
+  Its corners stay rounded whether Alethe is active or not.
 - **Smoother cloud narration.** With a cloud voice (OpenAI, ElevenLabs, Gemini, OpenRouter) the
   next narration item is prepared while the current one plays, so there is no pause between
   them; speech starts sooner (a short first chunk) and the highlighted word stays on the voice
