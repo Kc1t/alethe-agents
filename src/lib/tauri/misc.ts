@@ -10,6 +10,7 @@ export type RemoteControlInfo = {
   online_devices: number
   max_devices: number
   session_expiry_secs: number
+  has_pin: boolean
   read_only: boolean
   allow_shell_input: boolean
   reach_mode: 'lan' | 'tailscale'
@@ -55,6 +56,11 @@ export async function setRemoteControlEnabled(
 
 export async function setRemoteControlMaxDevices(maxDevices: number): Promise<RemoteControlInfo> {
   return invoke<RemoteControlInfo>('remote_control_set_max_devices', { maxDevices })
+}
+
+/** Sets the PIN that guards remembered devices; `null` clears it and forgets them. */
+export async function setRemoteControlPin(pin: string | null): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_set_pin', { pin })
 }
 
 export async function setRemoteControlSessionExpiry(

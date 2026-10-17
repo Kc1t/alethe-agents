@@ -145,6 +145,14 @@ fn handle_websocket(
                     ));
                     break;
                 };
+                if hub.session_locked(id) {
+                    let _ = socket.send(Message::Text(
+                        json!({ "type": "error", "reason": "pin_required", "message": "PIN required" })
+                            .to_string()
+                            .into(),
+                    ));
+                    break;
+                }
                 if session_id.is_none() {
                     hub.clear_auth_failures(&address);
                     if let Some(name) = command.get("deviceName").and_then(Value::as_str) {
