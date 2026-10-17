@@ -16,6 +16,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style left sidebar matches the web search height, row spacing, folder and pause icons,
+  group hover corners and nested-group margins. Search hover colors, unread completion marks,
+  group double-click opening and the now-playing/update order follow the web interface;
+  terminal names truncate before their count pills and row actions. Native styling is preserved.
 - Web-style sidebars retain their state while opening and closing with smooth panel resizing,
   content fades and directional motion matching the web interface. Separators fade on collapse;
   dragging stays immediate, Reduce Motion disables transitions, and the title bar stays fixed.

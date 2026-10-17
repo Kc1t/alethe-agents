@@ -4,6 +4,7 @@ import SwiftUI
 
 private extension EnvironmentValues {
     @Entry var sidebarGroupDepth = 0
+    @Entry var sidebarFirstRootGroup = false
 }
 
 struct SidebarListAppearance: ViewModifier {
@@ -14,6 +15,7 @@ struct SidebarListAppearance: ViewModifier {
         if metrics.isWebInterface {
             content.listStyle(.plain)
                 .listItemTint(.clear)
+                .contentMargins(.horizontal, 0, for: .scrollContent)
                 .scrollContentBackground(.hidden)
                 .environment(\.defaultMinListRowHeight, 0)
                 .contentMargins(.top, metrics.size(4), for: .scrollContent)
@@ -26,6 +28,7 @@ struct SidebarListAppearance: ViewModifier {
 /// A custom disclosure keeps List selection and insertion while removing system source-list chrome.
 struct SidebarDisclosure<Content: View, Label: View>: View {
     let isGroup: Bool
+    let firstRootGroup: Bool
     let item: SidebarItem
     private let expansion: Binding<Bool>?
     let content: Content
@@ -35,10 +38,12 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.sidebarGroupDepth) private var depth
+    @Environment(\.sidebarFirstRootGroup) private var inheritedFirstRootGroup
 
-    init(isGroup: Bool, item: SidebarItem, isExpanded: Binding<Bool>? = nil,
+    init(isGroup: Bool, item: SidebarItem, firstRootGroup: Bool = false, isExpanded: Binding<Bool>? = nil,
          @ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
         self.isGroup = isGroup
+        self.firstRootGroup = firstRootGroup
         self.item = item
         expansion = isExpanded
         self.content = content()
@@ -78,7 +83,7 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                 .onTapGesture { if isGroup { toggle() } }
                 .overlay(alignment: .bottomTrailing) {
                     Button { toggle() } label: {
-                        Image(systemName: "chevron.down").webProfileSized(14)
+                        Image(systemName: "chevron.down").webProfileSized(isGroup ? 14 : 15)
                             .rotationEffect(.degrees(binding.wrappedValue ? 0 : -90))
                             .animation(Motion.SidebarEffect.chevron.animation(reduceMotion: metrics.reducesMotion),
                                        value: binding.wrappedValue)
@@ -88,6 +93,7 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("sidebar.disclosure"))
+                    .accessibilityValue(Text(binding.wrappedValue ? LocalizedStringKey("sidebar.web.expanded") : "sidebar.web.collapsed"))
                     .padding(.trailing, metrics.size(isGroup ? 6 : 8))
                     .padding(.bottom, metrics.size(isGroup ? 5 : 4))
                 }
@@ -97,6 +103,7 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                 .listRowBackground(theme[.bg])
             if binding.wrappedValue {
                 content.environment(\.sidebarGroupDepth, depth + (isGroup ? 1 : 0))
+                    .environment(\.sidebarFirstRootGroup, inheritedFirstRootGroup || firstRootGroup)
                     .transition(metrics.reducesMotion ? .identity : .opacity.animation(
                         Motion.SidebarEffect.collapseOpacity.animation(reduceMotion: false)))
             }
@@ -125,9 +132,9 @@ struct SidebarLabelStyle: LabelStyle {
             HStack(spacing: metrics.size(isGroup ? 8 : 9)) {
                 if !isGroup {
                     configuration.icon
-                        .font(metrics.font(size: iconSize == 20 ? 20 : 14))
+                        .font(metrics.font(size: iconSize == 16 ? 16 : 14))
                         .fixedSize()
-                        .frame(minWidth: metrics.size(iconSize))
+                        .frame(minWidth: metrics.size(iconSize == 16 ? 15 : iconSize))
                 }
                 configuration.title
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -144,6 +151,8 @@ struct SidebarWebRow: ViewModifier {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.sidebarGroupDepth) private var depth
+    @Environment(\.sidebarFirstRootGroup) private var inheritedFirstRootGroup
+    @State private var hovering = false
 
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface {
@@ -151,7 +160,10 @@ struct SidebarWebRow: ViewModifier {
                 .padding(.leading, metrics.size(kind == .terminal ? 26 : 10))
                 .padding(.trailing, metrics.size(kind == .group ? 32 : kind == .project ? 37 : 8))
                 .frame(height: metrics.size(kind == .group ? 24 : 28))
-                .aletheRowBackground(isSelected: false)
+                .background(theme[.panelHover].opacity(hovering && !focused ? 1 : 0),
+                            in: RoundedRectangle(cornerRadius: kind == .group ? metrics.size(6) : metrics.radius(.md)))
+                .contentShape(Rectangle())
+                .onHover { hovering = $0 }
                 .background {
                     if focused {
                         RoundedRectangle(cornerRadius: metrics.radius(.md))
@@ -160,7 +172,7 @@ struct SidebarWebRow: ViewModifier {
                                         in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
                     }
                 }
-                .padding(.top, metrics.size(kind == .group ? (first ? 12 : 22) : kind == .project ? 6 : 0))
+                .padding(.top, metrics.size(kind == .group ? ((first || inheritedFirstRootGroup) ? 12 : 22) : kind == .project ? 6 : 0))
                 .padding(.bottom, metrics.size(kind == .group ? 2 : 0))
                 .overlay(alignment: .leading) {
                     ForEach(0..<depth, id: \.self) { level in

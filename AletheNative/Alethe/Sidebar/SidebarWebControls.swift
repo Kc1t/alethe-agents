@@ -140,3 +140,28 @@ struct SidebarSymbolAppearance: ViewModifier {
         else { content }
     }
 }
+
+/// Keep native tooltips intact when supplying web row titles.
+struct SidebarWebHelp: ViewModifier {
+    let text: String
+    @Environment(\.metrics) private var metrics
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if metrics.isWebInterface { content.help(Text(verbatim: text)) }
+        else { content }
+    }
+}
+
+/// A double click opens only this group, matching NormalGroupNode's header gesture.
+struct SidebarWebGroupOpen: ViewModifier {
+    let open: () -> Void
+    @Environment(\.metrics) private var metrics
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if metrics.isWebInterface {
+            content
+                .highPriorityGesture(TapGesture(count: 2).onEnded { open() })
+                .help(Text("sidebar.openOnlyGroup"))
+        } else { content }
+    }
+}

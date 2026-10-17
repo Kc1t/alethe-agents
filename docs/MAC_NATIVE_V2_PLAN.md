@@ -3730,3 +3730,6 @@ Resolved (2026-09-22):
   `listRowSpacing` remain. No build was attempted, as requested; the reviewer must compile externally.
 - AI memory remains unavailable in this session (no tool or skill); this note records the outcome.
 - A checkpoint commit cannot be written under the current read-only Git metadata permissions.
+- Reviewer follow-up (2026-10-17): removed the reintroduced `listRowSpacing(0)` call from the
+  pending sidebar polish. The string gate and whitespace checks pass; no sidebar calls remain.
+  No build was attempted. AI memory is still unavailable; external compilation remains required.

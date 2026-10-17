@@ -117,17 +117,13 @@ struct LeftSidebar: View {
                         .lineLimit(1)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, metrics.size(8))
-                .padding(.vertical, metrics.size(6))
-                .aletheRowBackground(isSelected: false)
             }
-            .buttonStyle(.plain)
-            .modifier(SidebarQuickNavigationMotion())
-            .foregroundStyle(theme[.fgMuted])
+            .buttonStyle(AletheSidebarSearchStyle())
             .disabled(environment.workspace == nil)
             .accessibilityIdentifier("leftSidebar.search")
+            .help(Text("leftSidebar.search"))
             .padding(.horizontal, metrics.size(8))
-            .frame(height: metrics.size(52))
+            .frame(height: metrics.size(40))
             .overlay(alignment: .bottom) { rule }
             webContent
                 .modifier(SidebarPanelMotion(identity: effectiveTab))
@@ -224,8 +220,8 @@ struct LeftSidebar: View {
                 .padding(.bottom, metrics.size(10))
                 .overlay(alignment: .top) { rule }
             }
-            SidebarUpdateChip()
             SidebarNowPlaying()
+            SidebarUpdateChip()
             SidebarWebProfile()
         }
     }

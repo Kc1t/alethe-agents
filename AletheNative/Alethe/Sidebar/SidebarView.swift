@@ -249,7 +249,8 @@ private struct GroupRow: View {
             !metrics.isWebInterface || SidebarProjectVisibility.visible($0, profile: environment.profileID,
                 hidden: hiddenProjects, archived: archivedProjects, reveal: revealHidden)
         }
-        SidebarDisclosure(isGroup: true, item: .group(group.id), isExpanded: Binding {
+        SidebarDisclosure(isGroup: true, item: .group(group.id),
+                          firstRootGroup: doc.childGroups(of: nil).first?.id == group.id, isExpanded: Binding {
             !group.isCollapsed
         } set: { expanded in
             actions.setCollapsed(group.id, !expanded)
@@ -289,8 +290,10 @@ private struct GroupRow: View {
                         .lineLimit(1)
                         .layoutPriority(1)
                     if group.suspended == true {
-                        Image(systemName: "pause.circle.fill").webProfileSized(14)
-                            .foregroundStyle(theme[.statusDisabled])
+                        Image(systemName: metrics.isWebInterface ? "pause" : "pause.circle.fill")
+                            .webProfileSized(metrics.isWebInterface ? 10 : 14)
+                            .modifier(SidebarSymbolAppearance(size: 10))
+                            .foregroundStyle(theme[metrics.isWebInterface ? .fgFaint : .statusDisabled])
                             .help(Text("sidebar.suspended"))
                             .accessibilityLabel(Text("sidebar.suspended"))
                     }
@@ -317,6 +320,10 @@ private struct GroupRow: View {
                 }
             }
             .modifier(SidebarLabelAppearance(isGroup: true))
+            .modifier(SidebarWebGroupOpen {
+                actions.openGroup(group.id, adding: false)
+                environment.showingHome = false
+            })
             .modifier(SidebarWebRow(kind: .group, first: doc.childGroups(of: nil).first?.id == group.id))
             .modifier(SidebarDropAppearance(targeted: dropTarget))
         .onDrop(of: [.plainText], isTargeted: $dropTarget) { providers in
@@ -415,8 +422,10 @@ private struct ProjectRow: View {
                         .accessibilityLabel(Text("agentStatus.working"))
                 }
                 if !project.panes.isEmpty && project.panes.allSatisfy(\.isDisabled) {
-                    Image(systemName: "pause.circle").webProfileSized(14)
-                        .foregroundStyle(theme[.statusDisabled])
+                    Image(systemName: metrics.isWebInterface ? "pause" : "pause.circle")
+                        .webProfileSized(metrics.isWebInterface ? 11 : 14)
+                        .modifier(SidebarSymbolAppearance(size: 11))
+                        .foregroundStyle(theme[metrics.isWebInterface ? .fgFaint : .statusDisabled])
                         .accessibilityLabel(Text("sidebar.disableProject"))
                 }
                 Spacer(minLength: metrics.space(.xxs))
@@ -465,9 +474,9 @@ private struct ProjectRow: View {
             }
         } icon: {
             if metrics.isWebInterface {
-                Image(systemName: "folder").webProfileSized(20)
-                    .font(metrics.font(size: 20))
-                    .frame(width: metrics.size(20), height: metrics.size(20))
+                Image(systemName: "folder").webProfileSized(16)
+                    .font(metrics.font(size: 16))
+                    .frame(width: metrics.size(15), height: metrics.size(15))
                     .foregroundStyle(theme[project.color.token])
                     .saturation(dimmed ? 0 : 1)
                     .opacity(dimmed ? 0.6 : 1)
@@ -476,7 +485,7 @@ private struct ProjectRow: View {
                     .opacity(dimmed ? 0.6 : 1)
             }
         }
-        .modifier(SidebarLabelAppearance(isGroup: false, iconSize: 20))
+        .modifier(SidebarLabelAppearance(isGroup: false, iconSize: 16))
         .modifier(SidebarWebRow(kind: .project))
         .onHover { hovering = $0 }
         .tag(SidebarItem.project(project.id))
@@ -520,6 +529,7 @@ private struct SidebarTerminalRow: View {
                     .font(metrics.font(size: 12.5))
                     .foregroundStyle(theme[metrics.isWebInterface ? (working ? .fg : disabled ? .textQuaternary : hidden ? .textTertiary : .fg) : (disabled ? .textTertiary : .fgMuted)])
                     .lineLimit(1)
+                    .frame(maxWidth: metrics.isWebInterface ? .infinity : nil, alignment: .leading)
                 if !metrics.isWebInterface { AgentStatusGlyph(tab: tab.id) }
                 if let pane, pane.tabs.count > 1, metrics.isWebInterface || pane.tabs.first?.id == tab.id {
                     if metrics.isWebInterface {
@@ -536,9 +546,8 @@ private struct SidebarTerminalRow: View {
                 Spacer(minLength: metrics.space(.xxs))
                 if metrics.isWebInterface {
                     SidebarRowEndSlot(active: environment.terminals.activity[statusTab.id] == .working
-                        || environment.terminals.activity[statusTab.id] == .needsInput
                         || environment.terminals.unread.contains(statusTab.id), hovering: hovering) {
-                        AgentStatusGlyph(tab: statusTab.id)
+                        SidebarWebTerminalStatus(tab: statusTab.id)
                     } action: {
                         Menu { TabContextMenu(tab: tab, project: project, actions: actions) } label: {
                             Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
@@ -597,6 +606,7 @@ private struct SidebarTerminalRow: View {
             focused: actions.workspace.document.workspace.focusedPaneID == pane?.id))
         .onHover { hovering = $0 }
         .tag(SidebarItem.tab(tab.id))
+        .modifier(SidebarWebHelp(text: environment.terminals.displayName(of: tab)))
         .contextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }
         .accessibilityIdentifier("sidebar.tab.\(tab.agent)")
     }
@@ -694,8 +704,8 @@ private struct ProjectContextMenu: View {
             .accessibilityIdentifier("openIn.vscode")
         SidebarMenuButton("openIn.browser", symbol: "globe") { OpenInActions.browser(project) }
             .accessibilityIdentifier("openIn.browser")
-        SidebarMenuButton("projectSettings.exportEllipsis", symbol: "square.and.arrow.up") { ProjectSettingsTransfer.export(project) }
-        SidebarMenuButton("projectSettings.importEllipsis", symbol: "square.and.arrow.down") {
+        SidebarMenuButton("projectSettings.exportEllipsis", symbol: metrics.isWebInterface ? "arrow.down.to.line" : "square.and.arrow.up") { ProjectSettingsTransfer.export(project) }
+        SidebarMenuButton("projectSettings.importEllipsis", symbol: metrics.isWebInterface ? "arrow.up.to.line" : "square.and.arrow.down") {
             ProjectSettingsTransfer.importSettings(into: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
         }
         Menu("sidebar.moveToGroup") {
@@ -755,9 +765,9 @@ private struct ProjectContextMenu: View {
             }
         }
         if doc.isProjectDisabled(project.id) {
-            SidebarMenuButton("sidebar.enableProject", symbol: "play") { actions.setProjectDisabled(project.id, false) }
+            SidebarMenuButton("sidebar.enableProject", symbol: metrics.isWebInterface ? "power" : "play") { actions.setProjectDisabled(project.id, false) }
         } else {
-            SidebarMenuButton("sidebar.disableProject", symbol: "pause") { actions.setProjectDisabled(project.id, true) }
+            SidebarMenuButton("sidebar.disableProject", symbol: metrics.isWebInterface ? "power" : "pause") { actions.setProjectDisabled(project.id, true) }
                 .disabled(project.panes.isEmpty)
         }
         Divider()
