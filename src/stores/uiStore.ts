@@ -119,6 +119,9 @@ type UiState = {
   /** Pulse that flashes a specific pane so a voice-driven focus is visible. */
   focusFlash: { terminalId: string; ts: number } | null
   activeTerminal: { projectId: string; terminalId: string } | null
+  /** Text voice conversation hands to the Jev command bar (trigger word or modifier). */
+  voiceCommandRequest: { text: string; nonce: number } | null
+  openVoiceCommand: (text: string) => void
   selectedPanes: { projectId: string; terminalId: string }[]
   /** View principal sendo exibida no main. */
   activeView: ActiveView
@@ -234,6 +237,7 @@ export const useUiStore = create<UiState>((set) => ({
   focusRequest: null,
   focusFlash: null,
   activeTerminal: null,
+  voiceCommandRequest: null,
   selectedPanes: [],
   activeView: 'workspace',
   rightSidebarMode: TODOS_VIEW_ID,
@@ -288,6 +292,10 @@ export const useUiStore = create<UiState>((set) => ({
   requestPaneFocus: (terminalId) => set({ focusRequest: { terminalId, ts: Date.now() } }),
   requestPaneFlash: (terminalId) => set({ focusFlash: { terminalId, ts: Date.now() } }),
   setActiveTerminal: (projectId, terminalId) => set({ activeTerminal: { projectId, terminalId } }),
+  openVoiceCommand: (text) =>
+    set((state) => ({
+      voiceCommandRequest: { text, nonce: (state.voiceCommandRequest?.nonce ?? 0) + 1 },
+    })),
   selectPane: (projectId, terminalId, extend) =>
     set((state) => {
       if (!extend) return { selectedPanes: [{ projectId, terminalId }] }

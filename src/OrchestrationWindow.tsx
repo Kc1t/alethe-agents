@@ -1,16 +1,13 @@
-import { listen } from '@tauri-apps/api/event'
 import { useEffect } from 'react'
 
 import { InAppNotifications } from './components/InAppNotifications'
 import { OrchestratorPane } from './components/OrchestratorPane'
+import { useReadOnlyProjectsHydration } from './hooks/useReadOnlyProjectsHydration'
 import { useAgentCanvasMirror } from './lib/agentCanvasMirror'
 import { useT } from './lib/i18n'
 import { useAppliedTheme } from './lib/themes'
 import styles from './OrchestrationWindow.module.css'
 import { useProjectsStore } from './stores/projectsStore'
-
-/** The main window saves in bursts while it is busy; one reload per burst is enough here. */
-const RELOAD_THROTTLE_MS = 1_000
 
 /**
  * A detached orchestration board (#247): one orchestration pane's board, alone in its own window.
@@ -18,7 +15,6 @@ const RELOAD_THROTTLE_MS = 1_000
  */
 export function OrchestrationWindow({ terminalId }: { terminalId: string }) {
   const t = useT()
-  const hydrate = useProjectsStore((s) => s.hydrate)
   const hydrated = useProjectsStore((s) => s.hydrated)
   const projectId = useProjectsStore(
     (s) =>
@@ -38,30 +34,7 @@ export function OrchestrationWindow({ terminalId }: { terminalId: string }) {
   // The main window owns the subagent canvas; this one shows what it publishes.
   useAgentCanvasMirror()
 
-  // Read once, then again after the main window saves, so new planners, restarts and deleted panes
-  // reach this window too. A reload reads the whole file, so saves close together share one.
-  useEffect(() => {
-    void hydrate()
-    let cancelled = false
-    let unlisten: (() => void) | undefined
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const reload = () => {
-      if (timer) return
-      timer = setTimeout(() => {
-        timer = null
-        if (!cancelled) void hydrate()
-      }, RELOAD_THROTTLE_MS)
-    }
-    void listen('projects://saved', reload).then((off) => {
-      if (cancelled) off()
-      else unlisten = off
-    })
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-      unlisten?.()
-    }
-  }, [hydrate])
+  useReadOnlyProjectsHydration()
 
   useEffect(() => {
     if (!hydrated) return

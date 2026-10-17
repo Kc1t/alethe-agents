@@ -9,7 +9,7 @@ import {
 import { buildAgentLaunch } from '../lib/sessionLaunch'
 import { peekSession, savedConversationIdFor } from '../lib/sessionResume'
 import { EMPTY_PROJECTS_FILE } from '../lib/types'
-import type { AgentHookPayload } from '../stores/agentCanvasStore'
+import { type AgentHookPayload, useAgentCanvasStore } from '../stores/agentCanvasStore'
 import { useProjectsStore } from '../stores/projectsStore'
 import { migrate } from '../stores/projectsStore.migrations'
 import { useAgentHookBridge } from './useAgentHookBridge'
@@ -159,5 +159,24 @@ describe('Claude session persistence across terminal views', () => {
     )
     expect(tabs()[0].sessionId).toBe('chat-0')
     expect(peekSession(tabs()[0].id)).toBeNull()
+  })
+
+  it('feeds the canvas store orchestrator events but not voice-only ones', async () => {
+    const ingest = vi.spyOn(useAgentCanvasStore.getState(), 'ingest').mockImplementation(() => {})
+    await mountBridge()
+    emit('pty-0', 'chat-0', 'PreToolUse')
+    act(() =>
+      events.handler?.({
+        payload: {
+          plannerId: 'pty-0',
+          session_id: 'chat-0',
+          hook_event_name: 'PreToolUse',
+          sourceAgent: 'claude',
+          voiceOnly: true,
+        },
+      }),
+    )
+    expect(ingest).toHaveBeenCalledTimes(1)
+    ingest.mockRestore()
   })
 })

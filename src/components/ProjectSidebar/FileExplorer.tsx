@@ -291,12 +291,7 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
       />
 
       {menu ? (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          items={menuItems}
-          onClose={() => setMenu(null)}
-        />
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
       ) : null}
 
       <FilePreviewModal

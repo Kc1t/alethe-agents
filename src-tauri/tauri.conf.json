@@ -18,9 +18,11 @@
         "minWidth": 800,
         "minHeight": 500,
         "resizable": true,
-        "decorations": false
+        "decorations": false,
+        "backgroundThrottling": "disabled"
       }
     ],
+    "macOSPrivateApi": true,
     "security": {
       "csp": {
         "default-src": ["'none'"],
@@ -74,6 +76,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper"

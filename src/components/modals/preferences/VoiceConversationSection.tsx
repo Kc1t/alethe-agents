@@ -1,0 +1,335 @@
+import { useEffect, useState } from 'react'
+
+import { type MessageKey, useT } from '../../../lib/i18n'
+import { formatShortcut } from '../../../lib/platform'
+import { DEFAULT_PREFERENCES, type HudPreset, type VoiceApprovalChannel } from '../../../lib/types'
+import { offerVoiceRestart } from '../../../lib/voice/restartSessions'
+import { type Accelerator, parseAccelerator } from '../../../lib/voice/shortcut'
+import { useProjectsStore } from '../../../stores/projectsStore'
+import { Dropdown } from '../../ui/Dropdown'
+import controls from '../controls.module.css'
+import styles from '../PreferencesModal.module.css'
+import { SettingsSection } from './primitives'
+import { ShortcutRecorder } from './ShortcutRecorder'
+
+const HUD_PRESETS = [
+  ['bottom-center', 'prefs.voiceHudBottomCenter'],
+  ['bottom-left', 'prefs.voiceHudBottomLeft'],
+  ['bottom-right', 'prefs.voiceHudBottomRight'],
+  ['top-center', 'prefs.voiceHudTopCenter'],
+  ['top-left', 'prefs.voiceHudTopLeft'],
+  ['top-right', 'prefs.voiceHudTopRight'],
+] as const satisfies readonly (readonly [HudPreset, MessageKey])[]
+
+const inAppOnly = () => Promise.resolve()
+
+/** The same chord, however the accelerator was spelled. */
+function sameShortcut(a: string, b: string): boolean {
+  const first = parseAccelerator(a)
+  const second = parseAccelerator(b)
+  if (!first || !second) return false
+  return (Object.keys(first) as (keyof Accelerator)[]).every((key) => first[key] === second[key])
+}
+
+/** Refuses a chord another voice shortcut already uses. */
+function takenBy(accelerator: string, others: string[]): MessageKey | null {
+  return others.some((other) => sameShortcut(accelerator, other))
+    ? 'prefs.voiceShortcutInUse'
+    : null
+}
+
+export function VoiceConversationSection() {
+  const t = useT()
+  const preferences = useProjectsStore((s) => s.preferences)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
+  const [wordsDraft, setWordsDraft] = useState(preferences.voiceInterruptWords.join(', '))
+  const [triggerDraft, setTriggerDraft] = useState(preferences.voiceJevTrigger)
+  const enabled = preferences.voiceConversationEnabled
+  const storedWords = preferences.voiceInterruptWords.join(', ')
+
+  useEffect(() => setWordsDraft(storedWords), [storedWords])
+  useEffect(() => setTriggerDraft(preferences.voiceJevTrigger), [preferences.voiceJevTrigger])
+
+  const segment = <T extends string>(
+    value: T,
+    current: T,
+    label: string,
+    apply: (next: T) => void,
+  ) => (
+    <button
+      key={value}
+      type="button"
+      className={current === value ? styles.segmentActive : undefined}
+      disabled={!enabled}
+      onClick={() => apply(value)}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <>
+      <>
+        <SettingsSection
+          id="voice-conversation"
+          title={t('prefs.voiceConv')}
+          description={t('prefs.voiceConvDesc', {
+            shortcut: formatShortcut(
+              preferences.voiceShortcut.replace(/CmdOrCtrl|CommandOrControl/i, 'Ctrl'),
+            ),
+          })}
+        >
+          <div className={styles.segmented}>
+            <button
+              type="button"
+              className={enabled ? styles.segmentActive : undefined}
+              onClick={() => {
+                if (enabled) return
+                setPreferences({ voiceConversationEnabled: true })
+                // Claude sessions already running have no voice hooks until restarted.
+                void offerVoiceRestart().catch(() => undefined)
+              }}
+            >
+              {t('prefs.voiceConvOn')}
+            </button>
+            <button
+              type="button"
+              className={!enabled ? styles.segmentActive : undefined}
+              onClick={() => setPreferences({ voiceConversationEnabled: false })}
+            >
+              {t('prefs.voiceConvOff')}
+            </button>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-conversation-mode"
+          title={t('prefs.voiceConvMode')}
+          description={t('prefs.voiceConvModeDesc')}
+        >
+          <div className={styles.segmented}>
+            {segment(
+              'push-to-talk',
+              preferences.voiceCaptureMode,
+              t('prefs.voiceConvModeHold'),
+              (v) => setPreferences({ voiceCaptureMode: v }),
+            )}
+            {segment('toggle', preferences.voiceCaptureMode, t('prefs.voiceConvModeToggle'), (v) =>
+              setPreferences({ voiceCaptureMode: v }),
+            )}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-conversation-shortcut"
+          title={t('prefs.voiceConvShortcut')}
+          description={t('prefs.voiceConvShortcutDesc')}
+        >
+          <ShortcutRecorder
+            value={preferences.voiceShortcut}
+            onSaved={(voiceShortcut) => setPreferences({ voiceShortcut })}
+            disabled={!enabled}
+            reject={(accelerator) =>
+              takenBy(accelerator, [
+                preferences.voiceReadAloudShortcut,
+                preferences.voiceCommandShortcut,
+              ])
+            }
+          />
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-read-aloud-shortcut"
+          title={t('prefs.voiceReadAloudShortcut')}
+          description={t('prefs.voiceReadAloudShortcutDesc')}
+        >
+          <ShortcutRecorder
+            value={preferences.voiceReadAloudShortcut}
+            defaultValue={DEFAULT_PREFERENCES.voiceReadAloudShortcut}
+            onSaved={(voiceReadAloudShortcut) => setPreferences({ voiceReadAloudShortcut })}
+            disabled={!enabled}
+            // Works inside Alethe only: there is nothing to register with the OS.
+            register={inAppOnly}
+            reject={(accelerator) =>
+              takenBy(accelerator, [preferences.voiceShortcut, preferences.voiceCommandShortcut])
+            }
+          />
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-command-shortcut"
+          title={t('prefs.voiceCommandShortcut')}
+          description={t('prefs.voiceCommandShortcutDesc')}
+        >
+          <ShortcutRecorder
+            value={preferences.voiceCommandShortcut}
+            defaultValue={DEFAULT_PREFERENCES.voiceCommandShortcut}
+            onSaved={(voiceCommandShortcut) => setPreferences({ voiceCommandShortcut })}
+            // Jev works with voice conversation off, so its chord stays editable.
+            register={inAppOnly}
+            reject={(accelerator) =>
+              takenBy(accelerator, [preferences.voiceShortcut, preferences.voiceReadAloudShortcut])
+            }
+          />
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-conversation-hud"
+          title={t('prefs.voiceHudPosition')}
+          description={t('prefs.voiceHudPositionDesc')}
+        >
+          <Dropdown
+            rootClassName={styles.dictationMicSelect}
+            disabled={!enabled}
+            value={preferences.voiceHudPosition}
+            ariaLabel={t('prefs.voiceHudPosition')}
+            options={[
+              ...HUD_PRESETS.map(([value, key]) => ({ value, label: t(key) })),
+              ...(preferences.voiceHudPosition === 'custom'
+                ? [{ value: 'custom', label: t('prefs.voiceHudCustom'), disabled: true }]
+                : []),
+            ]}
+            onChange={(value) => setPreferences({ voiceHudPosition: value as HudPreset })}
+          />
+          {preferences.voiceHudPosition === 'custom' ? (
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnSm}`}
+              disabled={!enabled}
+              onClick={() =>
+                setPreferences({
+                  voiceHudPosition: 'bottom-center',
+                  voiceHudCustomPosition: null,
+                })
+              }
+            >
+              {t('prefs.voiceHudReset')}
+            </button>
+          ) : null}
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-conversation-panel"
+          title={t('prefs.voicePanelPosition')}
+          description={t('prefs.voicePanelPositionDesc')}
+        >
+          <p>
+            {t(
+              preferences.voiceDockPosition ? 'prefs.voiceHudCustom' : 'prefs.voiceHudBottomCenter',
+            )}
+          </p>
+          {preferences.voiceDockPosition ? (
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnSm}`}
+              disabled={!enabled}
+              onClick={() => setPreferences({ voiceDockPosition: null })}
+            >
+              {t('prefs.voiceHudReset')}
+            </button>
+          ) : null}
+        </SettingsSection>
+      </>
+
+      <>
+        <SettingsSection
+          id="voice-conversation-approval"
+          title={t('prefs.voiceConvApproval')}
+          description={t('prefs.voiceConvApprovalDesc')}
+        >
+          <div className={styles.segmented}>
+            {(
+              [
+                ['both', 'prefs.voiceConvApprovalBoth'],
+                ['voice', 'prefs.voiceConvApprovalVoice'],
+                ['hud', 'prefs.voiceConvApprovalHud'],
+              ] as const
+            ).map(([value, key]) =>
+              segment<VoiceApprovalChannel>(value, preferences.voiceApprovalChannel, t(key), (v) =>
+                setPreferences({ voiceApprovalChannel: v }),
+              ),
+            )}
+          </div>
+          <p>{t('prefs.voiceConvDestructive')}</p>
+          <p>{t('prefs.voiceConvDestructiveDesc')}</p>
+          <div className={styles.segmented}>
+            {segment(
+              'hud',
+              preferences.voiceDestructiveNeedsHud ? 'hud' : 'voice',
+              t('prefs.voiceConvDestructiveHud'),
+              () => setPreferences({ voiceDestructiveNeedsHud: true }),
+            )}
+            {segment(
+              'voice',
+              preferences.voiceDestructiveNeedsHud ? 'hud' : 'voice',
+              t('prefs.voiceConvDestructiveVoice'),
+              () => setPreferences({ voiceDestructiveNeedsHud: false }),
+            )}
+          </div>
+          <p>{t('prefs.voiceConvMidTask')}</p>
+          <p>{t('prefs.voiceConvMidTaskDesc')}</p>
+          <div className={styles.segmented}>
+            {segment(
+              'queue',
+              preferences.voiceMidTaskDefault,
+              t('prefs.voiceConvMidTaskQueue'),
+              (v) => setPreferences({ voiceMidTaskDefault: v }),
+            )}
+            {segment(
+              'interrupt',
+              preferences.voiceMidTaskDefault,
+              t('prefs.voiceConvMidTaskInterrupt'),
+              (v) => setPreferences({ voiceMidTaskDefault: v }),
+            )}
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="voice-conversation-words"
+          title={t('prefs.voiceConvWords')}
+          description={t('prefs.voiceConvWordsDesc')}
+        >
+          <input
+            className={controls.input}
+            value={wordsDraft}
+            disabled={!enabled}
+            spellCheck={false}
+            aria-label={t('prefs.voiceConvWords')}
+            onChange={(event) => setWordsDraft(event.target.value)}
+            onBlur={() => {
+              // The matcher compares single words, so multi-word entries could never match.
+              const words = [
+                ...new Set(
+                  wordsDraft
+                    .split(',')
+                    .map((word) => word.trim().toLowerCase())
+                    .filter((word) => word && !/\s/.test(word)),
+                ),
+              ]
+              setPreferences({ voiceInterruptWords: words })
+              setWordsDraft(words.join(', '))
+            }}
+          />
+          <p>{t('prefs.voiceConvTriggerDesc')}</p>
+          <input
+            className={controls.input}
+            value={triggerDraft}
+            disabled={!enabled}
+            spellCheck={false}
+            aria-label={t('prefs.voiceConvTrigger')}
+            onChange={(event) => setTriggerDraft(event.target.value)}
+            onBlur={() => {
+              const next = triggerDraft.trim().toLowerCase()
+              if (next) {
+                setPreferences({ voiceJevTrigger: next })
+                setTriggerDraft(next)
+              } else {
+                setTriggerDraft(preferences.voiceJevTrigger)
+              }
+            }}
+          />
+        </SettingsSection>
+      </>
+    </>
+  )
+}

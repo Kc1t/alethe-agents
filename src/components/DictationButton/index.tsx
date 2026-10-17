@@ -1,12 +1,20 @@
 import { Loader2, Mic, MicOff } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
-import { DEFAULT_SPEECH_MODEL_ID } from '../../lib/speech/audio'
-import { speechStartCapture, speechStopCapture, stopAndTranscribe, writePty } from '../../lib/tauri'
+import {
+  CaptureGate,
+  openCapture,
+  transcribeCapture,
+  transcriptionFailureText,
+} from '../../lib/speech/capture'
+import { sttChoiceFor } from '../../lib/speech/engine'
+import { isSpeechTooShort } from '../../lib/speech/errors'
+import { speechStopCapture, writePty } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { isRecordingShortcut } from '../../stores/voiceConversationStore'
 import styles from './DictationButton.module.css'
 
 /** How long error feedback stays visible before the mic indicator hides again. */
@@ -37,15 +45,13 @@ export function DictationButton() {
   const t = useT()
   const enabled = useProjectsStore((s) => s.preferences.dictationEnabled)
   const mode = useProjectsStore((s) => s.preferences.dictationMode)
-  const modelId = useProjectsStore((s) => s.preferences.dictationModelId || DEFAULT_SPEECH_MODEL_ID)
+  const voiceStt = useProjectsStore((s) => s.preferences.voiceStt)
+  const engine = useMemo(() => sttChoiceFor({ voiceStt }, 'dictation'), [voiceStt])
   const micId = useProjectsStore((s) => s.preferences.dictationMicrophoneId)
-  const provider = useProjectsStore((s) => s.preferences.dictationProvider)
-  const cloudModel = useProjectsStore((s) => s.preferences.dictationCloudModel)
-  const apiKey = useProjectsStore((s) => s.preferences.voiceCommandApiKey)
   const [listening, setListening] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const recordingRef = useRef(false)
+  const gateRef = useRef(new CaptureGate())
   const holdActiveRef = useRef(false)
   const busyRef = useRef(false)
 
@@ -63,54 +69,51 @@ export function DictationButton() {
   )
 
   const stopCapture = useCallback(async () => {
-    if (!recordingRef.current) return
-    recordingRef.current = false
+    if (!gateRef.current.takeStop()) return
     setListening(false)
     busyRef.current = true
     setBusy(true)
     setError(null)
     try {
-      if (provider === 'openrouter' && !apiKey.trim()) {
-        await speechStopCapture()
-        setError(t('dictation.missingCloudKey'))
-        return
-      }
-      const text = await stopAndTranscribe({ provider, modelId, cloudModel, apiKey })
-      if (!text.trim()) {
+      const text = await transcribeCapture(engine, 'dictation')
+      if (!text) {
         setError(t('dictation.emptyTranscript'))
         return
       }
       await insertTranscript(text)
     } catch (cause) {
-      // If stop+transcribe failed mid-flight, make sure the native stream is dropped.
-      try {
-        await speechStopCapture()
-      } catch {
-        /* already stopped */
-      }
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(
+        isSpeechTooShort(cause)
+          ? t('dictation.tooShort')
+          : transcriptionFailureText(cause, engine.provider, t),
+      )
     } finally {
       busyRef.current = false
       setBusy(false)
     }
-  }, [apiKey, cloudModel, insertTranscript, modelId, provider, t])
+  }, [insertTranscript, engine, t])
 
   const startCapture = useCallback(async () => {
-    if (recordingRef.current || busyRef.current) return
+    if (gateRef.current.active || busyRef.current) return
     setError(null)
     try {
-      await speechStartCapture(micId)
-      recordingRef.current = true
-      setListening(true)
+      await gateRef.current.start(async () => {
+        const block = await openCapture(engine, micId)
+        if (block) {
+          if (block !== 'cancelled') setError(t(block))
+          return false
+        }
+        setListening(true)
+        return true
+      }, stopCapture)
     } catch (cause) {
-      recordingRef.current = false
       setError(cause instanceof Error ? cause.message : String(cause))
       setListening(false)
     }
-  }, [micId])
+  }, [engine, micId, stopCapture, t])
 
   const toggle = useCallback(() => {
-    if (recordingRef.current) void stopCapture()
+    if (gateRef.current.active) void stopCapture()
     else void startCapture()
   }, [startCapture, stopCapture])
 
@@ -118,7 +121,7 @@ export function DictationButton() {
     if (!enabled) return
 
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!isDictationChord(e) || e.repeat) return
+      if (!isDictationChord(e) || e.repeat || isRecordingShortcut()) return
       e.preventDefault()
       e.stopPropagation()
       if (mode === 'hold') {
@@ -150,9 +153,7 @@ export function DictationButton() {
 
   useEffect(
     () => () => {
-      if (!recordingRef.current) return
-      recordingRef.current = false
-      void speechStopCapture().catch(() => undefined)
+      if (gateRef.current.abandon()) void speechStopCapture().catch(() => undefined)
     },
     [],
   )

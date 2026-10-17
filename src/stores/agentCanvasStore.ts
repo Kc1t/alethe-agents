@@ -29,6 +29,11 @@ export type AgentHookPayload = {
   task_description?: string
   teammate_name?: string
   team_name?: string
+  /** Registered only because voice conversation is on; the orchestrator board ignores it. */
+  voiceOnly?: boolean
+  /** PermissionRequest held by Alethe for a voice answer (agent_events.rs). */
+  permissionRequestId?: string
+  cwd?: string
 }
 
 export type ToolEvent = {

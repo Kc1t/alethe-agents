@@ -72,6 +72,8 @@ export type VoicePlan =
       terminalId: string
       terminalName: string
       ptyId: string
+      /** What runs in the pane: an agent gets the guarded submit, a shell a plain write. */
+      agent: AgentType
       prompt: string
     }
   | { kind: 'focus'; projectId: string; terminalId: string; terminalName: string }
@@ -227,6 +229,7 @@ export function planFromDecision(decision: JevDecision, workspace: VoiceWorkspac
         terminalId: terminal.id,
         terminalName: `${terminal.agent} · ${terminal.projectName}`,
         ptyId: terminal.ptyId,
+        agent: terminal.agent,
         prompt,
       }
     }

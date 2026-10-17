@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import type { CloudVoiceProviderId, SttProviderId, VoiceServerErrorKind } from '../types'
+import type { CloudErrorKind } from './voiceProviders'
+
+export const APPLE_SPEECH_MODEL_ID = 'apple-speech'
+
+export type NativeLocale = { id: string; name: string; installed: boolean }
+
 export type SpeechModelManifest = {
   id: string
   label: string
@@ -9,20 +16,39 @@ export type SpeechModelManifest = {
   sampleRate: number
   sizeBytes: number
   recommended: boolean
+  kind: 'download' | 'native'
+  /** Absent until the backend reports it; treated as speech to text. */
+  capability?: 'stt' | 'tts'
+  /** `huggingface` for a model downloaded from the search; absent on older backends. */
+  source?: 'catalog' | 'huggingface'
+  hub?: HubModelInfo
 }
 
 export type SpeechModelState = {
   id: string
-  status: 'not-downloaded' | 'downloading' | 'ready' | 'error' | string
+  status: 'not-downloaded' | 'downloading' | 'paused' | 'ready' | 'error' | string
   progress?: number | null
   error?: string | null
+  downloadedBytes?: number | null
+  totalBytes?: number | null
 }
+
+/** Rejection code of `speech_download_model` when the user paused the download. */
+export const DOWNLOAD_PAUSED = 'speech_download_paused'
+/** Rejection code of `speech_download_model` when another download is already running. */
+export const DOWNLOAD_BUSY = 'speech_download_busy'
 
 export type SpeechDownloadProgress = {
   modelId: string
   downloaded: number
   total: number
   fraction: number
+  /** `verifying` while a finished file's SHA-256 is checked; `unpacking` while an archive is extracted. */
+  phase: 'downloading' | 'verifying' | 'unpacking' | 'paused'
+  file: string
+  /** 1-based position of `file` among the model's files. */
+  fileIndex: number
+  fileCount: number
 }
 
 export type SpeechInputDevice = {
@@ -37,6 +63,69 @@ export type CapturedAudio = {
   peak: number
 }
 
+export type HubFamily =
+  | 'vits'
+  | 'kokoro'
+  | 'kitten'
+  | 'transducer'
+  | 'nemo-transducer'
+  | 'whisper'
+  | 'moonshine'
+  | 'sense-voice'
+  | 'paraformer'
+  | 'nemo-ctc'
+  | 'dolphin'
+
+export type HubModelInfo = {
+  repo: string
+  /** Pinned once the repo's files were checked. */
+  commit: string | null
+  family: HubFamily
+  languages: string[]
+  languageCount: number | null
+  multilingual: boolean
+  /** Estimated 1–3 tiers. */
+  speed: number | null
+  accuracy: number | null
+  voiceCount: number | null
+  license: string | null
+  lastModified: string | null
+  likes: number
+  fileCount: number | null
+  totalBytes: number | null
+}
+
+export type HubSearchResult = { id: string; use: 'stt' | 'tts'; label: string; hub: HubModelInfo }
+export type HubSearchQuery = {
+  use: 'stt' | 'tts' | null
+  query: string
+  language: string | null
+  sort: 'likes' | 'recent'
+  offset: number
+}
+export type HubSearchPage = { results: HubSearchResult[]; hasMore: boolean }
+
+/** Rejection codes of the Hugging Face commands. */
+export const HUB_ERROR = {
+  offline: 'hub_offline',
+  rateLimited: 'hub_rate_limited',
+  unavailable: 'hub_unavailable',
+  badResponse: 'hub_bad_response',
+  incompatible: 'hub_incompatible',
+  tooLarge: 'hub_too_large',
+  gated: 'hub_gated',
+  unknownRepo: 'hub_unknown_repo',
+} as const
+
+export async function speechHubSearch(query: HubSearchQuery): Promise<HubSearchPage> {
+  return invoke('speech_hub_search', { query })
+}
+
+/** Pins the repo's current commit and returns the exact files and size to download. */
+export async function speechHubResolve(repo: string): Promise<HubSearchResult> {
+  return invoke('speech_hub_resolve', { repo })
+}
+
 export async function speechListModels(): Promise<SpeechModelManifest[]> {
   return invoke('speech_list_models')
 }
@@ -45,12 +134,24 @@ export async function speechListInputDevices(): Promise<SpeechInputDevice[]> {
   return invoke('speech_list_input_devices')
 }
 
-export async function speechModelStates(): Promise<SpeechModelState[]> {
-  return invoke('speech_model_states')
+export async function speechModelStates(locale?: string | null): Promise<SpeechModelState[]> {
+  return invoke('speech_model_states', { locale: locale ?? null })
 }
 
-export async function speechDownloadModel(modelId: string): Promise<SpeechModelState> {
-  return invoke('speech_download_model', { modelId })
+export async function speechDownloadModel(
+  modelId: string,
+  locale?: string | null,
+): Promise<SpeechModelState> {
+  return invoke('speech_download_model', { modelId, locale: locale ?? null })
+}
+
+export async function speechPauseDownload(modelId: string): Promise<boolean> {
+  return invoke('speech_pause_download', { modelId })
+}
+
+/** Discards a partial download (no-op on a ready model). */
+export async function speechCancelDownload(modelId: string): Promise<void> {
+  await invoke('speech_cancel_download', { modelId })
 }
 
 export async function speechDeleteModel(modelId: string): Promise<void> {
@@ -87,47 +188,79 @@ export async function speechStopCapture(): Promise<CapturedAudio> {
   return invoke('speech_stop_capture')
 }
 
-/** Stop native capture and run on-device STT in one round-trip. */
-export async function speechPrepare(modelId: string): Promise<boolean> {
-  return invoke('speech_prepare', { modelId })
+export type SttCallOptions = {
+  provider: SttProviderId
+  fallbackLocale: string | null
+  usage: string
 }
 
 /**
- * Decode only the audio recorded since the previous partial call and return the
- * accumulated transcript. Errors when the backend has no partial support.
+ * Transcribes the last few seconds of the capture that is still recording, so a spoken send
+ * phrase can end it. Errors when the engine cannot transcribe a running capture.
  */
-export async function speechTranscribePartial(modelId: string): Promise<string> {
-  return invoke('speech_transcribe_partial', { modelId })
+export async function speechTranscribePartial(
+  modelId: string,
+  locale?: string | null,
+): Promise<string> {
+  return invoke('speech_transcribe_partial', { modelId, locale: locale ?? null })
 }
 
-export async function speechStopAndTranscribe(modelId: string): Promise<string> {
-  return invoke('speech_stop_and_transcribe', { modelId })
+/** Loads the model, requests Apple permission, or checks a cloud key; true when ready. */
+export async function speechPrepare(
+  modelId: string,
+  locale?: string | null,
+  provider?: SttProviderId,
+): Promise<boolean> {
+  return invoke('speech_prepare', { provider: provider ?? null, modelId, locale: locale ?? null })
 }
 
-export async function speechStopAndTranscribeCloud(apiKey: string, model: string): Promise<string> {
-  return invoke('speech_stop_and_transcribe_cloud', { apiKey, model })
+/** Stop capture and transcribe with the chosen provider; a cloud failure falls back to local. */
+export async function speechStopAndTranscribe(
+  modelId: string,
+  locale?: string | null,
+  options?: SttCallOptions,
+): Promise<string> {
+  return invoke('speech_stop_and_transcribe', {
+    provider: options?.provider ?? null,
+    modelId,
+    locale: locale ?? null,
+    fallbackLocale: options?.fallbackLocale ?? null,
+    usage: options?.usage ?? null,
+  })
 }
 
-export type Transcriber = {
-  provider: 'local' | 'openrouter'
-  modelId: string
-  cloudModel: string
-  apiKey: string
+export type VoiceFallbackEvent = {
+  usage: string
+  provider: CloudVoiceProviderId | 'system' | 'server'
+  reason: CloudErrorKind | VoiceServerErrorKind
+  fallback: string
+  /** The local server's id, on `provider: 'server'`. */
+  server?: string
 }
 
-export async function stopAndTranscribe(transcriber: Transcriber): Promise<string> {
-  return transcriber.provider === 'openrouter'
-    ? speechStopAndTranscribeCloud(transcriber.apiKey, transcriber.cloudModel)
-    : speechStopAndTranscribe(transcriber.modelId)
+export async function onVoiceFallback(
+  handler: (event: VoiceFallbackEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<VoiceFallbackEvent>('voice://fallback', (event) => handler(event.payload))
 }
 
 export async function speechTranscribe(
   modelId: string,
   samples: Float32Array | number[],
   sampleRate: number,
+  locale?: string | null,
 ): Promise<string> {
   const payload = Array.from(samples)
-  return invoke('speech_transcribe', { modelId, samples: payload, sampleRate })
+  return invoke('speech_transcribe', {
+    modelId,
+    samples: payload,
+    sampleRate,
+    locale: locale ?? null,
+  })
+}
+
+export async function speechNativeLocales(): Promise<NativeLocale[]> {
+  return invoke('speech_native_locales')
 }
 
 export async function onSpeechDownloadProgress(

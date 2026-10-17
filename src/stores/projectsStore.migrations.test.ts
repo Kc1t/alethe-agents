@@ -4,10 +4,160 @@ import {
   DEFAULT_PREFERENCES,
   DEFAULT_TERMINAL_FONT_FAMILY,
   EMPTY_PROJECTS_FILE,
+  type Preferences,
 } from '../lib/types'
+import { NARRATION_PRESETS } from '../lib/voice/narration'
 import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
+  it('backfills the native speech preferences', () => {
+    expect(normalizePreferences({}).speechEngineMigrated).toBe(false)
+  })
+
+  it('migrates legacy voice fields and drops them', () => {
+    const preferences = normalizePreferences({
+      dictationModelId: 'apple-speech',
+      dictationNativeLocale: 'pt-BR',
+      voiceTtsVoice: 'v1',
+      voiceTtsRate: 1.5,
+    } as never) as unknown as Record<string, unknown>
+    expect(preferences.voiceStt).toEqual({
+      dictation: { provider: 'apple', model: 'apple-speech', locale: 'pt-BR' },
+      conversation: { provider: 'apple', model: 'apple-speech', locale: 'pt-BR' },
+    })
+    expect(preferences.voiceTts).toEqual({
+      provider: 'system',
+      model: '',
+      voice: 'v1',
+      rate: 1.5,
+      server: null,
+    })
+    for (const legacy of [
+      'dictationModelId',
+      'dictationNativeLocale',
+      'voiceTtsVoice',
+      'voiceTtsRate',
+    ]) {
+      expect(preferences).not.toHaveProperty(legacy)
+    }
+  })
+
+  it('backfills the HUD position and drops a malformed custom one', () => {
+    expect(normalizePreferences({}).voiceHudPosition).toBe('bottom-center')
+    expect(normalizePreferences({}).voiceHudCustomPosition).toBeNull()
+    expect(normalizePreferences({ voiceHudPosition: 'middle' as never }).voiceHudPosition).toBe(
+      'bottom-center',
+    )
+    expect(
+      normalizePreferences({ voiceHudCustomPosition: { monitor: 'DELL', x: 1.7, y: -2 } })
+        .voiceHudCustomPosition,
+    ).toEqual({ monitor: 'DELL', x: 1, y: 0 })
+    expect(
+      normalizePreferences({ voiceHudCustomPosition: { x: 0.1 } as never }).voiceHudCustomPosition,
+    ).toBeNull()
+  })
+
+  it('keeps the monitor bounds of a custom position, and old values without them', () => {
+    const bounds = { x: -1920, y: 0, width: 1920, height: 1080 }
+    expect(
+      normalizePreferences({ voiceHudCustomPosition: { monitor: 'M', x: 0.5, y: 0.5, bounds } })
+        .voiceHudCustomPosition,
+    ).toEqual({ monitor: 'M', x: 0.5, y: 0.5, bounds })
+    expect(
+      normalizePreferences({ voiceHudCustomPosition: { monitor: 'M', x: 0.5, y: 0.5 } })
+        .voiceHudCustomPosition,
+    ).toEqual({ monitor: 'M', x: 0.5, y: 0.5 })
+    // Malformed bounds are dropped; the position stays, matched by name only.
+    for (const bad of [{ x: 0, y: 0, width: 0, height: 10 }, { x: 'a' }, null, 7]) {
+      expect(
+        normalizePreferences({
+          voiceHudCustomPosition: { monitor: 'M', x: 0.5, y: 0.5, bounds: bad as never },
+        }).voiceHudCustomPosition,
+      ).toEqual({ monitor: 'M', x: 0.5, y: 0.5 })
+    }
+  })
+
+  it('backfills the in-window panel position and clamps or drops a saved one', () => {
+    expect(normalizePreferences({}).voiceDockPosition).toBeNull()
+    expect(
+      normalizePreferences({ voiceDockPosition: { x: 0.25, y: 0.75 } }).voiceDockPosition,
+    ).toEqual({ x: 0.25, y: 0.75 })
+    expect(normalizePreferences({ voiceDockPosition: { x: 4, y: -1 } }).voiceDockPosition).toEqual({
+      x: 1,
+      y: 0,
+    })
+    for (const bad of [{ x: 0.5 }, { x: 'a', y: 0 }, { x: Number.NaN, y: 0 }, 3]) {
+      expect(normalizePreferences({ voiceDockPosition: bad as never }).voiceDockPosition).toBeNull()
+    }
+  })
+
+  // The presets became per-category toggles; a saved verbosity keeps speaking the same things.
+  it('migrates a saved narration verbosity to its toggles and drops it', () => {
+    for (const level of ['silent', 'final', 'normal', 'detailed'] as const) {
+      const preferences = normalizePreferences({ voiceVerbosity: level } as never)
+      expect(preferences.voiceNarration).toEqual(NARRATION_PRESETS[level])
+      expect(preferences).not.toHaveProperty('voiceVerbosity')
+    }
+    const custom = { ...NARRATION_PRESETS.silent, thinking: true }
+    expect(
+      normalizePreferences({ voiceNarration: custom, voiceVerbosity: 'detailed' } as never)
+        .voiceNarration,
+    ).toEqual(custom)
+  })
+
+  it('keeps custom only when a custom position exists', () => {
+    expect(
+      normalizePreferences({ voiceHudPosition: 'custom', voiceHudCustomPosition: null })
+        .voiceHudPosition,
+    ).toBe('bottom-center')
+  })
+
+  it('backfills voice conversation preferences with safe defaults', () => {
+    const preferences = normalizePreferences({})
+    expect(preferences).toMatchObject({
+      voiceConversationEnabled: false,
+      voiceShortcut: 'CmdOrCtrl+Shift+Space',
+      voiceReadAloudShortcut: 'CmdOrCtrl+Shift+L',
+      voiceCaptureMode: 'push-to-talk',
+      voiceNarration: NARRATION_PRESETS.normal,
+      voiceFillAfterMs: 8000,
+      voiceApprovalChannel: 'both',
+      voiceDestructiveNeedsHud: true,
+      voiceMidTaskDefault: 'queue',
+      voiceInterruptWords: ['stop', 'espera', 'cancela'],
+      voiceJevTrigger: 'alethe',
+    })
+  })
+
+  it('repairs voice conversation preferences that are out of range or the wrong shape', () => {
+    const preferences = normalizePreferences({
+      voiceCaptureMode: 'shout',
+      voiceVerbosity: 'loud',
+      voiceFillAfterMs: 10,
+      voiceApprovalChannel: 'telepathy',
+      voiceMidTaskDefault: 'explode',
+      voiceInterruptWords: [' STOP ', '', 42, 'Espera'],
+      voiceJevTrigger: '  ',
+      voiceShortcut: '',
+      voiceReadAloudShortcut: ' ',
+    } as unknown as Partial<Preferences>)
+    expect(preferences).toMatchObject({
+      voiceCaptureMode: 'push-to-talk',
+      voiceNarration: NARRATION_PRESETS.normal,
+      voiceFillAfterMs: 3000,
+      voiceApprovalChannel: 'both',
+      voiceMidTaskDefault: 'queue',
+      voiceInterruptWords: ['stop', 'espera'],
+      voiceJevTrigger: 'alethe',
+      voiceShortcut: 'CmdOrCtrl+Shift+Space',
+      voiceReadAloudShortcut: 'CmdOrCtrl+Shift+L',
+    })
+  })
+
+  it('keeps an explicitly empty interrupt word list', () => {
+    expect(normalizePreferences({ voiceInterruptWords: [] }).voiceInterruptWords).toEqual([])
+  })
+
   it('preserves persisted sidebar visibility and widths', () => {
     const preferences = normalizePreferences({
       ...DEFAULT_PREFERENCES,

@@ -133,7 +133,9 @@ export function AgentsPanel() {
           {plannerPtyId ? t('agentsPanel.scopeFocused') : t('agentsPanel.scopeAll')}
         </span>
         {runningCount > 0 ? (
-          <span className={styles.running}>{t('orchestrator.running', { count: runningCount })}</span>
+          <span className={styles.running}>
+            {t('orchestrator.running', { count: runningCount })}
+          </span>
         ) : null}
         <span className={styles.headerSpacer} />
         <button

@@ -1,0 +1,9 @@
+.field {
+  display: flex;
+  min-width: 220px;
+  flex-direction: column;
+  align-self: flex-start;
+  gap: 6px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}

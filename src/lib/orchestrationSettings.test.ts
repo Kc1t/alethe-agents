@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  normalizeOrchestrationSettings,
-  normalizeRoutingSettings,
-} from './orchestrationSettings'
+import { normalizeOrchestrationSettings, normalizeRoutingSettings } from './orchestrationSettings'
 import { DEFAULT_ROUTING_SETTINGS } from './types'
 
 const validRule = {

@@ -28,6 +28,7 @@ import { TODO_TITLE_MAX_LENGTH } from '../../lib/todos'
 import type { Terminal, TodoItem } from '../../lib/types'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { isRecordingShortcut } from '../../stores/voiceConversationStore'
 import { TODO_SETTINGS_MODAL_ID } from './manifest'
 import { useTodosStore } from './store'
 import styles from './TodoSidebar.module.css'
@@ -182,7 +183,7 @@ export function TodoSidebar() {
   useEffect(() => {
     const focusComposer = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
-      if (event.key.toLowerCase() !== 'n') return
+      if (event.key.toLowerCase() !== 'n' || isRecordingShortcut()) return
       event.preventDefault()
       setComposerExpanded(true)
       addInputRef.current?.focus()

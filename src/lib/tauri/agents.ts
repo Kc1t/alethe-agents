@@ -45,6 +45,12 @@ async function liveAiMemoryPrefs(): Promise<{ enabled: boolean; port: number }> 
   return { enabled: prefs.enabledFeatures.aiMemory, port: AI_MEMORY_DEFAULT_PORT }
 }
 
+/** Live voice-conversation preference; imported lazily for the same reason as `liveAiMemoryPrefs`. */
+async function liveVoicePref(): Promise<boolean> {
+  const { useProjectsStore } = await import('../../stores/projectsStore')
+  return Boolean(useProjectsStore.getState().preferences.voiceConversationEnabled)
+}
+
 /**
  * Path of the hooks settings.json generated for Claude Code (agent_events.rs).
  * `orchestrator: false` writes the session-tracking-only variant (SessionStart/UserPromptSubmit),
@@ -53,18 +59,23 @@ async function liveAiMemoryPrefs(): Promise<{ enabled: boolean; port: number }> 
  * this same file rather than into the person's own settings. It defaults to the live preference, so
  * a call site that forgets the argument still gets the person's actual choice; pass `null` explicitly
  * to opt a caller out of capture regardless of the preference (e.g. a demo sandbox).
+ * `voice` adds the tool, stop and permission hooks voice conversation listens to; it defaults to the
+ * live preference and applies to terminals launched afterwards.
  */
 export async function agentHooksSettingsPath(
   plannerId: string,
   orchestrator = true,
   aiMemory?: { enabled: boolean; port: number } | null,
+  voice?: boolean,
 ): Promise<string> {
   if (aiMemory === undefined) aiMemory = await liveAiMemoryPrefs()
+  if (voice === undefined) voice = await liveVoicePref()
   return invoke<string>('agent_hooks_settings_path', {
     plannerId,
     orchestrator,
     aiMemoryEnabled: aiMemory?.enabled ?? false,
     aiMemoryPort: aiMemory?.port ?? null,
+    voice,
   })
 }
 
@@ -153,4 +164,38 @@ export async function customAgentIconDataUrl(agentId: string): Promise<string> {
 
 export async function removeCustomAgentIcon(agentId: string): Promise<void> {
   await invoke('remove_custom_agent_icon', { agentId })
+}
+
+export type PermissionBehavior = 'allow' | 'deny' | 'defer'
+
+/** Answers a PermissionRequest Alethe is holding for a voice conversation (agent_events.rs). */
+export async function agentPermissionDecide(
+  requestId: string,
+  behavior: PermissionBehavior,
+  message?: string,
+): Promise<void> {
+  await invoke('agent_permission_decide', { requestId, behavior, message: message ?? null })
+}
+
+/** The PTYs whose permission requests Alethe holds for a voice answer; others get Claude's prompt. */
+export async function voiceSetTargets(ptyIds: string[]): Promise<void> {
+  await invoke('voice_set_targets', { ptyIds })
+}
+
+/** PTYs whose Claude was launched with the voice hooks; only these can be voice targets. */
+export async function agentVoiceHookedPtys(): Promise<string[]> {
+  return invoke<string[]>('agent_voice_hooked_ptys')
+}
+
+export type PermissionReleased = {
+  requestId: string
+  reason: 'timeout' | 'untargeted' | 'shutdown'
+}
+
+export function onAgentPermissionReleased(
+  handler: (event: PermissionReleased) => void,
+): Promise<UnlistenFn> {
+  return listen<PermissionReleased>('agent-permission://released', (event) =>
+    handler(event.payload),
+  )
 }

@@ -17,18 +17,12 @@ import {
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
-import { relaunchAgentPty } from '../../lib/agentRelaunch'
+import { restartAgentTab } from '../../lib/agentTabRestart'
 import { graphifyRepoOf } from '../../lib/claudeMcpConfigs'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { startOrchestrationOn } from '../../lib/orchestrationOnTerminal'
 import { shouldUseNativeBackend } from '../../lib/platform'
-import {
-  conversationFields,
-  getActiveSessions,
-  savedConversationIdFor,
-  saveSession,
-} from '../../lib/sessionResume'
 import {
   completeAgentHandoff,
   getClaudeSessionTitle,
@@ -266,45 +260,19 @@ export const TerminalPane = memo(function TerminalPane({
       requestPaneFocus(terminal.id)
       return true
     }
-    const ptyId = activeTab.ptyId
-    let restartCwd = (activeTab.cwd || terminal.cwd || '').trim()
-    if (!restartCwd) {
-      restartCwd = ((await getPtyCwd(ptyId).catch(() => null)) ?? '').trim()
-    }
-    const activeSessions = getActiveSessions()
-    const savedSession = activeSessions[activeTab.id] ?? activeSessions[ptyId] ?? null
-    const resumeSessionId =
-      activeTab.sessionId ?? savedConversationIdFor(savedSession, activeTab.type, restartCwd)
-
     try {
-      const launch = await relaunchAgentPty({
-        ptyId,
-        agent: activeTab.type,
-        runtimeProfile: activeTab.runtimeProfile,
-        extraArgs: activeTab.extraArgs,
-        sessionId: resumeSessionId,
-        cwd: restartCwd,
+      await restartAgentTab({
+        projectId,
+        terminalId: terminal.id,
+        terminalCwd: terminal.cwd,
+        tab: activeTab,
         graphifyRepo,
-        runAsAdmin: activeTab.runAsAdmin,
       })
-      if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
-        setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)
-      }
-      if (launch.sessionId) {
-        saveSession(activeTab.id, {
-          sessionId: ptyId,
-          ...conversationFields(activeTab.type, launch.sessionId),
-          cwd: restartCwd,
-          agent: activeTab.type,
-          timestamp: Date.now(),
-        })
-      }
-      window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
       requestPaneFocus(terminal.id)
       window.setTimeout(() => requestPaneFocus(terminal.id), 160)
       return true
     } catch (err) {
-      console.error('restart pty falhou', err)
+      console.error('pty restart failed', err)
       pushToast({ title: t('ui.terminal.restartFailed'), body: String(err) })
       return false
     }
