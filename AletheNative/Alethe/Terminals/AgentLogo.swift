@@ -1,4 +1,5 @@
 import AletheDesign
+import AppKit
 import SwiftUI
 
 /// An agent's brand logo (upstream `AgentIcon`, `src/components/icons/AgentIcons.tsx`), drawn at a
@@ -15,7 +16,7 @@ struct AgentLogo: View {
         Group {
             if let asset = Self.asset(for: agent, isLight: theme.isLight),
                metrics.isWebInterface || !Self.webOnlyAgents.contains(agent) {
-                Image(asset.name)
+                assetImage(asset, side: side)
                     .resizable()
                     .renderingMode(asset.template ? .template : .original)
                     .interpolation(.high)
@@ -30,6 +31,22 @@ struct AgentLogo: View {
         }
         .frame(width: side, height: side)
         .accessibilityHidden(true)
+    }
+
+    private func assetImage(_ asset: Asset, side: CGFloat) -> Image {
+        if metrics.isWebInterface, let image = Self.menuImage(for: agent, isLight: theme.isLight, side: side) {
+            return Image(nsImage: image)
+        }
+        return Image(asset.name)
+    }
+
+    /// AppKit menus can use a bitmap's intrinsic dimensions despite the SwiftUI label frame.
+    static func menuImage(for agent: String, isLight: Bool, side: CGFloat) -> NSImage? {
+        guard let asset = asset(for: agent, isLight: isLight),
+              let source = NSImage(named: asset.name), let image = source.copy() as? NSImage else { return nil }
+        image.size = NSSize(width: side, height: side)
+        image.isTemplate = asset.template
+        return image
     }
 
     private static let webOnlyAgents: Set<String> = ["mimo", "cursor", "copilot", "kimi", "grok", "codewhale", "wsl"]

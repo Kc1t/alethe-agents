@@ -416,7 +416,7 @@ private struct OnboardingMcpStep: View {
                 .foregroundStyle(!snapshot.isReadable ? theme[.statusWaiting] : found ? theme[.statusActive] : theme[.textTertiary])
         }
         .padding(.vertical, metrics.space(.s))
-        .overlay(alignment: .bottom) { Rectangle().fill(theme[.borderSubtle]).frame(height: 1) }
+        .overlay(alignment: .bottom) { Rectangle().fill(theme[.borderSubtle]).frame(height: metrics.size(1)) }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("onboarding.mcp.agent.\(snapshot.agent.rawValue)")
     }

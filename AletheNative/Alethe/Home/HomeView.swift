@@ -25,7 +25,9 @@ struct HomeView: View {
                             availableWidth: min(metrics.size(940), geometry.size.width - 2 * min(
                                 metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03)))
                                 - (geometry.size.width <= metrics.size(620) ? 0 : metrics.size(36)))
-                        QuickLaunch(workspace: workspace)
+                        QuickLaunch(workspace: workspace, compactToolbar: geometry.size.width
+                                    - 2 * min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03))
+                                    <= metrics.size(620))
                         HStack(spacing: metrics.size(8)) {
                             Button { environment.editorRequest = .newTerminal(nil) } label: {
                                 Label(metrics.isWebInterface ? "home.web.newTerminal" : "home.action.newTerminal", systemImage: "terminal")
@@ -43,7 +45,7 @@ struct HomeView: View {
                     .frame(minHeight: geometry.size.width - 2 * min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03)) <= metrics.size(900)
                            ? metrics.size(430)
                            : min(metrics.size(610), max(metrics.size(430), geometry.size.height * 0.56)))
-                    .entrance(appeared, step: 0, reduced: metrics.reducesMotion, rise: metrics.size(8))
+                    .entrance(appeared, step: 0, reduced: metrics.reducesMotion || (metrics.isWebInterface && metrics.style == .clean), rise: metrics.size(8))
                     SetupWalkthroughView(workspace: workspace)
                 } else {
                     VStack(alignment: .leading, spacing: metrics.space(.xxl)) {
@@ -76,7 +78,7 @@ struct HomeView: View {
                     HomeActions()
                         .frame(width: metrics.isWebInterface ? nil : metrics.size(240))
                 }
-                .entrance(appeared, step: 1, reduced: metrics.reducesMotion, rise: metrics.size(8))
+                .entrance(appeared, step: 1, reduced: metrics.reducesMotion || (metrics.isWebInterface && metrics.style == .clean), rise: metrics.size(8))
                 VStack(alignment: .leading, spacing: metrics.size(24)) {
                     UsageStrip()
                     ActivityGraph(days: $activityDays)
@@ -89,7 +91,7 @@ struct HomeView: View {
                     }
                     HomeFooter()
                 }
-                .entrance(appeared, step: 2, reduced: metrics.reducesMotion, rise: metrics.size(8))
+                .entrance(appeared, step: 2, reduced: metrics.reducesMotion || (metrics.isWebInterface && metrics.style == .clean), rise: metrics.size(8))
             }
             .frame(maxWidth: metrics.size(940), alignment: .leading)
             .padding(.horizontal, metrics.isWebInterface
@@ -97,6 +99,14 @@ struct HomeView: View {
                      : metrics.size(28))
             .padding(.bottom, metrics.size(18))
             .frame(maxWidth: .infinity)
+            .background(alignment: .top) {
+                if metrics.isWebInterface {
+                    HomeBackdrop()
+                        .frame(height: geometry.size.width <= metrics.size(900)
+                               ? metrics.size(620)
+                               : min(metrics.size(780), max(metrics.size(560), geometry.size.height * 0.72)))
+                }
+            }
         }
         .background(theme[.bg])
         .onAppear { appeared = true }
@@ -201,7 +211,7 @@ private struct HomeHero: View {
                     .foregroundStyle(theme[.fg])
                     .padding(.vertical, metrics.size(3))
                     .padding(.horizontal, metrics.size(8))
-                    .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                    .background(theme[.bg].opacity(metrics.isWebInterface ? 0.52 : 1), in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
             }
         }
         .accessibilityElement(children: .contain)
@@ -280,6 +290,7 @@ private struct HomeHero: View {
 /// mode; sending opens a new terminal of that agent in the project with the prompt as its first input.
 private struct QuickLaunch: View {
     let workspace: WorkspaceModel
+    var compactToolbar = false
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -311,7 +322,7 @@ private struct QuickLaunch: View {
             }
             .padding(.horizontal, metrics.size(11))
             .frame(height: metrics.size(27))
-            .background(theme[.bgSunken])
+            .background(theme[.bgSunken].opacity(metrics.isWebInterface ? 0.78 : 1))
             .padding(.horizontal, -metrics.size(7))
             .padding(.top, -metrics.size(7))
             .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
@@ -329,20 +340,20 @@ private struct QuickLaunch: View {
             .frame(minHeight: metrics.size(42))
             .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
             if metrics.isWebInterface {
-                ViewThatFits(in: .horizontal) {
-                    toolbar(horizontal: true)
-                    toolbar(horizontal: false)
-                }
+                toolbar(horizontal: !compactToolbar)
             } else {
                 toolbar(horizontal: true)
             }
         }
         .padding(metrics.size(7))
         .frame(maxWidth: metrics.size(620))
-        .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
+        .background(theme[.bg].opacity(metrics.isWebInterface ? 0.76 : 1), in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-        .shadow(color: theme.shadow(.lg).color.color, radius: metrics.size(theme.shadow(.lg).blur),
-                x: metrics.size(theme.shadow(.lg).x), y: metrics.size(theme.shadow(.lg).y))
+        .shadow(color: metrics.isWebInterface
+                ? (metrics.style == .clean ? .clear : theme[.bg].opacity(0.48)) : theme.shadow(.lg).color.color,
+                radius: metrics.size(metrics.isWebInterface ? 36 : theme.shadow(.lg).blur),
+                x: metrics.isWebInterface ? 0 : metrics.size(theme.shadow(.lg).x),
+                y: metrics.size(metrics.isWebInterface ? 14 : theme.shadow(.lg).y))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(focused ? theme[.accentBorder] : .clear))
         .onAppear {
             let last = AgentRegistry.builtin.parse(environment.preferences?.document.lastAgent)
@@ -387,14 +398,22 @@ private struct QuickLaunch: View {
                     ForEach(agents, id: \.self) { kind in
                         Button { agent = kind } label: {
                             Label { Text(verbatim: AgentLabels.name(for: kind.rawValue)) } icon: {
-                                AgentLogo(agent: kind.rawValue, size: 19)
+                                if let image = AgentLogo.menuImage(for: kind.rawValue, isLight: theme.isLight,
+                                                                  side: metrics.size(16)) {
+                                    Image(nsImage: image).resizable().scaledToFit()
+                                        .frame(width: metrics.size(16), height: metrics.size(16))
+                                } else {
+                                    Image(systemName: "cpu").font(metrics.font(size: 16))
+                                        .frame(width: metrics.size(16), height: metrics.size(16))
+                                }
                             }
                         }
                     }
                 } label: {
                     HStack(spacing: metrics.size(6)) {
-                        AgentLogo(agent: agent.rawValue, size: 15,
+                        AgentLogo(agent: agent.rawValue, size: 16,
                                   templateColor: theme[AgentTokens.accent(for: agent.rawValue)])
+                            .frame(width: metrics.size(16), height: metrics.size(16)).clipped()
                         Text("home.web.agent").fixedSize()
                         Text(verbatim: AgentLabels.name(for: agent.rawValue)).lineLimit(1)
                         Spacer(minLength: 0)
@@ -409,8 +428,7 @@ private struct QuickLaunch: View {
                 }
             }
         }
-        .frame(minWidth: metrics.size(145), maxWidth: metrics.isWebInterface ? nil : metrics.size(145))
-        .fixedSize(horizontal: metrics.isWebInterface, vertical: false)
+        .frame(width: metrics.size(145))
         .accessibilityLabel(Text("home.quick.agent"))
         .accessibilityIdentifier("home.quick.agent")
     }
@@ -600,7 +618,7 @@ private struct RecentProjects: View {
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.right").foregroundStyle(theme[.textTertiary])
-                    .offset(x: hoveredProject == project.id && !metrics.reducesMotion ? metrics.size(2) : 0)
+                    .offset(x: hoveredProject == project.id && !metrics.reducesMotion && (!metrics.isWebInterface || metrics.style != .clean) ? metrics.size(2) : 0)
                     .animation(Motion.animation(Motion.quick, reduceMotion: metrics.reducesMotion), value: hoveredProject)
             }
             .contentShape(Rectangle())

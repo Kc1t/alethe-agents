@@ -43,7 +43,7 @@ struct GraphifyPaneView: View {
             }
             HStack(spacing: 0) {
                 graphArea
-                Rectangle().fill(theme[.borderSubtle]).frame(width: 1)
+                Rectangle().fill(theme[.borderSubtle]).frame(width: metrics.size(1))
                 timeline
             }
         }
@@ -464,7 +464,7 @@ private struct GraphCanvas: View {
             .font(metrics.font(.footnote))
             .padding(metrics.space(.s))
             if !query.isEmpty {
-                Rectangle().fill(theme[.borderSubtle]).frame(height: 1)
+                Rectangle().fill(theme[.borderSubtle]).frame(height: metrics.size(1))
                 if results.isEmpty {
                     Text("graphify.noMatches")
                         .font(metrics.font(.caption))

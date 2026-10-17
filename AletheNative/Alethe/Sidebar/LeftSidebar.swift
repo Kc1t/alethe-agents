@@ -1,4 +1,5 @@
 import AletheDesign
+import AletheGitControl
 import AletheModel
 import AlethePluginKit
 import SwiftUI
@@ -79,7 +80,7 @@ struct LeftSidebar: View {
         VStack(spacing: 0) {
             ScrollView(.horizontal) {
                 HStack(spacing: metrics.size(4)) {
-                    Button { environment.showingHome = true } label: {
+                    Button { selectedTab = "projects"; environment.showingHome = true } label: {
                         Label("leftSidebar.home", systemImage: "house")
                     }
                     .buttonStyle(AletheSidebarTabStyle(isSelected: environment.showingHome))
@@ -87,6 +88,14 @@ struct LeftSidebar: View {
                     .accessibilityIdentifier("leftSidebar.home")
                     webTab("projects", title: "leftSidebar.projects", symbol: "square.grid.3x3")
                     webTab("files", title: "rightSidebar.files", symbol: "folder")
+                    Button {
+                        environment.openPluginSheet(GitControlPlugin.sheetID, project: selectedProject?.id)
+                    } label: {
+                        Label("menu.git.control", systemImage: "arrow.triangle.branch")
+                    }
+                    .buttonStyle(AletheSidebarTabStyle(isSelected: false))
+                    .help(Text("menu.git.control"))
+                    .accessibilityIdentifier("leftSidebar.tab.git")
                     ForEach(pluginTabs, id: \.id) { tab in
                         webTab(tab.id, title: PluginViewRegistry.title(for: tab), symbol: tab.symbol)
                     }
@@ -126,6 +135,10 @@ struct LeftSidebar: View {
         }
         .foregroundStyle(theme[.fg])
         .background(theme[.bg])
+        .onChange(of: environment.showingHome) { _, showing in
+            if showing { selectedTab = "projects" }
+        }
+        .onAppear { if environment.showingHome { selectedTab = "projects" } }
     }
 
     private var rule: some View {

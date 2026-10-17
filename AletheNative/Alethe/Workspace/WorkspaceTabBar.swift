@@ -35,7 +35,7 @@ struct WorkspaceTabBar: View {
         .frame(height: metrics.size(32))
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(theme[.bgElevated])
-        .overlay(alignment: .bottom) { if !metrics.isWebInterface { theme[.border].frame(height: 1) } }
+        .overlay(alignment: .bottom) { if !metrics.isWebInterface { theme[.border].frame(height: metrics.size(1)) } }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workspaceTabs")
     }
@@ -105,13 +105,13 @@ struct WorkspaceTabBar: View {
         .background(
             RoundedRectangle(cornerRadius: radius)
                 .fill(isActive ? theme[.bgSunken] : theme[.panelHover].opacity(isHovered ? 1 : 0))
-                .shadow(color: isActive ? theme.shadow(.sm).color.color : .clear,
+                .shadow(color: isActive && (!metrics.isWebInterface || metrics.style != .clean) ? theme.shadow(.sm).color.color : .clear,
                         radius: metrics.size(4), y: metrics.size(2))
         )
         .overlay {
             if isActive { RoundedRectangle(cornerRadius: radius).strokeBorder(theme[.borderStrong]) }
         }
-        .offset(y: (isActive || isHovered) && metrics.style == .normal ? (metrics.isWebInterface ? -metrics.size(1) : -1) : 0)
+        .offset(y: (isActive || isHovered) && metrics.style == .normal ? -metrics.size(1) : 0)
         .opacity(dragging == tab.id ? 0.5 : 1)
         .contentShape(Rectangle())
         .onHover { hovered = $0 ? tab.id : (hovered == tab.id ? nil : hovered) }

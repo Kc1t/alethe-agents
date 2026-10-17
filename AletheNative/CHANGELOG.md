@@ -13,9 +13,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Home quick-launch agent images keep a 16-point intrinsic and layout size, preventing oversized
+  menu artwork; Agent, Path and Mode controls retain their web widths and compact wrapping.
+- The Alethe Home sidebar opens Projects and includes a Git Control shortcut. Title-bar controls
+  reserve space for macOS traffic lights at every interface zoom level.
 - Removed the unsupported sidebar list-spacing modifier to restore macOS API compatibility.
 
 ### Changed
+- Alethe Home uses the original web background as theme-aware flowing ASCII art, including pointer
+  response, reduced motion and the fading lower edge. Launch surfaces use the web transparencies.
+- Remaining fixed dividers and sub-tab details in Home, workspace panes and terminal controls scale
+  with interface zoom. Clean Alethe styling suppresses launch, search, tab and drag shadows and
+  decorative hover movement while preserving native macOS interface paths.
 - The Alethe sidebar uses bundled agent logos (including mixed-agent terminal stacks), the default
   profile image, icon-only row menus and labeled context-menu icons. Long names yield to fixed
   controls; count chips, album art and playback indicators retain their dimensions when zoomed.

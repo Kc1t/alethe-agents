@@ -32,7 +32,7 @@ private struct MarkdownBlockView: View {
                 Text(text)
                     .font(headingFont(level))
                     .foregroundStyle(theme[.textPrimary])
-                if level <= 2 { Rectangle().fill(theme[.borderSubtle]).frame(height: 1) }
+                if level <= 2 { Rectangle().fill(theme[.borderSubtle]).frame(height: metrics.size(1)) }
             }
             .padding(.top, level <= 2 ? metrics.space(.s) : 0)
             .accessibilityAddTraits(.isHeader)
@@ -60,7 +60,7 @@ private struct MarkdownBlockView: View {
                 .foregroundStyle(theme[.textSecondary])
         case .quote(let blocks):
             HStack(alignment: .top, spacing: metrics.space(.m)) {
-                Rectangle().fill(theme[.borderStrong]).frame(width: 3)
+                Rectangle().fill(theme[.borderStrong]).frame(width: metrics.size(3))
                 MarkdownBlocksView(blocks: blocks)
                     .foregroundStyle(theme[.textSecondary])
             }
@@ -93,7 +93,7 @@ private struct MarkdownBlockView: View {
                 .overlay(Rectangle().strokeBorder(theme[.border]))
             }
         case .rule:
-            Rectangle().fill(theme[.border]).frame(height: 1)
+            Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
         }
     }
 
