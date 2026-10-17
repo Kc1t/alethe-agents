@@ -16,6 +16,7 @@ import {
   Pin,
   Play,
   RefreshCw,
+  Route,
   Smartphone,
   Timer,
   Users,
@@ -33,6 +34,7 @@ import { getCachedKimiUsage } from '../../lib/kimiUsageCache'
 import { useT } from '../../lib/i18n'
 import { useSidebarViews } from '../../lib/viewPlacement'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
+import { formatUsd, openRouterAlertLevel } from '../../lib/openrouterAlerts'
 import { formatShortcut } from '../../lib/platform'
 import { codexHeadlineWindow, hasCodexWindow, killPty, remoteControlInfo } from '../../lib/tauri'
 import { usePomodoroStore } from '../../stores/pomodoroStore'
@@ -63,6 +65,13 @@ function formatResetTime(resetsAt: string): string {
     return resetsAt
   }
 }
+
+const OPENROUTER_PILL_COLOR = {
+  none: 'var(--status-working)',
+  low: 'var(--status-waiting)',
+  critical: 'var(--status-offline)',
+  empty: 'var(--status-offline)',
+} as const
 
 function formatPct(value: number): string {
   return `${value.toFixed(0)}%`
@@ -262,6 +271,7 @@ export function TitleBar() {
   const claudeUsageStale = useUiStore((s) => s.claudeUsageError !== null)
   const codexUsage = useUiStore((s) => s.codexUsage)
   const antigravityUsage = useUiStore((s) => s.antigravityUsage)
+  const openrouterUsage = useUiStore((s) => s.openrouterUsage)
   const updateInfo = useUiStore((s) => s.updateInfo)
   const setCodexUsage = useUiStore((s) => s.setCodexUsage)
   const setAntigravityUsage = useUiStore((s) => s.setAntigravityUsage)
@@ -291,6 +301,15 @@ export function TitleBar() {
   const threeAreas = preferences.topbarStyle === 'three-areas'
   const antigravityReady =
     antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
+  const openrouterReady = openrouterUsage?.status === 'ready'
+  const openrouterHeadline = openrouterReady ? openrouterUsage.headline : null
+  const openrouterPillText = !openrouterReady
+    ? '—'
+    : openrouterHeadline
+      ? formatUsd(openrouterHeadline.remaining_usd)
+      : openrouterUsage.key
+        ? formatUsd(openrouterUsage.key.usage_monthly)
+        : '—'
   const remoteConnectedLabel =
     remoteConnectedDevices > 0
       ? t(
@@ -947,6 +966,89 @@ export function TitleBar() {
                     ))
                   ) : (
                     <div className={styles.usagePopoverMain}>{t('widget.kimiUsageHint')}</div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+            {preferences.topbarShowOpenRouterUsage && openrouterUsage !== null ? (
+              <div className={styles.usageWidget}>
+                <button
+                  type="button"
+                  className={`${styles.usagePill} ${styles.openrouterUsage}`}
+                  style={
+                    {
+                      '--pill-color': openrouterHeadline
+                        ? OPENROUTER_PILL_COLOR[openRouterAlertLevel(openrouterUsage)]
+                        : 'var(--fg-faint)',
+                    } as React.CSSProperties
+                  }
+                  onClick={() => openModal('aiUsage')}
+                  title={t('ui.titlebar.openUsageDetails')}
+                  aria-label={t('ui.titlebar.openUsageDetails')}
+                >
+                  <Route size={13} />
+                  <span>{openrouterPillText}</span>
+                </button>
+                <div
+                  className={styles.usagePopover}
+                  role="tooltip"
+                  aria-label={t('ui.titlebar.itemOpenRouter')}
+                >
+                  <div className={styles.usagePopoverTitle}>{t('ui.titlebar.itemOpenRouter')}</div>
+                  {openrouterReady ? (
+                    <>
+                      {openrouterHeadline ? (
+                        <>
+                          <div className={styles.usagePopoverMain}>
+                            <span>{t('openrouter.remaining')}</span>
+                            <strong>{formatUsd(openrouterHeadline.remaining_usd)}</strong>
+                          </div>
+                          <div className={styles.usagePopoverLine}>
+                            <span>{t(`openrouter.source.${openrouterHeadline.source}`)}</span>
+                            <strong>
+                              {formatPct(openrouterHeadline.used_percent)} ·{' '}
+                              {formatUsd(openrouterHeadline.total_usd)}
+                            </strong>
+                          </div>
+                        </>
+                      ) : (
+                        <div className={styles.usagePopoverMain}>
+                          <span>{t('openrouter.spentMonth')}</span>
+                          <strong>{openrouterPillText}</strong>
+                        </div>
+                      )}
+                      {openrouterUsage.key ? (
+                        <div className={styles.usagePopoverLine}>
+                          <span>{t('openrouter.today')}</span>
+                          <strong>{formatUsd(openrouterUsage.key.usage_daily)}</strong>
+                        </div>
+                      ) : null}
+                      {openrouterUsage.daily_burn_usd !== null ? (
+                        <div className={styles.usagePopoverLine}>
+                          <span>{t('openrouter.perDay')}</span>
+                          <strong>{formatUsd(openrouterUsage.daily_burn_usd)}</strong>
+                        </div>
+                      ) : null}
+                      {openrouterUsage.days_left !== null ? (
+                        <div className={styles.usagePopoverLine}>
+                          <span>{t('openrouter.daysLeft')}</span>
+                          <strong>
+                            {t('openrouter.daysShort', {
+                              n: Math.max(0, Math.round(openrouterUsage.days_left)),
+                            })}
+                          </strong>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className={styles.usagePopoverMain}>
+                      <span>{t('widget.statusLabel')}</span>
+                      <strong>
+                        {openrouterUsage.status === 'no_key'
+                          ? t('openrouter.noKey')
+                          : t('widget.usageUnavailable')}
+                      </strong>
+                    </div>
                   )}
                 </div>
               </div>

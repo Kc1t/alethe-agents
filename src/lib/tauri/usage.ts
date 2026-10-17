@@ -99,6 +99,87 @@ export async function getAntigravityUsage(): Promise<AntigravityUsage> {
   return withUsageAccess('antigravity', () => invoke<AntigravityUsage>('get_antigravity_usage'))
 }
 
+/** Account balance; read only with an OpenRouter management key. */
+export type OpenRouterAccount = {
+  total_credits: number
+  total_usage: number
+  remaining: number
+  used_percent: number
+}
+
+/** The stored API key's own spend and cap. `limit` is null for a key with no cap. */
+export type OpenRouterKeyUsage = {
+  label: string
+  usage: number
+  usage_daily: number
+  usage_weekly: number
+  usage_monthly: number
+  limit: number | null
+  limit_remaining: number | null
+  limit_reset: string | null
+  is_free_tier: boolean
+}
+
+/** The budget that blocks the API key's requests first (guardrail, workspace or key limit). */
+export type OpenRouterBudget = {
+  limit_usd: number
+  spend_usd: number
+  remaining_usd: number
+  reset_interval: string | null
+  resets_at: string | null
+}
+
+export type OpenRouterModelSpend = { model: string; usage: number; requests: number }
+
+/** The last 30 completed UTC days; read only with a management key. */
+export type OpenRouterActivity = {
+  spend_7d: number
+  spend_30d: number
+  requests_30d: number
+  daily: { date: string; usage: number }[]
+  top_models: OpenRouterModelSpend[]
+}
+
+/** The tightest known cap: whichever of account, key limit and budget has the least left. */
+export type OpenRouterHeadline = {
+  source: 'account' | 'key' | 'budget'
+  used_percent: number
+  remaining_usd: number
+  total_usd: number
+}
+
+export type OpenRouterFetchError = 'auth' | 'network' | 'other'
+
+export type OpenRouterUsage = {
+  status: 'ready' | 'no_key' | 'unavailable'
+  has_api_key: boolean
+  has_management_key: boolean
+  key_error: OpenRouterFetchError | null
+  management_error: OpenRouterFetchError | null
+  account: OpenRouterAccount | null
+  key: OpenRouterKeyUsage | null
+  budget: OpenRouterBudget | null
+  activity: OpenRouterActivity | null
+  headline: OpenRouterHeadline | null
+  /** Average spend per day over the last 7 days, in USD. */
+  daily_burn_usd: number | null
+  /** How long the headline balance lasts at `daily_burn_usd`. */
+  days_left: number | null
+}
+
+export async function getOpenRouterUsage(): Promise<OpenRouterUsage> {
+  return withUsageAccess('openrouter', () => invoke<OpenRouterUsage>('get_openrouter_usage'))
+}
+
+/** Saves a management key after OpenRouter confirms it is one; it never leaves the keychain. */
+export async function setOpenRouterManagementKey(key: string): Promise<void> {
+  return invoke<void>('openrouter_set_management_key', { key })
+}
+
+export async function deleteOpenRouterManagementKey(): Promise<void> {
+  return invoke<void>('openrouter_delete_management_key')
+}
+
 export type ModelRate = {
   family: string
   input: number

@@ -24,6 +24,8 @@ src-tauri/target-e2e/
 # Tests run here while `tauri dev` holds a lock on target/'s alethe.exe.
 src-tauri/target-test/
 src-tauri/gen/
+# SwiftPM build output of the macOS speech bridge.
+src-tauri/swift/AletheSpeech/.build/
 
 # libghostty pré-buildado — não versionado (binário ~39MB). Reconstruído por
 # src-tauri/vendor/fetch-ghostty.sh (URL + checksum pinados).
