@@ -25,7 +25,7 @@ struct UsageStrip: View {
                 Spacer()
                 Button {
                     Task { await environment.usage.refresh(UsageMonitor.providers) }
-                } label: { Image(systemName: "arrow.clockwise") }
+                } label: { Image(systemName: "arrow.clockwise").webProfileSized(14) }
                     .buttonStyle(.borderless)
                     .help(Text("home.refresh"))
                     .accessibilityLabel(Text("home.refresh"))
@@ -88,7 +88,7 @@ struct UsageStrip: View {
                     .font(metrics.font(size: 13.5, weight: .medium)).lineLimit(1)
                 Spacer(minLength: 0)
                 Button { Task { await environment.usage.refresh([provider]) } } label: {
-                    Image(systemName: "arrow.clockwise")
+                    Image(systemName: "arrow.clockwise").webProfileSized(14)
                 }
                 .buttonStyle(AletheHomeRefreshStyle())
                 .accessibilityLabel(Text("home.refresh"))
@@ -192,7 +192,7 @@ struct ActivityGraph: View {
                 HomeSectionHeader(title: "home.activity")
                 if !days.isEmpty {
                     Text(String(format: String(localized: "home.activity.total"), days.reduce(0) { $0 + $1.count }))
-                    Label(String(format: String(localized: "home.activity.streak"), ActivityDays.streak(days)), systemImage: "flame")
+                    Label { Text(String(format: String(localized: "home.activity.streak"), ActivityDays.streak(days))) } icon: { Image(systemName: "flame").webProfileSized(14) }
                         .accessibilityIdentifier("home.activity.streak")
                 }
                 if let delta {
@@ -204,7 +204,7 @@ struct ActivityGraph: View {
                 }
                 Spacer()
                 if loading { ProgressView().controlSize(.small) }
-                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise").webProfileSized(14) }
                     .buttonStyle(.borderless)
                     .help(Text("home.refresh"))
                     .accessibilityLabel(Text("home.refresh"))
@@ -240,7 +240,7 @@ struct ActivityGraph: View {
                 Spacer(minLength: 0)
                 AletheStatusDot(.statusWorking, side: 6)
                 Text("home.web.live").font(metrics.monoFont(size: 9.5)).foregroundStyle(theme[.textTertiary])
-                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise").webProfileSized(14) }
                     .buttonStyle(AletheHomeRefreshStyle()).accessibilityLabel(Text("home.refresh"))
             }
             .padding(.bottom, metrics.size(8))
@@ -399,7 +399,7 @@ struct TimeAnalytics: View {
                 Spacer()
                 Button {
                     Task { await refresh() }
-                } label: { Image(systemName: "arrow.clockwise") }
+                } label: { Image(systemName: "arrow.clockwise").webProfileSized(14) }
                     .buttonStyle(.borderless)
                     .help(Text("home.refresh"))
                     .accessibilityLabel(Text("home.refresh"))
@@ -559,7 +559,7 @@ private struct HomeWebBadge: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        Image(systemName: symbol).font(metrics.font(size: 16))
+        Image(systemName: symbol).webProfileSized(16).font(metrics.font(size: 16))
             .foregroundStyle(theme[token])
             .frame(width: metrics.size(26), height: metrics.size(26))
             .background(theme[token].opacity(0.14), in: RoundedRectangle(cornerRadius: metrics.size(7)))

@@ -56,7 +56,7 @@ struct SidebarView: View {
                     || SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
                 }) {
                     Menu { visibilityControls(workspace) } label: {
-                        Label("sidebar.web.projectVisibility", systemImage: "eye")
+                        Label { Text("sidebar.web.projectVisibility") } icon: { Image(systemName: "eye").webProfileSized(14) }
                             .font(metrics.font(size: 11))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(metrics.size(8))
@@ -80,7 +80,7 @@ struct SidebarView: View {
             Section {
                 if doc.projects.isEmpty && doc.groups.isEmpty {
                     VStack(alignment: .leading, spacing: metrics.space(.s)) {
-                        Label("sidebar.empty.title", systemImage: "folder")
+                        Label { Text("sidebar.empty.title") } icon: { Image(systemName: "folder").webProfileSized(14) }
                             .font(metrics.font(.headline))
                         Text("sidebar.empty.detail")
                             .font(metrics.font(.caption))
@@ -145,9 +145,9 @@ struct SidebarView: View {
                     Button {
                         archivedProjects = SidebarProjectVisibility.setting(archivedProjects, project: project.id,
                             profile: environment.profileID, enabled: false)
-                    } label: { Label { Text(verbatim: project.name) } icon: { Image(systemName: "arrow.uturn.backward") } }
+                    } label: { Label { Text(verbatim: project.name) } icon: { Image(systemName: "arrow.uturn.backward").webProfileSized(14) } }
                 }
-            } label: { Label("sidebar.web.restoreArchived", systemImage: "archivebox") }
+            } label: { Label { Text("sidebar.web.restoreArchived") } icon: { Image(systemName: "archivebox").webProfileSized(14) } }
         }
     }
 
@@ -179,7 +179,7 @@ private struct SidebarProjectsHeader: View {
                 .lineLimit(1)
             Spacer(minLength: metrics.space(.s))
             Button { environment.editorRequest = .newGroup(parent: nil) } label: {
-                Label("menu.file.newGroup", systemImage: metrics.isWebInterface ? "folder.badge.plus" : "rectangle.stack.badge.plus")
+                Label { Text("menu.file.newGroup") } icon: { Image(systemName: metrics.isWebInterface ? "folder.badge.plus" : "rectangle.stack.badge.plus").webProfileSized(14) }
                     .modifier(SidebarSymbolAppearance(size: 14))
             }
             .buttonStyle(AletheIconButtonStyle(side: 20))
@@ -187,7 +187,7 @@ private struct SidebarProjectsHeader: View {
             .accessibilityIdentifier("sidebar.newGroup")
             if !metrics.isWebInterface {
                 Button { actions.chooseFolders() } label: {
-                    Label("sidebar.addProject", systemImage: "folder.badge.plus")
+                    Label { Text("sidebar.addProject") } icon: { Image(systemName: "folder.badge.plus").webProfileSized(14) }
                 }
                 .buttonStyle(AletheIconButtonStyle(side: 20))
                 .help(Text("sidebar.addProject"))
@@ -199,7 +199,7 @@ private struct SidebarProjectsHeader: View {
                     SidebarMenuButton("sidebar.addProject", symbol: "folder.badge.plus") { actions.chooseFolders() }
                         .accessibilityIdentifier("sidebar.addProject")
                 } label: {
-                    Label("menu.file.newProject", systemImage: "plus").labelStyle(.iconOnly)
+                    Label { Text("menu.file.newProject") } icon: { Image(systemName: "plus").webProfileSized(14) }.labelStyle(.iconOnly)
                 } primaryAction: {
                     environment.editorRequest = .newProject(.ungrouped)
                 }
@@ -212,7 +212,7 @@ private struct SidebarProjectsHeader: View {
                 .accessibilityIdentifier("sidebar.newProject")
             } else {
                 Button { environment.editorRequest = .newProject(.ungrouped) } label: {
-                    Label("menu.file.newProject", systemImage: "plus")
+                    Label { Text("menu.file.newProject") } icon: { Image(systemName: "plus").webProfileSized(14) }
                 }
                 .buttonStyle(AletheIconButtonStyle(side: 20))
                 .help(Text("menu.file.newProject"))
@@ -289,7 +289,7 @@ private struct GroupRow: View {
                         .lineLimit(1)
                         .layoutPriority(1)
                     if group.suspended == true {
-                        Image(systemName: "pause.circle.fill")
+                        Image(systemName: "pause.circle.fill").webProfileSized(14)
                             .foregroundStyle(theme[.statusDisabled])
                             .help(Text("sidebar.suspended"))
                             .accessibilityLabel(Text("sidebar.suspended"))
@@ -299,7 +299,7 @@ private struct GroupRow: View {
                         .frame(height: metrics.size(1))
                         .frame(maxWidth: .infinity)
                     Button { environment.editorRequest = .newProject(.group(group.id)) } label: {
-                        Label("sidebar.newProjectHere", systemImage: "plus")
+                        Label { Text("sidebar.newProjectHere") } icon: { Image(systemName: "plus").webProfileSized(14) }
                             .modifier(SidebarSymbolAppearance(size: 14))
                     }
                     .buttonStyle(AletheIconButtonStyle(side: metrics.isWebInterface ? 18 : 20))
@@ -312,7 +312,7 @@ private struct GroupRow: View {
                 } else if let color = group.color {
                     AletheMonogram(name: group.name, color: theme[color.token], side: 14)
                 } else {
-                    Image(systemName: "folder")
+                    Image(systemName: "folder").webProfileSized(14)
                         .foregroundStyle(theme[.fgFaint])
                 }
             }
@@ -414,20 +414,20 @@ private struct ProjectRow: View {
                         .accessibilityLabel(Text("agentStatus.working"))
                 }
                 if !project.panes.isEmpty && project.panes.allSatisfy(\.isDisabled) {
-                    Image(systemName: "pause.circle")
+                    Image(systemName: "pause.circle").webProfileSized(14)
                         .foregroundStyle(theme[.statusDisabled])
                         .accessibilityLabel(Text("sidebar.disableProject"))
                 }
                 Spacer(minLength: metrics.space(.xxs))
                 Button { environment.editorRequest = .newTerminal(project.id) } label: {
-                    Label("terminal.new", systemImage: "plus")
+                    Label { Text("terminal.new") } icon: { Image(systemName: "plus").webProfileSized(14) }
                         .modifier(SidebarSymbolAppearance(size: 15))
                 }
                 .buttonStyle(AletheIconButtonStyle(side: 20))
                 .help(Text("terminal.new"))
                 .opacity(hovering || (metrics.isWebInterface && project.panes.isEmpty) ? 1 : 0)
                 Menu { ProjectContextMenu(project: project, actions: actions) } label: {
-                    Label("sidebar.rowMenu", systemImage: "ellipsis")
+                    Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
                 }
                 .menuIndicator(.hidden)
                 .menuStyle(.borderlessButton)
@@ -446,7 +446,7 @@ private struct ProjectRow: View {
             }
         } icon: {
             if metrics.isWebInterface {
-                Image(systemName: "folder")
+                Image(systemName: "folder").webProfileSized(20)
                     .font(metrics.font(size: 20))
                     .frame(width: metrics.size(20), height: metrics.size(20))
                     .foregroundStyle(theme[project.color.token])
@@ -519,7 +519,7 @@ private struct SidebarTerminalRow: View {
                 Menu {
                     TabContextMenu(tab: tab, project: project, actions: actions)
                 } label: {
-                    Label("sidebar.rowMenu", systemImage: "ellipsis")
+                    Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
                 }
                 .menuIndicator(.hidden)
                 .menuStyle(.borderlessButton)
@@ -530,7 +530,7 @@ private struct SidebarTerminalRow: View {
                 .opacity(hovering ? 1 : 0)
                 if pane?.isRemoteShared == true { RemoteSharedGlyph() }
                 if let branch = tab.worktreeBranch {
-                    Image(systemName: "arrow.triangle.branch")
+                    Image(systemName: "arrow.triangle.branch").webProfileSized(14)
                         .font(metrics.font(.footnote))
                         .foregroundStyle(theme[.textTertiary])
                         .help(Text(verbatim: String(format: String(localized: "sidebar.worktree"), branch)))
@@ -551,7 +551,7 @@ private struct SidebarTerminalRow: View {
             } else {
                 Image(systemName: disabled ? "pause.circle"
                       : environment.terminals.hibernated.contains(tab.id) ? "moon.zzz"
-                      : tab.agent == "shell" ? "terminal" : "sparkles")
+                      : tab.agent == "shell" ? "terminal" : "sparkles").webProfileSized(14)
                     .foregroundStyle(theme[disabled ? .statusDisabled : AgentTokens.accent(for: tab.agent)])
                     .saturation(disabled ? 0 : 1)
                     .help(environment.terminals.hibernated.contains(tab.id) ? Text("sidebar.hibernated") : Text(verbatim: ""))
@@ -590,7 +590,7 @@ private struct SidebarFileRow: View {
                 SidebarMenuButton("sidebar.revealInFinder", symbol: "folder") { OpenInActions.revealInFinder(path) }
                 SidebarMenuButton("terminal.close", symbol: "xmark") { actions.workspace.update { $0.closePane(pane.id) } }
             } label: {
-                Label("sidebar.rowMenu", systemImage: "ellipsis")
+                Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
             }
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
@@ -837,7 +837,7 @@ struct RemoteSharedGlyph: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        Image(systemName: "iphone.radiowaves.left.and.right")
+        Image(systemName: "iphone.radiowaves.left.and.right").webProfileSized(14)
             .font(metrics.font(.caption))
             .foregroundStyle(theme[.accent])
             .help(Text("remote.shared"))

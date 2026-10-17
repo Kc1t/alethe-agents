@@ -25,7 +25,7 @@ struct MemoryIndicator: View {
                     Text(verbatim: Self.format(monitor.terminalsMB))
                         .monospacedDigit()
                 } icon: {
-                    Image(systemName: "memorychip")
+                    Image(systemName: "memorychip").webProfileSized(14)
                         .foregroundStyle(theme[monitor.pressure.token])
                 }
                 .labelStyle(.titleAndIcon)
@@ -96,7 +96,7 @@ private struct MemoryDetails: View {
                 Label {
                     Text(String(format: String(localized: "memory.hibernatedCount"), environment.terminals.hibernated.count))
                 } icon: {
-                    Image(systemName: "moon.zzz")
+                    Image(systemName: "moon.zzz").webProfileSized(14)
                 }
                 .font(metrics.font(.footnote))
                 .foregroundStyle(theme[.textSecondary])

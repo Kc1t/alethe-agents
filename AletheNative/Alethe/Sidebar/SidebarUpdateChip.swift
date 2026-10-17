@@ -17,7 +17,7 @@ struct SidebarUpdateChip: View {
                     openURL(release.page)
                 } label: {
                     HStack(spacing: metrics.size(7)) {
-                        Image(systemName: "arrow.up.circle")
+                        Image(systemName: "arrow.up.circle").webProfileSized(13)
                             .font(metrics.font(size: 13))
                             .foregroundStyle(theme[.statusWorking])
                         Text("sidebar.web.updateAvailable")

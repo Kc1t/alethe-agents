@@ -98,7 +98,7 @@ struct SetupWalkthroughView: View {
     private func webRow(_ step: SetupStep, done: Bool) -> some View {
         Button { start(step) } label: {
             HStack(alignment: .top, spacing: metrics.size(11)) {
-                Image(systemName: done ? "checkmark" : icon(step))
+                Image(systemName: done ? "checkmark" : icon(step)).webProfileSized(done ? 10 : 14)
                     .font(metrics.font(size: done ? 10 : 14))
                     .foregroundStyle(theme[done ? .bg : .fgMuted])
                     .frame(width: metrics.size(20), height: metrics.size(20))
@@ -116,7 +116,7 @@ struct SetupWalkthroughView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "arrow.right")
+                Image(systemName: "arrow.right").webProfileSized(13)
                     .font(metrics.font(size: 13)).foregroundStyle(theme[.fgMuted])
                     .padding(.top, metrics.size(3))
             }
@@ -134,7 +134,7 @@ struct SetupWalkthroughView: View {
     private func row(_ step: SetupStep, done: Bool) -> some View {
         Button { start(step) } label: {
             HStack(spacing: metrics.space(.m)) {
-                Image(systemName: done ? "checkmark.circle.fill" : icon(step))
+                Image(systemName: done ? "checkmark.circle.fill" : icon(step)).webProfileSized(14)
                     .foregroundStyle(done ? theme[.statusActive] : theme[.textSecondary])
                     .frame(width: metrics.size(18))
                 VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
@@ -143,7 +143,7 @@ struct SetupWalkthroughView: View {
                     Text(detail(step)).font(metrics.font(.footnote)).foregroundStyle(theme[.textTertiary])
                 }
                 Spacer()
-                Image(systemName: "arrow.right").foregroundStyle(theme[.textTertiary])
+                Image(systemName: "arrow.right").webProfileSized(14).foregroundStyle(theme[.textTertiary])
             }
             .padding(.vertical, metrics.space(.xs))
             .contentShape(Rectangle())

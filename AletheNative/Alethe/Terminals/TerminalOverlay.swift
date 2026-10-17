@@ -121,7 +121,7 @@ struct DisabledPaneOverlay: View {
             if metrics.isWebInterface {
                 AgentLogo(agent: agent, size: 56, templateColor: theme[AgentTokens.accent(for: agent)])
             } else {
-                Image(systemName: "pause.circle")
+                Image(systemName: "pause.circle").webProfileSized(14)
                     .font(metrics.font(.title1))
                     .foregroundStyle(theme[.statusDisabled])
             }

@@ -21,7 +21,7 @@ struct AgentStatusGlyph: View {
                     .help(Text("agentStatus.working"))
                     .accessibilityLabel(Text("agentStatus.working"))
             case .needsInput:
-                Image(systemName: "questionmark.bubble.fill")
+                Image(systemName: "questionmark.bubble.fill").webProfileSized(14)
                     .font(metrics.font(.caption))
                     .foregroundStyle(theme[.statusWaiting])
                     .help(Text("agentStatus.needsInput"))

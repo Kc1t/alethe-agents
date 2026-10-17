@@ -42,10 +42,19 @@ struct AgentLogo: View {
 
     /// AppKit menus can use a bitmap's intrinsic dimensions despite the SwiftUI label frame.
     static func menuImage(for agent: String, isLight: Bool, side: CGFloat) -> NSImage? {
-        guard let asset = asset(for: agent, isLight: isLight),
-              let source = NSImage(named: asset.name), let image = source.copy() as? NSImage else { return nil }
-        image.size = NSSize(width: side, height: side)
-        image.isTemplate = asset.template
+        guard let asset = asset(for: agent, isLight: isLight) else { return nil }
+        return menuImage(named: asset.name, template: asset.template, side: side)
+    }
+
+    static func menuImage(named name: String, template: Bool = false, side: CGFloat) -> NSImage? {
+        guard let source = NSImage(named: name) else { return nil }
+        // Redraw rather than resizing metadata: AppKit menus can pick a full-size source representation.
+        let bounds = NSRect(x: 0, y: 0, width: side, height: side)
+        let image = NSImage(size: bounds.size)
+        image.lockFocus()
+        source.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1)
+        image.unlockFocus()
+        image.isTemplate = template
         return image
     }
 

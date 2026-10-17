@@ -17,7 +17,7 @@ struct NotificationsButton: View {
             showsList.toggle()
             notifier.markSeen()
         } label: {
-            Image(systemName: notifier.log.unseen > 0 ? "bell.badge" : "bell")
+            Image(systemName: notifier.log.unseen > 0 ? "bell.badge" : "bell").webProfileSized(14)
         }
         .help(Text("notifications.title"))
         .accessibilityLabel(Text(notifier.log.unseen > 0
@@ -54,7 +54,7 @@ struct NotificationList: View {
                 }
             }
             if entries.isEmpty {
-                Label("notifications.none", systemImage: "checkmark.circle.fill")
+                Label { Text("notifications.none") } icon: { Image(systemName: "checkmark.circle.fill").webProfileSized(14) }
                     .font(metrics.font(.footnote))
                     .foregroundStyle(theme[.statusActive])
                 Text("home.notifications.emptyDetail")
@@ -71,7 +71,7 @@ struct NotificationList: View {
                             if metrics.isWebInterface, let agent = entry.agent {
                                 AgentLogo(agent: agent, size: 14)
                             } else {
-                                Image(systemName: entry.agent == nil ? "bell" : "sparkles")
+                                Image(systemName: entry.agent == nil ? "bell" : "sparkles").webProfileSized(14)
                             }
                         }
                             .foregroundStyle(theme[entry.agent.map { AgentTokens.accent(for: $0) } ?? .textTertiary])

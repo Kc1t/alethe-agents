@@ -36,12 +36,17 @@ struct SidebarMenuButton: View {
             Button(role: role, action: action) {
                 if symbol == "chevron.left.forwardslash.chevron.right" {
                     Label { Text(title) } icon: {
-                        Image("BrandLogo-vscode").resizable().aspectRatio(contentMode: .fit)
-                            .frame(width: metrics.size(14), height: metrics.size(14))
+                        if let image = AgentLogo.menuImage(named: "BrandLogo-vscode", side: metrics.size(14)) {
+                            Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+                                .frame(width: metrics.size(14), height: metrics.size(14))
+                        } else {
+                            Image(systemName: symbol).webProfileSized(14)
+                        }
                     }
                 } else {
-                    Label(title, systemImage: symbol)
-                        .font(metrics.font(size: 14))
+                    Label { Text(title) } icon: {
+                        Image(systemName: symbol).webProfileSized(14)
+                    }
                 }
             }
         } else {
@@ -58,7 +63,7 @@ struct SidebarWebEmptyState: View {
 
     var body: some View {
         VStack(spacing: metrics.size(10)) {
-            Image(systemName: "folder.badge.plus")
+            Image(systemName: "folder.badge.plus").webProfileSized(18)
                 .font(metrics.font(size: 18))
                 .foregroundStyle(theme[.accent])
                 .frame(width: metrics.size(56), height: metrics.size(56))

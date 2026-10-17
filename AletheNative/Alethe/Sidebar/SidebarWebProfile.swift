@@ -14,6 +14,7 @@ struct SidebarWebProfile: View {
     @State private var switching: ProfileEntry?
     @State private var showingMenu = false
     @State private var hovering = false
+    @State private var rowWidth: CGFloat = 0
 
     var body: some View {
         Button { showingMenu.toggle() } label: {
@@ -37,7 +38,7 @@ struct SidebarWebProfile: View {
                 }
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "gearshape")
+                Image(systemName: "gearshape").webProfileSized(13)
                     .font(metrics.font(size: 13))
                     .foregroundStyle(theme[hovering ? .fg : .fgFaint])
                     .fixedSize()
@@ -66,61 +67,13 @@ struct SidebarWebProfile: View {
         }
         .help(Text(verbatim: String(format: String(localized: "profiles.menu.help"), environment.activeProfileName)))
         .accessibilityIdentifier("leftSidebar.profile")
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         .popover(isPresented: $showingMenu, arrowEdge: .top) {
-            VStack(alignment: .leading, spacing: metrics.size(2)) {
-                HStack(spacing: metrics.size(metrics.style == .clean ? 8 : 10)) {
-                    avatar.aspectRatio(contentMode: .fill)
-                        .frame(width: metrics.size(metrics.style == .clean ? 28 : 36),
-                               height: metrics.size(metrics.style == .clean ? 28 : 36))
-                        .clipShape(Circle())
-                        .overlay(Circle().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(verbatim: environment.activeProfileName)
-                            .font(metrics.font(size: metrics.style == .clean ? 12 : 13, weight: .semibold))
-                        Text(verbatim: String(format: String(localized: "leftSidebar.localAccount"),
-                                             environment.activeProfileName))
-                            .font(metrics.font(size: metrics.style == .clean ? 10 : 11))
-                            .foregroundStyle(theme[.fgMuted])
-                    }
-                    .lineLimit(1)
-                }
-                .padding(.horizontal, metrics.size(metrics.style == .clean ? 8 : 10))
-                .padding(.top, metrics.size(metrics.style == .clean ? 7 : 10))
-                .padding(.bottom, metrics.size(metrics.style == .clean ? 5 : 6))
-                Divider()
-                SidebarMenuButton("leftSidebar.preferences", symbol: "gearshape") {
-                    showingMenu = false
-                    openSettings()
-                }
-                SidebarMenuButton("sidebar.web.chooseAvatar", symbol: "photo") { chooseAvatar() }
-                if customAvatar != nil {
-                    SidebarMenuButton("sidebar.web.resetAvatar", symbol: "arrow.counterclockwise") { setAvatar(nil) }
-                }
-                Divider()
-                ForEach(environment.profiles?.document.ordered(defaultName: AppEnvironment.defaultProfileName) ?? []) { entry in
-                    Toggle(isOn: Binding {
-                        entry.id == environment.profileID
-                    } set: { chosen in
-                        if chosen, entry.id != environment.profileID {
-                            showingMenu = false
-                            switching = entry
-                        }
-                    }) {
-                        Text(verbatim: environment.profileName(entry))
-                    }
-                }
-                Divider()
-                SidebarMenuButton("profiles.menu.manage", symbol: "person.2") {
-                    showingMenu = false
-                    environment.settingsTab = .profiles
-                    openSettings()
-                }
-                .accessibilityIdentifier("profiles.menu.manage")
+            if metrics.isWebInterface {
+                webMenu
+            } else {
+                nativeMenu
             }
-            .buttonStyle(AletheButtonStyle())
-            .padding(metrics.size(4))
-            .background(theme[.bg])
         }
         .confirmationDialog(Text(verbatim: String(format: String(localized: "settings.profiles.switch.confirm"),
                                                   switching.map(environment.profileName) ?? "")),
@@ -132,6 +85,140 @@ struct SidebarWebProfile: View {
         } message: {
             Text("settings.profiles.switch.message")
         }
+    }
+
+    private var webMenu: some View {
+        VStack(alignment: .leading, spacing: metrics.size(2)) {
+            HStack(spacing: metrics.size(metrics.style == .clean ? 8 : 10)) {
+                avatar.aspectRatio(contentMode: .fill)
+                    .frame(width: metrics.size(metrics.style == .clean ? 28 : 36),
+                           height: metrics.size(metrics.style == .clean ? 28 : 36))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: environment.activeProfileName)
+                        .font(metrics.font(size: metrics.style == .clean ? 12 : 13, weight: .semibold))
+                    Text(verbatim: String(format: String(localized: "leftSidebar.localAccount"),
+                                         environment.activeProfileName))
+                        .font(metrics.font(size: metrics.style == .clean ? 10 : 11))
+                        .foregroundStyle(theme[.fgMuted])
+                }
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, metrics.size(metrics.style == .clean ? 8 : 10))
+            .padding(.top, metrics.size(metrics.style == .clean ? 7 : 10))
+            .padding(.bottom, metrics.size(metrics.style == .clean ? 5 : 6))
+            profileDivider
+            SidebarMenuButton("leftSidebar.preferences", symbol: "gearshape") {
+                showingMenu = false
+                openSettings()
+            }
+            SidebarMenuButton("sidebar.web.chooseAvatar", symbol: "photo") { chooseAvatar() }
+            if customAvatar != nil {
+                SidebarMenuButton("sidebar.web.resetAvatar", symbol: "arrow.counterclockwise") { setAvatar(nil) }
+            }
+            profileDivider
+            ForEach(environment.profiles?.document.ordered(defaultName: AppEnvironment.defaultProfileName) ?? []) { entry in
+                Button {
+                    if entry.id != environment.profileID {
+                        showingMenu = false
+                        switching = entry
+                    }
+                } label: {
+                    HStack(spacing: metrics.size(8)) {
+                        Text(verbatim: environment.profileName(entry))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        if entry.id == environment.profileID {
+                            Image(systemName: "checkmark").webProfileSized(14)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+                .accessibilityAddTraits(entry.id == environment.profileID ? [.isSelected] : [])
+            }
+            profileDivider
+            SidebarMenuButton("profiles.menu.manage", symbol: "person.2") {
+                showingMenu = false
+                environment.settingsTab = .profiles
+                openSettings()
+            }
+            .accessibilityIdentifier("profiles.menu.manage")
+        }
+        .buttonStyle(AletheProfileMenuStyle())
+        .labelStyle(AletheProfileMenuLabelStyle())
+        .padding(metrics.size(4))
+        .frame(width: max(metrics.size(1), rowWidth - metrics.size(metrics.style == .clean ? 12 : 16)))
+        .foregroundStyle(theme[.fg])
+        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+            .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+    }
+
+    private var nativeMenu: some View {
+        VStack(alignment: .leading, spacing: metrics.size(2)) {
+            HStack(spacing: metrics.size(metrics.style == .clean ? 8 : 10)) {
+                avatar.aspectRatio(contentMode: .fill)
+                    .frame(width: metrics.size(metrics.style == .clean ? 28 : 36),
+                           height: metrics.size(metrics.style == .clean ? 28 : 36))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: environment.activeProfileName)
+                        .font(metrics.font(size: metrics.style == .clean ? 12 : 13, weight: .semibold))
+                    Text(verbatim: String(format: String(localized: "leftSidebar.localAccount"),
+                                         environment.activeProfileName))
+                        .font(metrics.font(size: metrics.style == .clean ? 10 : 11))
+                        .foregroundStyle(theme[.fgMuted])
+                }
+                .lineLimit(1)
+            }
+            .padding(.horizontal, metrics.size(metrics.style == .clean ? 8 : 10))
+            .padding(.top, metrics.size(metrics.style == .clean ? 7 : 10))
+            .padding(.bottom, metrics.size(metrics.style == .clean ? 5 : 6))
+            Divider()
+            SidebarMenuButton("leftSidebar.preferences", symbol: "gearshape") {
+                showingMenu = false
+                openSettings()
+            }
+            SidebarMenuButton("sidebar.web.chooseAvatar", symbol: "photo") { chooseAvatar() }
+            if customAvatar != nil {
+                SidebarMenuButton("sidebar.web.resetAvatar", symbol: "arrow.counterclockwise") { setAvatar(nil) }
+            }
+            Divider()
+            ForEach(environment.profiles?.document.ordered(defaultName: AppEnvironment.defaultProfileName) ?? []) { entry in
+                Toggle(isOn: Binding {
+                    entry.id == environment.profileID
+                } set: { chosen in
+                    if chosen, entry.id != environment.profileID {
+                        showingMenu = false
+                        switching = entry
+                    }
+                }) {
+                    Text(verbatim: environment.profileName(entry))
+                }
+            }
+            Divider()
+            SidebarMenuButton("profiles.menu.manage", symbol: "person.2") {
+                showingMenu = false
+                environment.settingsTab = .profiles
+                openSettings()
+            }
+            .accessibilityIdentifier("profiles.menu.manage")
+        }
+        .buttonStyle(AletheButtonStyle())
+        .padding(metrics.size(4))
+        .background(theme[.bg])
+    }
+
+    private var profileDivider: some View {
+        Rectangle().fill(theme[.border])
+            .frame(height: metrics.size(1))
+            .padding(.horizontal, metrics.size(2))
+            .padding(.vertical, metrics.size(4))
     }
 
     private var profileKey: String { environment.profileID?.rawValue ?? "default" }

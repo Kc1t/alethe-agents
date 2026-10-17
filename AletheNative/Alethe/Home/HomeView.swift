@@ -30,10 +30,10 @@ struct HomeView: View {
                                     <= metrics.size(620))
                         HStack(spacing: metrics.size(8)) {
                             Button { environment.editorRequest = .newTerminal(nil) } label: {
-                                Label(metrics.isWebInterface ? "home.web.newTerminal" : "home.action.newTerminal", systemImage: "terminal")
+                                Label { Text(metrics.isWebInterface ? "home.web.newTerminal" : "home.action.newTerminal") } icon: { Image(systemName: "terminal").webProfileSized(14) }
                             }
                             Button { environment.editorRequest = .newProject(.ungrouped) } label: {
-                                Label(metrics.isWebInterface ? "home.web.newProject" : "home.action.newProject", systemImage: "folder.badge.plus")
+                                Label { Text(metrics.isWebInterface ? "home.web.newProject" : "home.action.newProject") } icon: { Image(systemName: "folder.badge.plus").webProfileSized(14) }
                             }
                         }
                         .buttonStyle(AletheHomeActionStyle())
@@ -56,10 +56,10 @@ struct HomeView: View {
                             .frame(maxWidth: .infinity)
                         HStack(spacing: metrics.space(.xl)) {
                             Button { environment.editorRequest = .newTerminal(nil) } label: {
-                                Label(metrics.isWebInterface ? "home.web.newTerminal" : "home.action.newTerminal", systemImage: "terminal")
+                                Label { Text(metrics.isWebInterface ? "home.web.newTerminal" : "home.action.newTerminal") } icon: { Image(systemName: "terminal").webProfileSized(14) }
                             }
                             Button { environment.editorRequest = .newProject(.ungrouped) } label: {
-                                Label(metrics.isWebInterface ? "home.web.newProject" : "home.action.newProject", systemImage: "folder.badge.plus")
+                                Label { Text(metrics.isWebInterface ? "home.web.newProject" : "home.action.newProject") } icon: { Image(systemName: "folder.badge.plus").webProfileSized(14) }
                             }
                         }
                         .buttonStyle(.link)
@@ -248,7 +248,7 @@ private struct HomeHero: View {
                         .background(theme[.bgSunken], in: Circle())
                         .overlay(Circle().strokeBorder(theme[.statusWaiting], lineWidth: metrics.size(1)))
                         .overlay(alignment: .top) {
-                            Image(systemName: "flame")
+                            Image(systemName: "flame").webProfileSized(11)
                                 .font(metrics.font(size: 11))
                                 .foregroundStyle(theme[.statusWaiting])
                                 .frame(width: metrics.size(17), height: metrics.size(14))
@@ -265,7 +265,7 @@ private struct HomeHero: View {
                 .frame(width: metrics.size(metrics.isWebInterface ? 44 : 64), height: metrics.size(metrics.isWebInterface ? 44 : 64))
                 .background(theme[.bgSunken], in: Circle())
                 .overlay(alignment: metrics.isWebInterface ? .leading : .bottomTrailing) {
-                    Label { Text(verbatim: "\(streak)") } icon: { Image(systemName: "flame.fill") }
+                    Label { Text(verbatim: "\(streak)") } icon: { Image(systemName: "flame.fill").webProfileSized(14) }
                         .font(metrics.font(.caption))
                         .padding(metrics.space(.xs))
                         .background(theme[.panel], in: Capsule())
@@ -399,25 +399,25 @@ private struct QuickLaunch: View {
                         Button { agent = kind } label: {
                             Label { Text(verbatim: AgentLabels.name(for: kind.rawValue)) } icon: {
                                 if let image = AgentLogo.menuImage(for: kind.rawValue, isLight: theme.isLight,
-                                                                  side: metrics.size(16)) {
+                                                                  side: metrics.size(19)) {
                                     Image(nsImage: image).resizable().scaledToFit()
-                                        .frame(width: metrics.size(16), height: metrics.size(16))
+                                        .frame(width: metrics.size(19), height: metrics.size(19))
                                 } else {
-                                    Image(systemName: "cpu").font(metrics.font(size: 16))
-                                        .frame(width: metrics.size(16), height: metrics.size(16))
+                                    Image(systemName: "cpu").webProfileSized(19)
+                                        .frame(width: metrics.size(19), height: metrics.size(19))
                                 }
                             }
                         }
                     }
                 } label: {
                     HStack(spacing: metrics.size(6)) {
-                        AgentLogo(agent: agent.rawValue, size: 16,
+                        AgentLogo(agent: agent.rawValue, size: 15,
                                   templateColor: theme[AgentTokens.accent(for: agent.rawValue)])
-                            .frame(width: metrics.size(16), height: metrics.size(16)).clipped()
+                            .frame(width: metrics.size(15), height: metrics.size(15)).clipped()
                         Text("home.web.agent").fixedSize()
                         Text(verbatim: AgentLabels.name(for: agent.rawValue)).lineLimit(1)
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.down").font(metrics.font(size: 10))
+                        Image(systemName: "chevron.down").webProfileSized(10).font(metrics.font(size: 10))
                     }
                 }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden)
@@ -437,7 +437,7 @@ private struct QuickLaunch: View {
         Button(action: chooseFolder) {
             if metrics.isWebInterface {
             HStack(spacing: metrics.size(5)) {
-                Image(systemName: "folder").font(metrics.font(size: 13))
+                Image(systemName: "folder").webProfileSized(13).font(metrics.font(size: 13))
                 if metrics.isWebInterface { Text("home.web.path") }
                 if let folder = workingDirectory ?? project?.folder {
                     Text(verbatim: (folder as NSString).abbreviatingWithTildeInPath)
@@ -445,7 +445,7 @@ private struct QuickLaunch: View {
                 } else { Text("home.quick.project") }
                 if metrics.isWebInterface {
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.down").font(metrics.font(size: 10))
+                    Image(systemName: "chevron.down").webProfileSized(10).font(metrics.font(size: 10))
                 }
             }
             } else {
@@ -454,7 +454,7 @@ private struct QuickLaunch: View {
                         Text(verbatim: (folder as NSString).abbreviatingWithTildeInPath)
                             .lineLimit(1).truncationMode(.middle)
                     } else { Text("home.quick.project") }
-                } icon: { Image(systemName: "folder") }
+                } icon: { Image(systemName: "folder").webProfileSized(14) }
             }
         }
         .modifier(QuickProjectStyle())
@@ -475,7 +475,7 @@ private struct QuickLaunch: View {
                             Text("home.web.mode").fixedSize()
                             Text(unrestricted ? "home.quick.unrestricted" : "home.quick.normal").lineLimit(1)
                             Spacer(minLength: 0)
-                            Image(systemName: "chevron.down").font(metrics.font(size: 10))
+                            Image(systemName: "chevron.down").webProfileSized(10).font(metrics.font(size: 10))
                         }
                     }
                     .menuStyle(.borderlessButton).menuIndicator(.hidden)
@@ -495,7 +495,7 @@ private struct QuickLaunch: View {
     }
 
     @ViewBuilder private var sendControl: some View {
-        Button(action: send) { Label("home.quick.send", systemImage: "paperplane")
+        Button(action: send) { Label { Text("home.quick.send") } icon: { Image(systemName: "paperplane").webProfileSized(14) }
             .labelStyle(.iconOnly)
             .frame(width: metrics.size(38), height: metrics.size(30))
             .background(theme[.accent], in: RoundedRectangle(cornerRadius: metrics.radius(metrics.isWebInterface ? .md : .sm)))
@@ -617,7 +617,7 @@ private struct RecentProjects: View {
                     }
                 }
                 Spacer(minLength: 0)
-                Image(systemName: "arrow.right").foregroundStyle(theme[.textTertiary])
+                Image(systemName: "arrow.right").webProfileSized(14).foregroundStyle(theme[.textTertiary])
                     .offset(x: hoveredProject == project.id && !metrics.reducesMotion && (!metrics.isWebInterface || metrics.style != .clean) ? metrics.size(2) : 0)
                     .animation(Motion.animation(Motion.quick, reduceMotion: metrics.reducesMotion), value: hoveredProject)
             }
@@ -698,7 +698,7 @@ private struct HomeActions: View {
     private func row(_ title: LocalizedStringKey, icon: String, keys: String?, id: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: metrics.space(.m)) {
-                Image(systemName: icon).frame(width: metrics.size(18)).foregroundStyle(theme[.textSecondary])
+                Image(systemName: icon).webProfileSized(14).frame(width: metrics.size(18)).foregroundStyle(theme[.textSecondary])
                 if metrics.isWebInterface { Text(webTitle(id)).font(metrics.font(size: 12)) }
                 else { Text(title) }
                 Spacer()
@@ -731,9 +731,9 @@ private struct HomeFooter: View {
 
     var body: some View {
         HStack(spacing: metrics.space(.xl)) {
-            Link(destination: Self.repository) { Label("home.repository", systemImage: "chevron.left.forwardslash.chevron.right") }
-            Link(destination: Self.repository.appending(path: "issues")) { Label("home.issues", systemImage: "smallcircle.filled.circle") }
-            Link(destination: Self.repository.appending(path: "releases")) { Label("home.releases", systemImage: "shippingbox") }
+            Link(destination: Self.repository) { Label { Text("home.repository") } icon: { Image(systemName: "chevron.left.forwardslash.chevron.right").webProfileSized(14) } }
+            Link(destination: Self.repository.appending(path: "issues")) { Label { Text("home.issues") } icon: { Image(systemName: "smallcircle.filled.circle").webProfileSized(14) } }
+            Link(destination: Self.repository.appending(path: "releases")) { Label { Text("home.releases") } icon: { Image(systemName: "shippingbox").webProfileSized(14) } }
             Spacer(minLength: 0)
             if !metrics.isWebInterface {
                 Button { environment.editorRequest = .findJump } label: { Text("home.footer.search") }
@@ -759,7 +759,7 @@ struct HomeButton: View {
     var body: some View {
         Button { environment.toggleHome() } label: {
             // The label's content never changes; only its tint marks Home as shown (see `icon`).
-            Image(nsImage: Self.icon)
+            Image(nsImage: Self.icon).webProfileSized(16)
                 .foregroundStyle(environment.showingHome ? theme[.accent] : theme[.textSecondary])
         }
         .help(Text(environment.showingHome ? "menu.view.showWorkspace" : "menu.view.showHome"))
@@ -829,7 +829,7 @@ private struct HomeWebNotifications: View {
             VStack(spacing: 0) {
                 if environment.notifier.log.entries.isEmpty {
                     VStack(spacing: metrics.size(10)) {
-                        Image(systemName: "checkmark.circle").font(metrics.font(size: 18))
+                        Image(systemName: "checkmark.circle").webProfileSized(18).font(metrics.font(size: 18))
                             .foregroundStyle(theme[.statusWorking])
                             .frame(width: metrics.size(56), height: metrics.size(56))
                             .background(theme[.statusWorking].opacity(0.14), in: RoundedRectangle(cornerRadius: metrics.size(18)))
@@ -848,7 +848,7 @@ private struct HomeWebNotifications: View {
                                 if let agent = entry.agent {
                                     AgentLogo(agent: agent, size: 14)
                                 } else {
-                                    Image(systemName: "bell").font(metrics.font(size: 14))
+                                    Image(systemName: "bell").webProfileSized(14).font(metrics.font(size: 14))
                                 }
                             }
                                 .foregroundStyle(theme[entry.agent.map { AgentTokens.accent(for: $0) } ?? .textSecondary])

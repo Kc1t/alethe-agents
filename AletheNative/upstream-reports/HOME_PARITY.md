@@ -12,7 +12,7 @@ Source: `origin/main` (`f09c597`), read with `git show`; no checkout, commit or 
   between fg-muted and fg. Row opacity reproduces the CSS fade without gradient layers.
 - The final Home CSS overrides, rather than earlier declarations, control proportions:
   greeting 34, profile 44, quick launch maximum 620, agent field 145, mode field 132,
-  selector icons 16, recent avatar 28, recent title 11 and card minimum height 44 points.
+  selector icons 15 (19 in the agent menu), recent avatar 28, recent title 11 and card minimum height 44 points.
   The often-cited 34-point project avatar is overridden to 28 in `.overviewGrid`.
   Existing Recent, Start something and Usage layouts already contain these final values.
 - Quick-launch asset copies have bounded intrinsic dimensions as well as explicit view frames,
@@ -39,3 +39,13 @@ Source: `origin/main` (`f09c597`), read with `git show`; no checkout, commit or 
   ASCII colors are quantized to 32 cached ink levels to avoid resolving text for every cell.
 - No ai-memory skill, connector or CLI is available in this session. This handoff records the
   decisions, validation limits and reviewer next steps; it does not claim an ai-memory write.
+
+## Image sizing follow-up
+
+- Re-read `origin/main:src/components/HomeView/index.tsx` and `HomeView.module.css`: the agent
+  summary uses a 15-point icon, menu options use 19, and chevrons use 10. These replace the prior
+  uniform 16-point agent sizing. Frames and intrinsic menu bitmap dimensions agree.
+- Image and Label icons throughout Home now receive explicit web-only resizable fit bounds.
+  The shared helper returns the original image when `metrics.isWebInterface` is false.
+- Menu images are rasterized to new representations, avoiding AppKit selecting a full-size
+  source bitmap. Final runtime/menu verification remains with the reviewer; no build was run.

@@ -56,7 +56,7 @@ private struct PluginRow: View {
                 Label {
                     Text(verbatim: error)
                 } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill")
+                    Image(systemName: "exclamationmark.triangle.fill").webProfileSized(14)
                 }
                 .font(metrics.isWebInterface ? metrics.font(size: 11) : .callout)
                 .foregroundStyle(theme[.statusStopped])

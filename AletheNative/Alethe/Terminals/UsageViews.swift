@@ -49,7 +49,7 @@ struct AIUsageButton: View {
 
     var body: some View {
         Button { environment.editorRequest = .aiUsage } label: {
-            Label { Text("usage.title") } icon: { Image(systemName: "gauge.with.dots.needle.33percent") }
+            Label { Text("usage.title") } icon: { Image(systemName: "gauge.with.dots.needle.33percent").webProfileSized(14) }
         }
         .help(Text("usage.title"))
         .accessibilityIdentifier("usage.button")

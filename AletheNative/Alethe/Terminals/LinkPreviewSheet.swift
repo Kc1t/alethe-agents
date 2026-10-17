@@ -62,7 +62,15 @@ struct LinkPreviewSheet: View {
                 MarkdownPreview(file: MarkdownFile(path: path, watch: false))
             case .image?:
                 if let image = NSImage(contentsOf: URL(filePath: path)) {
-                    Image(nsImage: image).resizable().scaledToFit().padding(metrics.space(.m))
+                    if metrics.isWebInterface {
+                        GeometryReader { geometry in
+                            Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                        }
+                        .padding(metrics.space(.m))
+                    } else {
+                        Image(nsImage: image).resizable().scaledToFit().padding(metrics.space(.m))
+                    }
                 } else {
                     unavailable
                 }

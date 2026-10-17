@@ -161,17 +161,17 @@ private struct ProfileRow: View {
             }
             HStack(spacing: metrics.space(.xs)) {
                 Button(action: onRename) {
-                    Label("settings.profiles.rename", systemImage: "pencil")
+                    Label { Text("settings.profiles.rename") } icon: { Image(systemName: "pencil").webProfileSized(14) }
                 }
                 .help(Text("settings.profiles.rename"))
                 .accessibilityIdentifier("settings.profiles.rename.\(name)")
                 Button(action: onDuplicate) {
-                    Label("settings.profiles.duplicate", systemImage: "plus.square.on.square")
+                    Label { Text("settings.profiles.duplicate") } icon: { Image(systemName: "plus.square.on.square").webProfileSized(14) }
                 }
                 .help(Text("settings.profiles.duplicate"))
                 .accessibilityIdentifier("settings.profiles.duplicate.\(name)")
                 Button(action: onDelete) {
-                    Label("settings.profiles.delete", systemImage: "trash")
+                    Label { Text("settings.profiles.delete") } icon: { Image(systemName: "trash").webProfileSized(14) }
                 }
                 .help(Text(isRunning ? "settings.profiles.delete.running" : "settings.profiles.delete"))
                 .disabled(isRunning)

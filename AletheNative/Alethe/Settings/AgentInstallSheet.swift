@@ -134,11 +134,11 @@ struct AgentInstallSheet: View {
     private var result: some View {
         switch installer.status {
         case .succeeded:
-            Label(String(format: String(localized: mode.success), agent.displayName), systemImage: "checkmark.circle.fill")
+            Label { Text(String(format: String(localized: mode.success), agent.displayName)) } icon: { Image(systemName: "checkmark.circle.fill").webProfileSized(14) }
                 .foregroundStyle(theme[.statusActive])
                 .accessibilityIdentifier("agentInstall.succeeded")
         case .failed:
-            Label(String(format: String(localized: "agentInstall.failed"), agent.displayName), systemImage: "exclamationmark.triangle.fill")
+            Label { Text(String(format: String(localized: "agentInstall.failed"), agent.displayName)) } icon: { Image(systemName: "exclamationmark.triangle.fill").webProfileSized(14) }
                 .foregroundStyle(theme[.statusStopped])
                 .accessibilityIdentifier("agentInstall.failed")
         case .running:

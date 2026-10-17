@@ -51,7 +51,7 @@ struct SidebarMergePanel: View {
                                         .lineLimit(1)
                                         .truncationMode(.middle)
                                 } icon: {
-                                    Image(systemName: "exclamationmark.triangle")
+                                    Image(systemName: "exclamationmark.triangle").webProfileSized(14)
                                         .foregroundStyle(theme[.statusWaiting])
                                 }
                             }
@@ -63,7 +63,7 @@ struct SidebarMergePanel: View {
                         Label {
                             Text(verbatim: group.title).lineLimit(1).truncationMode(.middle)
                         } icon: {
-                            Image(systemName: grouping == .folder ? "folder" : "tag")
+                            Image(systemName: grouping == .folder ? "folder" : "tag").webProfileSized(14)
                                 .foregroundStyle(theme[.textSecondary])
                         }
                     }
@@ -93,7 +93,7 @@ struct SidebarMergePanel: View {
                     .foregroundStyle(theme[.textSecondary])
                 }
             } icon: {
-                Image(systemName: "arrow.triangle.merge")
+                Image(systemName: "arrow.triangle.merge").webProfileSized(14)
                     .foregroundStyle(theme[session.conflicts.isEmpty ? .accent : .statusWaiting])
             }
         }
@@ -149,7 +149,7 @@ struct SidebarPlanningStatus: View {
                     .foregroundStyle(theme[.textSecondary])
                 }
             } icon: {
-                Image(systemName: session.planning.reportedComplete ? "checkmark.circle" : "list.bullet.clipboard")
+                Image(systemName: session.planning.reportedComplete ? "checkmark.circle" : "list.bullet.clipboard").webProfileSized(14)
                     .foregroundStyle(theme[session.planning.reportedComplete ? .statusActive : .accent])
             }
         }

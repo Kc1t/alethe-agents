@@ -35,7 +35,7 @@ struct LeftSidebar: View {
             ScrollView(.horizontal) {
                 HStack(spacing: metrics.space(.xxs)) {
                     Button { environment.toggleHome() } label: {
-                        Label("leftSidebar.home", systemImage: "house")
+                        Label { Text("leftSidebar.home") } icon: { Image(systemName: "house").webProfileSized(14) }
                     }
                     .buttonStyle(.plain)
                     .font(metrics.font(.caption))
@@ -56,7 +56,7 @@ struct LeftSidebar: View {
             .accessibilityLabel(Text("leftSidebar.navigation"))
 
             Button { environment.editorRequest = .findJump } label: {
-                Label("leftSidebar.search", systemImage: "magnifyingglass")
+                Label { Text("leftSidebar.search") } icon: { Image(systemName: "magnifyingglass").webProfileSized(14) }
                     .font(metrics.font(.body))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(metrics.space(.s))
@@ -81,7 +81,7 @@ struct LeftSidebar: View {
             ScrollView(.horizontal) {
                 HStack(spacing: metrics.size(4)) {
                     Button { selectedTab = "projects"; environment.showingHome = true } label: {
-                        Label("leftSidebar.home", systemImage: "house")
+                        Label { Text("leftSidebar.home") } icon: { Image(systemName: "house").webProfileSized(14) }
                     }
                     .buttonStyle(AletheSidebarTabStyle(isSelected: environment.showingHome))
                     .help(Text("leftSidebar.home"))
@@ -91,7 +91,7 @@ struct LeftSidebar: View {
                     Button {
                         environment.openPluginSheet(GitControlPlugin.sheetID, project: selectedProject?.id)
                     } label: {
-                        Label("menu.git.control", systemImage: "arrow.triangle.branch")
+                        Label { Text("menu.git.control") } icon: { Image(systemName: "arrow.triangle.branch").webProfileSized(14) }
                     }
                     .buttonStyle(AletheSidebarTabStyle(isSelected: false))
                     .disabled(selectedProject == nil || !environment.hasPluginCommand(GitControlPlugin.openCommandID))
@@ -110,7 +110,7 @@ struct LeftSidebar: View {
             .accessibilityLabel(Text("leftSidebar.navigation"))
             Button { environment.editorRequest = .findJump } label: {
                 HStack(spacing: metrics.size(10)) {
-                    Image(systemName: "magnifyingglass")
+                    Image(systemName: "magnifyingglass").webProfileSized(15)
                         .font(metrics.font(size: 15))
                         .foregroundStyle(theme[.textTertiary])
                     Text("leftSidebar.search").font(metrics.font(size: 13, weight: .medium))
@@ -149,7 +149,7 @@ struct LeftSidebar: View {
     private func webTab(_ id: String, title: LocalizedStringKey, symbol: String) -> some View {
         Button {
             selectedTab = id
-        } label: { Label(title, systemImage: symbol) }
+        } label: { Label { Text(title) } icon: { Image(systemName: symbol).webProfileSized(14) } }
         .buttonStyle(AletheSidebarTabStyle(isSelected: effectiveTab == id))
         .help(Text(title))
         .accessibilityIdentifier("leftSidebar.tab.\(id)")
@@ -163,7 +163,7 @@ struct LeftSidebar: View {
                 HStack(spacing: metrics.size(8)) {
                     AletheSectionLabel(Text("leftSidebar.explorer"))
                     Spacer(minLength: 0)
-                    Image(systemName: "ellipsis")
+                    Image(systemName: "ellipsis").webProfileSized(14)
                         .font(metrics.font(size: 14))
                         .foregroundStyle(theme[.fgMuted])
                         .accessibilityHidden(true)
@@ -201,7 +201,7 @@ struct LeftSidebar: View {
                     HStack(spacing: metrics.size(2)) {
                         ForEach(PaneLayoutMode.allCases, id: \.self) { mode in
                             Button { environment.workspace?.update { $0.setLayoutMode(mode, for: project.id) } } label: {
-                                Label(mode.title, systemImage: mode.symbol)
+                                Label { Text(mode.title) } icon: { Image(systemName: mode.symbol).webProfileSized(14) }
                             }
                             .buttonStyle(AletheSidebarTabStyle(isSelected: project.layout == mode,
                                                               width: 24, height: 22, bordered: false))
@@ -232,7 +232,7 @@ struct LeftSidebar: View {
             selectedTab = id
             environment.showingHome = false
         } label: {
-            Label(title, systemImage: symbol)
+            Label { Text(title) } icon: { Image(systemName: symbol).webProfileSized(14) }
         }
         .buttonStyle(.plain)
         .font(metrics.font(.caption))
@@ -254,7 +254,7 @@ struct LeftSidebar: View {
                     FilesView()
                 } else {
                     ContentUnavailableView {
-                        Label("leftSidebar.emptyTitle", systemImage: "folder.badge.plus")
+                        Label { Text("leftSidebar.emptyTitle") } icon: { Image(systemName: "folder.badge.plus").webProfileSized(14) }
                     } description: {
                         Text("leftSidebar.emptyDescription")
                     } actions: {
@@ -284,7 +284,7 @@ struct LeftSidebar: View {
                         Button {
                             environment.workspace?.update { $0.setLayoutMode(mode, for: project.id) }
                         } label: {
-                            Label(mode.title, systemImage: mode.symbol)
+                            Label { Text(mode.title) } icon: { Image(systemName: mode.symbol).webProfileSized(14) }
                         }
                         .buttonStyle(AletheIconButtonStyle(side: 24, isOn: project.layout == mode))
                         .help(Text(mode.title))

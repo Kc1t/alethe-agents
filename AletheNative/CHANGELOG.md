@@ -16,6 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style profile menus use flat, full-width hover rows, bounded sidebar-relative width and a
+  trailing checkmark for the active profile instead of native checkbox controls.
+- Images and menu icons in Home, sidebar, Settings and terminal surfaces retain explicit bounds
+  at every interface zoom level. Menu brand artwork is rasterized at its display size to prevent
+  AppKit from using oversized asset representations; the native interface retains its image path.
 - Web interface title-bar controls use fixed icon frames and a 32-point sidebar toggle inside a
   40-point bar, with macOS traffic lights reserved separately. The right tab strip is 40 points
   tall and Markdown empty states use a centered 24-point icon.

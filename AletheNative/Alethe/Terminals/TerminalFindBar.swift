@@ -16,7 +16,7 @@ struct TerminalFindBar: View {
 
     var body: some View {
         HStack(spacing: metrics.space(.xs)) {
-            Image(systemName: "magnifyingglass")
+            Image(systemName: "magnifyingglass").webProfileSized(14)
                 .font(metrics.font(.footnote))
                 .foregroundStyle(theme[.textTertiary])
             TextField(text: $text) { Text("find.placeholder") }
@@ -80,7 +80,7 @@ struct TerminalFindBar: View {
     private func button(_ symbol: String, label: LocalizedStringKey, id: String,
                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
+            Image(systemName: symbol).webProfileSized(20)
                 .font(metrics.font(.caption).weight(.semibold))
                 .frame(width: metrics.size(20), height: metrics.size(20))
                 .contentShape(Rectangle())

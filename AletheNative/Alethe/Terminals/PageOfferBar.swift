@@ -20,7 +20,7 @@ struct PageOfferBar: View {
 
     var body: some View {
         HStack(spacing: metrics.space(.s)) {
-            Image(systemName: "globe")
+            Image(systemName: "globe").webProfileSized(14)
                 .foregroundStyle(theme[.accent])
             Text(verbatim: format("pageOffer.ready", address))
                 .font(metrics.font(.footnote))
@@ -35,7 +35,7 @@ struct PageOfferBar: View {
             Button("pageOffer.openInBrowser", action: onOpenInBrowser)
                 .accessibilityIdentifier("pageOffer.openInBrowser")
             Button(action: onDismiss) {
-                Image(systemName: "xmark").font(metrics.font(.caption).weight(.semibold))
+                Image(systemName: "xmark").webProfileSized(14).font(metrics.font(.caption).weight(.semibold))
             }
             .buttonStyle(.borderless)
             .foregroundStyle(theme[.textTertiary])

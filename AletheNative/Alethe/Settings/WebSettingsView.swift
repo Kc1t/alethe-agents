@@ -78,7 +78,7 @@ struct WebSettingsView: View {
                         }
                         Spacer(minLength: 0)
                         Button { dismiss() } label: {
-                            Image(systemName: "xmark")
+                            Image(systemName: "xmark").webProfileSized(16)
                                 .font(metrics.font(size: 16))
                                 .frame(width: metrics.size(32), height: metrics.size(32))
                         }
@@ -129,13 +129,13 @@ struct WebSettingsView: View {
                                 .foregroundStyle(theme[.fgMuted])
                         }
                         Spacer(minLength: 0)
-                        if !narrow { Image(systemName: "chevron.right").font(metrics.font(size: 14)) }
+                        if !narrow { Image(systemName: "chevron.right").webProfileSized(14).font(metrics.font(size: 14)) }
                     }
                     .padding(metrics.size(8))
                 }
                 .buttonStyle(.plain)
                 HStack(spacing: metrics.size(8)) {
-                    Image(systemName: "magnifyingglass").font(metrics.font(size: 14))
+                    Image(systemName: "magnifyingglass").webProfileSized(14).font(metrics.font(size: 14))
                     TextField("settings.web.search", text: $query)
                         .textFieldStyle(.plain)
                         .font(metrics.font(size: 12))
@@ -153,7 +153,7 @@ struct WebSettingsView: View {
                         environment.settingsTab = destination.id
                     } label: {
                         HStack(spacing: metrics.size(10)) {
-                            Image(systemName: destination.symbol)
+                            Image(systemName: destination.symbol).webProfileSized(18)
                                 .font(metrics.font(size: 18))
                                 .frame(width: metrics.size(18))
                             VStack(alignment: .leading, spacing: metrics.size(2)) {
@@ -176,9 +176,9 @@ struct WebSettingsView: View {
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
                         .strokeBorder(theme[.borderStrong].opacity(extra == nil && destination.id == environment.settingsTab ? 1 : 0), lineWidth: metrics.size(1)))
                 }
-                Button { extra = .shortcuts } label: { Label("settings.web.shortcuts", systemImage: "keyboard") }
+                Button { extra = .shortcuts } label: { Label { Text("settings.web.shortcuts") } icon: { Image(systemName: "keyboard").webProfileSized(14) } }
                     .padding(metrics.size(10))
-                Button { extra = .about } label: { Label("settings.web.about", systemImage: "info.circle") }
+                Button { extra = .about } label: { Label { Text("settings.web.about") } icon: { Image(systemName: "info.circle").webProfileSized(14) } }
                     .padding(metrics.size(10))
             }
             .buttonStyle(.plain)

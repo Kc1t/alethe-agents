@@ -51,3 +51,27 @@ Source: `origin/main`, read using `git show` without checkout. Scope: `Interface
   Network failures leave the chip absent. A native preview update service remains outside scope.
 - The task overrides the repo's commit/changelog workflow: changes remain unstaged and only the
   native changelog is updated. The main migration plan and web changelog are untouched.
+
+## Profile menu and image sizing follow-up
+
+- `origin/main:src/components/UserProfile/index.tsx` and `UserProfile.module.css` supply the
+  popover's 4-point padding, 2-point gap, 7×10-point row padding, 8-point icon/text gap,
+  13-point labels and 36-point header avatar. Clean header values remain 28/12/10 points.
+  The task specifies 14-point icons and a trailing active-profile checkmark. Existing local
+  avatar actions and profile switching remain available; no account/schema changes were made.
+- The web CSS has no fixed popover width: `left: 8px; right: 8px` resolves against the sidebar
+  (6 points in clean mode). The native popover receives that measured, fixed width rather than
+  deriving width from individual row labels. Dividers retain the CSS 4×2-point margins.
+- `Components+ProfileImages.swift` contains the flat row/label styles and explicit web image
+  bounds. `Components.swift` is untouched. Shared image bounds return the original image in
+  `.mac`; the original profile popover remains in a separate native branch.
+- Image audit covers Sidebar, Home, Settings and Terminals, including symbols embedded in
+  Labels and AppKit Menu labels. Agent/VS Code artwork is redrawn into a display-size NSImage,
+  rather than changing metadata on copies retaining large bitmap representations. Avatar fill
+  intentionally follows CSS `object-fit: cover`; document previews fit their available viewport.
+- Native AppKit popover/menu hosting, SF Symbol glyph shapes and font rendering remain platform
+  differences. Reviewer should inspect hover, profile confirmation, long names, menus, clean mode
+  and zoom after building outside the sandbox. Strings gate and diff whitespace checks pass;
+  no build, restart, staging, commit or push was performed.
+- No ai-memory skill or connector is exposed in this session. This existing handoff records
+  the follow-up state and remaining validation instead of claiming an external memory update.

@@ -295,7 +295,7 @@ private struct OnboardingImportStep: View {
                 Label {
                     Text(verbatim: format("onboarding.import.done", imported.groups, imported.projects, imported.panes))
                 } icon: {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(theme[.statusActive])
+                    Image(systemName: "checkmark.circle.fill").webProfileSized(14).foregroundStyle(theme[.statusActive])
                 }
                 .accessibilityIdentifier("onboarding.import.summary")
             }

@@ -167,7 +167,7 @@ private struct GSDSyncOptions: View {
             Button {
                 models.append(ModelEntry(name: ""))
             } label: {
-                Label("features.gsdSync.addModel", systemImage: "plus")
+                Label { Text("features.gsdSync.addModel") } icon: { Image(systemName: "plus").webProfileSized(14) }
             }
             .accessibilityIdentifier("settings.gsdSync.add")
         } label: {
@@ -196,7 +196,7 @@ private struct GSDSyncOptions: View {
                     models.removeAll { $0.id == model.id }
                     store()
                 } label: {
-                    Image(systemName: "minus.circle")
+                    Image(systemName: "minus.circle").webProfileSized(14)
                 }
                 .buttonStyle(.borderless)
                 .help(Text("features.gsdSync.removeModel"))

@@ -98,7 +98,7 @@ struct AppearanceSettings: View {
                                     Text("menu.view.zoomOut")
                                 } icon: {
                                     // Same box for both glyphs: "minus" is shorter and the button would shrink.
-                                    Image(systemName: "minus").frame(width: metrics.size(12), height: metrics.size(12))
+                                    Image(systemName: "minus").webProfileSized(12).frame(width: metrics.size(12), height: metrics.size(12))
                                 }
                             }
                             .disabled(uiScale <= PreferencesDocument.uiScaleRange.lowerBound)
@@ -109,7 +109,7 @@ struct AppearanceSettings: View {
                                 Label {
                                     Text("menu.view.zoomIn")
                                 } icon: {
-                                    Image(systemName: "plus").frame(width: metrics.size(12), height: metrics.size(12))
+                                    Image(systemName: "plus").webProfileSized(12).frame(width: metrics.size(12), height: metrics.size(12))
                                 }
                             }
                             .disabled(uiScale >= PreferencesDocument.uiScaleRange.upperBound)
@@ -201,7 +201,7 @@ struct AppearanceSettings: View {
             Section("settings.appearance.zoom") {
                 HStack(spacing: metrics.size(8)) {
                     Button { environment.preferences?.update { $0.zoom(by: -1) } } label: {
-                        Image(systemName: "minus")
+                        Image(systemName: "minus").webProfileSized(14)
                     }
                     .disabled(uiScale <= PreferencesDocument.uiScaleRange.lowerBound)
                     .accessibilityLabel(Text("menu.view.zoomOut"))
@@ -212,13 +212,13 @@ struct AppearanceSettings: View {
                         .id(uiScale)
                         .accessibilityIdentifier("settings.zoom.value")
                     Button { environment.preferences?.update { $0.zoom(by: 1) } } label: {
-                        Image(systemName: "plus")
+                        Image(systemName: "plus").webProfileSized(14)
                     }
                     .disabled(uiScale >= PreferencesDocument.uiScaleRange.upperBound)
                     .accessibilityLabel(Text("menu.view.zoomIn"))
                     .accessibilityIdentifier("settings.zoom.in")
                     Button { environment.preferences?.update { $0.uiScale = 1 } } label: {
-                        Image(systemName: "arrow.counterclockwise")
+                        Image(systemName: "arrow.counterclockwise").webProfileSized(14)
                     }
                     .disabled(uiScale == 1)
                     .accessibilityLabel(Text("menu.view.actualSize"))
@@ -336,7 +336,7 @@ struct ThemeGrid: View {
                 HStack(spacing: metrics.size(8)) {
                     option.localizedName.font(metrics.font(size: 12))
                     Spacer(minLength: 0)
-                    if selected { Image(systemName: "checkmark").font(metrics.font(size: 15)) }
+                    if selected { Image(systemName: "checkmark").webProfileSized(15).font(metrics.font(size: 15)) }
                 }
                 if let summary = option.localizedSummary {
                     summary.font(metrics.font(size: 10))
@@ -428,9 +428,9 @@ private struct AppIconGrid: View {
             VStack(spacing: metrics.space(.xs)) {
                 Group {
                     if let image = AppIcon.image(for: option) {
-                        Image(nsImage: image).resizable().interpolation(.high)
+                        Image(nsImage: image).resizable().interpolation(.high).webProfileSized(56)
                     } else {
-                        Image(systemName: "app")
+                        Image(systemName: "app").webProfileSized(56)
                     }
                 }
                 .frame(width: metrics.size(56), height: metrics.size(56))

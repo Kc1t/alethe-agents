@@ -208,7 +208,7 @@ struct AgentSettingsRow: View {
                     }
                     Button("agentInstall.uninstallEllipsis") { sheet = .uninstall }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis.circle").webProfileSized(14)
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()

@@ -61,7 +61,7 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                 .onTapGesture { if isGroup { binding.wrappedValue.toggle() } }
                 .overlay(alignment: .bottomTrailing) {
                     Button { binding.wrappedValue.toggle() } label: {
-                        Image(systemName: "chevron.down")
+                        Image(systemName: "chevron.down").webProfileSized(14)
                             .rotationEffect(.degrees(binding.wrappedValue ? 0 : -90))
                             .font(metrics.font(size: isGroup ? 14 : 15))
                             .foregroundStyle(theme[isGroup ? .fgFaint : .fgMuted])
