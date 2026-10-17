@@ -38070,6 +38070,54 @@
           }
         }
       }
+    },
+    "gitModals.commit.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Commit changes on %1$@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvar alterações em %1$@"
+          }
+        }
+      }
+    },
+    "gitModals.commit.description" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Git merges committed changes only. Review the pending files and commit message before continuing."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Git integra apenas alterações salvas em commits. Revise os arquivos pendentes e a mensagem do commit antes de continuar."
+          }
+        }
+      }
+    },
+    "gitModals.revealFolder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reveal folder"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar pasta"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

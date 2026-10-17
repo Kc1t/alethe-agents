@@ -39,7 +39,7 @@ struct GitGraphView: View {
             }
         }
         .task { await history.reload() }
-        .alert(Text("git.history.branch.title"), isPresented: branchPresented) {
+        .alert(Text("git.history.branch.title"), isPresented: Binding(get: { !metrics.isWebInterface && branchTarget != nil }, set: { if !$0 { branchTarget = nil } })) {
             TextField("git.history.branch.name", text: $branchName)
                 .accessibilityIdentifier("git.history.branch.name")
             Button("git.history.branch.create") {
@@ -47,12 +47,24 @@ struct GitGraphView: View {
             }
             Button("editor.cancel", role: .cancel) {}
         }
-        .confirmationDialog(Text("git.history.resetHard.title"), isPresented: hardResetPresented,
+        .confirmationDialog(Text("git.history.resetHard.title"), isPresented: Binding(get: { !metrics.isWebInterface && hardResetTarget != nil }, set: { if !$0 { hardResetTarget = nil } }),
                             presenting: hardResetTarget) { hash in
             Button("git.history.resetHard.confirm", role: .destructive) { history.reset(hash, mode: .hard) }
             Button("editor.cancel", role: .cancel) {}
         } message: { hash in
             Text(verbatim: format("git.history.resetHard.message", String(hash.prefix(7))))
+        }
+        .gitWebSheet(isPresented: Binding(get: { metrics.isWebInterface && branchTarget != nil },
+                                         set: { if !$0 { branchTarget = nil } }), width: 440) {
+            GitGraphBranchWebModal(name: $branchName) {
+                if let hash = branchTarget { history.branch(branchName, at: hash) }
+            }
+        }
+        .gitWebSheet(isPresented: Binding(get: { metrics.isWebInterface && hardResetTarget != nil },
+                                         set: { if !$0 { hardResetTarget = nil } }), width: 440) {
+            GitGraphResetWebModal(hash: hardResetTarget ?? "") {
+                if let hash = hardResetTarget { history.reset(hash, mode: .hard) }
+            }
         }
     }
 

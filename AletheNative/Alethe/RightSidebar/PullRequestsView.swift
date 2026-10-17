@@ -67,10 +67,20 @@ struct PullRequestsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .task(id: reload) { await load() }
-        .sheet(item: $reviewing) { PullRequestReviewSheet(pr: $0) }
-        .sheet(item: $merging) { pr in
+        .sheet(item: Binding(get: { metrics.isWebInterface ? nil : reviewing }, set: { reviewing = $0 })) { PullRequestReviewSheet(pr: $0) }
+        .sheet(item: Binding(get: { metrics.isWebInterface ? nil : merging }, set: { merging = $0 })) { pr in
             if let sha = reviews.reviewedHead(pr) {
                 PullRequestMergeSheet(pr: pr, headSHA: sha) { reload += 1 }
+            }
+        }
+        .gitWebSheet(isPresented: Binding(get: { metrics.isWebInterface && reviewing != nil },
+                                         set: { if !$0 { reviewing = nil } }), width: 680) {
+            if let reviewing { GitPullRequestReviewWebModal(pr: reviewing) }
+        }
+        .gitWebSheet(isPresented: Binding(get: { metrics.isWebInterface && merging != nil },
+                                         set: { if !$0 { merging = nil } }), width: 680) {
+            if let merging, let sha = reviews.reviewedHead(merging) {
+                GitPullRequestMergeWebModal(pr: merging, headSHA: sha) { reload += 1 }
             }
         }
     }

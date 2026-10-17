@@ -23,7 +23,41 @@ struct WorktreesSheet: View {
 
     private var project: Project? { projectID.flatMap { workspace.document.project($0) } }
 
+    @Environment(\.gitModalClose) private var closeOverlay
+
     var body: some View {
+        Group {
+            if metrics.isWebInterface {
+                webContent
+            } else {
+                nativeContent
+            }
+        }
+    }
+
+    private var nativeContent: some View {
+        sheetContent
+        .frame(width: metrics.size(620), height: metrics.size(440))
+        .navigationTitle(Text("worktrees.title"))
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("worktrees.close") { dismiss() }
+                    .accessibilityIdentifier("worktrees.close")
+            }
+        }
+    }
+
+    private var webContent: some View {
+        GitWebModal(close: { closeOverlay?() ?? dismiss() }, closeIdentifier: "worktrees.close") {
+            Text("worktrees.title")
+        } content: {
+            sheetContent.frame(height: metrics.size(360))
+                .buttonStyle(AletheButtonStyle(size: .small))
+        } footer: { EmptyView() }
+        .frame(width: closeOverlay == nil ? metrics.size(620) : nil)
+    }
+
+    private var sheetContent: some View {
         Group {
             if let model {
                 content(model)
@@ -31,14 +65,6 @@ struct WorktreesSheet: View {
                 Text("worktrees.noProject")
                     .foregroundStyle(theme[.textSecondary])
                     .padding(metrics.space(.xl))
-            }
-        }
-        .frame(width: metrics.size(620), height: metrics.size(440))
-        .navigationTitle(Text("worktrees.title"))
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("worktrees.close") { dismiss() }
-                    .accessibilityIdentifier("worktrees.close")
             }
         }
         .task {
@@ -78,12 +104,27 @@ struct WorktreesSheet: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityIdentifier("worktrees.empty")
             } else {
+                if metrics.isWebInterface {
+                    ScrollView {
+                        VStack(spacing: metrics.size(8)) {
+                            ForEach(model.rows) { row in
+                                Button { selection = row.id } label: {
+                                    GitWorktreeWebRow(row: row, selected: selection == row.id)
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu { rowActions(row, model) }
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("worktrees.list")
+                } else {
                 List(model.rows, selection: $selection) { row in
                     rowView(row)
                         .tag(row.id)
                         .contextMenu { rowActions(row, model) }
                 }
                 .accessibilityIdentifier("worktrees.list")
+                }
             }
             Divider()
             HStack {
@@ -109,7 +150,7 @@ struct WorktreesSheet: View {
             Button("worktrees.lock") { if let selected { model.lock(selected, reason: lockReason) } }
             Button("editor.cancel", role: .cancel) {}
         } message: { Text("worktrees.lock.message") }
-        .alert("worktree.commit.title", isPresented: $askCommit) {
+        .alert("worktree.commit.title", isPresented: Binding(get: { !metrics.isWebInterface && askCommit }, set: { askCommit = $0 })) {
             TextField(text: $commitMessage, prompt: Text(verbatim: GitWorktrees.defaultCommitMessage)) {
                 Text("worktree.commit.message")
             }
@@ -117,6 +158,14 @@ struct WorktreesSheet: View {
             Button("worktree.commit.confirm") { if let selected { model.commit(selected, message: commitMessage) } }
             Button("editor.cancel", role: .cancel) {}
         } message: { Text("worktree.commit.message") }
+        .gitWebSheet(isPresented: Binding(get: { metrics.isWebInterface && askCommit }, set: { askCommit = $0 }), width: 520) {
+            if let selected {
+                ConfirmWorktreeCommitWebModal(folder: URL(filePath: selected.info.path), branch: selected.info.branch,
+                                              message: $commitMessage) {
+                    model.commit(selected, message: commitMessage)
+                }
+            }
+        }
         .confirmationDialog("worktree.remove.title", isPresented: $confirmRemove) {
             Button("worktree.remove", role: .destructive) {
                 if let selected { model.remove(selected) { detachTabs(from: $0) } }

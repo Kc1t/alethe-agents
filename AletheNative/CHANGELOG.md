@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- Web-style Git dialogs use themed modal headers, compact repository and worktree rows, bounded
+  agent artwork, pending-file commit review and pull-request cards. Native macOS sheets and Git
+  operation guards are retained; full-window overlay routing remains pending host integration.
 - Web-style left sidebar matches the web search height, row spacing, folder and pause icons,
   group hover corners and nested-group margins. Search hover colors, unread completion marks,
   group double-click opening and the now-playing/update order follow the web interface;

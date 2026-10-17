@@ -12,20 +12,44 @@ struct GitControlSheet: View {
     let workspace: WorkspaceModel
     let undoManager: UndoManager?
     let projectID: ProjectID?
-    @State private var model: GitControlModel?
-    @State private var pendingDiscard: GitStatusEntry?
-    @State private var tab = Tab.changes
-    @State private var history: GitHistoryModel?
-    @State private var creatingBranch = false
+    @State var model: GitControlModel?
+    @State var pendingDiscard: GitStatusEntry?
+    @State var tab = Tab.changes
+    @State var history: GitHistoryModel?
+    @State var creatingBranch = false
 
-    private enum Tab: Hashable { case changes, history }
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.theme) private var theme
-    @Environment(\.metrics) private var metrics
+    enum Tab: Hashable { case changes, history }
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.theme) var theme
+    @Environment(\.metrics) var metrics
 
-    private var project: Project? { projectID.flatMap { workspace.document.project($0) } }
+    var project: Project? { projectID.flatMap { workspace.document.project($0) } }
+
+    @Environment(\.gitModalClose) var closeOverlay
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface {
+                webContent
+            } else {
+                nativeContent
+            }
+        }
+    }
+
+    var nativeContent: some View {
+        sheetContent
+        .frame(width: metrics.size(520), height: metrics.size(600))
+        .navigationTitle(Text("git.title"))
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("git.close") { dismiss() }
+                    .accessibilityIdentifier("git.close")
+            }
+        }
+    }
+
+    var sheetContent: some View {
         Group {
             if let model {
                 content(model)
@@ -35,26 +59,20 @@ struct GitControlSheet: View {
                     .padding(metrics.space(.xl))
             }
         }
-        .frame(width: metrics.size(520), height: metrics.size(600))
-        .navigationTitle(Text("git.title"))
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("git.close") { dismiss() }
-                    .accessibilityIdentifier("git.close")
-            }
-        }
-        .task {
-            guard let project else { return }
-            let model = GitControlModel(folder: URL(filePath: project.folder, directoryHint: .isDirectory))
-            self.model = model
-            await model.start()
-        }
+        .task { await loadModel() }
         .onDisappear { model?.stop() }
         .accessibilityIdentifier("git.control")
     }
 
+    func loadModel() async {
+        guard let project else { return }
+        let model = GitControlModel(folder: URL(filePath: project.folder, directoryHint: .isDirectory))
+        self.model = model
+        await model.start()
+    }
+
     @ViewBuilder
-    private func content(_ model: GitControlModel) -> some View {
+    func content(_ model: GitControlModel) -> some View {
         VStack(spacing: 0) {
             if let error = model.error {
                 errorBanner(error, model)
@@ -70,7 +88,7 @@ struct GitControlSheet: View {
         }
     }
 
-    private func errorBanner(_ error: String, _ model: GitControlModel) -> some View {
+    func errorBanner(_ error: String, _ model: GitControlModel) -> some View {
         HStack(alignment: .top) {
             Label {
                 Text(verbatim: error).textSelection(.enabled)
@@ -88,7 +106,7 @@ struct GitControlSheet: View {
         .accessibilityIdentifier("git.error")
     }
 
-    private func notARepository(_ model: GitControlModel) -> some View {
+    func notARepository(_ model: GitControlModel) -> some View {
         VStack(spacing: metrics.space(.l)) {
             Text("git.notARepository")
                 .foregroundStyle(theme[.textSecondary])
@@ -101,7 +119,7 @@ struct GitControlSheet: View {
 
     // MARK: Repository
 
-    private func repositoryView(_ model: GitControlModel) -> some View {
+    func repositoryView(_ model: GitControlModel) -> some View {
         VStack(spacing: 0) {
             header(model)
             Picker("git.tab", selection: $tab) {
@@ -132,12 +150,12 @@ struct GitControlSheet: View {
     }
 
     /// The History tab's model, created on first use for the discovered repository.
-    private func makeHistory(_ model: GitControlModel) -> GitHistoryModel? {
+    func makeHistory(_ model: GitControlModel) -> GitHistoryModel? {
         guard let repository = model.repository else { return nil }
         return GitHistoryModel(repository: repository) { [weak model] in await model?.refresh() }
     }
 
-    private func header(_ model: GitControlModel) -> some View {
+    func header(_ model: GitControlModel) -> some View {
         let branch = model.status?.branch
         return VStack(alignment: .leading, spacing: metrics.space(.s)) {
             HStack(spacing: metrics.space(.m)) {
@@ -197,7 +215,7 @@ struct GitControlSheet: View {
         .padding(metrics.space(.l))
     }
 
-    private func remoteButton(_ model: GitControlModel, _ action: GitControlModel.RemoteAction,
+    func remoteButton(_ model: GitControlModel, _ action: GitControlModel.RemoteAction,
                               symbol: String, label: LocalizedStringKey) -> some View {
         Button { model.remote(action) } label: { Image(systemName: symbol) }
             .buttonStyle(.borderless)
@@ -207,7 +225,7 @@ struct GitControlSheet: View {
             .accessibilityIdentifier("git.\(action)")
     }
 
-    private func changes(_ model: GitControlModel) -> some View {
+    func changes(_ model: GitControlModel) -> some View {
         let status = model.status
         let groups = GitChangeGroups(status)
         let conflicts = groups.conflicts
@@ -270,7 +288,7 @@ struct GitControlSheet: View {
 
     /// Incoming or outgoing commits against the upstream (P4-7; upstream `IncomingOutgoing`).
     @ViewBuilder
-    private func commitSection(_ title: LocalizedStringKey, commits: [GitCommit], id: String) -> some View {
+    func commitSection(_ title: LocalizedStringKey, commits: [GitCommit], id: String) -> some View {
         if !commits.isEmpty {
             Section {
                 ForEach(commits) { commit in
@@ -296,11 +314,11 @@ struct GitControlSheet: View {
         }
     }
 
-    private var discardPresented: Binding<Bool> {
+    var discardPresented: Binding<Bool> {
         Binding { pendingDiscard != nil } set: { if !$0 { pendingDiscard = nil } }
     }
 
-    private func sectionHeader(_ title: LocalizedStringKey, count: Int, action: LocalizedStringKey,
+    func sectionHeader(_ title: LocalizedStringKey, count: Int, action: LocalizedStringKey,
                                perform: @escaping () -> Void) -> some View {
         HStack {
             Text(title)
@@ -312,7 +330,7 @@ struct GitControlSheet: View {
         }
     }
 
-    private func row<Actions: View>(_ entry: GitStatusEntry, _ model: GitControlModel, staged: Bool,
+    func row<Actions: View>(_ entry: GitStatusEntry, _ model: GitControlModel, staged: Bool,
                                     @ViewBuilder actions: () -> Actions) -> some View {
         HStack(spacing: metrics.space(.m)) {
             Text(verbatim: badge(entry, staged: staged))
@@ -342,14 +360,14 @@ struct GitControlSheet: View {
         .accessibilityIdentifier("git.file.\(entry.path)")
     }
 
-    private func rowButton(_ symbol: String, _ label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+    func rowButton(_ symbol: String, _ label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: symbol) }
             .buttonStyle(.borderless)
             .help(Text(label))
             .accessibilityLabel(Text(label))
     }
 
-    private func badge(_ entry: GitStatusEntry, staged: Bool) -> String {
+    func badge(_ entry: GitStatusEntry, staged: Bool) -> String {
         if entry.isConflict { return "!" }
         if entry.isUntracked { return "U" }
         let change = staged ? entry.index : entry.worktree
@@ -361,13 +379,13 @@ struct GitControlSheet: View {
         }
     }
 
-    private func badgeColor(_ entry: GitStatusEntry, staged: Bool) -> Color {
+    func badgeColor(_ entry: GitStatusEntry, staged: Bool) -> Color {
         if entry.isConflict { return theme[.statusStopped] }
         return entry.isUntracked || (staged ? entry.index : entry.worktree) == .added
             ? theme[.statusActive] : theme[.textSecondary]
     }
 
-    private func commitBox(_ model: GitControlModel) -> some View {
+    func commitBox(_ model: GitControlModel) -> some View {
         @Bindable var model = model
         return VStack(alignment: .leading, spacing: metrics.space(.m)) {
             TextField("git.commitMessage", text: $model.message, axis: .vertical)
@@ -388,27 +406,64 @@ struct GitControlSheet: View {
     }
 
     /// Opens the file's diff in a new diff pane of the project, then closes the sheet.
-    private func openDiff(_ entry: GitStatusEntry, staged: Bool) {
+    func openDiff(_ entry: GitStatusEntry, staged: Bool) {
         guard let projectID else { return }
         workspace.update(undoManager: undoManager, actionName: String(localized: "undo.addContent")) {
             _ = $0.addPane(to: projectID, content: .diff(path: model?.folderRelativePath(entry.path) ?? entry.path, staged: staged))
         }
-        dismiss()
+        if metrics.isWebInterface, let closeOverlay { closeOverlay() } else { dismiss() }
     }
 }
 
 /// A new branch from the current HEAD, with its name validated as it is typed and an optional switch.
-private struct NewBranchSheet: View {
+struct NewBranchSheet: View {
     let model: GitControlModel
-    @State private var name = ""
-    @State private var switchTo = true
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.theme) private var theme
-    @Environment(\.metrics) private var metrics
+    @State var name = ""
+    @State var switchTo = true
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.theme) var theme
+    @Environment(\.metrics) var metrics
 
-    private var issue: GitBranchName.Issue? { model.branchNameIssue(name) }
+    var issue: GitBranchName.Issue? { model.branchNameIssue(name) }
+
+    @Environment(\.gitModalClose) var closeOverlay
+    @FocusState var webFocused: Bool
 
     var body: some View {
+        if metrics.isWebInterface { webContent } else { nativeContent }
+    }
+
+    var webContent: some View {
+        GitWebModal(close: { closeOverlay?() }) { Text("git.newBranch.title") } content: {
+            VStack(alignment: .leading, spacing: metrics.size(14)) {
+                if let head = model.status?.branch.head {
+                    Text(verbatim: format("git.newBranch.from", head))
+                        .font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+                }
+                ProjectGroupWebField(title: "git.newBranch.name") {
+                    TextField("git.newBranch.name", text: $name)
+                        .modifier(ProjectGroupWebInput(focus: $webFocused))
+                        .onSubmit(create).accessibilityIdentifier("git.newBranch.name")
+                }
+                if let message = issueMessage {
+                    Text(message).font(metrics.font(size: 12)).foregroundStyle(theme[.statusOffline])
+                        .accessibilityIdentifier("git.newBranch.issue")
+                }
+                Toggle("git.newBranch.switch", isOn: $switchTo)
+                    .toggleStyle(.checkbox).accessibilityIdentifier("git.newBranch.switch")
+            }
+        } footer: {
+            Spacer(minLength: 0)
+            Button("editor.cancel") { closeOverlay?() }
+            Button("git.newBranch.create", action: create)
+                .buttonStyle(AletheButtonStyle(.primary)).keyboardShortcut(.defaultAction)
+                .disabled(issue != nil).accessibilityIdentifier("git.newBranch.create")
+        }
+        .onAppear { webFocused = true }
+        .accessibilityIdentifier("git.newBranch.sheet")
+    }
+
+    var nativeContent: some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             Text("git.newBranch.title").font(metrics.font(.headline))
             if let head = model.status?.branch.head {
@@ -444,7 +499,7 @@ private struct NewBranchSheet: View {
     }
 
     /// Nothing while the field is empty; the rule broken otherwise.
-    private var issueMessage: LocalizedStringKey? {
+    var issueMessage: LocalizedStringKey? {
         switch issue {
         case .invalid: "git.newBranch.invalid"
         case .exists: "git.newBranch.exists"
@@ -452,9 +507,9 @@ private struct NewBranchSheet: View {
         }
     }
 
-    private func create() {
+    func create() {
         guard issue == nil else { return }
         model.createBranch(name, switchTo: switchTo)
-        dismiss()
+        if metrics.isWebInterface, let closeOverlay { closeOverlay() } else { dismiss() }
     }
 }

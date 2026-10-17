@@ -11,12 +11,36 @@ import SwiftUI
 struct BranchTestingSheet: View {
     let folder: URL?
     var initialBranch: String?
-    @State private var model: BranchTestingModel?
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.theme) private var theme
-    @Environment(\.metrics) private var metrics
+    @State var model: BranchTestingModel?
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.theme) var theme
+    @Environment(\.metrics) var metrics
+
+    @Environment(\.gitModalClose) var closeOverlay
 
     var body: some View {
+        Group {
+            if metrics.isWebInterface {
+                webContent
+            } else {
+                nativeContent
+            }
+        }
+    }
+
+    var nativeContent: some View {
+        sheetContent
+        .frame(width: metrics.size(560), height: metrics.size(640))
+        .navigationTitle(Text("branchTest.title"))
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("branchTest.close") { dismiss() }
+                    .accessibilityIdentifier("branchTest.close")
+            }
+        }
+    }
+
+    var sheetContent: some View {
         Group {
             if let model {
                 content(model)
@@ -26,25 +50,19 @@ struct BranchTestingSheet: View {
                     .padding(metrics.space(.xl))
             }
         }
-        .frame(width: metrics.size(560), height: metrics.size(640))
-        .navigationTitle(Text("branchTest.title"))
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("branchTest.close") { dismiss() }
-                    .accessibilityIdentifier("branchTest.close")
-            }
-        }
-        .task {
-            guard let folder else { return }
-            let model = BranchTestingModel(folder: folder, initialBranch: initialBranch)
-            self.model = model
-            await model.load()
-        }
+        .task { await loadModel() }
         .onDisappear { model?.cancel() }
         .accessibilityIdentifier("branchTest.sheet")
     }
 
-    private func content(_ model: BranchTestingModel) -> some View {
+    func loadModel() async {
+        guard let folder else { return }
+        let model = BranchTestingModel(folder: folder, initialBranch: initialBranch)
+        self.model = model
+        await model.load()
+    }
+
+    func content(_ model: BranchTestingModel) -> some View {
         VStack(alignment: .leading, spacing: metrics.space(.m)) {
             Text("branchTest.explain")
                 .font(.callout)
@@ -97,7 +115,7 @@ struct BranchTestingSheet: View {
     }
 
     @ViewBuilder
-    private func results(_ model: BranchTestingModel) -> some View {
+    func results(_ model: BranchTestingModel) -> some View {
         let history = model.log.history(for: model.branch)
         if let latest = history.last {
             VStack(alignment: .leading, spacing: metrics.space(.m)) {
@@ -105,23 +123,23 @@ struct BranchTestingSheet: View {
                     statusLabel(latest.status)
                     Spacer()
                     Text(verbatim: String(format: String(localized: "branchTest.commit"), String(latest.commit.prefix(8))))
-                        .font(.caption.monospaced())
+                        .font(metrics.isWebInterface ? metrics.monoFont(size: 11, weight: .regular) : .caption.monospaced())
                         .foregroundStyle(theme[.textSecondary])
                 }
                 ValidationStepsView(steps: latest.validation.steps)
                 if let probe = latest.healthProbe { HealthProbeSummaryView(result: probe) }
                 ContractWarningsView(warnings: latest.contractWarnings)
                 if history.count > 1 {
-                    Text("branchTest.history").font(.headline)
+                    Text("branchTest.history").font(metrics.isWebInterface ? metrics.font(size: 12, weight: .semibold) : .headline)
                     ForEach(Array(history.dropLast().reversed().enumerated()), id: \.offset) { _, run in
                         HStack {
-                            statusLabel(run.status).font(.caption)
+                            statusLabel(run.status).font(metrics.isWebInterface ? metrics.font(size: 11) : .caption)
                             Text(run.finishedAt, format: .dateTime)
-                                .font(.caption)
+                                .font(metrics.isWebInterface ? metrics.font(size: 11) : .caption)
                                 .foregroundStyle(theme[.textSecondary])
                             Spacer()
                             Text(verbatim: String(run.commit.prefix(8)))
-                                .font(.caption.monospaced())
+                                .font(metrics.isWebInterface ? metrics.monoFont(size: 11, weight: .regular) : .caption.monospaced())
                                 .foregroundStyle(theme[.textTertiary])
                         }
                     }
@@ -134,7 +152,7 @@ struct BranchTestingSheet: View {
     }
 
     @ViewBuilder
-    private func statusLabel(_ status: BranchTestResult.Status) -> some View {
+    func statusLabel(_ status: BranchTestResult.Status) -> some View {
         switch status {
         case .passed:
             Label("branchTest.status.passed", systemImage: "checkmark.circle.fill").foregroundStyle(theme[.statusActive])
@@ -147,7 +165,7 @@ struct BranchTestingSheet: View {
         }
     }
 
-    private func stepTitle(_ step: BranchTestStep?) -> LocalizedStringKey {
+    func stepTitle(_ step: BranchTestStep?) -> LocalizedStringKey {
         switch step {
         case .checkingOut, nil: "branchTest.step.checkingOut"
         case .validating: "branchTest.step.validating"
