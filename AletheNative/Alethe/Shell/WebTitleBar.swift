@@ -10,6 +10,9 @@ struct WebTitleBar: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
+    @AppStorage("main.webLeftWidth") private var leftWidth = 286.0
+    @AppStorage("main.webRightWidth") private var rightWidth = 300.0
+    private var threeAreas: Bool { environment.preferences?.document.topbarStyle == "three-areas" }
     @State private var showsNews = false
     @State private var showsMenu = false
     @State private var statusHovered = false
@@ -34,21 +37,29 @@ struct WebTitleBar: View {
                     sidebarVisible.toggle()
                 }
                 .help(Text(sidebarVisible ? "titlebar.sidebar.close" : "titlebar.sidebar.open"))
+                if threeAreas {
+                    icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
+                }
+                if threeAreas { Spacer(minLength: 0) }
 
             }
             .padding(.leading, trafficLightTrailingEdge + metrics.size(6))
             .padding(.trailing, metrics.size(8))
-            .fixedSize(horizontal: true, vertical: false)
+            .frame(width: threeAreas ? max(trafficLightTrailingEdge + metrics.size(96), metrics.size(sidebarVisible ? leftWidth : 38)) : nil)
+            .fixedSize(horizontal: !threeAreas, vertical: false)
             .overlay(alignment: .trailing) { theme[.border].frame(width: metrics.size(1)) }
             if let workspace = environment.workspace, !workspace.document.workspace.tabs.isEmpty {
                 WorkspaceTabBar(workspace: workspace)
                     .layoutPriority(-1)
             }
             Spacer(minLength: metrics.size(12))
+            HStack(spacing: 0) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: metrics.size(7)) {
                     HStack(spacing: metrics.size(4)) {
-                        icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
+                        if !threeAreas {
+                            icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
+                        }
                         if shown(.sync) {
                             SyncToolbarItem()
                                 .labelStyle(.iconOnly)
@@ -99,10 +110,14 @@ struct WebTitleBar: View {
             .help(Text(environment.rightSidebarVisible ? "titlebar.right.close" : "titlebar.right.open"))
             .padding(.leading, metrics.size(8))
             .padding(.trailing, metrics.size(6))
+            }
+            .frame(width: threeAreas ? metrics.size(environment.rightSidebarVisible ? rightWidth : 38) : nil, alignment: .trailing)
         }
         .foregroundStyle(theme[.fgMuted])
-        .frame(height: metrics.size(40))
+        .frame(height: metrics.size(32))
         .background(WindowDragRegion())
+        .background(SettingsWindowOpacity(value: environment.preferences?.document.windowOpacity ?? 1))
+        .background(SettingsTerminalThemeBridge())
         .background(theme[.bgElevated])
         .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
         .accessibilityElement(children: .contain)

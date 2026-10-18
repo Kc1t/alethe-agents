@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Settings parity
+- Terminal settings gain spawn concurrency (1 to 8), a shell executable override and a terminal font
+  family; the shell and font apply to new and open terminals. Appearance gains window opacity,
+  classic or three-area title bar (32-point height), and an independent terminal theme. Account
+  stores the display name and photo, archived groups live under Organization with restore and delete,
+  About shows the update check, download and install states, settings search lists section hits, and
+  the audit sheet gains search, an All or Errors filter and Copy report.
+
 ### Dialog parity
 - Conversations, handoff, session cost, diagnostics, remote pairing, link preview, import, layout
   design, GSD activity, welcome and crash dialogs now use themed window overlays in the web interface.

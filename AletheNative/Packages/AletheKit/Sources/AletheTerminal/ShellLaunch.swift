@@ -5,7 +5,11 @@ import GhosttyTerminal
 /// Builds the launch for the user's login shell (or a given command through it).
 public enum ShellLaunch {
     /// The user's shell from the account database, falling back to zsh.
+    /// User-chosen shell executable (web `shellPath`); set from preferences.
+    public nonisolated(unsafe) static var shellOverride: String?
+
     public static var userShell: String {
+        if let shellOverride, FileManager.default.isExecutableFile(atPath: shellOverride) { return shellOverride }
         if let entry = getpwuid(getuid()), let shell = entry.pointee.pw_shell {
             let path = String(cString: shell)
             if !path.isEmpty { return path }

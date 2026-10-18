@@ -1,5 +1,6 @@
 import AletheDesign
 import AletheFoundation
+import AppKit
 import SwiftUI
 
 /// Help › Diagnostics… (replaces upstream `AuditModal`, SET-11): the warnings and errors recorded
@@ -14,6 +15,25 @@ struct DiagnosticsSheet: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
+    @State private var search = ""
+    @State private var errorsOnly = false
+    @State private var copied = false
+
+    private var filteredEvents: [DiagnosticEvent] {
+        diagnostics.recent.filter { event in
+            (!errorsOnly || event.level != .warning)
+                && (search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    || (event.message + " " + event.domain.rawValue).localizedCaseInsensitiveContains(search))
+        }
+    }
+
+    private func copyReport() {
+        guard let data = try? DiagnosticsReport(context: .current(), events: diagnostics.recent).json(),
+              let report = String(data: data, encoding: .utf8) else { return }
+        NSPasteboard.general.clearContents()
+        copied = NSPasteboard.general.setString(report, forType: .string)
+    }
+
     private var diagnostics: DiagnosticsController { environment.diagnostics }
 
     var body: some View {
@@ -21,36 +41,81 @@ struct DiagnosticsSheet: View {
     }
 
     private var webBody: some View {
-        GitWebModal(close: dismiss) {
-            Text("diagnostics.title")
-        } content: {
-            VStack(alignment: .leading, spacing: metrics.size(12)) {
-                Text("diagnostics.subtitle").font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
-                if diagnostics.recent.isEmpty {
+        VStack(spacing: 0) {
+            HStack(spacing: metrics.size(8)) {
+                Image(systemName: "exclamationmark.shield").webProfileSized(16)
+                    .foregroundStyle(theme[.statusStopped])
+                Text("diagnostics.title").font(metrics.font(size: 14, weight: .semibold))
+                Spacer(minLength: 0)
+                Button(action: dismiss) { Image(systemName: "xmark").webProfileSized(14) }
+                    .accessibilityLabel(Text("settings.web.close"))
+            }
+            .padding(.horizontal, metrics.size(16)).padding(.vertical, metrics.size(12))
+            .background(theme[.panel])
+            HStack(spacing: metrics.size(8)) {
+                TextField("diagnostics.search", text: $search)
+                    .textFieldStyle(.plain).font(metrics.font(size: 12))
+                    .padding(.horizontal, metrics.size(8)).padding(.vertical, metrics.size(4))
+                    .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.size(4)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                    .accessibilityIdentifier("diagnostics.search")
+                Button { errorsOnly = false } label: {
+                    Text(verbatim: String(format: String(localized: "diagnostics.all"), diagnostics.recent.count))
+                }.tint(theme[errorsOnly ? .fgMuted : .accent])
+                Button { errorsOnly = true } label: {
+                    Text(verbatim: String(format: String(localized: "diagnostics.errors"), diagnostics.recent.filter { $0.level != .warning }.count))
+                }.tint(theme[errorsOnly ? .accent : .fgMuted])
+                Button(action: copyReport) {
+                    Label(copied ? "diagnostics.copied" : "diagnostics.copy", systemImage: "doc.on.doc")
+                }.accessibilityIdentifier("diagnostics.copy")
+                Button("diagnostics.exportJSON") { diagnostics.exportReport() }
+                Button { diagnostics.clearRecent() } label: { Image(systemName: "trash").webProfileSized(12) }
+                    .accessibilityLabel(Text("diagnostics.clear"))
+            }
+            .font(metrics.font(size: 11))
+            .padding(.horizontal, metrics.size(16)).padding(.vertical, metrics.size(8))
+            .background(theme[.panel])
+            .overlay(alignment: .top) { theme[.border].frame(height: metrics.size(1)) }
+            .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
+            ScrollView {
+                if filteredEvents.isEmpty {
                     Text("diagnostics.empty").foregroundStyle(theme[.fgFaint])
-                        .frame(maxWidth: .infinity, minHeight: metrics.size(160))
+                        .padding(.top, metrics.size(24)).frame(maxWidth: .infinity)
                         .accessibilityIdentifier("diagnostics.empty")
                 } else {
-                    LazyVStack(spacing: metrics.size(8)) {
-                        ForEach(diagnostics.recent) { event in
-                            DiagnosticEventRow(event: event).padding(metrics.size(10))
-                                .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                    LazyVStack(spacing: metrics.size(6)) {
+                        ForEach(filteredEvents) { event in
+                            VStack(alignment: .leading, spacing: metrics.size(4)) {
+                                HStack(spacing: metrics.size(8)) {
+                                    Text(verbatim: "[" + event.domain.rawValue + "]")
+                                        .font(metrics.monoFont(size: 9, weight: .bold))
+                                        .padding(.horizontal, metrics.size(5)).padding(.vertical, metrics.size(1))
+                                        .background(theme[.border], in: RoundedRectangle(cornerRadius: metrics.size(3)))
+                                    Text(verbatim: event.date.formatted(.iso8601)).foregroundStyle(theme[.fgFaint])
+                                }
+                                Text(verbatim: event.message).textSelection(.enabled)
+                            }
+                            .font(metrics.monoFont(size: 11))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, metrics.size(6)).padding(.horizontal, metrics.size(10))
+                            .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.size(4)))
+                            .overlay(alignment: .leading) {
+                                theme[event.level == .warning ? .statusWaiting : .statusStopped].frame(width: metrics.size(3))
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: metrics.size(4)))
                         }
                     }.accessibilityIdentifier("diagnostics.list")
                 }
-                HStack {
-                    Button("diagnostics.exportLogs") { diagnostics.exportLogs() }
-                    Button("diagnostics.openFolder") { diagnostics.openLogsFolder() }
-                }
             }
-        } footer: {
-            Button("diagnostics.clear") { diagnostics.clearRecent() }.disabled(diagnostics.recent.isEmpty)
-            Button("diagnostics.exportJSON") { diagnostics.exportReport() }.disabled(diagnostics.recent.isEmpty)
-            Spacer()
-            Button("agentInstall.done", action: dismiss).keyboardShortcut(.defaultAction)
+            .padding(.horizontal, metrics.size(16)).padding(.vertical, metrics.size(8))
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("diagnostics")
+        .buttonStyle(AletheButtonStyle(size: .small))
+        .foregroundStyle(theme[.fg]).background(theme[.bg])
+        .frame(width: metrics.size(900), height: metrics.size(620))
+        .clipShape(RoundedRectangle(cornerRadius: metrics.size(8)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.size(8)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .onChange(of: diagnostics.recent) { _, _ in copied = false }
+        .accessibilityElement(children: .contain).accessibilityIdentifier("diagnostics")
     }
 
     private var nativeBody: some View {

@@ -161,7 +161,7 @@ struct AppearanceSettings: View {
         .onChange(of: language) { _, language in LanguageSetting().set(language) }
     }
     private var webBody: some View {
-        SettingsPageForm {
+        SettingsPageForm("appearance") {
             Section {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: metrics.size(10)), GridItem(.flexible(), spacing: metrics.size(10))], spacing: metrics.size(10)) {
                     ForEach(VisualStyle.allCases, id: \.self) { style in
@@ -207,7 +207,17 @@ struct AppearanceSettings: View {
             Section { AppIconGrid() }
                 header: { Text("settings.web.reference.prefs.appIconTheme") }
                 footer: { Text("settings.web.reference.prefs.appIconThemeDesc") }
-            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.terminalTheme"]) }
+            Section {
+                AletheSelect(selection: Binding {
+                    environment.preferences?.document.terminalTheme ?? ""
+                } set: { value in environment.preferences?.update { $0.terminalTheme = value.isEmpty ? nil : value } },
+                    options: [""] + environment.themeCatalog.themes.map(\.id)) { id in
+                    if id.isEmpty { Text("settings.appearance.followUI") }
+                    else if let option = environment.themeCatalog.theme(id: id) { option.localizedName }
+                    else { Text(verbatim: id) }
+                }
+                .accessibilityLabel(Text("settings.web.reference.prefs.terminalTheme"))
+            }
                 header: { Text("settings.web.reference.prefs.terminalTheme") }
                 footer: { Text("settings.web.reference.prefs.terminalThemeDesc") }
             Section {
@@ -241,6 +251,13 @@ struct AppearanceSettings: View {
             } header: { Text("settings.web.reference.prefs.uiZoom") }
               footer: { Text("settings.web.reference.prefs.uiZoomDesc") }
             Section {
+                AletheSelect(selection: Binding {
+                    environment.preferences?.document.topbarStyle ?? "classic"
+                } set: { value in environment.preferences?.update { $0.topbarStyle = value } },
+                    options: ["classic", "three-areas"]) { style in
+                    Text(style == "classic" ? "settings.web.reference.prefs.topbarStyleClassic" : "settings.web.reference.prefs.topbarStyleThreeAreas")
+                }
+                .accessibilityLabel(Text("settings.web.reference.prefs.topbarStyle"))
                 Button("settings.toolbar") { showingToolbar = true }
                 AletheSelect(selection: Binding { environment.interfaceStyle } set: { environment.interfaceStyle = $0 }, options: InterfaceStyle.allCases) { style in
                     Text(style.title)
@@ -249,10 +266,31 @@ struct AppearanceSettings: View {
                 .accessibilityIdentifier("settings.interface")
             } header: { Text("settings.web.reference.prefs.topbarStyle") }
               footer: { Text("settings.web.reference.prefs.topbarStyleDesc") }
-            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.viewPlacement"]) }
+            Section { Text("settings.web.reference.prefs.viewPlacementEmpty") }
                 header: { Text("settings.web.reference.prefs.viewPlacement") }
                 footer: { Text("settings.web.reference.prefs.viewPlacementDesc") }
-            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.windowOpacity"]) }
+            Section {
+                HStack(spacing: metrics.size(10)) {
+                    Slider(value: Binding {
+                        min(1, max(0.6, environment.preferences?.document.windowOpacity ?? 1))
+                    } set: { value in environment.preferences?.update { $0.windowOpacity = value } }, in: 0.6...1, step: 0.05)
+                        .tint(theme[.accent])
+                        .accessibilityLabel(Text("settings.web.reference.prefs.windowOpacity"))
+                    Text(verbatim: (environment.preferences?.document.windowOpacity ?? 1).formatted(.percent.precision(.fractionLength(0))))
+                        .font(metrics.monoFont(size: 12, weight: .bold))
+                        .frame(width: metrics.size(56), height: metrics.size(40))
+                        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                    Button { environment.preferences?.update { $0.windowOpacity = 1 } } label: {
+                        Image(systemName: "arrow.counterclockwise").webProfileSized(15)
+                    }
+                    .buttonStyle(SettingsZoomButtonStyle())
+                    .disabled((environment.preferences?.document.windowOpacity ?? 1) == 1)
+                    .accessibilityLabel(Text("settings.web.reference.prefs.opacityReset"))
+                }
+                .frame(maxWidth: metrics.size(420))
+                Text("settings.web.reference.prefs.windowOpacityHint")
+                    .font(metrics.font(size: 10)).foregroundStyle(theme[.fgMuted])
+            }
                 header: { Text("settings.web.reference.prefs.windowOpacity") }
                 footer: { Text("settings.web.reference.prefs.windowOpacityDesc") }
 
@@ -505,7 +543,7 @@ extension InterfaceStyle {
     }
 }
 
-private struct SettingsZoomButtonStyle: ButtonStyle {
+struct SettingsZoomButtonStyle: ButtonStyle {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.isEnabled) private var enabled

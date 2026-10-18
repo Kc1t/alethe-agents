@@ -16,6 +16,12 @@ extension AppEnvironment {
         return profileName(entry)
     }
 
+    /// Web account display name when set, otherwise the profile name.
+    var webDisplayName: String {
+        if let name = preferences?.document.displayName, !name.isEmpty { return name }
+        return activeProfileName
+    }
+
     /// Adds a profile with an empty folder.
     @discardableResult
     func createProfile(named name: String) async throws -> ProfileID {

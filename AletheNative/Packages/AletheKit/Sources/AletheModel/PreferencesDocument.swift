@@ -14,6 +14,16 @@ public struct PreferencesDocument: VersionedDocument, Hashable {
     public static let uiScaleStep = 0.1
 
     public var schemaVersion: Int
+    /// Web-compatible optional preferences; absent values preserve existing native behavior.
+    public var displayName: String?
+    public var profileImageUrl: String?
+    public var windowOpacity: Double?
+    public var topbarStyle: String?
+    public var terminalTheme: String?
+    /// Web `spawnConcurrency` (1...8, default 3), `shellPath` and `terminalFontFamily`; nil means default.
+    public var spawnConcurrency: Int?
+    public var shellPath: String?
+    public var terminalFontFamily: String?
     public var themeID: String
     /// UI zoom (⌘+ / ⌘− / ⌘0); scales fonts and metrics.
     public var uiScale: Double

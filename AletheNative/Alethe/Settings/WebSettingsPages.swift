@@ -30,8 +30,11 @@ struct WebAccountSettings: View {
                                 .font(metrics.font(size: 11, weight: .semibold)).foregroundStyle(theme[.fgMuted])
                             TextField("settings.web.reference.prefs.namePlaceholder", text: $name)
                                 .modifier(ProjectGroupWebInput())
-                                .onSubmit(saveName)
-                                .disabled(environment.profileID == nil)
+                                .onChange(of: name) { _, value in
+                                    let capped = String(value.prefix(60))
+                                    if capped != value { name = capped }
+                                    if loaded { environment.preferences?.update { $0.displayName = capped } }
+                                }
                         }
                         ImageInputField(value: $photo, name: name, color: nil,
                             label: "settings.web.reference.prefs.profilePhoto",
@@ -75,45 +78,34 @@ struct WebAccountSettings: View {
         }
         .sheet(isPresented: $managing) { ProfileSettings().frame(width: metrics.size(700), height: metrics.size(550)) }
         .onAppear {
-            name = environment.activeProfileName
+            name = environment.preferences?.document.displayName ?? environment.activeProfileName
             let values = (try? JSONDecoder().decode([String: String].self, from: Data(avatars.utf8))) ?? [:]
             if let bytes = values[environment.profileID?.rawValue ?? "default"] {
                 photo = "data:image/png;base64," + bytes
             }
+            if let source = environment.preferences?.document.profileImageUrl { photo = source }
             loaded = true
         }
         .onChange(of: language) { _, value in LanguageSetting().set(value) }
-        .onDisappear(perform: saveName)
-        .task(id: photo) { await savePhoto() }
-    }
-
-    private func saveName() {
-        guard let profile = environment.profileID, name != environment.activeProfileName else { return }
-        Task {
-            do { try await environment.renameProfile(profile, to: String(name.prefix(60))) }
-            catch { self.error = error.localizedDescription }
+        .onChange(of: photo) { _, value in
+            if loaded { environment.preferences?.update { $0.profileImageUrl = value } }
         }
     }
 
-    private func savePhoto() async {
-        guard loaded else { return }
-        let source = photo
-        let data: Data?
-        if source.isEmpty { data = nil }
-        else if source.hasPrefix("data:"), let comma = source.firstIndex(of: ",") {
-            data = Data(base64Encoded: String(source[source.index(after: comma)...]))
-        } else if let url = URL(string: source), ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-            data = try? await URLSession.shared.data(from: url).0
-        } else { return }
-        guard !Task.isCancelled, photo == source else { return }
-        if !source.isEmpty, data == nil { return }
-        var values = (try? JSONDecoder().decode([String: String].self, from: Data(avatars.utf8))) ?? [:]
-        values[environment.profileID?.rawValue ?? "default"] = data?.base64EncodedString()
-        if let encoded = try? JSONEncoder().encode(values), let text = String(data: encoded, encoding: .utf8) { avatars = text }
-    }
+
 }
 
 struct WebOrganizationSettings: View {
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @State private var deleting: ProjectGroup?
+    @AppStorage(SidebarProjectVisibility.archivedGroupsKey) private var archivedGroups = "[]"
+
+    private var groups: [ProjectGroup] {
+        (environment.workspace?.document.groups ?? []).filter {
+            SidebarProjectVisibility.containsGroup(archivedGroups, group: $0.id, profile: environment.profileID)
+        }
+    }
     @Environment(AppEnvironment.self) private var environment
     @AppStorage(SidebarProjectVisibility.archivedKey) private var archived = "[]"
 
@@ -126,7 +118,24 @@ struct WebOrganizationSettings: View {
     var body: some View {
         SettingsPageForm("organization") {
             Section {
-                Text("settings.web.reference.prefs.archivedGroupsEmpty")
+                if groups.isEmpty { Text("settings.web.reference.prefs.archivedGroupsEmpty") }
+                ForEach(groups) { group in
+                    HStack(spacing: metrics.size(14)) {
+                        VStack(alignment: .leading, spacing: metrics.size(4)) {
+                            Text(verbatim: group.name).font(metrics.font(size: 12, weight: .bold))
+                            Text(verbatim: String(format: String(localized: "settings.organization.projectCount"), group.projectIDs.count))
+                                .font(metrics.font(size: 10)).foregroundStyle(theme[.fgMuted])
+                        }
+                        Spacer(minLength: 0)
+                        Button {
+                            archivedGroups = SidebarProjectVisibility.settingGroup(archivedGroups, group: group.id,
+                                profile: environment.profileID, enabled: false)
+                        } label: { Label("settings.organization.restoreGroup", systemImage: "archivebox") }
+                        Button { deleting = group } label: { Image(systemName: "trash").webProfileSized(14) }
+                            .foregroundStyle(theme[.statusStopped])
+                            .accessibilityLabel(Text("settings.organization.deleteGroup"))
+                    }
+                }
             } header: { Text("settings.web.reference.prefs.archivedGroupsTitle") }
               footer: { Text("settings.web.reference.prefs.archivedGroupsDesc") }
             Section {
@@ -143,6 +152,19 @@ struct WebOrganizationSettings: View {
                 }
             } header: { Text("settings.web.reference.prefs.archivedProjectsTitle") }
               footer: { Text("settings.web.reference.prefs.archivedProjectsDesc") }
+        }
+        .alert("settings.organization.deleteGroup", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("settings.organization.deleteGroup", role: .destructive) {
+                if let group = deleting {
+                    environment.workspace?.update { $0.deleteGroup(group.id) }
+                    archivedGroups = SidebarProjectVisibility.settingGroup(archivedGroups, group: group.id,
+                        profile: environment.profileID, enabled: false)
+                }
+                deleting = nil
+            }
+            Button("image.ok", role: .cancel) { deleting = nil }
+        } message: {
+            Text("settings.organization.deleteGroupConfirm")
         }
     }
 }
@@ -163,7 +185,7 @@ struct WebTerminalSettings: View {
                 }.accessibilityIdentifier("resources.shellIdle")
             } header: { Text("settings.web.reference.prefs.resourcePolicy") }
               footer: { Text("settings.web.reference.prefs.resourcePolicyDesc") }
-            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.spawnConcurrency"]) }
+            Section { SpawnConcurrencyField() }
                 header: { Text("settings.web.reference.prefs.spawnConcurrency") }
                 footer: { Text("settings.web.reference.prefs.spawnConcurrencyDesc") }
             Section {
@@ -172,10 +194,10 @@ struct WebTerminalSettings: View {
                 }
             } header: { Text("settings.web.reference.prefs.agentsTitle") }
               footer: { Text("settings.agents.footer") }
-            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.shell"]) }
+            Section { ShellPathField() }
                 header: { Text("settings.web.reference.prefs.shell") }
                 footer: { Text("settings.web.reference.prefs.shellDesc") }
-            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.terminalFontFamily"]) }
+            Section { TerminalFontField() }
                 header: { Text("settings.web.reference.prefs.terminalFont") }
                 footer: { Text("settings.web.reference.prefs.terminalFontDesc") }
             Section { Text("settings.web.unavailable") }
@@ -248,8 +270,7 @@ struct WebOrchestrationSettings: View {
 
 struct WebAboutSettings: View {
     @Environment(\.metrics) private var metrics
-    @State private var release: SidebarNativeRelease?
-    @State private var checking = false
+    @State private var updates = SettingsUpdateController()
 
     var body: some View {
         SettingsPageForm("about") {
@@ -266,12 +287,24 @@ struct WebAboutSettings: View {
             } header: { Text("settings.web.reference.prefs.aboutVersionTitle") }
               footer: { Text("settings.web.reference.prefs.aboutVersionDesc") }
             Section {
-                Button("settings.web.reference.prefs.aboutCheckUpdates") {
-                    checking = true
-                    Task { release = await SidebarNativeRelease.check(); checking = false }
-                }.disabled(checking)
-                if let release {
-                    Link(destination: release.page) { Text(verbatim: release.version) }
+                switch updates.phase {
+                case .checking:
+                    ProgressView().controlSize(.small)
+                    Text("settings.updates.checking")
+                case .downloading:
+                    ProgressView().controlSize(.small)
+                    Text("settings.updates.downloading")
+                case .available:
+                    Text(verbatim: updates.version).font(metrics.font(size: 12, weight: .semibold))
+                    if !updates.notes.isEmpty { Text(verbatim: updates.notes).textSelection(.enabled) }
+                    Button("settings.updates.download") { Task { await updates.download() } }
+                case .ready:
+                    Button("settings.updates.openInstaller") { updates.openInstaller() }
+                    Text("settings.updates.manualInstall").font(metrics.font(size: 11))
+                case .idle, .current, .failed:
+                    Button("settings.web.reference.prefs.aboutCheckUpdates") { Task { await updates.check() } }
+                    if updates.phase == .current { Text("settings.updates.current") }
+                    if !updates.error.isEmpty { Text(verbatim: updates.error).textSelection(.enabled) }
                 }
             } header: { Text("settings.web.reference.prefs.aboutUpdatesTitle") }
               footer: { Text("settings.web.reference.prefs.aboutUpdatesDesc") }
@@ -303,5 +336,85 @@ struct WebUnavailableFields: View {
                 }
             }
         }
+    }
+}
+
+/// Web `TerminalPage` spawn concurrency stepper: 1...8, default 3.
+private struct SpawnConcurrencyField: View {
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    private var value: Int { min(8, max(1, environment.preferences?.document.spawnConcurrency ?? 3)) }
+
+    var body: some View {
+        HStack(spacing: metrics.size(10)) {
+            step("minus", "settings.web.reference.prefs.spawnConcurrencyDecrease", value <= 1) { set(value - 1) }
+            Text(verbatim: String(value)).font(metrics.monoFont(size: 13, weight: .bold))
+                .frame(minWidth: metrics.size(32)).foregroundStyle(theme[.fg])
+            step("plus", "settings.web.reference.prefs.spawnConcurrencyIncrease", value >= 8) { set(value + 1) }
+            step("arrow.counterclockwise", "settings.web.reference.prefs.spawnConcurrencyReset", value == 3) { set(3) }
+        }
+    }
+
+    private func step(_ symbol: String, _ label: LocalizedStringKey, _ off: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) { Image(systemName: symbol).webProfileSized(15) }
+            .buttonStyle(SettingsZoomButtonStyle()).disabled(off).accessibilityLabel(Text(label))
+    }
+
+    private func set(_ n: Int) {
+        let clamped = min(8, max(1, n))
+        environment.preferences?.update { $0.spawnConcurrency = clamped == 3 ? nil : clamped }
+    }
+}
+
+/// Web `TerminalPage` shell executable override: Set... picks a file, Reset returns to automatic.
+private struct ShellPathField: View {
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    private var path: String? { environment.preferences?.document.shellPath }
+
+    var body: some View {
+        HStack(spacing: metrics.size(10)) {
+            Text(verbatim: path ?? String(localized: "settings.shell.auto"))
+                .font(metrics.monoFont(size: 11)).foregroundStyle(theme[path == nil ? .fgMuted : .fg])
+                .lineLimit(1).truncationMode(.middle).help(path ?? "")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("settings.shell.set") {
+                let panel = NSOpenPanel()
+                panel.title = String(localized: "settings.shell.pick")
+                panel.canChooseDirectories = false
+                panel.allowsMultipleSelection = false
+                guard panel.runModal() == .OK, let url = panel.url else { return }
+                environment.preferences?.update { $0.shellPath = url.path }
+            }
+            if path != nil {
+                Button("settings.shell.reset") { environment.preferences?.update { $0.shellPath = nil } }
+            }
+        }
+    }
+}
+
+/// Web `TerminalPage` font family input, committed on Enter or focus loss.
+private struct TerminalFontField: View {
+    @Environment(AppEnvironment.self) private var environment
+    @State private var draft = ""
+    @FocusState private var focused: Bool
+    private static let fallback = "Cascadia Mono, Consolas, \"Courier New\", monospace"
+
+    var body: some View {
+        TextField(text: $draft, prompt: Text(verbatim: Self.fallback)) { Text("settings.web.reference.prefs.terminalFontFamily") }
+            .focused($focused)
+            .onSubmit(commit)
+            .onChange(of: focused) { _, now in if !now { commit() } }
+            .onAppear { draft = environment.preferences?.document.terminalFontFamily ?? "" }
+    }
+
+    private func commit() {
+        let next = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stored: String? = next.isEmpty || next == Self.fallback ? nil : next
+        draft = stored ?? ""
+        guard stored != environment.preferences?.document.terminalFontFamily else { return }
+        environment.preferences?.update { $0.terminalFontFamily = stored }
     }
 }

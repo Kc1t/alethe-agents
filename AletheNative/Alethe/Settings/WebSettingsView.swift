@@ -9,13 +9,14 @@ struct WebSettingsView: View {
     @Environment(\.theme) private var theme
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    @State private var searchTarget = ""
     @AppStorage("sidebar.web.avatarImages") private var avatars = "{}"
     @State private var selection = Category.account
     @State private var hovering: Category?
     @State private var profileHovering = false
     @State private var closeHovering = false
 
-    private enum Category: Hashable { case account, organization, appearance, remote, features, plugins, terminal, integrations, orchestration, multiagent, about }
+    private enum Category: String, Hashable { case account, organization, appearance, remote, features, plugins, terminal, integrations, orchestration, multiagent, about }
     private struct Destination: Identifiable {
         let id: Category
         let title: LocalizedStringKey
@@ -104,7 +105,13 @@ struct WebSettingsView: View {
                     .padding(.bottom, metrics.size(16))
                     .frame(minHeight: metrics.size(80), alignment: .topLeading)
                     .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
-                    page.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    Group {
+                        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            page.environment(\.settingsSearchTarget, searchTarget)
+                        } else {
+                            searchResults
+                        }
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -124,7 +131,11 @@ struct WebSettingsView: View {
         let image = images[environment.profileID?.rawValue ?? "default"]
             .flatMap { Data(base64Encoded: $0) }.flatMap { NSImage(data: $0) }
         return Group {
-            if let image { Image(nsImage: image).resizable() }
+            if let source = environment.preferences?.document.profileImageUrl, !source.isEmpty {
+                SidebarCoverImage(source: source, side: 40, cornerRadius: 20) {
+                    Image("DefaultProfile").resizable()
+                }
+            } else if let image { Image(nsImage: image).resizable() }
             else { Image("DefaultProfile").resizable() }
         }
     }
@@ -143,7 +154,7 @@ struct WebSettingsView: View {
                             .overlay(Circle().strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: metrics.size(2)) {
-                            Text(verbatim: environment.activeProfileName)
+                            Text(verbatim: environment.webDisplayName)
                                 .font(metrics.font(size: 13, weight: .bold))
                                 .lineLimit(1)
                             Text("settings.web.reference.prefs.editProfile")
@@ -179,9 +190,11 @@ struct WebSettingsView: View {
                     .foregroundStyle(theme[.fgFaint])
                     .padding(.horizontal, metrics.size(9))
                     .padding(.bottom, metrics.size(6))
-                ForEach(destinations.filter { query.isEmpty || $0.search.localizedCaseInsensitiveContains(query) }) { destination in
+                ForEach(destinations) { destination in
                     Button {
                         selection = destination.id
+                        query = ""
+                        searchTarget = ""
                     } label: {
                         HStack(spacing: metrics.size(10)) {
                             Image(systemName: destination.symbol).webProfileSized(16)
@@ -215,6 +228,39 @@ struct WebSettingsView: View {
             .font(metrics.font(size: 12))
             .padding(.horizontal, metrics.size(narrow ? 10 : 14))
             .padding(.vertical, metrics.size(18))
+        }
+    }
+
+    private var searchResults: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: metrics.size(8)) {
+                let results = SettingsSearchEntry.all.filter { $0.matches(query) }
+                if results.isEmpty { Text("settings.search.empty").foregroundStyle(theme[.fgMuted]) }
+                ForEach(results) { result in
+                    Button {
+                        guard let category = Category(rawValue: result.category) else { return }
+                        searchTarget = result.target
+                        let storageKey = (environment.profileID?.rawValue ?? "default") + ":" + result.target
+                        let stored = UserDefaults.standard.string(forKey: "settings.web.collapsedSections") ?? "{}"
+                        var values = (try? JSONDecoder().decode([String: Bool].self, from: Data(stored.utf8))) ?? [:]
+                        values[storageKey] = false
+                        if let data = try? JSONEncoder().encode(values), let value = String(data: data, encoding: .utf8) {
+                            UserDefaults.standard.set(value, forKey: "settings.web.collapsedSections")
+                        }
+                        selection = category
+                        query = ""
+                    } label: {
+                        VStack(alignment: .leading, spacing: metrics.size(4)) {
+                            Text(LocalizedStringKey(result.label)).font(metrics.font(size: 12, weight: .semibold))
+                            Text(LocalizedStringKey(result.detail)).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(metrics.size(12))
+                        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                    }.buttonStyle(.plain)
+                }
+            }.padding(metrics.size(24))
         }
     }
 

@@ -8,6 +8,7 @@ import SwiftUI
 
 /// Projects organized in nested groups, with each project's terminals underneath.
 struct SidebarView: View {
+    @AppStorage(SidebarProjectVisibility.archivedGroupsKey) private var archivedGroups = "[]"
     @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
     @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
     @AppStorage(SidebarProjectVisibility.revealKey) private var revealHidden = false
@@ -89,7 +90,7 @@ struct SidebarView: View {
                     .padding(metrics.space(.s))
                     .accessibilityIdentifier("sidebar.empty")
                 }
-                ForEach(doc.childGroups(of: nil)) { group in
+                ForEach(doc.childGroups(of: nil).filter { !metrics.isWebInterface || !SidebarProjectVisibility.containsGroup(archivedGroups, group: $0.id, profile: environment.profileID) }) { group in
                     GroupRow(group: group, actions: actions)
                 }
                 .onInsert(of: [.plainText]) { index, providers in
@@ -231,6 +232,7 @@ private struct SidebarProjectsHeader: View {
 }
 
 private struct GroupRow: View {
+    @AppStorage(SidebarProjectVisibility.archivedGroupsKey) private var archivedGroups = "[]"
     @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
     @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
     @AppStorage(SidebarProjectVisibility.revealKey) private var revealHidden = false
@@ -265,7 +267,7 @@ private struct GroupRow: View {
                         .foregroundStyle(theme[.fgFaint])
                 }
             }
-            ForEach(doc.childGroups(of: group.id)) { child in
+            ForEach(doc.childGroups(of: group.id).filter { !metrics.isWebInterface || !SidebarProjectVisibility.containsGroup(archivedGroups, group: $0.id, profile: environment.profileID) }) { child in
                 GroupRow(group: child, actions: actions)
             }
             .onInsert(of: [.plainText]) { index, providers in
@@ -362,6 +364,12 @@ private struct GroupRow: View {
                     SidebarMenuButton("sidebar.suspendGroupEllipsis", symbol: "pause") { actions.suspendGroup(group) }
                 }
                 Divider()
+                if metrics.isWebInterface {
+                    SidebarMenuButton("sidebar.web.archiveGroup", symbol: "archivebox") {
+                        archivedGroups = SidebarProjectVisibility.settingGroup(archivedGroups, group: group.id,
+                            profile: environment.profileID, enabled: true)
+                    }
+                }
                 SidebarMenuButton("sidebar.deleteGroup", symbol: "trash") { actions.deleteGroup(group.id) }
                 SidebarMenuButton("sidebar.deleteGroupAndProjects", symbol: "trash", role: .destructive) { actions.deleteGroupAndProjects(group) }
             }
@@ -711,6 +719,7 @@ private struct SidebarFileRow: View {
 }
 
 private struct ProjectContextMenu: View {
+    @AppStorage(SidebarProjectVisibility.archivedGroupsKey) private var archivedGroups = "[]"
     @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
     @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
 
