@@ -94,7 +94,10 @@ struct RightSidebar: View {
             + plugins.filter { $0.viewID != TodosPlugin.viewID && $0.viewID != FilesView.tabID }
             + (environment.features.isOn(.mcp) ? [McpPanel.tab] : [])
             + (environment.features.isOn(.prs) ? [PullRequestsView.tab] : [])
-            + (environment.features.isOn(.orchestrator) ? [AgentsView.tab, QueueView.tab] : [])
+            + ((metrics.isWebInterface
+                ? environment.preferences?.document.enabledFeatures?["agentsPanel"] ?? true
+                : environment.features.isOn(.orchestrator)) ? [AgentsView.tab] : [])
+            + (environment.features.isOn(.orchestrator) ? [QueueView.tab] : [])
             + plugins.filter { $0.viewID == TodosPlugin.viewID }
             + (environment.extensions?.sidebarTabs ?? [])
     }

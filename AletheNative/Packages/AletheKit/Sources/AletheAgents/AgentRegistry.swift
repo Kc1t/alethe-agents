@@ -29,10 +29,13 @@ public struct AgentDescriptor: Hashable, Sendable, Identifiable {
     /// Flag that skips permission prompts, or nil when the CLI has none.
     public let unrestrictedFlag: String?
 
+    public let defaultArguments: [String]
+
     public var id: AgentKind { kind }
     public var isShell: Bool { cliCommand == nil }
 
-    public init(kind: AgentKind, displayName: String, cliCommand: String?, unrestrictedFlag: String?) {
+    public init(kind: AgentKind, displayName: String, cliCommand: String?, unrestrictedFlag: String?, defaultArguments: [String] = []) {
+        self.defaultArguments = defaultArguments
         self.kind = kind
         self.displayName = displayName
         self.cliCommand = cliCommand

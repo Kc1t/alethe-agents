@@ -18,6 +18,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   including while a text field is focused.
 
 ### Added
+- Web-style orchestration settings now expose worker limits, roles, routing presets and ordered
+  quota rules. Edit worker rule sets and lead-agent prompt shortcuts, with defaults and validation.
+- Custom agents can be added, edited, enabled and removed with CLI arguments, accent colors and
+  preset, local ICO or HTTPS image icons. The Agents panel has its own default-on feature toggle.
+- Project agent settings include validation commands, health probes, conflict-resolution provider
+  and model, planning-file watching and explicit migration of existing agents into worktrees.
 - Debug main-menu action to redo onboarding, plus profile backup/import/reset, data and log shortcuts.
 - Debug builds include Debug → Load sample data and the `ALETHE_SAMPLE_DATA=1` launch option:
   25 varied global/project todos and an editable four-file Markdown sample project with its README

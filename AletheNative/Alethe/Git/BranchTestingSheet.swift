@@ -12,6 +12,7 @@ struct BranchTestingSheet: View {
     let folder: URL?
     var initialBranch: String?
     @State var model: BranchTestingModel?
+    @Environment(AppEnvironment.self) var environment
     @Environment(\.dismiss) var dismiss
     @Environment(\.theme) var theme
     @Environment(\.metrics) var metrics
@@ -60,6 +61,13 @@ struct BranchTestingSheet: View {
         let model = BranchTestingModel(folder: folder, initialBranch: initialBranch)
         self.model = model
         await model.load()
+        if metrics.isWebInterface, let project = environment.workspace?.document.projects.first(where: {
+            URL(filePath: $0.folder).standardizedFileURL == folder.standardizedFileURL
+        }) {
+            if let commands = project.validationCommands { model.commandsText = commands.joined(separator: "\n") }
+            model.healthCommand = project.healthCheckCommand ?? ""
+            model.healthPath = project.healthCheckPath ?? ""
+        }
     }
 
     func content(_ model: BranchTestingModel) -> some View {

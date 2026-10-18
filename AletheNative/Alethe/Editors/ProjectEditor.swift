@@ -41,6 +41,7 @@ struct ProjectEditor: View {
 
     private var isCloning: Bool { editing == nil && source == .clone }
     /// Graphify MCP server for the project's agents (P5-17).
+    @State private var advanced = ProjectAdvancedDraft()
     @State private var graphifyEnabled = false
 
     var body: some View {
@@ -230,6 +231,7 @@ struct ProjectEditor: View {
                     .toggleStyle(.checkbox).font(metrics.font(size: 11))
                     .foregroundStyle(theme[.fgMuted]).accessibilityIdentifier("editor.project.graphify")
             }
+            if editing != nil { ProjectEditorAdvanced(draft: $advanced, project: editing, mode: worktreeMode) }
             if isCloning { cloneStatus }
             if let problem, !model.cloning {
                 Text(problem).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
@@ -370,6 +372,7 @@ struct ProjectEditor: View {
         autoWorktree = project.usesAutoWorktree
         worktreeMode = project.effectiveWorktreeMode
         graphifyEnabled = project.usesGraphify
+        advanced = ProjectAdvancedDraft(project)
         location = workspace.document.location(of: editing) ?? .ungrouped
         nameEdited = true
     }
@@ -417,10 +420,18 @@ struct ProjectEditor: View {
                     $0.autoWorktree = auto
                     $0.worktreeMode = mode
                     $0.graphifyEnabled = graphify
+                    if metrics.isWebInterface { advanced.apply(to: &$0) }
                 }
                 if doc.location(of: editing) != location { doc.moveProject(editing, to: location, at: Int.max) }
             }
             writeMarker(editing)
+            if metrics.isWebInterface {
+                let watch = advanced.gsdWatcher
+                Task {
+                    if watch { try? await environment.multiagent.follow(projectID: editing.rawValue, folder: URL(filePath: path), by: .projectPreference) }
+                    else { await environment.multiagent.unfollow(projectID: editing.rawValue, folder: URL(filePath: path), by: .projectPreference) }
+                }
+            }
             close()
         } else {
             create(folder: path, githubURL: nil)

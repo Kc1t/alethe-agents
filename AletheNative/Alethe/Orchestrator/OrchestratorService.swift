@@ -1,6 +1,7 @@
 import AletheAgents
 import AletheFoundation
 import AletheIntegrations
+import AletheModel
 import AletheOrchestrator
 import Foundation
 import Observation
@@ -17,6 +18,8 @@ final class OrchestratorService {
     /// The latest state of every job and planner, for the board.
     private(set) var snapshot = OrchestratorSnapshot()
     private(set) var isPrepared = false
+    private var workerRules: [WorkerRuleSet]? = []
+    private var settings = OrchestrationPreferences()
 
     @ObservationIgnored private var setup: Setup?
     @ObservationIgnored private var isEnabled: @MainActor () -> Bool = { false }
@@ -69,6 +72,10 @@ final class OrchestratorService {
                 await core.restore()
                 return core
             }.value
+            if let self {
+                await core.applySettings(self.settings)
+                await core.applyWorkerRules(self.workerRules)
+            }
             self?.observe(core)
             return core
         }
@@ -124,6 +131,16 @@ final class OrchestratorService {
     /// running turn, otherwise the message is its next turn.
     func message(job: String, text: String, steer: Bool) async throws -> OrderedJSON {
         try await callTool(steer ? "alethe_steer" : "alethe_send", ["jobId": .string(job), "message": .string(text)])
+    }
+
+    func applyWorkerRules(_ value: [WorkerRuleSet]?) async {
+        workerRules = value
+        if let preparing, let core = await preparing.value { await core.applyWorkerRules(value) }
+    }
+
+    func applySettings(_ value: OrchestrationPreferences) async {
+        settings = value.normalized
+        if let preparing, let core = await preparing.value { await core.applySettings(settings) }
     }
 
     func setConcurrencyLimit(_ limit: Int) async {

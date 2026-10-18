@@ -23,6 +23,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   including while a text field is focused.
 
 ### Fixed
+- Fixed a native macOS worker-rule settings compilation error in duplicate-name validation.
 - Native macOS web-style menus now expose data actions and Debug onboarding retry; Git and integration
   dialogs use themed overlays, dropdowns fit the window, and terminal focus expands across the window.
 - Fixed a native macOS sidebar menu compilation error caused by a missing view builder.

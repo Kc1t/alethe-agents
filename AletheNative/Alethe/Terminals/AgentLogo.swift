@@ -8,13 +8,16 @@ struct AgentLogo: View {
     let agent: String
     var size: CGFloat = 16
     var templateColor: Color? = nil
+    @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     var body: some View {
         let side = metrics.size(size)
         Group {
-            if let asset = Self.asset(for: agent, isLight: theme.isLight),
+            if metrics.isWebInterface, Self.asset(for: agent, isLight: theme.isLight) == nil, let definition = environment.preferences?.document.customAgents?.first(where: { $0.id == agent }) {
+                CustomAgentIcon(definition: definition, size: size)
+            } else if let asset = Self.asset(for: agent, isLight: theme.isLight),
                metrics.isWebInterface || !Self.webOnlyAgents.contains(agent) {
                 assetImage(asset, side: side)
                     .resizable()

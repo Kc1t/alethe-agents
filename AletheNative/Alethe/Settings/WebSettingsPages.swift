@@ -178,9 +178,7 @@ struct WebTerminalSettings: View {
             Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.terminalFontFamily"]) }
                 header: { Text("settings.web.reference.prefs.terminalFont") }
                 footer: { Text("settings.web.reference.prefs.terminalFontDesc") }
-            Section { Text("settings.web.unavailable") }
-                header: { Text("settings.web.reference.prefs.customAgents") }
-                footer: { Text("settings.web.reference.prefs.customAgentsDesc") }
+            CustomAgentsSection()
             Section {
                 Toggle("settings.web.reference.prefs.limitResetNotifyOn", isOn: Binding {
                     environment.preferences?.document.notifyLimitReset ?? true
@@ -216,32 +214,6 @@ struct WebTerminalSettings: View {
                 next[keyPath: keyPath] = value
                 $0.resourcePolicy = next.normalized
             }
-        }
-    }
-}
-
-struct WebOrchestrationSettings: View {
-    var body: some View {
-        SettingsPageForm("orchestration") {
-            Section {
-                WebUnavailableFields(labels: ["settings.web.reference.prefs.orchestrationSkillBackend",
-                    "settings.web.reference.prefs.orchestrationSkillPreferred", "settings.web.reference.prefs.orchestrationSkillConserve"])
-            }
-                header: { Text("settings.web.reference.prefs.orchestrationSkill") }
-                footer: { Text("settings.web.reference.prefs.orchestrationSkillDesc") }
-            Section {
-                WebUnavailableFields(labels: ["settings.web.reference.prefs.orchestrationConcurrency",
-                    "settings.web.reference.prefs.orchestrationDefaultTimeout", "settings.web.reference.prefs.orchestrationBudget",
-                    "settings.web.reference.prefs.orchestrationWorkerPlugins"])
-            }
-                header: { Text("settings.web.reference.prefs.orchestrationLimits") }
-                footer: { Text("settings.web.reference.prefs.orchestrationLimitsDesc") }
-            Section { Text("settings.web.unavailable") }
-                header: { Text("settings.web.reference.prefs.orchestrationRoles") }
-                footer: { Text("settings.web.reference.prefs.orchestrationRolesDesc") }
-            Section { Text("settings.web.unavailable") }
-                header: { Text("settings.web.reference.prefs.orchestrationRouting") }
-                footer: { Text("settings.web.reference.prefs.orchestrationRoutingDesc") }
         }
     }
 }

@@ -47,7 +47,7 @@ struct NewTerminalSheet: View {
     /// Launch through 9router (P7-17); starts from `defaultForNewAgents`.
     @State private var useRouter9 = false
 
-    private var registry: AgentRegistry { .builtin }
+    private var registry: AgentRegistry { environment.agentRegistry }
     private var agents: [AgentKind] { registry.enabledKinds(environment.preferences?.document.enabledAgents) }
     private var project: Project? { projectID.flatMap { workspace.document.project($0) } }
     private var descriptor: AgentDescriptor? { registry.descriptor(for: agent) }

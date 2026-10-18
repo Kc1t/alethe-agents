@@ -298,6 +298,14 @@ public enum TauriImport {
                 workspace.updateProject(created) { $0.createdAt = createdAt }
             }
             workspace.updateProject(created) { $0.panes = panes }
+            workspace.updateProject(created) {
+                $0.validationCommands = project["validationCommands"] as? [String]
+                $0.healthCheckCommand = project["healthCheckCommand"] as? String
+                $0.healthCheckPath = project["healthCheckPath"] as? String
+                $0.conflictAgentProvider = project["conflictAgentProvider"] as? String
+                $0.conflictAgentModel = project["conflictAgentModel"] as? String
+                $0.gsdWatcherEnabled = project["gsdWatcherEnabled"] as? Bool
+            }
             if project["autoWorktree"] as? Bool == true { workspace.updateProject(created) { $0.autoWorktree = true } }
             if project["graphifyEnabled"] as? Bool == true { workspace.updateProject(created) { $0.graphifyEnabled = true } }
             if let mode = (project["worktreeMode"] as? String).flatMap(ProjectWorktreeMode.init(rawValue:)) {
@@ -408,6 +416,15 @@ public enum TauriImport {
     private static func importPreferences(_ file: File, into preferences: inout PreferencesDocument, context: Context,
                                           report: inout Report) {
         let raw = file.preferences
+        func portable<T: Decodable>(_ key: String, as type: T.Type) -> T? {
+            guard let value = raw[key], !(value is NSNull), JSONSerialization.isValidJSONObject(value),
+                  let data = try? JSONSerialization.data(withJSONObject: value) else { return nil }
+            return try? JSONDecoder().decode(type, from: data)
+        }
+        if raw["orchestration"] != nil { preferences.orchestration = portable("orchestration", as: OrchestrationPreferences.self) }
+        if raw["workerRuleSets"] != nil { preferences.workerRuleSets = portable("workerRuleSets", as: [WorkerRuleSet].self) }
+        if raw["orchestratorShortcuts"] != nil { preferences.orchestratorShortcuts = portable("orchestratorShortcuts", as: [OrchestratorShortcut].self) }
+        if raw["customAgents"] != nil { preferences.customAgents = portable("customAgents", as: [CustomAgentDefinition].self) }
         if let theme = raw["uiTheme"] as? String, context.themes.contains(theme), theme != preferences.themeID {
             preferences.themeID = theme
             report.preferences.insert(.theme)
@@ -422,8 +439,9 @@ public enum TauriImport {
         }
         if let enabled = raw["enabledAgents"] as? [String: Any] {
             // Agents the file does not mention stay enabled, as upstream defaults them.
-            let kinds = context.agents.sorted().filter { (enabled[$0] as? Bool) ?? true }
-            let value: [String]? = kinds.count == context.agents.count ? nil : kinds
+            let known = context.agents.union((preferences.customAgents ?? []).map(\.id))
+            let kinds = known.sorted().filter { (enabled[$0] as? Bool) ?? true }
+            let value: [String]? = kinds.count == known.count ? nil : kinds
             if value != preferences.enabledAgents {
                 preferences.enabledAgents = value
                 report.preferences.insert(.enabledAgents)

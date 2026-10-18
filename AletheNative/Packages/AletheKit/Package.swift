@@ -67,7 +67,7 @@ let package = Package(
         ),
         .target(
             name: "AletheOrchestrator",
-            dependencies: ["AletheFoundation", "AletheGit", "AletheAgents", "AletheIntegrations"],
+            dependencies: ["AletheFoundation", "AletheGit", "AletheAgents", "AletheIntegrations", "AletheModel"],
             resources: [.copy("Resources/orchestrator-tools.json")]
         ),
         .executableTarget(name: "alethe-orchestrator-mcp", dependencies: ["AletheOrchestrator"]),
@@ -107,7 +107,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AletheOrchestratorTests",
-            dependencies: ["AletheOrchestrator", "AletheIntegrations", "AletheGit", "AletheAgents"],
+            dependencies: ["AletheOrchestrator", "AletheIntegrations", "AletheGit", "AletheAgents", "AletheModel"],
             resources: [.copy("Fixtures")]
         ),
         .testTarget(

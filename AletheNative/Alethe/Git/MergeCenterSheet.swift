@@ -74,6 +74,12 @@ struct MergeCenterSheet: View {
         let last = AgentRegistry.builtin.parse(environment.preferences?.document.lastAgent)
         agent = last.flatMap { agents.contains($0) ? $0 : nil } ?? (agents.contains(.claude) ? .claude : agents.first ?? .claude)
         await model.load(resume: resumeID)
+        if metrics.isWebInterface {
+            if let provider = project.conflictAgentProvider, let selected = environment.agentRegistry.parse(provider), agents.contains(selected) { agent = selected }
+            if let commands = project.validationCommands { model.commandsText = commands.joined(separator: "\n") }
+            model.healthCheckCommand = project.healthCheckCommand
+            model.healthCheckPath = project.healthCheckPath
+        }
     }
 
     @ViewBuilder
@@ -190,8 +196,8 @@ struct MergeCenterSheet: View {
     /// Enabled agents whose CLI is installed (shells cannot resolve conflicts).
     var agents: [AgentKind] {
         let preferences = environment.preferences?.document
-        return AgentRegistry.builtin.enabledKinds(preferences?.enabledAgents).filter { kind in
-            guard let command = AgentRegistry.builtin.descriptor(for: kind)?.cliCommand else { return false }
+        return environment.agentRegistry.enabledKinds(preferences?.enabledAgents).filter { kind in
+            guard let command = environment.agentRegistry.descriptor(for: kind)?.cliCommand else { return false }
             return environment.launchers.resolve(command, override: preferences?.cliPaths?[kind.rawValue]) != nil
         }
     }
@@ -201,7 +207,9 @@ struct MergeCenterSheet: View {
     func resolveWithAgent(_ model: MergeCenterModel) {
         guard let project, let path = model.environment?.path.path, agents.contains(agent) else { return }
         let tab = PaneTab(agent: agent.rawValue, title: String(localized: "merge.agentPaneName"),
-                          workingDirectory: path, initialPrompt: ConflictResolution.agentInstruction())
+                          workingDirectory: path,
+                          extraArguments: metrics.isWebInterface ? ModelDiscovery.arguments([], model: project.conflictAgentModel ?? "", for: agent) : [],
+                          initialPrompt: ConflictResolution.agentInstruction())
         workspace.update(undoManager: undoManager, actionName: String(localized: "undo.newTerminal")) {
             $0.addPane(to: project.id, tab: tab)
         }
@@ -412,6 +420,8 @@ final class MergeCenterModel {
     private(set) var conflicts: [ConflictFile] = []
     /// Validation commands for this run, one per line.
     var commandsText = ""
+    var healthCheckCommand: String?
+    var healthCheckPath: String?
     /// Output of the last prepare / rebase / validate / finish step.
     private(set) var note: String?
     private(set) var merged = false
@@ -518,7 +528,8 @@ final class MergeCenterModel {
 
     private var settings: ValidationSettings {
         ValidationSettings(commands: commandsText.split(separator: "\n")
-            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+            healthCheckCommand: healthCheckCommand, healthCheckPath: healthCheckPath)
     }
 
     /// Runs `operation` off the main actor with the shared progress/cancel state.

@@ -2,6 +2,7 @@ import Darwin
 import Foundation
 import AletheFoundation
 import AletheGit
+import AletheModel
 import AletheIntegrations
 
 /// The delegation core (upstream `Core`): jobs, the FIFO queue drained as slots free, worker
@@ -65,6 +66,8 @@ public actor OrchestratorCore {
     }
 
     // State is internal so the P6-7/P6-8 extensions in their own files can build on it.
+    var workerRuleSets: [WorkerRuleSet] = []
+    var orchestrationSettings = OrchestrationPreferences()
     var configuration: Configuration
     var launchers: WorkerLaunchers
     var jobs: [String: Job] = [:]
@@ -269,7 +272,8 @@ public actor OrchestratorCore {
         job.startedAt = Self.nowMs()
         job.endedAt = nil
         // Work that arrived while the worker was down leads; otherwise this is its first turn.
-        let firstTurn = job.inbox.isEmpty ? job.spec : job.inbox.removeFirst()
+        let rules = (try? workerRulesBlock(named: job.rulesName)) ?? ((try? workerRulesBlock(named: nil)) ?? "")
+        let firstTurn = rules + (job.inbox.isEmpty ? job.spec : job.inbox.removeFirst())
         jobs[jobID] = job
         slots.insert(jobID)
 
@@ -284,7 +288,11 @@ public actor OrchestratorCore {
         generationCounter += 1
         let generation = generationCounter
         spawning[jobID] = generation
-        let arguments = launcher.arguments(resuming: job.agent == WorkerAgent.claude ? job.threadID : nil)
+        var arguments = launcher.arguments(resuming: job.agent == WorkerAgent.claude ? job.threadID : nil)
+        if job.agent == WorkerAgent.claude {
+            if let model = job.model { arguments += ["--model", model] }
+            if let effort = job.effort { arguments += ["--effort", effort] }
+        }
         let environment = configuration.environment(launcher)
         let directory = URL(filePath: job.cwd, directoryHint: .isDirectory)
         let registry = configuration.registry
@@ -334,7 +342,7 @@ public actor OrchestratorCore {
             // No handshake: the first line written is the first turn.
             process.writer.send(ClaudeWorkerProtocol.userTurn(firstTurn))
         } else {
-            let session = CodexWorkerSession(job: job, firstTurn: firstTurn)
+            let session = CodexWorkerSession(job: job, firstTurn: firstTurn, disabledPlugins: orchestrationSettings.workerDisabledPlugins)
             for message in session.handshake() { process.writer.send(message) }
             handle.codex = session
         }

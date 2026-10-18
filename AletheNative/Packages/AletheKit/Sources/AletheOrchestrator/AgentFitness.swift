@@ -7,6 +7,7 @@ import AletheIntegrations
 /// the same set of windows.
 public struct AgentFitness: Hashable, Sendable {
     /// The window closest to its ceiling: `5h`, `week`, `opus`, or the reader's own label.
+    public var windows: [String: Int] = [:]
     public var worst: String
     /// Share of that window used, 0…100, rounded.
     public var used: Int
@@ -37,6 +38,7 @@ public struct AgentFitness: Hashable, Sendable {
             plan: isCodex ? usage.plan.flatMap { $0.isEmpty ? nil : $0 } : nil,
             rateLimited: isCodex && usage.rateLimited
         )
+        windows = Dictionary(usage.windows.map { (Self.windowName($0.label), Int($0.usedPercent.rounded())) }, uniquingKeysWith: max)
     }
 
     /// The reader's window labels in upstream's words, which is what the planner reads.

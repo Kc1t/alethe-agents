@@ -187,7 +187,7 @@ final class AppEnvironment {
 
     /// Builds agent commands with the user's CLI path overrides.
     var agentLauncher: AgentLauncher {
-        AgentLauncher(launchers: launchers, overrides: preferences?.document.cliPaths ?? [:])
+        AgentLauncher(registry: agentRegistry, launchers: launchers, overrides: preferences?.document.cliPaths ?? [:])
     }
 
     #if DEBUG
@@ -272,7 +272,14 @@ final class AppEnvironment {
         await terminals.hooks.start(terminals: terminals)
         self.profiles = profiles
         self.workspace = loadedWorkspace
+        if interfaceStyle == .web {
+            for project in loadedWorkspace.document.projects where project.gsdWatcherEnabled == true {
+                try? await multiagent.follow(projectID: project.id.rawValue, folder: URL(filePath: project.folder), by: .projectPreference)
+            }
+        }
         self.preferences = loadedPreferences
+        await orchestrator.applySettings(loadedPreferences.document.orchestration ?? .init())
+        await orchestrator.applyWorkerRules(interfaceStyle == .web ? loadedPreferences.document.workerRuleSets : [])
         aiMemory.start(environment: self)
         gsdSync.start(environment: self, profileDirectory: locations.profileDirectory(profile))
         mcp = makeMcpModel(profileDirectory: locations.profileDirectory(profile), preferences: loadedPreferences)

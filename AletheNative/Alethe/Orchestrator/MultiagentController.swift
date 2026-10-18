@@ -15,7 +15,7 @@ import Observation
 final class MultiagentController {
     /// Who asked for a project's `.planning/` to be watched; the watcher stops when nobody does.
     enum PlanningFollower: Hashable, Sendable {
-        case scheduler, autocommit
+        case scheduler, autocommit, projectPreference
     }
 
     enum FollowError: Error, Equatable {

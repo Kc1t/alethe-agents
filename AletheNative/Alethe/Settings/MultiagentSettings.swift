@@ -25,12 +25,7 @@ struct MultiagentSettings: View {
             tracesSection
             auditSection
             if metrics.isWebInterface {
-                Section { Text("settings.web.unavailable") }
-                    header: { Text("settings.web.reference.prefs.orchestratorShortcuts") }
-                    footer: { Text("settings.web.reference.prefs.orchestratorShortcutsDesc") }
-                Section { Text("settings.web.unavailable") }
-                    header: { Text("settings.web.reference.prefs.workerRules") }
-                    footer: { Text("settings.web.reference.prefs.workerRulesDesc") }
+                MultiagentWorkerSettings()
             }
         }
         .formStyle(.grouped)
