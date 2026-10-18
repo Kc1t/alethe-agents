@@ -41,12 +41,14 @@ struct AgentLogo: View {
     }
 
     /// AppKit menus can use a bitmap's intrinsic dimensions despite the SwiftUI label frame.
-    static func menuImage(for agent: String, isLight: Bool, side: CGFloat) -> NSImage? {
+    @MainActor static func menuImage(for agent: String, isLight: Bool, side: CGFloat) -> NSImage? {
         guard let asset = asset(for: agent, isLight: isLight) else { return nil }
         return menuImage(named: asset.name, template: asset.template, side: side)
     }
 
-    static func menuImage(named name: String, template: Bool = false, side: CGFloat) -> NSImage? {
+    @MainActor static func menuImage(named name: String, template: Bool = false, side: CGFloat) -> NSImage? {
+        let key = "\(name):\(template):\(side)" as NSString
+        if let cached = menuImages.object(forKey: key) { return cached }
         guard let source = NSImage(named: name) else { return nil }
         // Redraw rather than resizing metadata: AppKit menus can pick a full-size source representation.
         let bounds = NSRect(x: 0, y: 0, width: side, height: side)
@@ -55,8 +57,15 @@ struct AgentLogo: View {
         source.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: 1)
         image.unlockFocus()
         image.isTemplate = template
+        menuImages.setObject(image, forKey: key)
         return image
     }
+
+    @MainActor private static let menuImages: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 128
+        return cache
+    }()
 
     private static let webOnlyAgents: Set<String> = ["mimo", "cursor", "copilot", "kimi", "grok", "codewhale", "wsl"]
 

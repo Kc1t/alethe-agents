@@ -42,6 +42,34 @@ import XCTest
         #expect(String(decoding: loaded, as: UTF8.self).hasSuffix("000000029|"))
     }
 
+    @Test func oversizedRestoredFileLoadsOnlyItsTail() throws {
+        let (scrollback, url) = file(cap: 100)
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var bytes = Data(repeating: 0x41, count: 1024 * 1024)
+        bytes.append(Data(repeating: 0x42, count: 100))
+        try bytes.write(to: url)
+        #expect(scrollback.load() == Data(repeating: 0x42, count: 100))
+        scrollback.append(Data("end".utf8))
+        scrollback.flush()
+        #expect(scrollback.load() == Data(repeating: 0x42, count: 97) + Data("end".utf8))
+        #expect(try Data(contentsOf: url).count == 100)
+    }
+
+    @Test func largeBurstKeepsTheNewestBytesInOrder() throws {
+        let (scrollback, url) = file(cap: 100)
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        var expected = Data()
+        for index in 0..<100 {
+            let bytes = Data(repeating: UInt8(index), count: 64)
+            expected.append(bytes)
+            scrollback.append(bytes)
+        }
+        scrollback.flush()
+        #expect(scrollback.load() == Data(expected.suffix(100)))
+        #expect(try Data(contentsOf: url).count <= 200)
+    }
+
     @Test func clearAndDelete() {
         let (scrollback, url) = file()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

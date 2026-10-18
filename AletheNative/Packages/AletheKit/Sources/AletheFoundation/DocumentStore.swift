@@ -83,8 +83,13 @@ public actor DocumentStore<Document: VersionedDocument> {
         }
 
         do {
-            let migrated = try JSONEncoder().encode(object)
-            let document = try Self.decoder.decode(Document.self, from: migrated)
+            let payload: Data
+            if version < Document.currentVersion {
+                payload = try JSONEncoder().encode(object)
+            } else {
+                payload = data
+            }
+            let document = try Self.decoder.decode(Document.self, from: payload)
             if case .migrated = outcome { try write(document) }
             return (document, outcome)
         } catch {
@@ -116,8 +121,8 @@ public actor DocumentStore<Document: VersionedDocument> {
     /// Writes immediately, bypassing the debounce.
     public func save(_ document: Document, revision: UInt64) throws {
         guard !readOnly, revision > lastWrittenSequence else { return }
-        if let pending, pending.sequence <= revision { self.pending = nil }
         try write(document, sequence: revision)
+        if let pending, pending.sequence <= revision { self.pending = nil }
     }
 
     /// True when the file on disk belongs to a newer build and is being protected from writes.
@@ -125,19 +130,23 @@ public actor DocumentStore<Document: VersionedDocument> {
 
     private func flushPending() {
         guard let (document, sequence) = pending else { return }
-        pending = nil
-        try? write(document, sequence: sequence)
+        do {
+            try write(document, sequence: sequence)
+            pending = nil
+        } catch {
+            // Keep the latest snapshot available for a later flush or save.
+        }
     }
 
     private func write(_ document: Document, sequence: UInt64? = nil) throws {
         if let sequence {
             guard sequence > lastWrittenSequence else { return }
-            lastWrittenSequence = sequence
         }
         var stamped = document
         stamped.schemaVersion = Document.currentVersion
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Self.encoder.encode(stamped).write(to: url, options: .atomic)
+        if let sequence { lastWrittenSequence = sequence }
     }
 
     private func quarantine() throws -> URL {

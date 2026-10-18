@@ -9,8 +9,14 @@ struct SidebarCoverImage<Fallback: View>: View {
     var cornerRadius: CGFloat? = nil
     @ViewBuilder let fallback: () -> Fallback
     @Environment(\.metrics) private var metrics
+    @Environment(\.displayScale) private var displayScale
     @State private var loaded: NSImage?
     @State private var loadedSource: String?
+
+    private struct Request: Equatable {
+        let source: String
+        let pixels: Int
+    }
 
     var body: some View {
         Group {
@@ -24,22 +30,17 @@ struct SidebarCoverImage<Fallback: View>: View {
         .clipped()
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius.map { metrics.size($0) } ?? metrics.radius(.sm)))
         .accessibilityHidden(true)
-        .task(id: source) {
+        .task(id: Request(source: source, pixels: Int(ceil(metrics.size(side) * displayScale)))) {
             loaded = nil
             loadedSource = nil
-            let data: Data?
-            if source.hasPrefix("data:"), let comma = source.firstIndex(of: ",") {
-                let header = source[..<comma]
-                let body = String(source[source.index(after: comma)...])
-                data = header.hasSuffix(";base64") ? Data(base64Encoded: body) :
-                    body.removingPercentEncoding?.data(using: .utf8)
-            } else if let url = URL(string: source), ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
-                data = try? await URLSession.shared.data(from: url).0
-            } else {
-                data = nil
+            if source.hasPrefix("http://") || source.hasPrefix("https://") {
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
             }
+            let decoded = await ProjectCoverCache.shared.image(
+                source: source, pixelSize: Int(ceil(metrics.size(side) * displayScale)))
             guard !Task.isCancelled else { return }
-            loaded = data.flatMap(NSImage.init(data:))
+            loaded = decoded.map { NSImage(cgImage: $0.image, size: .zero) }
             loadedSource = source
         }
     }

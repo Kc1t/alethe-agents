@@ -6,6 +6,7 @@ import SwiftUI
 struct HomeBackdrop: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
+    @Environment(\.scenePhase) private var scenePhase
     @State private var sample = Sample()
     @State private var pointer: CGPoint?
 
@@ -28,7 +29,7 @@ struct HomeBackdrop: View {
 
     var body: some View {
         GeometryReader { geometry in
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: metrics.reducesMotion)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: metrics.reducesMotion || scenePhase != .active)) { timeline in
                 Canvas { context, _ in
                     draw(in: context, size: geometry.size,
                          time: metrics.reducesMotion ? nil : timeline.date.timeIntervalSinceReferenceDate * 1_000)

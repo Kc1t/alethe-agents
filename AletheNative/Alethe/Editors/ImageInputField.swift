@@ -16,6 +16,7 @@ struct ImageInputField: View {
     @Environment(\.theme) private var theme
     @State private var error: LocalizedStringKey?
     @State private var targeted = false
+    @State private var importTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -29,6 +30,7 @@ struct ImageInputField: View {
             }
         }
         .onDrop(of: [.fileURL, .image], isTargeted: $targeted, perform: drop)
+        .onDisappear { importTask?.cancel() }
         .onPasteCommand(of: [.fileURL, .image]) { providers in _ = drop(providers) }
         .alert("image.error", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("image.ok", role: .cancel) { error = nil }
@@ -90,23 +92,30 @@ struct ImageInputField: View {
     }
 
     private func load(_ url: URL) {
-        do {
-            let type = UTType(filenameExtension: url.pathExtension)
-            guard let type, type.conforms(to: .image), let mime = type.preferredMIMEType else {
-                error = "image.mustBeImage"; return
-            }
-            let resource = try url.resourceValues(forKeys: [.fileSizeKey])
-            guard (resource.fileSize ?? 0) <= ProjectImageInput.maximumBytes else {
-                error = "image.tooLarge"; return
-            }
-            accept(try Data(contentsOf: url), mime: mime)
-        } catch { self.error = "image.readFailed" }
+        let type = UTType(filenameExtension: url.pathExtension)
+        guard let type, type.conforms(to: .image), let mime = type.preferredMIMEType else {
+            error = "image.mustBeImage"; return
+        }
+        importImage { try ProjectImageInput.fileDataURL(url, mimeType: mime) }
     }
 
     private func accept(_ data: Data, mime: String) {
-        do { value = try ProjectImageInput.dataURL(data, mimeType: mime) }
-        catch ProjectImageInput.ValidationError.tooLarge { error = "image.tooLarge" }
-        catch { self.error = "image.mustBeImage" }
+        importImage { try ProjectImageInput.dataURL(data, mimeType: mime) }
+    }
+
+    private func importImage(_ operation: @escaping @Sendable () throws -> String) {
+        importTask?.cancel()
+        let previous = value
+        importTask = Task {
+            let result = await Task.detached(priority: .userInitiated) { Result(catching: operation) }.value
+            guard !Task.isCancelled, value == previous else { return }
+            switch result {
+            case .success(let source): value = source
+            case .failure(ProjectImageInput.ValidationError.tooLarge): error = "image.tooLarge"
+            case .failure(ProjectImageInput.ValidationError.mustBeImage): error = "image.mustBeImage"
+            case .failure: error = "image.readFailed"
+            }
+        }
     }
 
     private func paste() {

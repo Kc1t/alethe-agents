@@ -27,8 +27,7 @@ public final class ScrollbackFile: @unchecked Sendable {
     /// The last `cap` bytes on disk (nothing when there is no file).
     public func load() -> Data {
         queue.sync {
-            guard let data = try? Data(contentsOf: url) else { return Data() }
-            return data.count > cap ? data.suffix(cap) : data
+            readTail() ?? Data()
         }
     }
 
@@ -37,6 +36,13 @@ public final class ScrollbackFile: @unchecked Sendable {
         guard !data.isEmpty else { return }
         queue.async { [self] in
             pending.append(data)
+            // Bound each disk batch even when a terminal outpaces the timer.
+            if pending.count >= cap {
+                let scheduled = flushScheduled
+                writePending()
+                flushScheduled = scheduled
+                return
+            }
             guard !flushScheduled else { return }
             flushScheduled = true
             queue.asyncAfter(deadline: .now() + flushInterval.timeInterval) { [self] in writePending() }
@@ -80,8 +86,18 @@ public final class ScrollbackFile: @unchecked Sendable {
     }
 
     private func compact() {
-        guard let data = try? Data(contentsOf: url), data.count > cap else { return }
-        try? data.suffix(cap).write(to: url, options: .atomic)
+        guard let data = readTail() else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private func readTail() -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let end = try? handle.seekToEnd() else { return nil }
+        do {
+            try handle.seek(toOffset: end > UInt64(cap) ? end - UInt64(cap) : 0)
+            return try handle.read(upToCount: cap) ?? Data()
+        } catch { return nil }
     }
 
     /// Replayed output without the queries a program sent the terminal (device attributes,
