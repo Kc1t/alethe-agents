@@ -99,6 +99,7 @@ struct MainWindow: View {
             }
         }
         .gitWebModalLayer()
+        .webDialogLayer()
     }
 
     private func closeTitleBarNews() {

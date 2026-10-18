@@ -89,15 +89,29 @@ struct AgentLibrarySheet: View {
             Spacer()
             Button("agentInstall.done") { if let closeOverlay { closeOverlay() } else { dismiss() } }.accessibilityIdentifier("agentLibrary.close")
         }
+        .webConfirm(isPresented: Binding(
+            get: { model.pendingOverwrite != nil }, set: { if !$0 { model.pendingOverwrite = nil } }),
+                    message: model.pendingOverwrite.map { String(format: String(localized: "agentLibrary.overwrite.message"), $0.fileName) } ?? "",
+                    title: String(localized: "agentLibrary.overwrite.title"),
+                    confirmTitle: String(localized: "agentLibrary.overwrite.confirm"), destructive: true) {
+            if let template = model.pendingOverwrite { model.install(template, overwriteForeign: true) }
+        }
+        .webConfirm(isPresented: Binding(
+            get: { model.pendingForeignRemoval != nil }, set: { if !$0 { model.pendingForeignRemoval = nil } }),
+                    message: model.pendingForeignRemoval.map { String(format: String(localized: "agentLibrary.removeForeign.message"), "\($0.name).md") } ?? "",
+                    title: String(localized: "agentLibrary.removeForeign.title"),
+                    confirmTitle: String(localized: "agentLibrary.remove"), destructive: true) {
+            if let agent = model.pendingForeignRemoval { model.remove(agent, force: true) }
+        }
         .confirmationDialog("agentLibrary.overwrite.title", isPresented: Binding(
-            get: { model.pendingOverwrite != nil }, set: { if !$0 { model.pendingOverwrite = nil } }
+            get: { !metrics.isWebInterface && model.pendingOverwrite != nil }, set: { if !$0 { model.pendingOverwrite = nil } }
         ), presenting: model.pendingOverwrite) { template in
             Button("agentLibrary.overwrite.confirm", role: .destructive) { model.install(template, overwriteForeign: true) }
         } message: { template in
             Text(String(format: String(localized: "agentLibrary.overwrite.message"), template.fileName))
         }
         .confirmationDialog("agentLibrary.removeForeign.title", isPresented: Binding(
-            get: { model.pendingForeignRemoval != nil }, set: { if !$0 { model.pendingForeignRemoval = nil } }
+            get: { !metrics.isWebInterface && model.pendingForeignRemoval != nil }, set: { if !$0 { model.pendingForeignRemoval = nil } }
         ), presenting: model.pendingForeignRemoval) { agent in
             Button("agentLibrary.remove", role: .destructive) { model.remove(agent, force: true) }
         } message: { agent in

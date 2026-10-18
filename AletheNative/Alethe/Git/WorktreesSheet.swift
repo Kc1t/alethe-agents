@@ -144,7 +144,11 @@ struct WorktreesSheet: View {
             }
             .padding(metrics.space(.l))
         }
-        .alert("worktrees.lock.title", isPresented: $askLock) {
+        .webPrompt(isPresented: $askLock, message: String(localized: "worktrees.lock.title"),
+                   confirmTitle: String(localized: "worktrees.lock")) { reason in
+            if let selected { model.lock(selected, reason: reason) }
+        }
+        .alert("worktrees.lock.title", isPresented: Binding(get: { !metrics.isWebInterface && askLock }, set: { askLock = $0 })) {
             TextField(text: $lockReason) { Text("worktrees.lock.reason") }
                 .accessibilityIdentifier("worktrees.lock.reason")
             Button("worktrees.lock") { if let selected { model.lock(selected, reason: lockReason) } }
@@ -166,12 +170,20 @@ struct WorktreesSheet: View {
                 }
             }
         }
-        .confirmationDialog("worktree.remove.title", isPresented: $confirmRemove) {
+        .webConfirm(isPresented: $confirmRemove, message: String(localized: "worktree.remove.title") + "\n\n" + String(localized: "worktree.remove.detail"),
+                    confirmTitle: String(localized: "worktree.remove"), destructive: true) {
+            if let selected { model.remove(selected) { detachTabs(from: $0) } }
+        }
+        .webConfirm(isPresented: $confirmCleanup, message: String(localized: "worktrees.cleanup.confirm") + "\n\n" + String(localized: "worktrees.cleanup.detail"),
+                    confirmTitle: String(localized: "worktrees.cleanup"), destructive: true) {
+            model.cleanup()
+        }
+        .confirmationDialog("worktree.remove.title", isPresented: Binding(get: { !metrics.isWebInterface && confirmRemove }, set: { confirmRemove = $0 })) {
             Button("worktree.remove", role: .destructive) {
                 if let selected { model.remove(selected) { detachTabs(from: $0) } }
             }
         } message: { Text("worktree.remove.detail") }
-        .confirmationDialog("worktrees.cleanup.confirm", isPresented: $confirmCleanup) {
+        .confirmationDialog("worktrees.cleanup.confirm", isPresented: Binding(get: { !metrics.isWebInterface && confirmCleanup }, set: { confirmCleanup = $0 })) {
             Button("worktrees.cleanup", role: .destructive) { model.cleanup() }
         } message: { Text("worktrees.cleanup.detail") }
     }

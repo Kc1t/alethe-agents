@@ -155,7 +155,17 @@ struct WebOrganizationSettings: View {
             } header: { Text("settings.web.reference.prefs.archivedProjectsTitle") }
               footer: { Text("settings.web.reference.prefs.archivedProjectsDesc") }
         }
-        .alert("settings.organization.deleteGroup", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+        .webConfirm(isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                    message: String(localized: "settings.organization.deleteGroupConfirm"),
+                    title: String(localized: "settings.organization.deleteGroup"),
+                    confirmTitle: String(localized: "settings.organization.deleteGroup"), destructive: true) {
+            if let group = deleting {
+                environment.workspace?.update { $0.deleteGroup(group.id) }
+                archivedGroups = SidebarProjectVisibility.settingGroup(archivedGroups, group: group.id,
+                    profile: environment.profileID, enabled: false)
+            }
+        }
+        .alert("settings.organization.deleteGroup", isPresented: Binding(get: { !metrics.isWebInterface && deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("settings.organization.deleteGroup", role: .destructive) {
                 if let group = deleting {
                     environment.workspace?.update { $0.deleteGroup(group.id) }

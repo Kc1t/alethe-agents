@@ -165,7 +165,7 @@ struct ProjectEditor: View {
             }
             if editing == nil {
                 ProjectGroupWebField(title: "editor.project.source") {
-                    AletheSelect(selection: $source, options: [.folder, .clone]) { value in
+                    WebDropdown(selection: $source, options: [.folder, .clone]) { value in
                         Text(value == .folder ? "editor.project.source.folder" : "editor.project.source.clone")
                     }
                     .accessibilityIdentifier("editor.project.source").disabled(model.cloning)
@@ -185,7 +185,7 @@ struct ProjectEditor: View {
             }
             if !workspace.document.groups.isEmpty {
                 ProjectGroupWebField(title: "editor.project.group") {
-                    AletheSelect(selection: $location,
+                    WebDropdown(selection: $location,
                                  options: [.ungrouped] + workspace.document.groups.map { .group($0.id) }) { value in
                         if case .group(let id) = value, let group = workspace.document.group(id) {
                             Text(verbatim: group.name)
@@ -218,7 +218,7 @@ struct ProjectEditor: View {
             ImageInputField(value: $iconUrl, name: name, color: color)
                 .onSubmit(submitWeb)
             ProjectGroupWebField(title: "editor.project.worktrees") {
-                AletheSelect(selection: $worktreeMode, options: [.gitWorktree, .localCopy]) { value in
+                WebDropdown(selection: $worktreeMode, options: [.gitWorktree, .localCopy]) { value in
                     Text(value == .gitWorktree ? "newTerminal.worktree.mode.gitWorktree" : "newTerminal.worktree.mode.localCopy")
                 }.accessibilityIdentifier("editor.project.worktreeMode")
                 Toggle("editor.project.autoWorktree", isOn: $autoWorktree)

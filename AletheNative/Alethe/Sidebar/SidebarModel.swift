@@ -200,6 +200,18 @@ struct SidebarActions {
     }
 
     func deleteGroupAndProjects(_ group: ProjectGroup) {
+        if WebDialogCenter.shared.themed {
+            let count = workspace.document.projectIDs(inGroupTree: group.id).count
+            Task {
+                guard await WebDialogCenter.shared.confirm(
+                    format("dialog.confirmDeleteGroupCascade", group.name, count),
+                    confirmTitle: String(localized: "sidebar.deleteGroupAndProjects"), destructive: true) else { return }
+                workspace.update(undoManager: undoManager, actionName: String(localized: "sidebar.deleteGroupAndProjects")) {
+                    $0.deleteGroupAndProjects(group.id)
+                }
+            }
+            return
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = String(localized: "sidebar.deleteGroupAndProjects")
@@ -231,6 +243,18 @@ struct SidebarActions {
     /// Suspending asks first: it ends every terminal of the group's projects (upstream
     /// `SuspendGroupModal`).
     func suspendGroup(_ group: ProjectGroup) {
+        if WebDialogCenter.shared.themed {
+            Task {
+                guard await WebDialogCenter.shared.confirm(
+                    String(localized: "suspendGroup.message"),
+                    title: String(format: String(localized: "suspendGroup.title"), group.name),
+                    confirmTitle: String(localized: "suspendGroup.confirm")) else { return }
+                workspace.update(undoManager: undoManager, actionName: String(localized: "undo.suspendGroup")) {
+                    $0.suspendGroup(group.id)
+                }
+            }
+            return
+        }
         let alert = NSAlert()
         alert.messageText = String(format: String(localized: "suspendGroup.title"), group.name)
         alert.informativeText = String(localized: "suspendGroup.message")

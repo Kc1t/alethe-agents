@@ -157,6 +157,18 @@ struct PaneHostContext {
     }
 
     func renameGrid(_ grid: ProjectGridID, in project: ProjectID) {
+        if WebDialogCenter.shared.themed {
+            guard let workspace, let current = workspace.document.project(project)?.gridName(grid) else { return }
+            Task {
+                guard let name = await ProjectGridPrompts.webName(rename: true, initial: current, problem: {
+                    workspace.document.gridNameProblem($0, in: project, except: grid)
+                }) else { return }
+                workspace.update(undoManager: undoManager(), actionName: String(localized: "undo.renameGrid")) {
+                    $0.renameGrid(grid, in: project, to: name)
+                }
+            }
+            return
+        }
         guard let workspace, let current = workspace.document.project(project)?.gridName(grid),
               let name = ProjectGridPrompts.name(
                 title: String(localized: "projectGrid.rename.title"), initial: current,
@@ -168,6 +180,17 @@ struct PaneHostContext {
     }
 
     func deleteGrid(_ grid: ProjectGridID, in project: ProjectID) {
+        if WebDialogCenter.shared.themed {
+            guard let workspace, let model = workspace.document.project(project), let name = model.gridName(grid) else { return }
+            let count = model.panes(in: grid).count
+            Task {
+                guard let choice = await ProjectGridPrompts.webDelete(grid: name, paneCount: count) else { return }
+                workspace.update(undoManager: undoManager(), actionName: String(localized: "undo.deleteGrid")) {
+                    $0.deleteGrid(grid, in: project, closingPanes: choice == .closePanes)
+                }
+            }
+            return
+        }
         guard let workspace, let model = workspace.document.project(project), let name = model.gridName(grid),
               let choice = ProjectGridPrompts.delete(grid: name, paneCount: model.panes(in: grid).count) else { return }
         workspace.update(undoManager: undoManager(), actionName: String(localized: "undo.deleteGrid")) {

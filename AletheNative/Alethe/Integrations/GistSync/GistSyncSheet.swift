@@ -197,7 +197,13 @@ struct GistSyncSheet: View {
                     .accessibilityIdentifier("gistSync.done")
             }
         }
-        .confirmationDialog(Text("gistSync.pull.confirm"), isPresented: $askingPull) {
+        .webConfirm(isPresented: $askingPull, message: sync.confirmingPull.map(pullSummary) ?? "",
+                    title: String(localized: "gistSync.pull.confirm"),
+                    confirmTitle: String(localized: "gistSync.pull.action"), destructive: true) {
+            pullStarted = true
+            sync.confirmPull()
+        }
+        .confirmationDialog(Text("gistSync.pull.confirm"), isPresented: Binding(get: { !metrics.isWebInterface && askingPull }, set: { askingPull = $0 })) {
             Button("gistSync.pull.action", role: .destructive) {
                 pullStarted = true
                 sync.confirmPull()

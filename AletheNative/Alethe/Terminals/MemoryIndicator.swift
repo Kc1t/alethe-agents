@@ -121,8 +121,20 @@ private struct MemoryDetails: View {
 /// The hibernation policy, shared by the popover and Settings.
 struct ResourcePolicyPicker: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
 
     var body: some View {
+        if metrics.isWebInterface {
+            WebSelectRow(title: "resources.mode", selection: binding(\.mode), options: ResourcePolicy.Mode.allCases) {
+                $0.titleText
+            }
+            .accessibilityIdentifier("resources.mode")
+        } else {
+            nativePicker
+        }
+    }
+
+    private var nativePicker: some View {
         Picker(selection: binding(\.mode)) {
             ForEach(ResourcePolicy.Mode.allCases, id: \.self) { mode in
                 Text(mode.title).tag(mode)
@@ -214,6 +226,15 @@ extension ResourcePolicy.Mode {
         case .manual: "resources.mode.manual"
         case .pressure: "resources.mode.pressure"
         case .idle: "resources.mode.idle"
+        }
+    }
+
+    /// The title as plain text, for the web dropdown.
+    var titleText: String {
+        switch self {
+        case .manual: String(localized: "resources.mode.manual")
+        case .pressure: String(localized: "resources.mode.pressure")
+        case .idle: String(localized: "resources.mode.idle")
         }
     }
 

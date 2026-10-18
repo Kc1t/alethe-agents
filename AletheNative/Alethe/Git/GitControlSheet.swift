@@ -314,6 +314,10 @@ struct GitControlSheet: View {
         }
     }
 
+    var nativeDiscardPresented: Binding<Bool> {
+        Binding { !metrics.isWebInterface && pendingDiscard != nil } set: { if !$0 { pendingDiscard = nil } }
+    }
+
     var discardPresented: Binding<Bool> {
         Binding { pendingDiscard != nil } set: { if !$0 { pendingDiscard = nil } }
     }

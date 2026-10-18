@@ -12,6 +12,8 @@ struct SettingsView: View {
             if metrics.isWebInterface { WebSettingsView() } else { nativeBody }
         }
         .gitWebModalLayer()
+        .newTerminalDropdownLayer()
+        .webDialogLayer()
     }
 
     private var nativeBody: some View {
@@ -72,6 +74,7 @@ enum SettingsTab: Hashable {
 
 struct GeneralSettings: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.metrics) private var metrics
     @State private var confirmClear = false
 
     var body: some View {
@@ -113,7 +116,10 @@ struct GeneralSettings: View {
             DataSettingsSection()
         }
         .formStyle(.grouped)
-        .confirmationDialog(Text("settings.general.clearActivity.confirm"), isPresented: $confirmClear) {
+        .webConfirm(isPresented: $confirmClear, message: String(localized: "settings.general.clearActivity.confirm"), confirmTitle: String(localized: "settings.general.clearActivity"), destructive: true) {
+            environment.activity.clear()
+        }
+        .confirmationDialog(Text("settings.general.clearActivity.confirm"), isPresented: Binding(get: { !metrics.isWebInterface && confirmClear }, set: { confirmClear = $0 })) {
             Button("settings.general.clearActivity", role: .destructive) { environment.activity.clear() }
         }
     }

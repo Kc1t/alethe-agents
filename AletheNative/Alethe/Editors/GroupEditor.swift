@@ -80,7 +80,7 @@ struct GroupEditor: View {
             ImageInputField(value: $iconUrl, name: name, color: color)
                 .onSubmit(submitWeb)
             ProjectGroupWebField(title: "editor.group.parent") {
-                AletheSelect(selection: $parent, options: [nil] + parentCandidates.map { Optional($0.id) }) { value in
+                WebDropdown(selection: $parent, options: [nil] + parentCandidates.map { Optional($0.id) }) { value in
                     if let value, let group = workspace.document.group(value) {
                         Text(verbatim: group.name)
                     } else { Text("editor.group.topLevel") }
