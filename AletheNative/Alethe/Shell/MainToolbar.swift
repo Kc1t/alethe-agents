@@ -39,7 +39,6 @@ struct MainToolbar: ViewModifier {
     private static func view(for kind: ToolbarItemKind) -> some View {
         switch kind {
         case .home: HomeButton()
-        case .pomodoro: PomodoroToolbarPill()
         case .usageClaude: UsagePill(provider: .claude)
         case .usageCodex: UsagePill(provider: .codex)
         case .usageAntigravity: UsagePill(provider: .antigravity)

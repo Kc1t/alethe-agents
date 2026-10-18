@@ -2,7 +2,7 @@ import AlethePluginKit
 import Foundation
 
 /// Built-in Todos plugin (upstream `plugins/todos`): a right-sidebar tab rendered by the app's
-/// `todos` view and a "New Todo" command. Storage holds the list, settings and Pomodoro session;
+/// `todos` view and a "New Todo" command. Storage holds the list and settings;
 /// the filesystem capabilities cover the external JSONC template.
 @MainActor
 public final class TodosPlugin: AlethePlugin {

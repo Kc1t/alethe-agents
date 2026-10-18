@@ -87,44 +87,11 @@ public enum TodoRules {
     ]
 }
 
-/// Settings mirrored from upstream: the template folder (`todoStoragePath`) and the Pomodoro
-/// lengths in minutes.
+/// The template folder used by the Todos plugin. Unknown legacy settings are ignored on decode.
 public struct TodoSettings: Hashable, Sendable, Codable {
     public var storagePath: String
-    public var pomodoroWorkMinutes: Int
-    public var pomodoroShortBreakMinutes: Int
-    public var pomodoroLongBreakMinutes: Int
 
-    public init(
-        storagePath: String = "",
-        pomodoroWorkMinutes: Int = 25,
-        pomodoroShortBreakMinutes: Int = 5,
-        pomodoroLongBreakMinutes: Int = 15
-    ) {
+    public init(storagePath: String = "") {
         self.storagePath = storagePath
-        self.pomodoroWorkMinutes = pomodoroWorkMinutes
-        self.pomodoroShortBreakMinutes = pomodoroShortBreakMinutes
-        self.pomodoroLongBreakMinutes = pomodoroLongBreakMinutes
-    }
-
-    /// Upstream clamps every Pomodoro length to 1…120 minutes.
-    public static let minuteRange = 1...120
-
-    /// The settings with every Pomodoro length inside `minuteRange`.
-    public func clamped() -> TodoSettings {
-        func clamp(_ value: Int) -> Int { min(Self.minuteRange.upperBound, max(Self.minuteRange.lowerBound, value)) }
-        var next = self
-        next.pomodoroWorkMinutes = clamp(pomodoroWorkMinutes)
-        next.pomodoroShortBreakMinutes = clamp(pomodoroShortBreakMinutes)
-        next.pomodoroLongBreakMinutes = clamp(pomodoroLongBreakMinutes)
-        return next
-    }
-
-    public var pomodoroLengths: PomodoroLengths {
-        PomodoroLengths(
-            work: TimeInterval(pomodoroWorkMinutes * 60),
-            shortBreak: TimeInterval(pomodoroShortBreakMinutes * 60),
-            longBreak: TimeInterval(pomodoroLongBreakMinutes * 60)
-        )
     }
 }

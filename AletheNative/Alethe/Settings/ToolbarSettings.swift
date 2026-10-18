@@ -40,7 +40,6 @@ extension ToolbarItemKind {
     var title: LocalizedStringKey {
         switch self {
         case .home: "settings.toolbar.home"
-        case .pomodoro: "settings.toolbar.pomodoro"
         case .usageClaude: "settings.toolbar.usageClaude"
         case .usageCodex: "settings.toolbar.usageCodex"
         case .usageAntigravity: "settings.toolbar.usageAntigravity"

@@ -56,7 +56,7 @@ final class HitTargetTests: XCTestCase {
     }
 
     /// Proves the harness catches a real miss: an invisible overlay taking clicks (the first
-    /// attempt's pomodoro-overlay bug, lesson 4).
+    /// attempt's overlay bug, lesson 4).
     func testHarnessDetectsClickSwallowingOverlay() {
         let app = launchFixture(scale: 1.0, extra: ["-AletheUITestBrokenOverlay", "YES"])
         let missed = missedControls(in: app)

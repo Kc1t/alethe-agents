@@ -338,13 +338,6 @@ private struct TodoWebRow: View {
                 draft = todo.tags.map { "#" + $0 }.joined(separator: " ")
                 editingTags = true; focused = true
             } label: { Label("todos.editTags", systemImage: "tag") }
-            if !todo.done {
-                Button {
-                    store.setFocus(store.pomodoro.focusTodoId == todo.id ? nil : todo.id)
-                } label: {
-                    Label((store.pomodoro.focusTodoId == todo.id ? "pomodoro.clearFocus" : "pomodoro.setFocus") as LocalizedStringKey, systemImage: "scope")
-                }
-            }
             Divider()
             Button(role: .destructive) { store.delete(todo.id) } label: { Label("todos.delete", systemImage: "trash") }
         }

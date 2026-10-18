@@ -6,7 +6,6 @@ import Foundation
 /// View › Customize Toolbar…, which AppKit stores itself.
 public enum ToolbarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
     case home
-    case pomodoro
     case usageClaude = "usage.claude"
     case usageCodex = "usage.codex"
     case usageAntigravity = "usage.antigravity"
@@ -44,7 +43,7 @@ public enum ToolbarItemKind: String, CaseIterable, Codable, Hashable, Sendable {
         switch self {
         case .usageClaude, .usageCodex, .usageAntigravity: .first
         case .memory, .aiUsage, .router9, .sync: .early
-        case .pomodoro, .notifications, .remote: .standard
+        case .notifications, .remote: .standard
         case .home, .profile: .last
         }
     }

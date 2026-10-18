@@ -115,19 +115,28 @@ struct ImageInputField: View {
     }
 
     private func drop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
+        guard let provider = providers.first(where: {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) ||
+                $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+        }) else { return false }
         if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-                guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-                Task { @MainActor in load(url) }
+                Task { @MainActor in
+                    guard let data, let url = URL(dataRepresentation: data, relativeTo: nil), url.isFileURL else {
+                        error = "image.readFailed"; return
+                    }
+                    load(url)
+                }
             }
             return true
         }
         guard let identifier = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true }),
               let mime = UTType(identifier)?.preferredMIMEType else { return false }
         provider.loadDataRepresentation(forTypeIdentifier: identifier) { data, _ in
-            guard let data else { return }
-            Task { @MainActor in accept(data, mime: mime) }
+            Task { @MainActor in
+                guard let data else { error = "image.readFailed"; return }
+                accept(data, mime: mime)
+            }
         }
         return true
     }

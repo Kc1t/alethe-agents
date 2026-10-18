@@ -56,7 +56,6 @@ struct WebTitleBar: View {
                                 .frame(width: metrics.size(26), height: metrics.size(22))
                                 .buttonStyle(AletheTitleBarPillStyle(iconOnly: true))
                         }
-                        PomodoroToolbarPill()
                         if shown(.profile) {
                             ProfileToolbarMenu()
                                 .labelStyle(.titleAndIcon)

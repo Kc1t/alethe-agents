@@ -5,8 +5,8 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Todos settings (upstream `TodoSettingsModal`, P4-16/P4-17): the template folder with Open, Import
-/// and Export of `alethe-todo.template.jsonc`, the Pomodoro lengths, and reset to the default list.
+/// Todos settings: the template folder with Open, Import and Export of
+/// `alethe-todo.template.jsonc`, and reset to the default list.
 /// Changes apply as they are made. Template files are read and written by the Todos plugin through
 /// its filesystem capability.
 struct TodosSettingsSheet: View {
@@ -55,11 +55,6 @@ struct TodosSettingsSheet: View {
                     }
                     .disabled(store.templateURL == nil || busy)
                 }
-                Section("todos.settings.pomodoro") {
-                    minutes("todos.settings.work", \.pomodoroWorkMinutes)
-                    minutes("todos.settings.shortBreak", \.pomodoroShortBreakMinutes)
-                    minutes("todos.settings.longBreak", \.pomodoroLongBreakMinutes)
-                }
                 Section {
                     Button("todos.settings.reset", role: .destructive) { confirming = .reset }
                         .accessibilityIdentifier("todos.settings.reset")
@@ -94,20 +89,6 @@ struct TodosSettingsSheet: View {
             Button(confirmationButton(action), role: .destructive) { Task { await perform(action) } }
         } message: { action in
             Text(confirmationMessage(action))
-        }
-    }
-
-    private func minutes(_ title: LocalizedStringKey, _ keyPath: WritableKeyPath<TodoSettings, Int>) -> some View {
-        let value = Binding {
-            store.settings[keyPath: keyPath]
-        } set: { newValue in
-            store.updateSettings { $0[keyPath: keyPath] = newValue }
-        }
-        return Stepper(value: value, in: TodoSettings.minuteRange) {
-            LabeledContent(title) {
-                Text(verbatim: String(format: String(localized: "todos.settings.minutes"), value.wrappedValue))
-                    .monospacedDigit()
-            }
         }
     }
 
