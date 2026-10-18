@@ -1,6 +1,7 @@
 import AletheDesign
 import AletheFoundation
 import AletheModel
+import AlethePluginKit
 import SwiftUI
 
 /// Settings › Appearance: theme, app icon, UI zoom and interface language.
@@ -12,6 +13,41 @@ struct AppearanceSettings: View {
     @State private var showingToolbar = false
 
     private var uiScale: Double { environment.preferences?.document.uiScale ?? 1 }
+
+    /// AppearancePage.tsx "view placement": one Left/Right dropdown per contributed sidebar tab.
+    @ViewBuilder
+    private var viewPlacementRows: some View {
+        let tabs = environment.plugins?.contributions.sidebarTabs ?? []
+        if let host = environment.plugins, !tabs.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                    HStack(spacing: metrics.size(12)) {
+                        Text(verbatim: tab.title)
+                        Spacer(minLength: 0)
+                        AletheSelect(selection: Binding {
+                            host.viewPlacements.side(of: tab.id, in: tabs) ?? tab.side
+                        } set: { side in
+                            Task { try? await host.moveSidebarTab(tab.id, to: side, at: .max) }
+                        }, options: [SidebarSide.left, .right]) { side in
+                            Text(side == .left ? "settings.web.reference.prefs.viewPlacementLeft"
+                                 : "settings.web.reference.prefs.viewPlacementRight")
+                        }
+                        .accessibilityLabel(Text(verbatim: tab.title))
+                    }
+                    .font(metrics.font(size: 13))
+                    .foregroundStyle(theme[.textSecondary])
+                    .padding(.vertical, metrics.size(6))
+                    .overlay(alignment: .top) {
+                        if index > 0 { theme[.borderSubtle].frame(height: metrics.size(1)) }
+                    }
+                    .accessibilityIdentifier("settings.viewPlacement.\(tab.id)")
+                }
+            }
+        } else {
+            Text("settings.web.reference.prefs.viewPlacementEmpty")
+                .font(metrics.font(size: 12)).foregroundStyle(theme[.fgFaint])
+        }
+    }
 
     var body: some View {
         if metrics.isWebInterface { webBody } else { nativeBody }
@@ -245,7 +281,7 @@ struct AppearanceSettings: View {
                 .accessibilityIdentifier("settings.interface")
             } header: { Text("settings.web.reference.prefs.topbarStyle") }
               footer: { Text("settings.web.reference.prefs.topbarStyleDesc") }
-            Section { Text("settings.web.reference.prefs.viewPlacementEmpty") }
+            Section { viewPlacementRows }
                 header: { Text("settings.web.reference.prefs.viewPlacement") }
                 footer: { Text("settings.web.reference.prefs.viewPlacementDesc") }
             Section {

@@ -32,6 +32,18 @@ struct FeatureSettings: View {
                 .buttonStyle(.link)
                 .accessibilityIdentifier("settings.features.showMore")
             }
+            if environment.features.isOn(.mcp) {
+                Section {
+                    // Upstream `FeaturesPage`: a link under the list that reopens the MCP intro.
+                    Button {
+                        environment.editorRequest = .mcpIntro
+                    } label: {
+                        Text("settings.features.mcpRunSetup")
+                    }
+                    .buttonStyle(.link)
+                    .accessibilityIdentifier("settings.features.mcpRunSetup")
+                }
+            }
         }
         .formStyle(.grouped)
         .modifier(AletheSettingsSizing())

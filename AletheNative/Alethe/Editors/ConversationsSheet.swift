@@ -40,6 +40,16 @@ struct ConversationsSheet: View {
             ?? workspace.document.projects.first
     }
 
+    /// The terminal tab "Open here" restarts: the active tab of the project's focused terminal pane.
+    private var targetTab: (pane: Pane, tab: PaneTab)? {
+        guard let project else { return nil }
+        let focused = workspace.document.workspace.focusedPaneID
+        let pane = project.panes.first { $0.id == focused && $0.content.isTerminal }
+            ?? project.panes.first { $0.content.isTerminal && !$0.tabs.isEmpty }
+        guard let pane, let tab = pane.tabs.first(where: { $0.id == pane.activeTabID }) ?? pane.tabs.first else { return nil }
+        return (pane, tab)
+    }
+
     private var visible: [Row] {
         let query = filter.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return rows ?? [] }
@@ -103,9 +113,16 @@ struct ConversationsSheet: View {
             }
             Spacer()
             Button("editor.cancel", action: dismiss)
-            Button("conversations.open") { selection.flatMap { id in visible.first { $0.id == id } }.map(open) }
+            // RecentChatsModal.tsx: "Open here" restarts the focused pane on the chat, "New pane" resumes it
+            // in a pane of its own.
+            Button("recentChats.openHere") { selection.flatMap { id in visible.first { $0.id == id } }.map(openHere) }
+                .disabled(selection == nil || targetTab == nil)
+                .help(Text(targetTab == nil ? "recentChats.openHereDisabled" : "recentChats.openHereTooltip"))
+                .accessibilityIdentifier("conversations.openHere")
+            Button("recentChats.openInNewPane") { selection.flatMap { id in visible.first { $0.id == id } }.map(open) }
                 .buttonStyle(AletheButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction).disabled(selection == nil)
+                .help(Text("recentChats.openInNewPaneTooltip"))
                 .accessibilityIdentifier("conversations.open")
         }
         .task(id: "\(agent.rawValue)|\(allProjects)") { await load() }
@@ -250,6 +267,24 @@ struct ConversationsSheet: View {
 
     private func isOpen(_ row: Row) -> Bool {
         workspace.document.projects.contains { $0.panes.contains { $0.tabs.contains { $0.sessionID == row.summary.id } } }
+    }
+
+    /// Restarts the target pane's active tab on the conversation (upstream `resumeSessionInPane`).
+    private func openHere(_ row: Row) {
+        guard let (_, tab) = targetTab, let project else { return }
+        let kind = agent
+        let unrestricted = unrestricted && AgentRegistry.builtin.descriptor(for: kind)?.unrestrictedFlag != nil
+        workspace.update(undoManager: undoManager, actionName: String(localized: "undo.newTerminal")) { doc in
+            doc.updateTab(tab.id) {
+                $0.agent = kind.rawValue
+                $0.sessionID = row.summary.id
+                $0.unrestricted = unrestricted
+            }
+        }
+        if let updated = workspace.document.paneHolding(tab.id)?.pane.tabs.first(where: { $0.id == tab.id }) {
+            environment.terminals.restart(updated, in: workspace.document.project(project.id) ?? project, environment: environment)
+        }
+        dismiss()
     }
 
     /// The tab that holds the conversation, or a new terminal resuming it.

@@ -1,6 +1,7 @@
 import AletheDesign
 import AletheModel
 import AletheOrchestrator
+import AppKit
 import SwiftUI
 
 /// The board canvas (upstream `board`/`world`): the P6-12 layout with its connectors and dot grid
@@ -49,6 +50,10 @@ struct BoardCanvasView: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipShape(Rectangle())
             .simultaneousGesture(magnify(ui: ui))
+            .background(BoardWheelZoom { delta, point in
+                // OrchestratorPane/index.tsx: Cmd/Ctrl + wheel zooms by exp(-deltaY / 400) around the pointer.
+                board.zoom(by: exp(delta / 400), at: BoardPoint(x: point.x / ui, y: point.y / ui), animated: false)
+            })
             .overlay(alignment: .bottomLeading) { hint }
             .overlay(alignment: .bottomTrailing) { zoomControls }
             .onChange(of: proxy.size, initial: true) { _, size in
@@ -385,5 +390,49 @@ private struct BoardEdgesCanvas: View {
         context.fill(capsule, with: .color(theme[.bg]))
         context.stroke(capsule, with: .color(theme[ignored ? .statusWaiting : .border]), lineWidth: 1)
         context.draw(resolved, at: center, anchor: .center)
+    }
+}
+
+/// Cmd/Ctrl + scroll wheel over the board zooms it (upstream `onWheel` with `ctrlKey || metaKey`).
+/// A passive local monitor: the view never takes hits, and events outside its bounds pass through.
+private struct BoardWheelZoom: NSViewRepresentable {
+    /// Scroll delta (positive = content moves down, i.e. zoom in) and the pointer in view points, top-left origin.
+    let onZoom: (Double, CGPoint) -> Void
+
+    func makeNSView(context: Context) -> MonitorView {
+        let view = MonitorView()
+        view.onZoom = onZoom
+        return view
+    }
+
+    func updateNSView(_ view: MonitorView, context: Context) { view.onZoom = onZoom }
+
+    static func dismantleNSView(_ view: MonitorView, coordinator: ()) { view.removeMonitor() }
+
+    final class MonitorView: NSView {
+        var onZoom: ((Double, CGPoint) -> Void)?
+        private var monitor: Any?
+
+        override var isFlipped: Bool { true }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            removeMonitor()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, event.window === window,
+                      event.modifierFlags.intersection([.command, .control]) != [] else { return event }
+                let point = convert(event.locationInWindow, from: nil)
+                guard bounds.contains(point) else { return event }
+                onZoom?(Double(event.scrollingDeltaY), point)
+                return nil
+            }
+        }
+
+        func removeMonitor() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
     }
 }

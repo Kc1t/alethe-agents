@@ -33,7 +33,7 @@ struct WebTitleBarUsagePill: View {
                 .background(theme[hovering ? .panelHover : .bgSunken].opacity(metrics.style == .clean && !hovering ? 0 : 1),
                             in: RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 8)))
                 .overlay(RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 8))
-                    .strokeBorder(theme[AgentTokens.accent(for: provider.rawValue)].opacity(metrics.style == .clean ? 0 : 0.2), lineWidth: metrics.size(1)))
+                    .strokeBorder(theme[AgentTokens.accent(for: provider.rawValue)].opacity(metrics.style == .clean ? 0 : 0.15), lineWidth: metrics.size(1)))
             }
             .opacity(environment.usage.stale.contains(provider) ? 0.55 : 1)
             .buttonStyle(.plain)

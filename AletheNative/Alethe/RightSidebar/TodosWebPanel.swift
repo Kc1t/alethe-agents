@@ -47,6 +47,8 @@ struct TodosWebPanel: View {
         VStack(spacing: 0) {
             header.modifier(AletheSidebarWebEntrance(.header))
             composer.modifier(AletheSidebarWebEntrance(.composer))
+                // TodoSidebar.tsx `focusComposer`: Cmd+N expands and focuses the composer while the panel is mounted.
+                .background(TodoComposerShortcut { expanded = true; composerFocused = true })
             ScrollView {
                 VStack(spacing: metrics.size(16)) {
                     if filter != .completed && !sessions.isEmpty {
@@ -383,5 +385,42 @@ private struct TodoWebProjectPicker: View {
         .menuStyle(.borderlessButton).menuIndicator(.hidden)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityLabel(Text("todos.new.toProject"))
+    }
+}
+
+/// A local key monitor that claims plain Cmd+N for the todo composer (it is installed after the
+/// window-level shortcuts, so it sees the key first while the panel is on screen).
+private struct TodoComposerShortcut: NSViewRepresentable {
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> MonitorView { MonitorView() }
+    func updateNSView(_ view: MonitorView, context: Context) { view.action = action; view.install() }
+    static func dismantleNSView(_ view: MonitorView, coordinator: ()) { view.uninstall() }
+
+    @MainActor final class MonitorView: NSView {
+        var action: (() -> Void)?
+        private var monitor: Any?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        func install() {
+            guard monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                let handled = MainActor.assumeIsolated { self?.handle(event) ?? false }
+                return handled ? nil : event
+            }
+        }
+
+        func uninstall() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+
+        private func handle(_ event: NSEvent) -> Bool {
+            guard let window, window.isKeyWindow, event.window === window, window.attachedSheet == nil,
+                  event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command,
+                  event.charactersIgnoringModifiers?.lowercased() == "n" else { return false }
+            action?()
+            return true
+        }
     }
 }

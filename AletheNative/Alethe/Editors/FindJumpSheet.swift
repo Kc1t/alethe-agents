@@ -1,5 +1,6 @@
 import AletheDesign
 import AletheModel
+import AlethePluginKit
 import AppKit
 import SwiftUI
 
@@ -22,15 +23,22 @@ struct FindJumpSheet: View {
         case terminal(TabID)
         case project(ProjectID)
         case command(JumpCommand)
+        /// A plugin `commandContributions` entry placed in Find/Jump (upstream `FindJumpModal`).
+        case plugin(String)
     }
 
     private var document: WorkspaceDocument { workspace.document }
+
+    private var pluginCommands: [CommandContribution] {
+        (environment.plugins?.contributions.commands ?? []).filter { $0.placement.contains(.findJump) }
+    }
 
     private var items: [Item] {
         let terminals = document.projects.flatMap { project in project.panes.flatMap { $0.tabs.map { Item.terminal($0.id) } } }
         let projects = document.projects.map { Item.project($0.id) }
         let commands = JumpCommand.allCases.filter { $0.isAvailable(document) }.map(Item.command)
-        let all = terminals + projects + commands
+        let plugin = pluginCommands.map { Item.plugin($0.id) }
+        let all = terminals + projects + commands + plugin
         return Array(FuzzyMatch.rank(all, query: query, fields: fields).map(\.item).prefix(Self.limit))
     }
 
@@ -147,10 +155,18 @@ struct FindJumpSheet: View {
             let project = document.project(id)
             return Info(symbol: "folder", tint: project?.color.token, title: project?.name ?? id.rawValue,
                         subtitle: String(localized: "findJump.project"), detail: project?.folder)
+        case .plugin(let id):
+            return describePlugin(id)
         case .command(let command):
             return Info(symbol: command.symbol, title: String(localized: command.title),
                         subtitle: String(localized: "findJump.command"), detail: command.shortcut)
         }
+    }
+
+    private func describePlugin(_ id: String) -> Info {
+        guard let command = pluginCommands.first(where: { $0.id == id }) else { return Info(symbol: "command", title: id) }
+        return Info(symbol: "command", title: command.title, subtitle: String(localized: "findJump.command"),
+                    detail: command.keyEquivalent.map { "⌘" + $0.uppercased() })
     }
 
     private func fields(_ item: Item) -> [String] {
@@ -171,6 +187,9 @@ struct FindJumpSheet: View {
             }
         case .project(let id):
             workspace.update { $0.openInTab(id) }
+        case .plugin(let id):
+            guard let command = pluginCommands.first(where: { $0.id == id }) else { return }
+            DispatchQueue.main.async { command.perform() }
         case .command(let command):
             // After the sheet is gone, so a command that opens another sheet can.
             DispatchQueue.main.async { command.run(environment: environment, undoManager: undoManager) }

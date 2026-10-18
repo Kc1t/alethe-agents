@@ -45,7 +45,7 @@ struct SettingsPageForm<Content: View>: View {
                     }
                     .padding(.horizontal, metrics.size(geometry.size.width / metrics.scale < 674 ? 24 : 34))
                     .padding(.top, metrics.size(28))
-                    .padding(.bottom, metrics.size(28))
+                    .padding(.bottom, metrics.size(52))
                 }
                 .webScrollStyle()
                 .task(id: searchTarget) {
