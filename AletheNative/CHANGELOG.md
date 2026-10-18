@@ -23,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Existing Todos lists and template settings continue to load, ignoring legacy timer fields.
 
 ### Fixed
+- In full screen the window buttons are handed back to the system title bar, so the menu-bar reveal shows exit full screen and minimize again.
 - The Projects tab icon in the sidebar is no longer highlighted while Home is showing.
 - Web-style Settings follows the web category order from Account through About, with separate
   appearance sections, archived-project restoration, profile controls and persistent section folds.

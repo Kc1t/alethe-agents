@@ -137,21 +137,25 @@ struct WindowChromeBridge: NSViewRepresentable {
                 guard let button = window.standardWindowButton(kind) else { continue }
                 // SwiftUI hides the system title-bar host when its toolbar is hidden. Keep the
                 // real buttons in our overlay so their target/actions and accessibility survive.
-                if button.superview !== self { addSubview(button) }
                 if fullScreen {
-                    if hiddenBeforeFullScreen[kind] == nil {
-                        hiddenBeforeFullScreen[kind] = savedLightVisibility[kind] ?? button.isHidden
+                    // Give the buttons back to the system title bar so the menu-bar reveal still
+                    // shows them (exit full screen, minimize); our overlay would hide them.
+                    if let host = savedLightHosts[kind]?.view, button.superview !== host {
+                        host.addSubview(button)
+                        if let frame = savedLightFrames[kind] { button.frame = frame }
                     }
-                    button.isHidden = true
-                } else if fullScreenChanged, previousFullScreen == true {
-                    button.isHidden = hiddenBeforeFullScreen[kind] ?? savedLightVisibility[kind] ?? true
+                    button.isHidden = savedLightVisibility[kind] ?? false
+                    continue
                 }
-                if !fullScreen { hiddenBeforeFullScreen[kind] = button.isHidden }
+                if button.superview !== self { addSubview(button) }
+                if fullScreenChanged, previousFullScreen == true {
+                    button.isHidden = savedLightVisibility[kind] ?? false
+                }
                 let scale = barHeight / 40
                 let origin = NSPoint(x: (12 + CGFloat(index) * 20) * scale,
                                      y: (barHeight - button.frame.height) / 2)
                 if button.frame.origin != origin { button.setFrameOrigin(origin) }
-                if !fullScreen, !button.isHiddenOrHasHiddenAncestor, button.alphaValue > 0 {
+                if !button.isHiddenOrHasHiddenAncestor, button.alphaValue > 0 {
                     trailingEdge = max(trailingEdge, button.frame.maxX)
                 }
             }
