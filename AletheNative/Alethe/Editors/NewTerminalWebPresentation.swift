@@ -140,12 +140,6 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
     }
 }
 
-extension Motion {
-    /// CSS modalSpringPop timing, without transforming the layout for interface zoom.
-    fileprivate static var terminalEntrance: Animation { .timingCurve(0.175, 0.885, 0.32, 1.275, duration: 0.25) }
-    fileprivate static var terminalExit: Animation { .timingCurve(0.4, 0, 0.2, 1, duration: 0.15) }
-}
-
 /// A window-local overlay; the `.mac` presentation continues to use the existing system sheet.
 struct NewTerminalWebOverlay<Content: View>: View {
     let onClose: () -> Void
@@ -182,10 +176,10 @@ struct NewTerminalWebOverlay<Content: View>: View {
             let size = CGSize(width: min(resized?.width ?? metrics.size(defaultWidth), maximum.width),
                               height: min(resized?.height ?? measuredHeight, maximum.height))
             ZStack {
-                theme[.bgSunken].opacity(visible ? 0.68 : 0)
+                theme[.bgSunken].opacity(0.68)
+                    .webModalBackdropMotion(visible: visible)
                     .contentShape(Rectangle())
                     .onTapGesture(perform: close)
-                    .animation(metrics.reducesMotion ? nil : Motion.terminalExit, value: visible)
                 content(close)
                     .environment(\.newTerminalModalHeight, resized == nil ? maximum.height : size.height)
                     .environment(\.webModalHasExplicitHeight, resized != nil)
@@ -197,11 +191,9 @@ struct NewTerminalWebOverlay<Content: View>: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measuredHeight = $0 }
                     .overlay { resizeHandles(size: size, window: geometry.size, maximum: maximum) }
                     .shadow(color: theme.shadow(.lg).color.color, radius: metrics.size(40), y: metrics.size(16))
-                    .opacity(visible ? 1 : 0)
-                    .offset(y: visible || metrics.reducesMotion ? 0 : metrics.size(20))
+                    .webModalContentMotion(visible: visible, closing: closing)
                     .position(x: geometry.size.width / 2 + displacement.width,
                               y: geometry.size.height / 2 + displacement.height)
-                    .animation(metrics.reducesMotion ? nil : closing ? Motion.terminalExit : Motion.terminalEntrance, value: visible)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .onChange(of: geometry.size) { _, _ in reset() }

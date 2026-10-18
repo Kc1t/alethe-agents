@@ -11,6 +11,9 @@ import UserNotifications
 @MainActor
 final class AgentNotifier: NSObject, UNUserNotificationCenterDelegate {
     private(set) var log = NotificationLog()
+    /// Ephemeral in-app banners (upstream `uiStore.toasts`): the newest four.
+    private(set) var toasts: [InAppToast] = []
+    static let maximumToasts = 4
     @ObservationIgnored private weak var environment: AppEnvironment?
     @ObservationIgnored private var permission: Bool?
 
@@ -35,16 +38,26 @@ final class AgentNotifier: NSObject, UNUserNotificationCenterDelegate {
             ?? String(format: String(localized: "notify.body"), name, project.name)
         let entry = AppNotification(title: title, body: body, tab: tab, agent: item.agent)
         guard log.post(entry) else { return }
+        pushToast(entry, actions: [])
         if !NSApp.isActive { Task { await deliver(entry) } }
     }
 
     /// Any other notification (a limit reset, a remote device's message): the list, and macOS when
     /// Alethe is in the background. With `tab`, clicking it jumps there.
-    func post(title: String, body: String, agent: String? = nil, tab: TabID? = nil) {
+    func post(title: String, body: String, agent: String? = nil, tab: TabID? = nil,
+              actions: [InAppToast.Action] = [], silent: Bool = false) {
         let entry = AppNotification(title: title, body: body, tab: tab, agent: agent)
         guard log.post(entry) else { return }
+        if !silent { pushToast(entry, actions: actions) }
         if !NSApp.isActive { Task { await deliver(entry) } }
     }
+
+    private func pushToast(_ entry: AppNotification, actions: [InAppToast.Action]) {
+        let toast = InAppToast(id: entry.id, title: entry.title, body: entry.body, agent: entry.agent, actions: actions)
+        toasts = Array((toasts + [toast]).suffix(Self.maximumToasts))
+    }
+
+    func dismissToast(_ id: UUID) { toasts.removeAll { $0.id == id } }
 
     private func deliver(_ entry: AppNotification) async {
         let center = UNUserNotificationCenter.current()

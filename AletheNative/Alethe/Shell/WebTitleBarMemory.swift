@@ -27,6 +27,8 @@ struct WebTitleBarMemoryPill: View {
                     .strokeBorder(theme[hovering ? .borderStrong : pressure].opacity(metrics.style == .clean || (!hovering && available >= 2048) ? 0 : 1), lineWidth: metrics.size(1)))
         }
         .buttonStyle(.plain).fixedSize().onHover { hovering = $0 }
+        // ramPillPulse: high pressure 1.5 s, critical 0.8 s (TitleBar.module.css).
+        .webOpacityPulse(period: available < 256 ? 0.8 : 1.5, active: available < 512)
         .help(Text("titlebar.memory.open"))
         .accessibilityLabel(Text(verbatim: String(format: String(localized: "memory.indicator.accessibility"), MemoryIndicator.format(environment.resources.appMB + environment.resources.terminalsMB))))
         .accessibilityIdentifier("memory.indicator")

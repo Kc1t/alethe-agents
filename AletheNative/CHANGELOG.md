@@ -11,6 +11,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   progress bar instead of system pickers, alerts, steppers and progress views.
 - The sidebar merge panel is a web-style card with a status tag and a custom conflict tree.
 
+### Toasts, modal motion and title bar polish (n2)
+- Web interface: in-app toast stack at the top of the window (newest four, action chips, 6.5 s or
+  20 s with actions, hover pauses the timer, close button) for agent and system notifications.
+- Web interface: every overlay uses the web modal enter/exit motion (backdrop fade, spring pop,
+  clean-style slide) from one shared modifier; Reduce Motion disables it.
+- Web interface: the usage pill no longer draws an accent outline; the memory pill pulses under
+  high and critical memory pressure; the onboarding avatar fades in like the web.
+- Removed the unused disabled-field placeholder from the web settings pages.
 ### Plugin marketplace and local registration
 - Web interface: browse the plugin catalog from Settings or the Plugins sidebar, search and filter
   by capabilities, source and state, sort, inspect details, refresh, and use cached results offline.

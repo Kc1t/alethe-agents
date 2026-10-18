@@ -34,19 +34,15 @@ struct OnboardingWebOverlay<Content: View>: View {
             let maximumHeight = max(0, geometry.size.height - metrics.size(48))
             ZStack {
                 Color.black.opacity(0.55)
-                    .opacity(visible ? 1 : 0)
+                    .webModalBackdropMotion(visible: visible)
                     .contentShape(Rectangle())
                     .onTapGesture {}
-                    .animation(metrics.reducesMotion ? nil : .easeOut(duration: 0.12), value: visible)
                 content()
                     .environment(\.newTerminalModalHeight, maximumHeight)
                     .frame(width: min(metrics.size(640), max(0, geometry.size.width - metrics.size(48))))
                     .frame(maxHeight: maximumHeight)
                     .shadow(color: theme.shadow(.lg).color.color, radius: metrics.size(40), y: metrics.size(16))
-                    .opacity(visible ? 1 : 0)
-                    .offset(y: visible || metrics.reducesMotion ? 0 : metrics.size(6))
-                    .animation(metrics.reducesMotion ? nil : .timingCurve(0.175, 0.885, 0.32, 1.275, duration: 0.14),
-                               value: visible)
+                    .webModalContentMotion(visible: visible)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
@@ -279,6 +275,7 @@ struct OnboardingWebProfileStep: View {
         }
         .accessibilityLabel(Text("onboarding.web.photoTitle"))
         .accessibilityIdentifier("onboarding.photo")
+        .webAvatarIn()
     }
 
     private var nameField: some View {
