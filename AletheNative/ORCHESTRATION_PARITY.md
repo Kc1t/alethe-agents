@@ -104,3 +104,49 @@ This includes the pre-existing orchestration edits present when this task began.
 - `AletheNative/Packages/AletheKit/Tests/AletheModelTests/CustomAgentTests.swift`
 - `AletheNative/Packages/AletheKit/Tests/AletheModelTests/OrchestrationPreferencesTests.swift`
 - `AletheNative/Packages/AletheKit/Tests/AletheOrchestratorTests/OrchestrationSettingsTests.swift`
+
+## Audit 2 — k3 handoff (2026-10-18)
+
+Scope: backlog #16, #17, #20 and TerminalInspector from `audit2.md`. Image covers were already
+implemented in this baseline; this follow-up uses the final k3 assignment.
+
+| Surface | Web source read from `origin/main` | Native implementation |
+| --- | --- | --- |
+| Token HUD | `src/components/TokenHud/index.tsx`, `TokenHud.module.css`, `src/stores/agentCostStore.ts`, `src/lib/costFormat.ts` | `Editors/TokenHud.swift`, web-shell bottom-right overlay: 16-point inset, 280-point expanded panel, 260-point list limit, 4-second polling, expandable pill, per-agent session totals, four cost decimals below $1, two otherwise, thresholds at $1/$5. No mock data. |
+| Detached board | `src/OrchestrationWindow.tsx`, `OrchestrationWindow.module.css`, `src/components/OrchestratorPane/index.tsx` and its CSS | `Orchestrator/DetachedOrchestrationWindow.swift`, second value-based WindowGroup, header action, restorable profile/pane identity, pane-gone message. Both scenes share one startup task. |
+| Project configuration | `src/lib/types.ts`, `src/stores/projectsStore.projectSlices.ts`, `src/components/ProjectSidebar/sidebarMenus.tsx` | `WebProjectFile`, `ProjectVisibility`, `WebProjectTransfer`, sidebar/Organization settings. See the left-sidebar report for migration and interoperability notes. |
+| Terminal inspector | `src/components/TerminalInspector/index.tsx`, `TerminalInspector.module.css` | `Sidebar/TerminalInspector.swift`: 10-point inset, 24-point icon, two-column 28-point actions with 5-point gap, 26-point tab rows and 52-point type column. Open inspector/Reveal in terminal menus; file rows offer Open inspector. |
+
+### Decisions and implementation memory
+
+- Only the web shell draws the HUD/inspector and offers detachment. Native project settings transfer
+  and the existing `.mac` main-window layout remain in place. Shared optional model fields do not
+  change the document version or invalidate older native workspaces.
+- A native second scene shares the same observable workspace, orchestrator service and subagent
+  tracker. It therefore observes edits immediately and uses the normal saved workspace after launch;
+  it does not independently reload a stale disk copy or run a second document writer. This replaces
+  the web's cross-webview mirror and throttled `projects://saved` reload transport.
+- The inspector is hosted above the left-sidebar content, with a close affordance and a bounded
+  scroll area so long tab lists cannot hide all navigation. History opens the existing Conversations
+  sheet; the web-specific per-tab history modal is not duplicated here. File panes use the existing
+  native renderer. Web-only plugin panes are retained for export but are not rendered as native panes.
+- Legacy hide/archive entries remain as recovery data. Migration applies only when the corresponding
+  optional model flag is absent. A restored explicit `false` is never overwritten on the next launch.
+- Full-project import creates a new project in the source row's group, retains session IDs and unknown
+  web configuration fields, clears PTY IDs, resets archive state, and remaps colliding pane/tab IDs
+  plus grid/stack references. Epoch-millisecond grid-history dates are converted explicitly.
+- No ai-memory skill or memory service was available in this session; these notes are the durable
+  versioned handoff. No external memory update was claimed.
+
+### Validation and next checks
+
+- `python3 AletheNative/Scripts/check-strings.py`: passed; new keys have en and pt-BR translations.
+- `git diff --check`: passed. No build, Swift test execution, UI harness, app restart, staging,
+  commit or push was performed under the task's nested-sandbox constraint.
+- Added `WebProjectFileTests` for web/native persistence round trips, unknown fields, PTY reset,
+  collision remapping, malformed input, backward-compatible flags, profile-scoped legacy migration
+  and epoch-millisecond history timestamps. Reviewer must run these tests outside the sandbox.
+- Reviewer: compile first; then inspect normal/clean HUD hover and collapse, costs with an unpriced
+  Codex session, pane/tab inspector actions at 80–150% zoom, repeated full-project imports, archive
+  restore across relaunch, two-window live board updates, restored detached-only startup, pane deletion
+  and profile switching. Pixel parity and runtime behavior remain unverified until that pass.

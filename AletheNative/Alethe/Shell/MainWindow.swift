@@ -244,6 +244,7 @@ struct MainWindow: View {
             .frame(width: windowGeometry.size.width, height: windowGeometry.size.height, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .bottomTrailing) { TokenHud().padding(metrics.size(16)) }
         .modifier(WebTitleBarPopoverLayer())
         .modifier(WebContextMenuLayer())
         .background(theme[.bg])

@@ -120,6 +120,11 @@ public struct Project: Codable, Hashable, Sendable, Identifiable {
     public var name: String
     /// Optional web-compatible URL or inline data URL.
     public var iconUrl: String?
+    /// Web sidebar flags; nil preserves older documents.
+    public var hidden: Bool?
+    public var archived: Bool?
+    /// Original web configuration keeps fields the native editor does not expose.
+    public var webConfiguration: JSONObject?
     public var color: ProjectColor
     /// Absolute path of the project folder; the default working directory of its panes.
     public var folder: String

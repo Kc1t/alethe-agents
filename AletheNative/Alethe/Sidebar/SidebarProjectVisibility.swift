@@ -1,13 +1,27 @@
 import AletheModel
 import Foundation
 
-/// Local sidebar state until the workspace schema supports hide/archive flags.
+/// Legacy sidebar preferences and migration into web-compatible project flags.
 /// Profile and project identifiers prevent state leaking between local accounts.
 enum SidebarProjectVisibility {
     static let archivedGroupsKey = "sidebar.web.archivedGroups"
     static let hiddenKey = "sidebar.web.hiddenProjects"
     static let archivedKey = "sidebar.web.archivedProjects"
     static let revealKey = "sidebar.web.revealHiddenProjects"
+
+    @MainActor
+    static func migrate(_ workspace: WorkspaceModel, profile: ProfileID?, defaults: UserDefaults = .standard) async {
+        let hidden = defaults.string(forKey: hiddenKey) ?? "[]"
+        let archived = defaults.string(forKey: archivedKey) ?? "[]"
+        workspace.update { $0.migrateProjectVisibility(hidden: decode(hidden), archived: decode(archived), profile: profile) }
+        // Keep legacy entries as recovery data. Explicit false flags take precedence on later loads.
+        await workspace.flush()
+    }
+
+    static func visible(_ project: Project?, reveal: Bool) -> Bool {
+        guard let project else { return false }
+        return project.archived != true && (reveal || project.hidden != true)
+    }
 
     static func key(_ project: ProjectID, profile: ProfileID?) -> String {
         "\(profile?.rawValue ?? "default"):\(project.rawValue)"

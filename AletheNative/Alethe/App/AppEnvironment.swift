@@ -38,6 +38,8 @@ final class AppEnvironment {
     var editorRequest: EditorRequest?
     /// The pane shown in focus mode (P2-21); not persisted.
     var focusModePaneID: PaneID?
+    /// Web sidebar inspector selection; transient and independent of keyboard focus.
+    var inspectedPaneID: PaneID?
     /// Home instead of the workspace (P3-15; ⇧⌘H).
     var showingHome = false
     /// The Settings pane shown.
@@ -196,7 +198,16 @@ final class AppEnvironment {
 
     private(set) var startupFinished = false
 
+    @ObservationIgnored private var startupTask: Task<Void, Never>?
+
     func load() async {
+        if let startupTask { await startupTask.value; return }
+        let task = Task { await loadOnce() }
+        startupTask = task
+        await task.value
+    }
+
+    private func loadOnce() async {
         defer { startupFinished = true }
         guard !isLoaded, let locations = try? Self.dataLocations() else { return }
         self.locations = locations
@@ -223,6 +234,7 @@ final class AppEnvironment {
         let (loadedWorkspace, loadedPreferences, loadedHistory) = await (workspace, preferences, promptHistory)
         pullRequestReviews = await reviews
         loadedWorkspace.update { $0.repair() }
+        await SidebarProjectVisibility.migrate(loadedWorkspace, profile: profile)
         if loadedPreferences.document.startClean == true { loadedWorkspace.update { $0.startClean() } }
         showingHome = loadedPreferences.document.startOnHome == true && !loadedWorkspace.document.projects.isEmpty
         let tabs = Set(loadedWorkspace.document.projects.flatMap(\.panes).flatMap(\.tabs).map(\.id))

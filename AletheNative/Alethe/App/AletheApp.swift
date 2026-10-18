@@ -55,6 +55,19 @@ struct AletheApp: App {
             #endif
         }
 
+        WindowGroup("orchestrator.title", id: "orchestration", for: DetachedBoardID.self) { target in
+            DetachedOrchestrationWindow(target: target.wrappedValue)
+                .task {
+                    delegate.environment = environment
+                    await environment.load()
+                }
+                .environment(environment)
+                .environment(\.theme, environment.theme)
+                .environment(\.metrics, environment.metrics)
+                .preferredColorScheme(environment.theme.isLight ? .light : .dark)
+        }
+        .defaultSize(width: environment.metrics.size(1100), height: environment.metrics.size(760))
+
         Settings {
             SettingsView()
                 .environment(environment)

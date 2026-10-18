@@ -118,11 +118,10 @@ struct WebOrganizationSettings: View {
         }
     }
     @Environment(AppEnvironment.self) private var environment
-    @AppStorage(SidebarProjectVisibility.archivedKey) private var archived = "[]"
 
     private var projects: [Project] {
         (environment.workspace?.document.projects ?? []).filter {
-            SidebarProjectVisibility.contains(archived, project: $0.id, profile: environment.profileID)
+            $0.archived == true
         }
     }
 
@@ -156,8 +155,7 @@ struct WebOrganizationSettings: View {
                         Text(verbatim: project.name)
                         Spacer(minLength: 0)
                         Button("settings.web.reference.prefs.restoreProject") {
-                            archived = SidebarProjectVisibility.setting(archived, project: project.id,
-                                profile: environment.profileID, enabled: false)
+                            environment.workspace?.update { $0.updateProject(project.id) { $0.archived = false } }
                         }
                     }
                 }

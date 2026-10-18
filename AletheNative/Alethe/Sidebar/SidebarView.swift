@@ -9,8 +9,6 @@ import SwiftUI
 /// Projects organized in nested groups, with each project's terminals underneath.
 struct SidebarView: View {
     @AppStorage(SidebarProjectVisibility.archivedGroupsKey) private var archivedGroups = "[]"
-    @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
-    @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
     @AppStorage(SidebarProjectVisibility.revealKey) private var revealHidden = false
 
     @Environment(AppEnvironment.self) private var environment
@@ -53,8 +51,8 @@ struct SidebarView: View {
                     }
                 } else { projectList(workspace) }
                 if workspace.document.groups.contains(where: { groupArchived($0.id) }) || workspace.document.projects.contains(where: {
-                    SidebarProjectVisibility.contains(hiddenProjects, project: $0.id, profile: environment.profileID)
-                    || SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
+                    $0.hidden == true
+                    || $0.archived == true
                 }) {
                     WebMenu { visibilityControls(workspace) } label: {
                         Label { Text("sidebar.web.projectVisibility") } icon: { Image(systemName: "eye").webProfileSized(14) }
@@ -74,8 +72,7 @@ struct SidebarView: View {
         let actions = SidebarActions(workspace: workspace, undoManager: undoManager)
         let doc = workspace.document
         let projectIDs = doc.ungroupedProjectIDs.filter {
-            !metrics.isWebInterface || SidebarProjectVisibility.visible($0, profile: environment.profileID,
-                hidden: hiddenProjects, archived: archivedProjects, reveal: revealHidden)
+            !metrics.isWebInterface || SidebarProjectVisibility.visible(doc.project($0), reveal: revealHidden)
         }
         return List(selection: selection(workspace, actions)) {
             Section {
@@ -140,11 +137,11 @@ struct SidebarView: View {
             }
         }
         let hidden = workspace.document.projects.filter {
-            SidebarProjectVisibility.contains(hiddenProjects, project: $0.id, profile: environment.profileID)
-                && !SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
+            $0.hidden == true
+                && $0.archived != true
         }
         let archived = workspace.document.projects.filter {
-            SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
+            $0.archived == true
         }
         if !hidden.isEmpty || revealHidden {
             WebMenuDivider()
@@ -155,8 +152,7 @@ struct SidebarView: View {
             WebSubmenu("sidebar.web.restoreArchived", symbol: "archivebox") {
                 ForEach(archived) { project in
                     Button {
-                        archivedProjects = SidebarProjectVisibility.setting(archivedProjects, project: project.id,
-                            profile: environment.profileID, enabled: false)
+                        workspace.update { $0.updateProject(project.id) { $0.archived = false } }
                     } label: { Label { Text(verbatim: project.name) } icon: { Image(systemName: "arrow.uturn.backward").webProfileSized(14) } }
                 }
             }
@@ -248,8 +244,6 @@ private struct SidebarProjectsHeader: View {
 
 private struct GroupRow: View {
     @AppStorage(SidebarProjectVisibility.archivedGroupsKey) private var archivedGroups = "[]"
-    @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
-    @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
     @AppStorage(SidebarProjectVisibility.revealKey) private var revealHidden = false
 
     let group: ProjectGroup
@@ -268,8 +262,7 @@ private struct GroupRow: View {
     var body: some View {
         let doc = actions.workspace.document
         let projectIDs = group.projectIDs.filter {
-            !metrics.isWebInterface || SidebarProjectVisibility.visible($0, profile: environment.profileID,
-                hidden: hiddenProjects, archived: archivedProjects, reveal: revealHidden)
+            !metrics.isWebInterface || SidebarProjectVisibility.visible(doc.project($0), reveal: revealHidden)
         }
         SidebarDisclosure(isGroup: true, item: .group(group.id),
                           firstRootGroup: doc.childGroups(of: nil).first?.id == group.id, isExpanded: Binding {
@@ -701,6 +694,7 @@ private struct SidebarTerminalRow: View {
         }
         environment.terminals.markRead(tab.id)
         environment.showingHome = false
+        if environment.inspectedPaneID != nil { environment.inspectedPaneID = pane.id }
         // Also refocus on repeated clicks: the focused pane ID may already be unchanged.
         DispatchQueue.main.async { environment.terminals.view(for: tab.id)?.focus() }
     }
@@ -727,6 +721,9 @@ private struct SidebarFileRow: View {
                 .lineLimit(1)
             Spacer(minLength: 0)
             WebMenu {
+                if metrics.isWebInterface {
+                    SidebarMenuButton("terminalInspector.open", symbol: "info.circle") { environment.inspectedPaneID = pane.id }
+                }
                 if metrics.isWebInterface, ["md", "markdown"].contains(URL(filePath: path).pathExtension.lowercased()) {
                     SidebarMenuButton("rightSidebar.files.openMarkdown", symbol: "sidebar.right") {
                         NotificationCenter.default.post(name: .sidebarOpenMarkdown, object: URL(filePath: path))
@@ -773,8 +770,6 @@ private struct SidebarFileRow: View {
 
 private struct ProjectContextMenu: View {
     @AppStorage(SidebarProjectVisibility.archivedGroupsKey) private var archivedGroups = "[]"
-    @AppStorage(SidebarProjectVisibility.hiddenKey) private var hiddenProjects = "[]"
-    @AppStorage(SidebarProjectVisibility.archivedKey) private var archivedProjects = "[]"
 
     let project: Project
     let actions: SidebarActions
@@ -864,9 +859,17 @@ private struct ProjectContextMenu: View {
             }
         }
         projectGroup("sidebar.web.group.settings", symbol: "slider.horizontal.3") {
-            SidebarMenuButton("projectSettings.exportEllipsis", symbol: metrics.isWebInterface ? "arrow.down.to.line" : "square.and.arrow.up") { ProjectSettingsTransfer.export(project) }
+            SidebarMenuButton("projectSettings.exportEllipsis", symbol: metrics.isWebInterface ? "arrow.down.to.line" : "square.and.arrow.up") {
+                if metrics.isWebInterface {
+                    WebProjectTransfer.export(project, group: doc.groups.first { $0.projectIDs.contains(project.id) }?.id)
+                } else { ProjectSettingsTransfer.export(project) }
+            }
             SidebarMenuButton("projectSettings.importEllipsis", symbol: metrics.isWebInterface ? "arrow.up.to.line" : "square.and.arrow.down") {
-                ProjectSettingsTransfer.importSettings(into: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
+                if metrics.isWebInterface {
+                    WebProjectTransfer.importProject(nextTo: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
+                } else {
+                    ProjectSettingsTransfer.importSettings(into: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
+                }
             }
             WebSubmenu("sidebar.moveToGroup") {
                 SidebarMenuButton("sidebar.ungrouped", symbol: "folder") { actions.move(project.id, to: .ungrouped) }
@@ -881,15 +884,12 @@ private struct ProjectContextMenu: View {
         WebMenuDivider()
         if metrics.isWebInterface {
             SidebarMenuButton("sidebar.web.archiveProject", symbol: "archivebox") {
-                archivedProjects = SidebarProjectVisibility.setting(archivedProjects, project: project.id,
-                    profile: environment.profileID, enabled: true)
-                actions.workspace.update { $0.close(project.id) }
+                actions.workspace.update { $0.updateProject(project.id) { $0.archived = true } }
             }
-            let hidden = SidebarProjectVisibility.contains(hiddenProjects, project: project.id, profile: environment.profileID)
+            let hidden = project.hidden == true
             SidebarMenuButton(hidden ? "sidebar.web.unhideProject" : "sidebar.web.hideProject",
                               symbol: hidden ? "eye" : "eye.slash") {
-                hiddenProjects = SidebarProjectVisibility.setting(hiddenProjects, project: project.id,
-                    profile: environment.profileID, enabled: !hidden)
+                actions.workspace.update { $0.updateProject(project.id) { $0.hidden = !hidden } }
             }
         }
         if doc.isProjectDisabled(project.id) {
@@ -924,7 +924,11 @@ private struct TabContextMenu: View {
                     }
                 }
             }
+            SidebarMenuButton("terminalInspector.open", symbol: "info.circle") {
+                environment.inspectedPaneID = pane.id
+            }
             SidebarMenuButton("sidebar.web.revealTerminal", symbol: "rectangle.topthird.inset.filled") {
+                environment.inspectedPaneID = pane.id
                 reveal(pane.id)
             }
             if environment.terminals.states[tab.id] != nil && !pane.isDisabled {
