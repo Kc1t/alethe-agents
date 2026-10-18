@@ -275,7 +275,7 @@ struct WebSettingsView: View {
         case .plugins: PluginSettings()
         case .terminal: WebTerminalSettings()
         case .integrations: IntegrationsSettings()
-        case .orchestration: WebOrchestrationSettings()
+        case .orchestration: OrchestrationSettings()
         case .multiagent: MultiagentSettings()
         case .about: WebAboutSettings()
         }

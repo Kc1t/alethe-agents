@@ -39047,40 +39047,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.orchestrationRolesDesc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A planner that delegates with a role gets exactly what the role sets: agent, model, effort, read-only and budget. It cannot change them in the call."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Um planner que delega com um papel recebe exatamente o que o papel define: agente, modelo, esforço, somente leitura e orçamento. Ele não pode mudar isso na chamada."
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestrationRoles" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Roles"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Papéis"
-          }
-        }
-      }
-    },
     "settings.web.reference.prefs.archivedProjectsDesc" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -39234,40 +39200,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.orchestrationSkill" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Local orchestration skill"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Skill de orquestração local"
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestrationLimits" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Worker limits"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Limites dos workers"
-          }
-        }
-      }
-    },
     "settings.web.reference.prefs.categoryOrchestrationDesc" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -39298,40 +39230,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Editar perfil"
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestrationLimitsDesc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apply to every delegation, from any planner."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Valem para toda delegação, de qualquer planner."
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestrationRoutingDesc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Which role a delegated call runs as when the planner leaves the choice to Alethe."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Com qual papel uma chamada delegada roda quando o planner deixa a escolha para o Alethe."
           }
         }
       }
@@ -39608,23 +39506,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.orchestrationSkillDesc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose how the bundled skill works when you orchestrate with or without MCP."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escolha como a skill incluída funciona ao orquestrar com ou sem MCP."
-          }
-        }
-      }
-    },
     "settings.web.reference.prefs.archivedProjectsEmpty" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -39638,23 +39519,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nenhum projeto arquivado."
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestrationRouting" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Routing"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Roteamento"
           }
         }
       }
@@ -40271,40 +40135,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.customAgents" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Custom agents"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agentes personalizados"
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.customAgentsDesc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add your own agent CLIs. They appear alongside the built-ins everywhere and open a real terminal with the command you configure."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adicione seus próprios CLIs de agente. Eles aparecem junto aos nativos em todo lugar e abrem um terminal real com o comando configurado."
-          }
-        }
-      }
-    },
     "settings.web.reference.prefs.categoryAbout" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -40407,23 +40237,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.orchestrationDefaultTimeout" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Default budget per worker (seconds)"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Orçamento padrão por worker (segundos)"
-          }
-        }
-      }
-    },
     "settings.web.reference.prefs.uiThemeDesc" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -40509,23 +40322,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.orchestrationSkillConserve" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Provider to conserve"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Provider a economizar"
-          }
-        }
-      }
-    },
     "settings.web.reference.prefs.visualStyle" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -40573,23 +40369,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ligue o controle remoto abaixo e depois toque em \"Abrir janela de pareamento\" pra mostrar um QR code."
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestratorShortcuts" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Orchestration shortcuts"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Atalhos de orquestração"
           }
         }
       }
@@ -40713,23 +40492,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.orchestrationConcurrency" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Workers at the same time"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Workers ao mesmo tempo"
-          }
-        }
-      }
-    },
     "settings.web.reference.prefs.appIconTheme" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -40760,57 +40522,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Navegue, busque e instale plugins numa janela só para isso."
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.workerRules" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rules for delegated work"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regras para o trabalho delegado"
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestrationBudget" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Budget (s)"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Orçamento (s)"
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.workerRulesDesc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "What Alethe tells the agents it delegates to. The general set goes with every task; the lead agent names the set that matches the work. A repository’s own conventions always win over these."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O que o Alethe diz aos agentes para quem delega trabalho. O conjunto geral vale para toda tarefa; o agente líder escolhe o conjunto que combina com o trabalho. As convenções do próprio repositório sempre prevalecem sobre estas."
           }
         }
       }
@@ -41121,23 +40832,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.orchestrationWorkerPlugins" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Codex plugins off in workers"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plugins do Codex desligados nos workers"
-          }
-        }
-      }
-    },
     "settings.web.reference.remote.tutorialDesc" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -41172,23 +40866,6 @@
         }
       }
     },
-    "settings.web.reference.prefs.orchestratorShortcutsDesc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "One-click instructions for the lead agent. Clicking one on the board writes it into the lead’s terminal, where you edit it before sending."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Instruções de um clique para o agente líder. Clicar em uma no board escreve ela no terminal do líder, onde você edita antes de enviar."
-          }
-        }
-      }
-    },
     "settings.web.reference.prefs.pluginsInstallTitle" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -41219,40 +40896,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gerencia ondas de execução a partir do backlog real de `.planning/task.md` por projeto."
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestrationSkillBackend" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Preferred backend"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Backend preferido"
-          }
-        }
-      }
-    },
-    "settings.web.reference.prefs.orchestrationSkillPreferred" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Preferred local provider"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Provider local preferido"
           }
         }
       }
@@ -45891,6 +45534,2758 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Graphify"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationAddRole" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add role"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar papel"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationAgent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agente"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationBudget" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budget (s)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orçamento (s)"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationCliDefault" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLI default"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Padrão da CLI"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationConcurrency" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Workers at the same time"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Workers ao mesmo tempo"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationConcurrencyDecrease" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fewer workers at the same time"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menos workers ao mesmo tempo"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationConcurrencyIncrease" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More workers at the same time"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mais workers ao mesmo tempo"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationDefaultTimeout" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default budget per worker (seconds)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orçamento padrão por worker (segundos)"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationEffort" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Effort"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esforço"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationFallback" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fallback"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fallback"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationFallbackNone" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationLimits" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worker limits"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limites dos workers"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationLimitsDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply to every delegation, from any planner."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valem para toda delegação, de qualquer planner."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationModel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationModelDefault" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model's default"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Padrão do modelo"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationOrchestrator" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orchestrator"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orquestrador"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationOrchestratorAny" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Any"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualquer"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationReadOnly" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read-only"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Somente leitura"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRemoveRole" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove {name}"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remover {name}"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRoleName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRoleNameInvalid" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use a unique name without spaces that does not start with \"-\". Until then the role keeps its saved name, which is the one planners use."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use um nome único, sem espaços e que não comece com \"-\". Até lá o papel mantém o nome salvo, que é o que o planner usa."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRoles" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roles"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Papéis"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRolesDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A planner that delegates with a role gets exactly what the role sets: agent, model, effort, read-only and budget. It cannot change them in the call."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um planner que delega com um papel recebe exatamente o que o papel define: agente, modelo, esforço, somente leitura e orçamento. Ele não pode mudar isso na chamada."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRolesEmpty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No roles yet. Until you add one, planners pick the model and effort themselves."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum papel ainda. Até você criar um, o planner escolhe o modelo e o esforço por conta própria."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRouting" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Routing"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roteamento"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRoutingDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Which role a delegated call runs as when the planner leaves the choice to Alethe."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Com qual papel uma chamada delegada roda quando o planner deixa a escolha para o Alethe."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationRoutingIntro" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The planner classifies each delegated task by kind and effort; Alethe walks the rules in order and the first enabled match picks the role. A role or model named in the call always wins."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O planner classifica cada tarefa delegada por tipo e esforço; o Alethe percorre as regras em ordem e a primeira regra ativa que combina escolhe o papel. Um papel ou modelo nomeado na chamada sempre vence."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local orchestration skill"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skill de orquestração local"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillBackend" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preferred backend"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backend preferido"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillBackend.auto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatic"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automático"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillBackend.mcp" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alethe MCP when available"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP do Alethe quando disponível"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillBackend.skill" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local skill only"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Somente skill local"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillConserve" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provider to conserve"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provider a economizar"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose how the bundled skill works when you orchestrate with or without MCP."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha como a skill incluída funciona ao orquestrar com ou sem MCP."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alethe exports these choices to the bundled skill’s local policy file. The skill runner reads it directly and does not require MCP. An explicit instruction in the current prompt always wins."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Alethe exporta estas escolhas para o arquivo local de política da skill incluída. O runner lê esse arquivo diretamente e não precisa de MCP. Uma instrução explícita no prompt atual sempre vence."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillPreferred" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preferred local provider"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provider local preferido"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillProviderAuto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatic order"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordem automática"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillProviderNone" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillStrategy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default strategy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estratégia padrão"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillStrategy.auto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatic"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automática"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillStrategy.balanced" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balanced"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equilibrada"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillStrategy.economy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Economy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Economia"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillStrategy.parallel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parallel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paralela"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillStrategy.quality" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quality"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualidade"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillStrategy.rescue" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rescue"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resgate"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillStrategy.research" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Research"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesquisa"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillSwitch" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When that provider is selected"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando esse provider for selecionado"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillSwitch.ask" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ask before switching"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perguntar antes de trocar"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillSwitch.automatic" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch automatically"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trocar automaticamente"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationSkillSwitch.never" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Never switch"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nunca trocar"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationTimeoutHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Used when a planner names no budget. 0 lets a worker run without a limit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vale quando o planner não informa um orçamento. 0 deixa o worker rodar sem limite."
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationWorkerPlugins" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex plugins off in workers"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugins do Codex desligados nos workers"
+          }
+        }
+      }
+    },
+    "settings.orchestration.orchestrationWorkerPluginsHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One plugin id per line or comma, such as ecc@ecc. Codex workers start without their hooks and context; your own hooks and MCP servers stay."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um id de plugin por linha ou vírgula, como ecc@ecc. Os workers Codex começam sem os hooks e o contexto deles; seus próprios hooks e servidores MCP continuam."
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingAllowOpusOnDeep" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Opus-class roles on deep tasks"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir papéis Opus em tarefas profundas"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingCriticalThreshold" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Critical threshold (%)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limite crítico (%)"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingEffortDeep" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deep"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profundo"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingEffortLight" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leve"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingEffortStandard" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standard"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Padrão"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingKindCode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Código"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingKindCommand" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Command"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comando"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingKindDocs" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Docs"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documentos"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingKindResearch" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Research"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesquisa"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingKindReview" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisão"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingKindScrap" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scrap"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rascunho"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingMatchAny" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None selected matches any."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada selecionado combina com qualquer um."
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingOnBothCritical" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When every provider is critical"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando todo provedor está crítico"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingOnBothCriticalAsk" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ask first"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perguntar antes"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingOnBothCriticalBlock" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Block the call"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear a chamada"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingOnBothCriticalRunCheapest" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Run on the cheapest provider"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rodar no provedor mais barato"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingPresetBalanced" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balanced"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equilibrado"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingPresetBalancedDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cheap roles for light work, Sonnet for the rest, Opus for deep tasks while its quota has room."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Papéis baratos para trabalho leve, Sonnet para o resto, Opus para tarefas profundas enquanto a quota tiver folga."
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingPresetCustom" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personalizado"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingPresetCustomDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your own rules, kept as they are."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suas próprias regras, mantidas como estão."
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingPresetEconomy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Economy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Economia"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingPresetEconomyDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cheapest roles first: a Haiku scout, a read-only Codex, and a Codex builder for the rest."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Papéis mais baratos primeiro: um scout Haiku, um Codex somente leitura e um builder Codex para o resto."
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingPresetPerformance" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Performance"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desempenho"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingPresetPerformanceDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonnet by default and Opus for deep tasks; Codex backs up Claude."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonnet por padrão e Opus em tarefas profundas; o Codex cobre o Claude."
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleAdd" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add rule"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar regra"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleEfforts" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Efforts"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esforços"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleGateAdd" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add gate"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar gate"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleGateBelow" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gate below (%)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gate abaixo de (%)"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleGateRemove" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove gate"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remover gate"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleKinds" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kinds"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipos"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleMoveDown" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move rule {n} down"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mover regra {n} para baixo"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleMoveUp" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move rule {n} up"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mover regra {n} para cima"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleRemove" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove rule {n}"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remover regra {n}"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRulesHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rules run top to bottom; the first enabled match wins."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As regras rodam de cima para baixo; a primeira ativa que combina vence."
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingWindowOpus" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opus (7d)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opus (7d)"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingWindowShort" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Short (5h)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Curta (5h)"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingWindowWeek" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Week (7d)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semana (7d)"
+          }
+        }
+      }
+    },
+    "settings.worker.orchestratorShortcuts" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orchestration shortcuts"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atalhos de orquestração"
+          }
+        }
+      }
+    },
+    "settings.worker.orchestratorShortcutsDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One-click instructions for the lead agent. Clicking one on the board writes it into the lead’s terminal, where you edit it before sending."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instruções de um clique para o agente líder. Clicar em uma no board escreve ela no terminal do líder, onde você edita antes de enviar."
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutText" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Message"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mensagem"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutRuleAny" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Any worker"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualquer worker"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutRuleFinished" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A worker that finished"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um worker que terminou"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutRuleIsolated" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An isolated worker that finished"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um worker isolado que terminou"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutRestore" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore default"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaurar padrão"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutDelete" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Excluir"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutAdd" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add shortcut"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar atalho"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutNewName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New shortcut"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Novo atalho"
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutPlaceholders" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Available: {jobId}, {agent}, {branch}, {worktree}, {project}."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disponíveis: {jobId}, {agent}, {branch}, {worktree}, {project}."
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutsEmpty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You have no shortcuts. Restore defaults to bring Alethe’s back."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você não tem atalhos. Restaure os padrões para trazer os do Alethe de volta."
+          }
+        }
+      }
+    },
+    "settings.worker.shortcutsRestoreDefaults" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore defaults"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaurar padrões"
+          }
+        }
+      }
+    },
+    "settings.worker.workerRules" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rules for delegated work"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regras para o trabalho delegado"
+          }
+        }
+      }
+    },
+    "settings.worker.workerRulesDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What Alethe tells the agents it delegates to. The general set goes with every task; the lead agent names the set that matches the work. A repository’s own conventions always win over these."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que o Alethe diz aos agentes para quem delega trabalho. O conjunto geral vale para toda tarefa; o agente líder escolhe o conjunto que combina com o trabalho. As convenções do próprio repositório sempre prevalecem sobre estas."
+          }
+        }
+      }
+    },
+    "settings.worker.ruleSetName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set name"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome do conjunto"
+          }
+        }
+      }
+    },
+    "settings.worker.ruleSetText" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rules"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regras"
+          }
+        }
+      }
+    },
+    "settings.worker.ruleSetSize" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} characters, sent with every task of this set"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "{count} caracteres, enviados a cada tarefa deste conjunto"
+          }
+        }
+      }
+    },
+    "settings.worker.ruleSetDuplicate" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Another set already uses this name."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outro conjunto já usa esse nome."
+          }
+        }
+      }
+    },
+    "settings.worker.ruleSetAdd" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add set"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar conjunto"
+          }
+        }
+      }
+    },
+    "settings.worker.ruleSetNewName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New set"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Novo conjunto"
+          }
+        }
+      }
+    },
+    "settings.worker.ruleSetsEmpty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No rules are sent with delegated work."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhuma regra é enviada com o trabalho delegado."
+          }
+        }
+      }
+    },
+    "settings.worker.ruleSetsRestoreAll" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore Alethe’s sets"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaurar os conjuntos do Alethe"
+          }
+        }
+      }
+    },
+    "settings.worker.applyName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aplicar"
+          }
+        }
+      }
+    },
+    "settings.worker.applyText" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bring worker {jobId} into the project: commit what it left in {worktree}, merge {branch} into the current branch, and tell me if anything conflicts."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traga o trabalho do worker {jobId} para o projeto: faça commit do que ele deixou em {worktree}, dê merge de {branch} na branch atual e me avise se houver conflito."
+          }
+        }
+      }
+    },
+    "settings.worker.reviewName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisar"
+          }
+        }
+      }
+    },
+    "settings.worker.reviewText" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read worker {jobId}’s report and its diff, then tell me whether it did what it was asked and what you would change."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leia o relatório e o diff do worker {jobId} e me diga se ele fez o que foi pedido e o que você mudaria."
+          }
+        }
+      }
+    },
+    "settings.worker.continueName" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuar"
+          }
+        }
+      }
+    },
+    "settings.worker.continueText" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send worker {jobId} more work on its existing thread, keeping everything it already learned."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mande mais trabalho ao worker {jobId} no thread que ele já tem, aproveitando tudo o que ele aprendeu."
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingAdvanced" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanced rules ({count})"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regras avançadas ({count})"
+          }
+        }
+      }
+    },
+    "settings.orchestration.routingRuleRoleMissing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No role is named \"{name}\" — the router skips this rule."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum papel se chama \"{name}\" — o roteador pula esta regra."
+          }
+        }
+      }
+    },
+    "editor.advanced.validation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Validation commands, one per line"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comandos de validação, um por linha"
+          }
+        }
+      }
+    },
+    "editor.advanced.healthCommand" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Health check command (optional)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comando de saúde (opcional)"
+          }
+        }
+      }
+    },
+    "editor.advanced.healthCommandPlaceholder" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Example: npm run dev"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exemplo: npm run dev"
+          }
+        }
+      }
+    },
+    "editor.advanced.healthHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Boots the app in an isolated environment and confirms it actually responds before Test/Merge. The command must listen on the port given by the %PORT%/$PORT environment variable."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sobe o app num ambiente isolado e confirma que ele responde de verdade antes de Testar/Integrar. O comando precisa escutar na porta indicada pela variável de ambiente %PORT%/$PORT."
+          }
+        }
+      }
+    },
+    "editor.advanced.healthPath" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Health check path"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caminho verificado"
+          }
+        }
+      }
+    },
+    "editor.advanced.provider" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conflict resolution agent"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agente de resolução de conflitos"
+          }
+        }
+      }
+    },
+    "editor.advanced.model" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent model"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo do agente"
+          }
+        }
+      }
+    },
+    "editor.advanced.migrating" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Migrating…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Migrando…"
+          }
+        }
+      }
+    },
+    "editor.advanced.migrate" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Migrate existing terminals now"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Migrar terminais existentes agora"
+          }
+        }
+      }
+    },
+    "editor.advanced.migrateHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Separate action from the option above: moves terminals that already exist into isolated worktrees now. This is disruptive — the PTY is suspended and the agent restarts from scratch in the new folder, with no conversation continuity."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ação separada da opção acima: move os terminais que já existem pra worktrees isoladas agora. É disruptivo — o PTY é suspenso e o agente reinicia do zero na pasta nova, sem continuidade de conversa."
+          }
+        }
+      }
+    },
+    "editor.advanced.migrateConfirm" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This will suspend and move every eligible terminal in this project into its own worktree. Each agent restarts from scratch (no conversation continuity). Continue?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Isso vai suspender e mover todos os terminais elegíveis deste projeto pra worktrees próprias. O agente reinicia do zero em cada um (sem continuar a conversa). Continuar?"
+          }
+        }
+      }
+    },
+    "editor.advanced.gsdWatcher" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch the GSD planning files (.planning/)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitorar arquivos de planejamento GSD (.planning/)"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorLabelEmpty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Give the agent a display name."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dê um nome de exibição ao agente."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIconFile" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local .ico file"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arquivo .ico local"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorIdFormat" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use 2–32 lowercase letters, numbers or dashes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use 2–32 letras minúsculas, números ou traços."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIconPreset" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Built-in preset"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo embutido"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIconUrlHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Https image link ending in .png, .jpg or .jpeg. Remote images load lazily with no referrer."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Somente link https de imagem terminado em .png, .jpg ou .jpeg. Imagens remotas carregam devagar e sem referrer."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorIconFileTooLarge" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "That .ico is over 512KB. Pick a smaller file."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esse .ico passa de 512KB. Escolha um arquivo menor."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentId" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ID (slug)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ID (slug)"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorCliUnsafe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The command looks unsafe or invalid. Use a binary name with plain arguments only."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O comando parece inválido ou inseguro. Use um binário com argumentos simples."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIconPick" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose .ico file"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolher arquivo .ico"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorIconFileNotSquare" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "That .ico is not square. Pick a square icon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esse .ico não é quadrado. Escolha um ícone quadrado."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentFlagHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Single flag appended in unrestricted mode, e.g. --allow-all."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flag única usada no modo irrestrito, ex. --allow-all."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentCliHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Binary plus optional default args, e.g. my-agent --chat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Binário mais argumentos padrão opcionais, ex. my-agent --chat."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorIconUrl" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use an https link that ends in .png, .jpg or .jpeg."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use um link https que termine em .png, .jpg ou .jpeg."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIconFileKept" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Using the saved .ico file. Pick a new one to replace it."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usando o arquivo .ico salvo. Escolha outro para substituir."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgents" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom agents"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agentes personalizados"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentFlag" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unrestricted flag (optional)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flag irrestrita (opcional)"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorIdBuiltin" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This ID is reserved for a built-in agent."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este ID é reservado para um agente nativo."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentEdit" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editar"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentCli" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CLI command"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comando CLI"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIcon" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ícone"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorIconFileInvalid" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "That file is not a valid .ico. Pick an .ico file exported as an icon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esse arquivo não é um .ico válido. Escolha um arquivo exportado como ícone."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentsEmpty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No custom agents yet."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum agente personalizado ainda."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorCliEmpty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter the CLI command that starts the agent."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informe o comando CLI que inicia o agente."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentsDesc" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add your own agent CLIs. They appear alongside the built-ins everywhere and open a real terminal with the command you configure."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicione seus próprios CLIs de agente. Eles aparecem junto aos nativos em todo lugar e abrem um terminal real com o comando configurado."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorIdTaken" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This ID is already in use."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este ID já está em uso."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentCancel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelar"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIconMode" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon source"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Origem do ícone"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentRemove" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remover"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentLabel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Display name"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome de exibição"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIconUrl" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Image link (https)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link de imagem (https)"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentSave" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save agent"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvar agente"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentAdd" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add custom agent"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar agente personalizado"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentAccent" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accent color"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cor de destaque"
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIconFileHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Square .ico up to 512KB. Stored in app data, never as an absolute path."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arquivo .ico quadrado de até 512KB. Guardado nos dados do app, nunca como caminho absoluto."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentErrorIconFile" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pick a valid square .ico file up to 512KB."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha um arquivo .ico quadrado válido de até 512KB."
+          }
+        }
+      }
+    },
+    "settings.custom.customAgentIdHint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lowercase letters, numbers and dashes, 2–32 characters."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letras minúsculas, números e traços, 2–32 caracteres."
+          }
+        }
+      }
+    },
+    "settings.orchestration.agentsPanel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agents panel"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Painel de agentes"
+          }
+        }
+      }
+    },
+    "settings.orchestration.agentsPanelDetail" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show workers and subagents independently of orchestration."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar workers e subagentes independentemente da orquestração."
           }
         }
       }

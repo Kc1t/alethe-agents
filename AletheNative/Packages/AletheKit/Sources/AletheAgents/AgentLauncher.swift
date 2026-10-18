@@ -111,7 +111,7 @@ public struct AgentLauncher: Sendable {
             throw .launcherNotFound(command: cli)
         }
 
-        var base = request.extraArguments
+        var base = descriptor.defaultArguments + request.extraArguments
         if request.unrestricted, let flag = descriptor.unrestrictedFlag, !base.contains(flag) {
             base.append(flag)
         }

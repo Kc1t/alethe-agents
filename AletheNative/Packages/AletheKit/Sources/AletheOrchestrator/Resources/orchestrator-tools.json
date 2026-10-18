@@ -5,6 +5,13 @@
         "inputSchema": {
             "type": "object",
             "properties": {
+                "role": { "type": "string", "description": "Configured role. Do not combine with agent, model, effort, readOnly or timeoutSeconds." },
+                "kind": { "type": "string", "enum": ["research", "code", "review", "command", "scrap", "docs"] },
+                "effortClass": { "type": "string", "enum": ["light", "standard", "deep"] },
+                "model": { "type": "string" },
+                "effort": { "type": "string" },
+                "readOnly": { "type": "boolean", "description": "Codex read-only sandbox; unsupported by Claude." },
+                "rules": { "type": "string", "description": "Named worker rule set, in addition to General." },
                 "queue": { "type": "boolean", "description": "When the agent is strained or rate-limited, persist tasks until it has room. Returns queueIds and resetsAt." },
                 "tasks": {
                     "type": "array",

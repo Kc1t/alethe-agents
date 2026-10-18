@@ -16,6 +16,20 @@ struct FeatureSettings: View {
         SettingsPageForm {
             Section {
                 ForEach(Feature.allCases.filter { !$0.isSecondary }, id: \.self) { FeatureRow(feature: $0) }
+                if metrics.isWebInterface {
+                    Toggle(isOn: Binding {
+                        environment.preferences?.document.enabledFeatures?["agentsPanel"] ?? true
+                    } set: { on in
+                        environment.preferences?.update {
+                            var flags = $0.enabledFeatures ?? [:]
+                            flags["agentsPanel"] = on
+                            $0.enabledFeatures = flags
+                        }
+                    }) {
+                        Text("settings.orchestration.agentsPanel")
+                        Text("settings.orchestration.agentsPanelDetail")
+                    }.accessibilityIdentifier("settings.feature.agentsPanel")
+                }
             } footer: {
                 Text("settings.features.help")
             }

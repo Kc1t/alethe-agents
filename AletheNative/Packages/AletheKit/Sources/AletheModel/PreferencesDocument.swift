@@ -13,6 +13,12 @@ public struct PreferencesDocument: VersionedDocument, Hashable {
     public static let uiScaleRange: ClosedRange<Double> = 0.8...1.5
     public static let uiScaleStep = 0.1
 
+    public var customAgents: [CustomAgentDefinition]?
+    public var orchestratorShortcuts: [OrchestratorShortcut]?
+    public var workerRuleSets: [WorkerRuleSet]?
+
+    public var orchestration: OrchestrationPreferences?
+
     public var schemaVersion: Int
     /// Web-compatible optional preferences; absent values preserve existing native behavior.
     public var displayName: String?

@@ -13,6 +13,9 @@ public struct Job: Hashable, Sendable, Identifiable {
     public var runID: String
     public var runLabel: String?
     /// The task text. User data: never logged.
+    public var rulesName: String?
+    public var model: String?
+    public var effort: String?
     public var spec: String
     public var cwd: String
     public var status: JobStatus
@@ -125,7 +128,7 @@ public struct Job: Hashable, Sendable, Identifiable {
 
     /// What outlives the process (upstream `Job::record`), in `orchestrator-jobs.json`'s shape.
     public var record: OrderedJSON {
-        [
+        var object: OrderedJSONObject = [
             "id": .string(id),
             "plannerId": .optional(plannerID),
             "agent": .string(agent),
@@ -147,6 +150,10 @@ public struct Job: Hashable, Sendable, Identifiable {
             "startedAt": .optional(startedAt),
             "endedAt": .optional(endedAt),
         ]
+        if let rulesName { object["rules"] = .string(rulesName) }
+        if let model { object["model"] = .string(model) }
+        if let effort { object["effort"] = .string(effort) }
+        return .object(object)
     }
 
     /// A stored record brought back (upstream `Job::from_record`). Work that was in flight is
@@ -173,6 +180,9 @@ public struct Job: Hashable, Sendable, Identifiable {
             sandbox: text("sandbox") ?? Job.defaultSandbox,
             webSearch: object["webSearch"]?.boolValue ?? false
         )
+        rulesName = text("rules")
+        model = text("model")
+        effort = text("effort")
         threadID = text("threadId")
         report = text("summary") ?? ""
         plan = object["plan"]?.arrayValue?.compactMap(\.stringValue) ?? []

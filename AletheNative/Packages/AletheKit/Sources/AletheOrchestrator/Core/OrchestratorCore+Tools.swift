@@ -15,6 +15,10 @@ public struct DelegateRequest: Hashable, Sendable {
     public var webSearch: Bool
     /// One git worktree per job, made before the batch is accepted (P6-7).
     public var isolate: Bool
+    public var rulesName: String?
+    public var model: String?
+    public var effort: String?
+    public var readOnly: Bool
 
     public init(
         tasks: [String],
@@ -24,7 +28,8 @@ public struct DelegateRequest: Hashable, Sendable {
         timeoutMs: UInt64? = OrchestratorLimits.defaultJobTimeoutMs,
         askForApproval: Bool = false,
         webSearch: Bool = false,
-        isolate: Bool = false
+        isolate: Bool = false,
+        model: String? = nil, effort: String? = nil, readOnly: Bool = false, rulesName: String? = nil
     ) {
         self.tasks = tasks
         self.agent = agent
@@ -34,6 +39,8 @@ public struct DelegateRequest: Hashable, Sendable {
         self.askForApproval = askForApproval
         self.webSearch = webSearch
         self.isolate = isolate
+        self.rulesName = rulesName
+        self.model = model; self.effort = effort; self.readOnly = readOnly
     }
 
     /// The tool's arguments, as upstream reads them: `cwd` falls back to the process's folder,
@@ -53,7 +60,9 @@ public struct DelegateRequest: Hashable, Sendable {
             tasks: tasks, agent: agent, cwd: cwd, label: label?.isEmpty == false ? label : nil, timeoutMs: timeoutMs,
             askForApproval: arguments["askForApproval"]?.boolValue ?? false,
             webSearch: arguments["webSearch"]?.boolValue ?? false,
-            isolate: arguments["isolate"]?.boolValue ?? false
+            isolate: arguments["isolate"]?.boolValue ?? false,
+            model: arguments["model"]?.stringValue, effort: arguments["effort"]?.stringValue,
+            readOnly: arguments["readOnly"]?.boolValue ?? false, rulesName: arguments["rules"]?.stringValue
         )
     }
 }
@@ -67,7 +76,8 @@ extension OrchestratorCore: OrchestratorToolHandler {
     func dispatchTool(name: String, arguments: OrderedJSONObject, planner: String?) async throws(OrchestratorToolError) -> OrderedJSON {
         switch name {
         case "alethe_delegate":
-            let request = try DelegateRequest(arguments: arguments)
+            let configured = try configuredArguments(arguments, planner: planner)
+            let request = try DelegateRequest(arguments: configured)
             if arguments["queue"]?.boolValue == true, fitnessReadings[request.agent]?.isStrained == true {
                 return try await enqueueDelegate(request, planner: planner)
             }
@@ -133,9 +143,12 @@ extension OrchestratorCore: OrchestratorToolHandler {
                 worktree: workspace.worktree,
                 timeoutMs: request.timeoutMs,
                 approvalPolicy: policy.approvalPolicy,
-                sandbox: policy.sandbox,
+                sandbox: request.readOnly ? "read-only" : policy.sandbox,
                 webSearch: request.webSearch
             )
+            jobs[id]?.rulesName = request.rulesName
+            jobs[id]?.model = request.model
+            jobs[id]?.effort = request.effort
             order.append(id)
             queue.append(id)
             created.append(["id": .string(id), "spec": .string(spec), "worktree": .optional(workspace.worktree)])

@@ -146,6 +146,13 @@ public struct Project: Codable, Hashable, Sendable, Identifiable {
     /// Agents get the Graphify MCP server and the graph is generated on their first launch (upstream
     /// `graphifyEnabled`, P5-17); nil is off. Takes effect only while the graphify feature is on.
     public var graphifyEnabled: Bool?
+    public var validationCommands: [String]?
+    public var healthCheckCommand: String?
+    public var healthCheckPath: String?
+    public var conflictAgentProvider: String?
+    public var conflictAgentModel: String?
+    public var gsdWatcherEnabled: Bool?
+
 
     public init(id: ProjectID = .make(), name: String, color: ProjectColor = .blue, folder: String,
                 panes: [Pane] = [], createdAt: Date = Date(), layoutMode: PaneLayoutMode? = nil) {

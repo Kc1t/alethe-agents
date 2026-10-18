@@ -118,6 +118,9 @@ public struct CodexWorkerSession: Hashable, Sendable {
     public let approvalPolicy: OrderedJSON
     public let sandbox: String
     public let webSearch: Bool
+    public var model: String?
+    public var effort: String?
+    public var disabledPlugins: [String] = []
 
     public private(set) var threadID: String?
     public private(set) var activeTurnID: String?
@@ -148,7 +151,7 @@ public struct CodexWorkerSession: Hashable, Sendable {
     }
 
     /// A session for `job`, resuming its thread when it has one (an interrupted job).
-    public init(job: Job, firstTurn: String) {
+    public init(job: Job, firstTurn: String, disabledPlugins: [String] = []) {
         self.init(
             jobID: job.id,
             cwd: job.cwd,
@@ -159,6 +162,7 @@ public struct CodexWorkerSession: Hashable, Sendable {
             webSearch: job.webSearch,
             nextRequestID: job.nextRequestID
         )
+        model = job.model; effort = job.effort; self.disabledPlugins = disabledPlugins
     }
 
     // MARK: Outgoing
@@ -176,7 +180,7 @@ public struct CodexWorkerSession: Hashable, Sendable {
                 "capabilities": ["experimentalApi": true],
             ],
         ]
-        let opening: OrderedJSON
+        var opening: OrderedJSON
         if let resumeThreadID {
             opening = [
                 "id": Self.openThreadID,
@@ -195,6 +199,21 @@ public struct CodexWorkerSession: Hashable, Sendable {
                     "config": ["tools": ["web_search": ["mode": webSearch ? "live" : "disabled"]]],
                 ],
             ]
+        }
+        if model != nil || effort != nil || !disabledPlugins.isEmpty || sandbox == "read-only",
+           var object = opening.objectValue, var params = object["params"]?.objectValue {
+            if let model { params["model"] = .string(model) }
+            params["approvalPolicy"] = approvalPolicy
+            params["sandbox"] = .string(sandbox)
+            var config = params["config"]?.objectValue ?? [:]
+            if let effort { config["model_reasoning_effort"] = .string(effort) }
+            if !disabledPlugins.isEmpty {
+                var plugins: OrderedJSONObject = [:]
+                for plugin in disabledPlugins { plugins[plugin] = ["enabled": false] }
+                config["plugins"] = .object(plugins)
+            }
+            if !config.isEmpty { params["config"] = .object(config) }
+            object["params"] = .object(params); opening = .object(object)
         }
         return [initialize, ["method": "initialized"], opening]
     }

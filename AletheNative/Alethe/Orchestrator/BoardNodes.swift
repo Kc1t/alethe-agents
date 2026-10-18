@@ -330,6 +330,7 @@ struct BoardWorkerDetail: View {
                 }
             }
             // Worker actions (P6-15) and applying its worktree (P6-16) plug in here.
+            OrchestrationShortcuts(job: job, project: project)
             OrchestratorWorkerActions(job: job, project: project, board: board, units: units)
             OrchestratorApplyAction(job: job, project: project, board: board, units: units)
         }
