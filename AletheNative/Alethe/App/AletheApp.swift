@@ -50,6 +50,9 @@ struct AletheApp: App {
             ViewCommands(environment: environment)
             TerminalCommands(environment: environment)
             HistoryCommands(environment: environment)
+            #if DEBUG
+            DebugSampleDataCommands(environment: environment)
+            #endif
         }
 
         Settings {

@@ -192,6 +192,10 @@ final class AppEnvironment {
         AgentLauncher(launchers: launchers, overrides: preferences?.document.cliPaths ?? [:])
     }
 
+    #if DEBUG
+    var loadingSampleData = false
+    #endif
+
     private(set) var startupFinished = false
 
     func load() async {
@@ -296,6 +300,9 @@ final class AppEnvironment {
         if diagnostics.crashNotice != nil, editorRequest == nil, Self.showsCrashNotice { editorRequest = .crashNotice }
         greetLaunch()
         offerMcpIntro()
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["ALETHE_SAMPLE_DATA"] == "1" { await loadSampleData() }
+        #endif
         NotificationCenter.default.addObserver(forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
                                                object: NSWorkspace.shared, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {

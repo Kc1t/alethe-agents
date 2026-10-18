@@ -38695,6 +38695,534 @@
           }
         }
       }
+    },
+    "debug.menu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Debug"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depuração"
+          }
+        }
+      }
+    },
+    "debug.sample.code" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "# Code examples\n\n## Shell\n\n```sh\nprintf '%s\\n' 'Hello, Alethe'\nfind . -name '*.md' -type f\n```\n\n## JSON\n\n```json\n{\n  \"name\": \"Sample workspace\",\n  \"features\": [\"markdown\", \"todos\"],\n  \"enabled\": true\n}\n```\n\n## Long lines\n\n```typescript\nconst description = \"A deliberately long source line to check horizontal scrolling, monospace rendering, padding, and clipping without wrapping the code block in a narrow Markdown sidebar.\"\n```\n\n## Inline formatting\n\nUse `npm test`, **review the output**, then *record the result*. A link inside a list: [Swift documentation](https://www.swift.org/documentation/).\n"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "# Exemplos de código\n\n## Shell\n\n```sh\nprintf '%s\\n' 'Hello, Alethe'\nfind . -name '*.md' -type f\n```\n\n## JSON\n\n```json\n{\n  \"name\": \"Sample workspace\",\n  \"features\": [\"markdown\", \"todos\"],\n  \"enabled\": true\n}\n```\n\n## Linhas longas\n\n```typescript\nconst description = \"A deliberately long source line to check horizontal scrolling, monospace rendering, padding, and clipping without wrapping the code block in a narrow Markdown sidebar.\"\n```\n\n## Formatação em linha\n\nUse `npm test`, **revise a saída** e *registre o resultado*. Um link em uma lista: [Documentação do Swift](https://www.swift.org/documentation/).\n"
+          }
+        }
+      }
+    },
+    "debug.sample.error" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not load sample data"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível carregar os dados de exemplo"
+          }
+        }
+      }
+    },
+    "debug.sample.guide" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "# Getting started\n\n## Explore the preview\n\n1. Compare the README in a pane and in the Markdown sidebar.\n2. Resize the sidebar to check text wrapping.\n3. Switch to Todos and filter by `preview`, `docs`, or `review`.\n\n- Global tasks appear without a project.\n- Project tasks belong to this sample workspace.\n  - Some tasks are completed.\n  - Long titles test truncation.\n\n> Tip: loading sample data again keeps your edits and does not add duplicate tasks.\n\n[Back to README](../README.md)\n"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "# Guia inicial\n\n## Explore a visualização\n\n1. Compare o README em um painel e na barra lateral Markdown.\n2. Redimensione a barra lateral para verificar a quebra de texto.\n3. Abra as tarefas e filtre por `preview`, `docs` ou `review`.\n\n- Tarefas globais aparecem sem projeto.\n- Tarefas de projeto pertencem a este espaço de trabalho de exemplo.\n  - Algumas tarefas estão concluídas.\n  - Títulos longos testam o truncamento.\n\n> Dica: carregar os exemplos novamente mantém suas edições e não duplica as tarefas.\n\n[Voltar ao README](../README.md)\n"
+          }
+        }
+      }
+    },
+    "debug.sample.load" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load sample data"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Carregar dados de exemplo"
+          }
+        }
+      }
+    },
+    "debug.sample.longSection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "## Reading and scrolling\n\nA workspace can contain several projects, each with its own terminals, documents, and ongoing tasks. This longer paragraph exercises wrapping, vertical rhythm, and scroll position restoration. Resize the window and return to this document after visiting another file to compare the reading experience. The preview should remain useful at smaller interface scales and in a narrow sidebar without losing the relationship between headings, paragraphs, lists, and code.\n\n- Check readable line lengths.\n- Compare spacing between blocks.\n- Restore the previous scroll position.\n\n> Keep the next action visible while preserving enough context to resume the work.\n"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "## Leitura e rolagem\n\nUm espaço de trabalho pode conter vários projetos, cada um com seus terminais, documentos e tarefas em andamento. Este parágrafo mais longo exercita a quebra de linhas, o ritmo vertical e a restauração da posição de rolagem. Redimensione a janela e retorne a este documento depois de visitar outro arquivo para comparar a experiência de leitura. A visualização deve continuar útil em escalas menores e em uma barra lateral estreita, preservando a relação entre títulos, parágrafos, listas e código.\n\n- Verifique o comprimento das linhas.\n- Compare o espaçamento entre blocos.\n- Restaure a posição de rolagem anterior.\n\n> Mantenha a próxima ação visível com contexto suficiente para retomar o trabalho.\n"
+          }
+        }
+      }
+    },
+    "debug.sample.project" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sample workspace"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espaço de trabalho de exemplo"
+          }
+        }
+      }
+    },
+    "debug.sample.readme" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "# Sample workspace\n\nPreview Markdown and Todos together. These files are editable, and loading samples again preserves your changes.\n\n## Typography\n\nA paragraph with **bold**, *italic*, ~~strikethrough~~, and `inline code`. Follow a [web link](https://www.swift.org) or open the [getting started guide](guides/Getting-started.md).\n\n### A smaller heading\n\n> Reveal the state of every agent, shell, and project.\n>\n> A second paragraph in a blockquote tests spacing and wrapping in a narrow sidebar.\n\n#### Checklist\n\n- [x] Create a sample workspace\n- [x] Add varied todos\n- [ ] Review Markdown in the sidebar\n- [ ] Try a different interface scale\n\n## Lists\n\n1. Open the Markdown tab in the right sidebar.\n2. Select a document.\n   - Compare headings and paragraph spacing.\n   - Explore nested content.\n     - A third level tests indentation.\n3. Return to Todos to see open and completed tasks.\n\n## Status table\n\n| Area | Status | Next step |\n| :--- | :---: | ---: |\n| Sidebar | Ready | Review thumbnails |\n| Markdown | In review | Check long lines |\n| Todos | Ready | Filter by tag |\n| Keyboard | Pending | Check focus |\n\n## Code\n\n```swift\nstruct Workspace: Sendable {\n    let name: String\n    let projects: [String]\n}\nlet preview = Workspace(name: \"Alethe\", projects: [\"Sample\"])\n```\n\n```typescript\nconst tasks = [{ title: 'Review sidebar', done: false }]\nconst pending = tasks.filter(task => !task.done)\nconsole.log(pending)\n```\n\n```python\nfrom pathlib import Path\nfor document in Path('.').rglob('*.md'):\n    print(document.name)\n```\n\n## Remote image\n\n![Swift logo hosted on swift.org](https://www.swift.org/assets/images/swift.svg)\n\nThe remote image needs a network connection. The text and code examples work offline.\n\n---\n\n## More documents\n\n- [Code examples](Code-examples.md)\n- [Long document](Long-document.md)\n- [Getting started](guides/Getting-started.md)\n"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "# Espaço de trabalho de exemplo\n\nVisualize Markdown e tarefas juntos. Estes arquivos podem ser editados, e carregar os exemplos novamente preserva suas alterações.\n\n## Tipografia\n\nUm parágrafo com **negrito**, *itálico*, ~~tachado~~ e `código em linha`. Acesse um [link externo](https://www.swift.org) ou abra o [guia inicial](guides/Getting-started.md).\n\n### Um título menor\n\n> Revele o estado de cada agente, terminal e projeto.\n>\n> Um segundo parágrafo em uma citação testa o espaçamento e a quebra de linhas em uma barra lateral estreita.\n\n#### Lista de tarefas\n\n- [x] Criar um espaço de trabalho de exemplo\n- [x] Adicionar tarefas variadas\n- [ ] Revisar Markdown na barra lateral\n- [ ] Experimentar outra escala da interface\n\n## Listas\n\n1. Abra a aba Markdown na barra lateral direita.\n2. Selecione um documento.\n   - Compare os títulos e o espaçamento dos parágrafos.\n   - Explore o conteúdo aninhado.\n     - Um terceiro nível testa o recuo.\n3. Volte às tarefas para ver itens abertos e concluídos.\n\n## Tabela de status\n\n| Área | Status | Próximo passo |\n| :--- | :---: | ---: |\n| Barra lateral | Pronto | Revisar miniaturas |\n| Markdown | Em revisão | Verificar linhas longas |\n| Tarefas | Pronto | Filtrar por marcador |\n| Teclado | Pendente | Verificar foco |\n\n## Código\n\n```swift\nstruct Workspace: Sendable {\n    let name: String\n    let projects: [String]\n}\nlet preview = Workspace(name: \"Alethe\", projects: [\"Sample\"])\n```\n\n```typescript\nconst tasks = [{ title: 'Review sidebar', done: false }]\nconst pending = tasks.filter(task => !task.done)\nconsole.log(pending)\n```\n\n```python\nfrom pathlib import Path\nfor document in Path('.').rglob('*.md'):\n    print(document.name)\n```\n\n## Imagem remota\n\n![Logo do Swift hospedado em swift.org](https://www.swift.org/assets/images/swift.svg)\n\nA imagem remota precisa de conexão com a internet. Os exemplos de texto e código funcionam offline.\n\n---\n\n## Mais documentos\n\n- [Exemplos de código](Code-examples.md)\n- [Documento longo](Long-document.md)\n- [Guia inicial](guides/Getting-started.md)\n"
+          }
+        }
+      }
+    },
+    "debug.sample.todo01" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review sidebar image clipping"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisar o recorte das imagens na barra lateral"
+          }
+        }
+      }
+    },
+    "debug.sample.todo02" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read the project README"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ler o README do projeto"
+          }
+        }
+      }
+    },
+    "debug.sample.todo03" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check keyboard focus in every editor"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificar o foco do teclado em cada editor"
+          }
+        }
+      }
+    },
+    "debug.sample.todo04" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create the sample workspace"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Criar o espaço de trabalho de exemplo"
+          }
+        }
+      }
+    },
+    "debug.sample.todo05" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plan the next small improvement"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Planejar a próxima pequena melhoria"
+          }
+        }
+      }
+    },
+    "debug.sample.todo06" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compare light and dark themes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparar os temas claro e escuro"
+          }
+        }
+      }
+    },
+    "debug.sample.todo07" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Document the Markdown preview workflow"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Documentar o fluxo de visualização Markdown"
+          }
+        }
+      }
+    },
+    "debug.sample.todo08" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add the first checklist"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar a primeira lista de tarefas"
+          }
+        }
+      }
+    },
+    "debug.sample.todo09" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review a very long task title that wraps or truncates when the Todos sidebar is narrow and the project name and several tags compete for horizontal space"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisar um título de tarefa bem longo que quebra ou é truncado quando a barra lateral de tarefas está estreita e o nome do projeto e vários marcadores disputam espaço horizontal"
+          }
+        }
+      }
+    },
+    "debug.sample.todo10" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organize follow-up work"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organizar o trabalho de acompanhamento"
+          }
+        }
+      }
+    },
+    "debug.sample.todo11" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check completed task contrast"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificar o contraste das tarefas concluídas"
+          }
+        }
+      }
+    },
+    "debug.sample.todo12" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Write a getting started guide"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escrever um guia inicial"
+          }
+        }
+      }
+    },
+    "debug.sample.todo13" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review table alignment and borders"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisar o alinhamento e as bordas das tabelas"
+          }
+        }
+      }
+    },
+    "debug.sample.todo14" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verify Markdown links"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificar os links Markdown"
+          }
+        }
+      }
+    },
+    "debug.sample.todo15" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try filtering tasks by multiple tags"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Experimentar filtrar tarefas por vários marcadores"
+          }
+        }
+      }
+    },
+    "debug.sample.todo16" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prepare code examples"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparar exemplos de código"
+          }
+        }
+      }
+    },
+    "debug.sample.todo17" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check the empty search result"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificar a busca sem resultados"
+          }
+        }
+      }
+    },
+    "debug.sample.todo18" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compare nested list indentation"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparar o recuo de listas aninhadas"
+          }
+        }
+      }
+    },
+    "debug.sample.todo19" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review the remote image placeholder"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisar o espaço reservado da imagem remota"
+          }
+        }
+      }
+    },
+    "debug.sample.todo20" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save the first preview notes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvar as primeiras anotações da visualização"
+          }
+        }
+      }
+    },
+    "debug.sample.todo21" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Test long code block scrolling"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Testar a rolagem de blocos de código longos"
+          }
+        }
+      }
+    },
+    "debug.sample.todo22" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review project task grouping"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisar o agrupamento de tarefas por projeto"
+          }
+        }
+      }
+    },
+    "debug.sample.todo23" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check the task completion progress"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificar o progresso das tarefas concluídas"
+          }
+        }
+      }
+    },
+    "debug.sample.todo24" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complete the sample checklist"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Concluir a lista de tarefas de exemplo"
+          }
+        }
+      }
+    },
+    "debug.sample.todo25" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the next task to focus on"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolher a próxima tarefa para focar"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
