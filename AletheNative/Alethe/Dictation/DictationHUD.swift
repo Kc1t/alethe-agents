@@ -12,7 +12,9 @@ struct DictationHUD: View {
 
     var body: some View {
         let dictation = environment.dictation
-        if dictation.machine.phase != .idle {
+        if metrics.isWebInterface, dictation.jev.open {
+            JevVoiceBar()
+        } else if dictation.machine.phase != .idle {
             HStack(spacing: metrics.space(.m)) {
                 icon(dictation.machine.phase)
                 content(dictation)
@@ -66,7 +68,7 @@ struct DictationHUD: View {
                 .foregroundStyle(dictation.liveText.isEmpty ? theme[.textSecondary] : theme[.textPrimary])
                 .lineLimit(2)
                 .truncationMode(.head)
-            Text("dictation.hint").font(metrics.font(.caption)).foregroundStyle(theme[.textTertiary])
+            Text(metrics.isWebInterface ? "dictation.webHint" : "dictation.hint").font(metrics.font(.caption)).foregroundStyle(theme[.textTertiary])
         }
     }
 

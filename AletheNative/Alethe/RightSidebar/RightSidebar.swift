@@ -311,7 +311,7 @@ struct WebSidebarEmpty: View {
 }
 
 /// Voice-command history retains an honest availability state until Jev has a native backend.
-private struct WebVoiceHistoryPanel: View {
+struct NativeVoiceHistoryPanel: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
 
