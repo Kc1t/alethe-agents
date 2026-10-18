@@ -781,6 +781,12 @@ private struct ProjectContextMenu: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.metrics) private var metrics
 
+    /// In the web interface related actions fold into a flyout so the menu stays short; `.mac` keeps them flat.
+    @ViewBuilder
+    private func projectGroup<C: View>(_ title: LocalizedStringKey, symbol: String, @ViewBuilder _ content: @escaping () -> C) -> some View {
+        if metrics.isWebInterface { WebSubmenu(title, symbol: symbol, content: content) } else { content() }
+    }
+
     var body: some View {
         let doc = actions.workspace.document
         if metrics.isWebInterface {
@@ -799,7 +805,6 @@ private struct ProjectContextMenu: View {
                 .accessibilityIdentifier("terminal.new")
         } else { NewTerminalButton(project: project) }
         WebMenuDivider()
-        SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") { environment.editorRequest = .layoutDesigner(project.id) }
         SidebarMenuButton("sidebar.rename", symbol: "pencil") {
             SidebarRenamePrompt.name(initial: project.name, width: metrics.size(280), height: metrics.size(24)) { name in
                 actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "sidebar.rename")) {
@@ -808,58 +813,69 @@ private struct ProjectContextMenu: View {
             }
         }
         SidebarMenuButton("sidebar.editProject", symbol: "slider.horizontal.3") { environment.editorRequest = .editProject(project.id) }
-        SidebarMenuButton("sidebar.revealInFinder", symbol: "folder") { actions.revealInFinder(project) }
-        SidebarMenuButton("openIn.vscode", symbol: "chevron.left.forwardslash.chevron.right") { OpenInActions.vsCode(project.folder, launchers: environment.launchers) }
-            .accessibilityIdentifier("openIn.vscode")
-        if metrics.isWebInterface, environment.features.isOn(.browser) {
-            SidebarMenuButton("menu.addBrowser", symbol: "globe") { environment.editorRequest = .addBrowser(project.id) }
-        }
-        SidebarMenuButton("openIn.browser", symbol: "globe") { OpenInActions.browser(project) }
-            .accessibilityIdentifier("openIn.browser")
-        SidebarMenuButton("projectSettings.exportEllipsis", symbol: metrics.isWebInterface ? "arrow.down.to.line" : "square.and.arrow.up") { ProjectSettingsTransfer.export(project) }
-        SidebarMenuButton("projectSettings.importEllipsis", symbol: metrics.isWebInterface ? "arrow.up.to.line" : "square.and.arrow.down") {
-            ProjectSettingsTransfer.importSettings(into: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
-        }
-        WebSubmenu("sidebar.moveToGroup") {
-            SidebarMenuButton("sidebar.ungrouped", symbol: "folder") { actions.move(project.id, to: .ungrouped) }
-                .disabled(doc.location(of: project.id) == .ungrouped)
-            if !doc.groups.isEmpty { WebMenuDivider() }
-            ForEach(doc.groups) { group in
-                Button { actions.move(project.id, to: .group(group.id)) } label: { Text(verbatim: group.name) }
-                    .disabled(doc.location(of: project.id) == .group(group.id))
+        projectGroup("sidebar.web.group.openIn", symbol: "arrow.up.forward.app") {
+            SidebarMenuButton("sidebar.revealInFinder", symbol: "folder") { actions.revealInFinder(project) }
+            SidebarMenuButton("openIn.vscode", symbol: "chevron.left.forwardslash.chevron.right") { OpenInActions.vsCode(project.folder, launchers: environment.launchers) }
+                .accessibilityIdentifier("openIn.vscode")
+            if metrics.isWebInterface, environment.features.isOn(.browser) {
+                SidebarMenuButton("menu.addBrowser", symbol: "globe") { environment.editorRequest = .addBrowser(project.id) }
             }
+            SidebarMenuButton("openIn.browser", symbol: "globe") { OpenInActions.browser(project) }
+                .accessibilityIdentifier("openIn.browser")
         }
-        SidebarMenuButton("menu.history.conversations", symbol: "clock") { environment.editorRequest = .conversations(project.id) }
-        if environment.hasPluginCommand(GitControlPlugin.openCommandID) {
-            SidebarMenuButton("menu.git.control", symbol: "arrow.triangle.branch") { environment.openPluginSheet(GitControlPlugin.sheetID, project: project.id) }
-        }
-        SidebarMenuButton("menu.merge.center", symbol: "arrow.triangle.merge") { environment.editorRequest = .mergeCenter(project.id) }
-        SidebarMenuButton("worktrees.manageEllipsis", symbol: "arrow.triangle.branch") { environment.editorRequest = .worktrees(project.id) }
-        SidebarMenuButton("menu.merge.branchTesting", symbol: "testtube.2") { environment.editorRequest = .branchTesting(project.id) }
-        SidebarMenuButton("agentLibrary.openEllipsis", symbol: "books.vertical") { environment.editorRequest = .agentLibrary(project.id) }
-        if environment.features.isOn(.graphify) {
-            SidebarMenuButton("graphify.openInProject", symbol: "point.3.connected.trianglepath.dotted") {
-                environment.open(.graphify, in: project.id, actionName: String(localized: "undo.addContent"))
-            }
-            .accessibilityIdentifier("graphify.openInProject")
-        }
-        if environment.features.isOn(.orchestrator) {
-            // Upstream `menu.addOrchestrator` always adds a board, like Add Content.
-            SidebarMenuButton("orchestrator.addToProject", symbol: "rectangle.3.group") {
-                actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "undo.addContent")) {
-                    $0.addPane(to: project.id, content: .orchestrator)
+        projectGroup("sidebar.web.group.layout", symbol: "rectangle.split.2x2") {
+            SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") { environment.editorRequest = .layoutDesigner(project.id) }
+            WebSubmenu("sidebar.grids") {
+                SidebarMenuButton("projectGrid.main", symbol: "square.grid.2x2") { actions.workspace.update { $0.activateGrid(nil, in: project.id) } }
+                ForEach(project.namedGrids) { grid in
+                    Button { actions.workspace.update { $0.activateGrid(grid.id, in: project.id) } } label: { Text(verbatim: grid.name) }
+                }
+                WebMenuDivider()
+                SidebarMenuButton("projectGrid.newEllipsis", symbol: "plus") {
+                    ProjectGridPrompts.createGrid(in: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
                 }
             }
-            .accessibilityIdentifier("orchestrator.addToProject")
         }
-        WebSubmenu("sidebar.grids") {
-            SidebarMenuButton("projectGrid.main", symbol: "square.grid.2x2") { actions.workspace.update { $0.activateGrid(nil, in: project.id) } }
-            ForEach(project.namedGrids) { grid in
-                Button { actions.workspace.update { $0.activateGrid(grid.id, in: project.id) } } label: { Text(verbatim: grid.name) }
+        projectGroup("sidebar.web.group.git", symbol: "arrow.triangle.branch") {
+            if environment.hasPluginCommand(GitControlPlugin.openCommandID) {
+                SidebarMenuButton("menu.git.control", symbol: "arrow.triangle.branch") { environment.openPluginSheet(GitControlPlugin.sheetID, project: project.id) }
             }
-            WebMenuDivider()
-            SidebarMenuButton("projectGrid.newEllipsis", symbol: "plus") {
-                ProjectGridPrompts.createGrid(in: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
+            SidebarMenuButton("menu.merge.center", symbol: "arrow.triangle.merge") { environment.editorRequest = .mergeCenter(project.id) }
+            SidebarMenuButton("worktrees.manageEllipsis", symbol: "arrow.triangle.branch") { environment.editorRequest = .worktrees(project.id) }
+            SidebarMenuButton("menu.merge.branchTesting", symbol: "testtube.2") { environment.editorRequest = .branchTesting(project.id) }
+        }
+        projectGroup("sidebar.web.group.content", symbol: "books.vertical") {
+            SidebarMenuButton("menu.history.conversations", symbol: "clock") { environment.editorRequest = .conversations(project.id) }
+            SidebarMenuButton("agentLibrary.openEllipsis", symbol: "books.vertical") { environment.editorRequest = .agentLibrary(project.id) }
+            if environment.features.isOn(.graphify) {
+                SidebarMenuButton("graphify.openInProject", symbol: "point.3.connected.trianglepath.dotted") {
+                    environment.open(.graphify, in: project.id, actionName: String(localized: "undo.addContent"))
+                }
+                .accessibilityIdentifier("graphify.openInProject")
+            }
+            if environment.features.isOn(.orchestrator) {
+                // Upstream `menu.addOrchestrator` always adds a board, like Add Content.
+                SidebarMenuButton("orchestrator.addToProject", symbol: "rectangle.3.group") {
+                    actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "undo.addContent")) {
+                        $0.addPane(to: project.id, content: .orchestrator)
+                    }
+                }
+                .accessibilityIdentifier("orchestrator.addToProject")
+            }
+        }
+        projectGroup("sidebar.web.group.settings", symbol: "slider.horizontal.3") {
+            SidebarMenuButton("projectSettings.exportEllipsis", symbol: metrics.isWebInterface ? "arrow.down.to.line" : "square.and.arrow.up") { ProjectSettingsTransfer.export(project) }
+            SidebarMenuButton("projectSettings.importEllipsis", symbol: metrics.isWebInterface ? "arrow.up.to.line" : "square.and.arrow.down") {
+                ProjectSettingsTransfer.importSettings(into: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
+            }
+            WebSubmenu("sidebar.moveToGroup") {
+                SidebarMenuButton("sidebar.ungrouped", symbol: "folder") { actions.move(project.id, to: .ungrouped) }
+                    .disabled(doc.location(of: project.id) == .ungrouped)
+                if !doc.groups.isEmpty { WebMenuDivider() }
+                ForEach(doc.groups) { group in
+                    Button { actions.move(project.id, to: .group(group.id)) } label: { Text(verbatim: group.name) }
+                        .disabled(doc.location(of: project.id) == .group(group.id))
+                }
             }
         }
         WebMenuDivider()

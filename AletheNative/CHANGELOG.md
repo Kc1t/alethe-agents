@@ -203,6 +203,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Removed the unsupported sidebar list-spacing modifier to restore macOS API compatibility.
 
 ### Changed
+- The project "…" menu folds related actions (open in, layout and grids, Git and worktrees, content and history, project settings) into flyouts that open to the right, so it no longer runs off the screen.
 - Web-style title bars use the web's 32-point height, 28-point sidebar controls, compact status
   spacing, themed hamburger/profile dropdowns and live provider hover details with agent logos.
   Memory analytics, AI usage, terminal search, widget customization and What's New open centered
