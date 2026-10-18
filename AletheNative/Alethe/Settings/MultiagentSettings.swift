@@ -61,6 +61,13 @@ struct MultiagentSettings: View {
     private var schedulerSection: some View {
         Section {
             HStack(spacing: metrics.space(.m)) {
+                if metrics.isWebInterface {
+                    WebSelectRow(title: "settings.multiagent.project", selection: $model.projectID,
+                                 options: [String?.none] + projects.map { Optional($0.id.rawValue) }) { id in
+                        id.flatMap { id in projects.first { $0.id.rawValue == id }?.name } ?? String(localized: "settings.multiagent.project.none")
+                    }
+                    .accessibilityIdentifier("multiagent.project")
+                } else {
                 Picker(selection: $model.projectID) {
                     Text("settings.multiagent.project.none").tag(String?.none)
                     ForEach(projects) { Text(verbatim: $0.name).tag(Optional($0.id.rawValue)) }
@@ -68,6 +75,7 @@ struct MultiagentSettings: View {
                     Text("settings.multiagent.project")
                 }
                 .accessibilityIdentifier("multiagent.project")
+                }
                 if selectedProject != nil {
                     Button("settings.multiagent.tick") { model.tick() }
                         .disabled(model.isTicking)

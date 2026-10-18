@@ -382,11 +382,11 @@ struct PaneHeader: View {
                     .disabled(location?.pane.isDisabled == true)
                 }
                 webAction("trash", "pane.web.deleteTerminal") {
-                    let alert = NSAlert()
-                    alert.messageText = format("pane.web.confirmDeleteTerminal", environment.terminals.displayName(of: tab))
-                    alert.addButton(withTitle: String(localized: "pane.web.deleteTerminal"))
-                    alert.addButton(withTitle: String(localized: "editor.cancel"))
-                    if alert.runModal() == .alertFirstButtonReturn { onClose() }
+                    Task {
+                        if await WebDialogCenter.shared.confirm(
+                            format("pane.web.confirmDeleteTerminal", environment.terminals.displayName(of: tab)),
+                            confirmTitle: String(localized: "pane.web.deleteTerminal"), destructive: true) { onClose() }
+                    }
                 }
                     .accessibilityIdentifier("pane.close")
             }

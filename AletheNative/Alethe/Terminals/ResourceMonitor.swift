@@ -18,6 +18,24 @@ final class ResourceMonitor {
         var id: TabID { tab }
     }
 
+    /// One supervision reading, kept for the memory analytics history (web `MemorySample`).
+    struct Sample: Identifiable, Equatable {
+        let timestamp: Date
+        let appMB: Double
+        let terminalsMB: Double
+        let systemAvailableMB: Double
+        let systemTotalMB: Double
+        let processCount: Int
+        var totalMB: Double { appMB + terminalsMB }
+        var id: Date { timestamp }
+    }
+
+    /// The latest readings, oldest first (web `MAX_MEMORY_HISTORY`).
+    private(set) var history: [Sample] = []
+    static let historyLimit = 720
+
+    func clearHistory() { history = [] }
+
     private(set) var pressure: MemoryPressure = .normal
     private(set) var system = SystemResources.Memory(totalMB: 0, availableMB: 0)
     private(set) var appMB: Double = 0
@@ -75,7 +93,7 @@ final class ResourceMonitor {
                     counts[pid] = descendants.count
                     memory[pid] = descendants.reduce(0) { $0 + SystemResources.footprintMB(of: $1) }
                 }
-                return Sample(parents: parents, memory: memory, counts: counts,
+                return Reading(parents: parents, memory: memory, counts: counts,
                               system: SystemResources.memory(), appMB: SystemResources.footprintMB(of: getpid()))
             }.value
             guard environment.workspace === workspace else { return }
@@ -83,7 +101,7 @@ final class ResourceMonitor {
         }
     }
 
-    private struct Sample: Sendable {
+    private struct Reading: Sendable {
         let parents: [pid_t: pid_t]
         let memory: [pid_t: Double]
         let counts: [pid_t: Int]
@@ -91,7 +109,7 @@ final class ResourceMonitor {
         let appMB: Double
     }
 
-    private func apply(_ sample: Sample, environment: AppEnvironment, document: WorkspaceDocument) {
+    private func apply(_ sample: Reading, environment: AppEnvironment, document: WorkspaceDocument) {
         let policy = environment.preferences?.document.resources ?? ResourcePolicy()
         let running = environment.terminals.running
         let parents = sample.parents
@@ -133,6 +151,10 @@ final class ResourceMonitor {
         pressure = MemoryPressure.level(availableMB: system.availableMB, totalMB: system.totalMB, previous: pressure)
         if pressure != previous { pressureChanges += 1 }
         terminals = usage.sorted { $0.memoryMB > $1.memoryMB }
+        history.append(Sample(timestamp: now, appMB: appMB, terminalsMB: terminalsMB,
+                              systemAvailableMB: system.availableMB, systemTotalMB: system.totalMB,
+                              processCount: processCount))
+        if history.count > Self.historyLimit { history.removeFirst(history.count - Self.historyLimit) }
         let candidates = ResourceSupervision.candidates(runtimes, policy: policy, now: now.timeIntervalSince1970)
         candidateCount = candidates.count
         events.publish(.resourceMetrics(

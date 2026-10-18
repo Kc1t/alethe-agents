@@ -11,6 +11,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   15pt icon column, hover and danger rows, 1pt separators, hover/arrow-key submenu flyouts, Arrow/Return
   keyboard navigation, Escape and outside-click dismissal, opened at the cursor and kept 8pt inside the
   window. The macOS interface keeps the native menus.
+### Modal confirmations and selectors
+- In the web interface, questions the web app asks with the browser `confirm` and `prompt` now open
+  in themed window dialogs instead of AppKit alerts: rename, delete terminal, delete or suspend group,
+  worktree commit, remove and lock, named grids (a themed create, rename and delete dialog), git
+  discard, merge abort and cleanup, skills, agent library and Gist pull confirmations, and the
+  Settings reset, import, erase and remote-access confirmations. The native alerts are unchanged.
+- Dropdowns in project, group, merge, branch-test and settings dialogs use the web dropdown menu
+  (32-point trigger, 220 to 320-point listbox) instead of the system pop-up menu.
+- The AI usage dialog opens a nested "Usage limit resets" dialog listing each Codex reset credit with
+  its own "Use reset credit" action. Memory analytics now shows health, now/peak/average/trend, a
+  history chart with hover tooltip, bottleneck diagnostics, composition bars, live terminals and the
+  latest samples, with a Clear history action; the toolbar notification list uses the themed popover.
 
 ### Onboarding parity
 - In the web interface the onboarding dialog matches the web app: a fixed 640-point dialog over a

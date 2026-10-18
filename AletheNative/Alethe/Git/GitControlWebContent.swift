@@ -24,7 +24,13 @@ extension GitControlSheet {
         .gitWebSheet(isPresented: $creatingBranch, width: 440) {
             if let model { NewBranchSheet(model: model) }
         }
-        .confirmationDialog(Text("git.discard.title"), isPresented: discardPresented, presenting: pendingDiscard) { entry in
+        .webConfirm(isPresented: discardPresented,
+                    message: pendingDiscard.map { format("git.discard.message", $0.path) } ?? "",
+                    title: String(localized: "git.discard.title"),
+                    confirmTitle: String(localized: "git.discard.confirm"), destructive: true) {
+            if let entry = pendingDiscard { model?.discard(entry) }
+        }
+        .confirmationDialog(Text("git.discard.title"), isPresented: nativeDiscardPresented, presenting: pendingDiscard) { entry in
             Button("git.discard.confirm", role: .destructive) { model?.discard(entry) }
                 .accessibilityIdentifier("git.discard.confirm")
             Button("editor.cancel", role: .cancel) {}

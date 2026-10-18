@@ -24,11 +24,16 @@ struct NotificationsButton: View {
             ? String(format: String(localized: "notifications.unseen"), notifier.log.unseen)
             : String(localized: "notifications.title")))
         .accessibilityIdentifier("notifications.button")
-        .popover(isPresented: $showsList, arrowEdge: .bottom) {
+        .popover(isPresented: Binding(get: { !metrics.isWebInterface && showsList }, set: { showsList = $0 }), arrowEdge: .bottom) {
             NotificationList()
                 .environment(environment)
                 .environment(\.theme, theme)
                 .environment(\.metrics, metrics)
+        }
+        .webTitleBarPopover(isPresented: Binding(get: { metrics.isWebInterface && showsList }, set: { showsList = $0 }), width: 340) {
+            NotificationList(onDismiss: { showsList = false })
+                .environment(environment)
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
         }
     }
 }
@@ -36,6 +41,7 @@ struct NotificationsButton: View {
 /// The recent notifications, newest first; also shown on Home (P3-15).
 struct NotificationList: View {
     var isHome = false
+    var onDismiss: (() -> Void)?
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -65,6 +71,7 @@ struct NotificationList: View {
                 Button {
                     if let tab = entry.tab { environment.notifier.open(tab) }
                     dismiss()
+                    onDismiss?()
                 } label: {
                     HStack(alignment: .top, spacing: metrics.space(.s)) {
                         Group {

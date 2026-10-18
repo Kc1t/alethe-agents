@@ -37,10 +37,14 @@ extension MergeCenterSheet {
         .frame(width: closeOverlay == nil ? metrics.size(480) : nil)
         .task { await loadModel() }
         .onDisappear { model?.cancel() }
-        .confirmationDialog("merge.abort.confirm", isPresented: $confirmAbort) {
+        .webConfirm(isPresented: $confirmAbort, message: String(localized: "merge.abort.confirm"),
+                    confirmTitle: String(localized: "merge.abort"), destructive: true) { model?.abort() }
+        .webConfirm(isPresented: $confirmCleanup, message: String(localized: "merge.cleanup.confirm"),
+                    confirmTitle: String(localized: "merge.cleanup"), destructive: true) { model?.forceCleanup() }
+        .confirmationDialog("merge.abort.confirm", isPresented: Binding(get: { !metrics.isWebInterface && confirmAbort }, set: { confirmAbort = $0 })) {
             Button("merge.abort", role: .destructive) { model?.abort() }
         }
-        .confirmationDialog("merge.cleanup.confirm", isPresented: $confirmCleanup) {
+        .confirmationDialog("merge.cleanup.confirm", isPresented: Binding(get: { !metrics.isWebInterface && confirmCleanup }, set: { confirmCleanup = $0 })) {
             Button("merge.cleanup", role: .destructive) { model?.forceCleanup() }
         }
         .gitWebSheet(isPresented: $testingBranch, width: 560) {
@@ -55,11 +59,11 @@ extension MergeCenterSheet {
             Group {
             if model.stage == .analyze {
                 ProjectGroupWebField(title: "merge.source") {
-                    AletheSelect(selection: Bindable(model).source, options: model.branches) { Text(verbatim: $0) }
+                    WebDropdown(selection: Bindable(model).source, options: model.branches) { Text(verbatim: $0) }
                         .accessibilityIdentifier("merge.source")
                 }
                 ProjectGroupWebField(title: "merge.target") {
-                    AletheSelect(selection: Bindable(model).target, options: model.branches) { Text(verbatim: $0) }
+                    WebDropdown(selection: Bindable(model).target, options: model.branches) { Text(verbatim: $0) }
                         .accessibilityIdentifier("merge.target")
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: metrics.size(6)), count: 3), spacing: metrics.size(6)) {

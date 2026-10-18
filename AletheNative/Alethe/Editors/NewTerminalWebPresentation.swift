@@ -291,6 +291,9 @@ struct NewTerminalDropdown {
     let content: AnyView
     let height: CGFloat
     let dismiss: () -> Void
+    /// Width clamp in points before zoom (the web `Dropdown` menu is 220...320 wide).
+    var minimumWidth: CGFloat = 0
+    var maximumWidth: CGFloat = .infinity
 }
 
 struct NewTerminalDropdownKey: PreferenceKey {
@@ -311,7 +314,8 @@ struct NewTerminalDropdownLayer: ViewModifier {
                     let below = rect.maxY + metrics.size(6)
                     let top = below + height <= geometry.size.height
                         ? below : max(metrics.size(8), rect.minY - height - metrics.size(6))
-                    let width = min(rect.width, max(0, geometry.size.width - metrics.size(16)))
+                    let width = min(min(max(rect.width, metrics.size(menu.minimumWidth)), metrics.size(menu.maximumWidth)),
+                                    max(0, geometry.size.width - metrics.size(16)))
                     let left = min(max(metrics.size(8), rect.minX), max(metrics.size(8), geometry.size.width - width - metrics.size(8)))
                     let outsideTrigger = Path { path in
                         path.addRect(CGRect(origin: .zero, size: geometry.size))

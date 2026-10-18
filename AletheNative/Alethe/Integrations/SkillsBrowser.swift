@@ -24,8 +24,13 @@ struct SkillsBrowser: View {
         }
         .task { await model.load() }
         .onDisappear { model.cancel() }
+        .webConfirm(isPresented: Binding { removal != nil } set: { if !$0 { removal = nil } },
+                    message: removal.map(removalMessage) ?? "", title: String(localized: "skills.remove.title"),
+                    confirmTitle: String(localized: "skills.remove.action"), destructive: true) {
+            if let removal { model.remove(removal) }
+        }
         .confirmationDialog(Text("skills.remove.title"), isPresented: Binding {
-            removal != nil
+            !metrics.isWebInterface && removal != nil
         } set: { if !$0 { removal = nil } }, presenting: removal) { removal in
             Button("skills.remove.action", role: .destructive) { model.remove(removal) }
                 .accessibilityIdentifier("skills.remove.confirm")
@@ -45,6 +50,12 @@ struct SkillsBrowser: View {
                 .textFieldStyle(.roundedBorder)
                 .modifier(ModalsM2Input())
                 .accessibilityIdentifier("skills.filter")
+            if metrics.isWebInterface {
+                WebDropdown(selection: $model.agentFilter, options: [SkillAgent?.none] + SkillAgent.allCases.map { Optional($0) }) { value in
+                    if let value { Text(verbatim: value.label) } else { Text("skills.agent.all") }
+                }
+                .accessibilityIdentifier("skills.agentFilter")
+            } else {
             Picker(selection: $model.agentFilter) {
                 Text("skills.agent.all").tag(SkillAgent?.none)
                 ForEach(SkillAgent.allCases, id: \.self) { agent in
@@ -55,6 +66,7 @@ struct SkillsBrowser: View {
             }
             .labelsHidden()
             .accessibilityIdentifier("skills.agentFilter")
+            }
             list
         }
         .padding(metrics.isWebInterface ? 0 : metrics.space(.m))

@@ -47,8 +47,6 @@ struct WebTitleBarUsage: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var editing = false
-    @State private var credit: CodexResetCredit?
-    @State private var creditFailed = false
 
     var body: some View {
         WebTitleBarAnalytics(title: "usage.title", close: close) {
@@ -90,11 +88,6 @@ struct WebTitleBarUsage: View {
             }
         }
         .task { await environment.usage.refresh() }
-        .confirmationDialog(Text("usage.credit.confirm"), isPresented: Binding { credit != nil } set: { if !$0 { credit = nil } }, presenting: credit) { selected in
-            Button("usage.credit.use") {
-                Task { creditFailed = !(await environment.usage.consumeResetCredit(selected)) }
-            }
-        } message: { selected in Text(verbatim: [selected.title, selected.detail].joined(separator: "\n")) }
         .accessibilityIdentifier("usage.sheet")
     }
 
@@ -143,9 +136,8 @@ struct WebTitleBarUsage: View {
                     }
                 }
                 if let credits = usage?.resetCredits, !credits.isEmpty {
-                    Button("usage.credit.useEllipsis") { credit = credits.first }.buttonStyle(AletheButtonStyle(size: .small))
+                    resetCreditBox(count: credits.count)
                 }
-                if creditFailed, provider == .codex { Text("usage.credit.failed").font(metrics.font(size: 11)).foregroundStyle(theme[.statusOffline]) }
             case .noCLI?: Text("usage.noCLI").font(metrics.font(size: 12))
             case .noAuth?: Text("usage.noAuth").font(metrics.font(size: 12))
             case .unavailable(let reason)?: Text(verbatim: String(format: String(localized: "usage.unavailable"), reason)).font(metrics.font(size: 12))
@@ -157,6 +149,31 @@ struct WebTitleBarUsage: View {
         .frame(maxWidth: .infinity, minHeight: metrics.size(244), alignment: .topLeading)
         .background(theme[.bg].opacity(0.82), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.borderSubtle], lineWidth: metrics.size(1)))
+    }
+
+    /// `HomeView.module.css` resetCreditBox: opens the nested credit dialog.
+    private func resetCreditBox(count: Int) -> some View {
+        HStack(spacing: metrics.size(8)) {
+            Text("usage.web.credit.heading").font(metrics.font(size: 12, weight: .semibold))
+                .foregroundStyle(theme[.fgMuted])
+            Spacer(minLength: 0)
+            Button {
+                Task {
+                    _ = await WebDialogCenter.shared.present(width: 560) { finish in ResetCreditWebModal(finish: finish) }
+                }
+            } label: {
+                Text(verbatim: format("usage.web.credit.box", count))
+                    .font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                    .padding(.horizontal, metrics.size(8)).padding(.vertical, metrics.size(6))
+                    .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("usage.credit.open")
+        }
+        .padding(.top, metrics.size(10))
+        .overlay(alignment: .top) { theme[.borderSubtle].frame(height: metrics.size(1)) }
+        .padding(.top, metrics.size(3))
     }
 
     private func pill(_ provider: AgentKind) -> Binding<Bool> {

@@ -16,6 +16,7 @@ struct DataSettingsSection: View {
     @State private var performedInitialAction = false
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     @State private var staged: StagedBackup?
@@ -105,7 +106,14 @@ struct DataSettingsSection: View {
             case .erase: confirmErase = true
             }
         }
-        .confirmationDialog(Text("settings.data.import.confirm"), isPresented: $confirmImport) {
+        .webConfirm(isPresented: $confirmImport, message: staged.map(importSummary) ?? "", title: String(localized: "settings.data.import.confirm"),
+                    confirmTitle: String(localized: "settings.data.import.action"), destructive: true) {
+            if let pending = staged {
+                importStarted = true
+                perform { try await environment.importStaged(pending) }
+            }
+        }
+        .confirmationDialog(Text("settings.data.import.confirm"), isPresented: Binding(get: { !metrics.isWebInterface && confirmImport }, set: { confirmImport = $0 })) {
             // The staged archive is captured now: the dialog may clear its binding before the action runs.
             if let pending = staged {
                 Button("settings.data.import.action", role: .destructive) {
@@ -123,7 +131,12 @@ struct DataSettingsSection: View {
             staged = nil
             environment.discardStaged(pending)
         }
-        .confirmationDialog(Text("settings.data.reset.confirm"), isPresented: $confirmReset) {
+        .webConfirm(isPresented: $confirmReset,
+                    message: String(format: String(localized: "settings.data.reset.message"), environment.activeProfileName),
+                    title: String(localized: "settings.data.reset.confirm"), confirmTitle: String(localized: "settings.data.reset"), destructive: true) {
+            perform { try await environment.resetProfileData() }
+        }
+        .confirmationDialog(Text("settings.data.reset.confirm"), isPresented: Binding(get: { !metrics.isWebInterface && confirmReset }, set: { confirmReset = $0 })) {
             Button("settings.data.reset", role: .destructive) {
                 perform { try await environment.resetProfileData() }
             }
@@ -131,7 +144,11 @@ struct DataSettingsSection: View {
         } message: {
             Text(verbatim: String(format: String(localized: "settings.data.reset.message"), environment.activeProfileName))
         }
-        .confirmationDialog(Text("settings.data.erase.confirm"), isPresented: $confirmErase) {
+        .webConfirm(isPresented: $confirmErase, message: String(localized: "settings.data.erase.message"), title: String(localized: "settings.data.erase.confirm"),
+                    confirmTitle: String(localized: "settings.data.erase"), destructive: true) {
+            perform { try await environment.eraseAllData() }
+        }
+        .confirmationDialog(Text("settings.data.erase.confirm"), isPresented: Binding(get: { !metrics.isWebInterface && confirmErase }, set: { confirmErase = $0 })) {
             Button("settings.data.erase", role: .destructive) {
                 perform { try await environment.eraseAllData() }
             }

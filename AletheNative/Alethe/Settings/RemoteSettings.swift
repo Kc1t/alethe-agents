@@ -51,14 +51,20 @@ struct RemoteSettings: View {
         .formStyle(.grouped)
         .accessibilityIdentifier("settings.remote")
         .task { await poll() }
-        .confirmationDialog("settings.remote.enable.confirm", isPresented: $confirmEnable, titleVisibility: .visible) {
+        .webConfirm(isPresented: $confirmEnable, message: String(localized: remote.useTailscale ? "settings.remote.enable.warningTailscale" : "settings.remote.enable.warning"), title: String(localized: "settings.remote.enable.confirm"),
+                    confirmTitle: String(localized: "settings.remote.enable.turnOn")) { controller.setEnabled(true) }
+        .confirmationDialog("settings.remote.enable.confirm", isPresented: Binding(get: { !metrics.isWebInterface && confirmEnable }, set: { confirmEnable = $0 }), titleVisibility: .visible) {
             Button("settings.remote.enable.turnOn") { controller.setEnabled(true) }
                 .accessibilityIdentifier("settings.remote.enable.turnOn")
             Button("editor.cancel", role: .cancel) {}
         } message: {
             Text(remote.useTailscale ? "settings.remote.enable.warningTailscale" : "settings.remote.enable.warning")
         }
-        .confirmationDialog(Text(verbatim: revokeTitle), isPresented: presented($revoking), titleVisibility: .visible,
+        .webConfirm(isPresented: webRevoking, message: String(localized: "settings.remote.revoke.detail"), title: revokeTitle,
+                    confirmTitle: String(localized: "settings.remote.revoke"), destructive: true) {
+            if let device = revoking { controller.revoke(deviceID: device.id) }
+        }
+        .confirmationDialog(Text(verbatim: revokeTitle), isPresented: presentedNative($revoking), titleVisibility: .visible,
                             presenting: revoking) { device in
             Button("settings.remote.revoke", role: .destructive) { controller.revoke(deviceID: device.id) }
                 .accessibilityIdentifier("settings.remote.revoke.confirm")
@@ -66,7 +72,9 @@ struct RemoteSettings: View {
         } message: { _ in
             Text("settings.remote.revoke.detail")
         }
-        .confirmationDialog("settings.remote.revokeAll.confirm", isPresented: $confirmRevokeAll, titleVisibility: .visible) {
+        .webConfirm(isPresented: $confirmRevokeAll, message: String(localized: "settings.remote.revokeAll.detail"), title: String(localized: "settings.remote.revokeAll.confirm"),
+                    confirmTitle: String(localized: "settings.remote.revokeAll"), destructive: true) { controller.revokeAll() }
+        .confirmationDialog("settings.remote.revokeAll.confirm", isPresented: Binding(get: { !metrics.isWebInterface && confirmRevokeAll }, set: { confirmRevokeAll = $0 }), titleVisibility: .visible) {
             Button("settings.remote.revokeAll", role: .destructive) { controller.revokeAll() }
                 .accessibilityIdentifier("settings.remote.revokeAll.confirm")
             Button("editor.cancel", role: .cancel) {}
@@ -107,6 +115,14 @@ struct RemoteSettings: View {
 
     private var reachSection: some View {
         Section {
+            if metrics.isWebInterface {
+                WebSelectRow(title: "settings.web.reference.remote.reachTitle", detail: "settings.remote.reach.help",
+                             selection: Binding(get: { remote.useTailscale }, set: { tailscale in update { $0.useTailscale = tailscale } }),
+                             options: tailscaleAvailable || remote.useTailscale ? [false, true] : [false]) {
+                    $0 ? String(localized: "settings.remote.reach.tailscale") : String(localized: "settings.remote.reach.lan")
+                }
+                .accessibilityIdentifier("settings.remote.reach")
+            } else {
             Picker(selection: Binding(get: { remote.useTailscale }, set: { tailscale in update { $0.useTailscale = tailscale } })) {
                 Text("settings.remote.reach.lan").tag(false)
                 Text("settings.remote.reach.tailscale").tag(true)
@@ -116,6 +132,7 @@ struct RemoteSettings: View {
                 Text("settings.remote.reach.help")
             }
             .accessibilityIdentifier("settings.remote.reach")
+            }
             if tailscaleAvailable {
                 Text("settings.remote.reach.tailscaleHint")
                     .font((metrics.isWebInterface ? metrics.font(size: 10) : metrics.font(.footnote)))
@@ -169,6 +186,16 @@ struct RemoteSettings: View {
 
     private var securitySection: some View {
         Section {
+            if metrics.isWebInterface {
+                WebSelectRow(title: "settings.remote.maxDevices", detail: "settings.remote.maxDevices.help",
+                             selection: Binding(get: { remote.maxDevices }, set: { value in update { $0.maxDevices = value } }),
+                             options: Array(RemotePreferences.maxDevicesRange)) { "\($0)" }
+                    .accessibilityIdentifier("settings.remote.maxDevices")
+                WebSelectRow(title: "settings.remote.expiry", detail: "settings.remote.expiry.help",
+                             selection: Binding(get: { remote.sessionExpirySecs }, set: { value in update { $0.sessionExpirySecs = value } }),
+                             options: Self.expiryOptions(including: remote.sessionExpirySecs)) { Self.expiryLabel($0) }
+                    .accessibilityIdentifier("settings.remote.expiry")
+            } else {
             Picker(selection: Binding(get: { remote.maxDevices }, set: { value in update { $0.maxDevices = value } })) {
                 ForEach(Array(RemotePreferences.maxDevicesRange), id: \.self) { count in
                     Text(verbatim: "\(count)").tag(count)
@@ -187,6 +214,7 @@ struct RemoteSettings: View {
                 Text("settings.remote.expiry.help")
             }
             .accessibilityIdentifier("settings.remote.expiry")
+            }
             Toggle(isOn: Binding(get: { remote.readOnly }, set: { value in update { $0.readOnly = value } })) {
                 Text("settings.remote.readOnly")
                 Text("settings.remote.readOnly.help")
@@ -337,4 +365,10 @@ struct RemoteSettings: View {
     private func presented<Value>(_ value: Binding<Value?>) -> Binding<Bool> {
         Binding(get: { value.wrappedValue != nil }, set: { if !$0 { value.wrappedValue = nil } })
     }
+
+    private func presentedNative<Value>(_ value: Binding<Value?>) -> Binding<Bool> {
+        Binding(get: { !metrics.isWebInterface && value.wrappedValue != nil }, set: { if !$0 { value.wrappedValue = nil } })
+    }
+
+    private var webRevoking: Binding<Bool> { presented($revoking) }
 }

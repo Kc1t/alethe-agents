@@ -382,9 +382,10 @@ private struct GroupRow: View {
                         actions.setCollapsed(group.id, !group.isCollapsed)
                     }
                     SidebarMenuButton("sidebar.rename", symbol: "pencil") {
-                        guard let name = SidebarRenamePrompt.name(initial: group.name,
-                            width: metrics.size(280), height: metrics.size(24)) else { return }
-                        actions.workspace.update { $0.updateGroup(group.id) { $0.name = name } }
+                        SidebarRenamePrompt.name(initial: group.name,
+                            width: metrics.size(280), height: metrics.size(24)) { name in
+                            actions.workspace.update { $0.updateGroup(group.id) { $0.name = name } }
+                        }
                     }
                     if group.parentID != nil {
                         SidebarMenuButton("sidebar.web.makeRoot", symbol: "arrow.up") {
@@ -800,9 +801,10 @@ private struct ProjectContextMenu: View {
         WebMenuDivider()
         SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") { environment.editorRequest = .layoutDesigner(project.id) }
         SidebarMenuButton("sidebar.rename", symbol: "pencil") {
-            guard let name = SidebarRenamePrompt.name(initial: project.name, width: metrics.size(280), height: metrics.size(24)) else { return }
-            actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "sidebar.rename")) {
-                $0.updateProject(project.id) { $0.name = name }
+            SidebarRenamePrompt.name(initial: project.name, width: metrics.size(280), height: metrics.size(24)) { name in
+                actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "sidebar.rename")) {
+                    $0.updateProject(project.id) { $0.name = name }
+                }
             }
         }
         SidebarMenuButton("sidebar.editProject", symbol: "slider.horizontal.3") { environment.editorRequest = .editProject(project.id) }
@@ -940,10 +942,10 @@ private struct TabContextMenu: View {
             }
             WebMenuDivider()
             SidebarMenuButton("sidebar.rename", symbol: "pencil") {
-                guard let name = SidebarRenamePrompt.name(initial: environment.terminals.displayName(of: tab),
-                    width: metrics.size(280), height: metrics.size(24)),
-                    !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                actions.workspace.update { $0.updateTab(tab.id) { $0.title = name.trimmingCharacters(in: .whitespacesAndNewlines) } }
+                SidebarRenamePrompt.name(initial: environment.terminals.displayName(of: tab),
+                    width: metrics.size(280), height: metrics.size(24)) { name in
+                    actions.workspace.update { $0.updateTab(tab.id) { $0.title = name.trimmingCharacters(in: .whitespacesAndNewlines) } }
+                }
             }
             SidebarMenuButton(pane.isRemoteShared ? "pane.web.hideFromRemote" : "pane.web.shareWithRemote", symbol: "iphone") {
                 environment.remoteControl.setShared(pane.id, !pane.isRemoteShared)
@@ -957,11 +959,10 @@ private struct TabContextMenu: View {
             }
             WebMenuDivider()
             SidebarMenuButton("pane.web.deleteTerminal", symbol: "trash", role: .destructive) {
-                let alert = NSAlert()
-                alert.messageText = format("pane.web.confirmDeleteTerminal", environment.terminals.displayName(of: tab))
-                alert.addButton(withTitle: String(localized: "pane.web.deleteTerminal"))
-                alert.addButton(withTitle: String(localized: "editor.cancel"))
-                if alert.runModal() == .alertFirstButtonReturn {
+                Task {
+                    guard await WebDialogCenter.shared.confirm(
+                        format("pane.web.confirmDeleteTerminal", environment.terminals.displayName(of: tab)),
+                        confirmTitle: String(localized: "pane.web.deleteTerminal"), destructive: true) else { return }
                     for entry in pane.tabs { actions.closeTab(entry.id) }
                 }
             }
@@ -990,9 +991,10 @@ private struct TabContextMenu: View {
             WebMenuDivider()
         }
         SidebarMenuButton("sidebar.rename", symbol: "pencil") {
-            guard let name = SidebarRenamePrompt.name(initial: tab.title ?? "", width: metrics.size(280), height: metrics.size(24)) else { return }
-            actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "sidebar.rename")) {
-                $0.updateTab(tab.id) { $0.title = name }
+            SidebarRenamePrompt.name(initial: tab.title ?? "", width: metrics.size(280), height: metrics.size(24)) { name in
+                actions.workspace.update(undoManager: actions.undoManager, actionName: String(localized: "sidebar.rename")) {
+                    $0.updateTab(tab.id) { $0.title = name }
+                }
             }
         }
         SidebarMenuButton("sidebar.killTerminal", symbol: "stop") { environment.terminals.view(for: tab.id)?.terminate() }
@@ -1058,6 +1060,20 @@ private struct TabContextMenu: View {
 
 @MainActor
 private enum SidebarRenamePrompt {
+    /// Web `window.prompt("New name:", current)` in the themed dialog; the `.mac` path keeps its alert.
+    static func name(initial: String, width: CGFloat, height: CGFloat, apply: @escaping (String) -> Void) {
+        guard WebDialogCenter.shared.themed else {
+            if let name = name(initial: initial, width: width, height: height) { apply(name) }
+            return
+        }
+        Task {
+            guard let answer = await WebDialogCenter.shared.prompt(String(localized: "dialog.newName"), initial: initial)
+            else { return }
+            let name = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { apply(name) }
+        }
+    }
+
     static func name(initial: String, width: CGFloat, height: CGFloat) -> String? {
         let alert = NSAlert()
         alert.messageText = String(localized: "sidebar.rename")
@@ -1106,6 +1122,26 @@ struct RemoteSharedGlyph: View {
 @MainActor
 enum WorktreeActions {
     static func commit(_ agentID: String, project: Project) {
+        if WebDialogCenter.shared.themed {
+            let repo = URL(filePath: project.folder)
+            Task {
+                guard let info = try? await GitWorktrees().list(repo: repo).first(where: { $0.agentId == agentID }) else {
+                    inform(String(localized: "worktree.failed"), text: "")
+                    return
+                }
+                let outcome = await WebDialogCenter.shared.present(width: 520) { finish in
+                    WorktreeCommitWebHost(folder: URL(filePath: info.path), branch: info.branch, finish: finish)
+                }
+                guard case .confirmed(let message) = outcome else { return }
+                do {
+                    let committed = try await GitWorktrees().commitPending(repo: repo, agentId: agentID, message: message)
+                    if !committed { inform(String(localized: "worktree.nothingToCommit"), text: "") }
+                } catch {
+                    inform(String(localized: "worktree.failed"), text: NewTerminalSheet.describe(error))
+                }
+            }
+            return
+        }
         let alert = NSAlert()
         alert.messageText = String(localized: "worktree.commit.title")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
@@ -1130,6 +1166,15 @@ enum WorktreeActions {
     }
 
     static func remove(_ agentID: String, tab: TabID, project: Project, workspace: WorkspaceModel) {
+        if WebDialogCenter.shared.themed {
+            Task {
+                guard await WebDialogCenter.shared.confirm(
+                    String(localized: "worktree.remove.detail"), title: String(localized: "worktree.remove.title"),
+                    confirmTitle: String(localized: "worktree.remove"), destructive: true) else { return }
+                await removeConfirmed(agentID, tab: tab, project: project, workspace: workspace)
+            }
+            return
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = String(localized: "worktree.remove.title")
@@ -1137,20 +1182,22 @@ enum WorktreeActions {
         alert.addButton(withTitle: String(localized: "worktree.remove"))
         alert.addButton(withTitle: String(localized: "editor.cancel"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { await removeConfirmed(agentID, tab: tab, project: project, workspace: workspace) }
+    }
+
+    private static func removeConfirmed(_ agentID: String, tab: TabID, project: Project, workspace: WorkspaceModel) async {
         let repo = URL(filePath: project.folder)
-        Task {
-            do {
-                try await GitWorktrees().remove(repo: repo, agentId: agentID, force: true)
-                workspace.update {
-                    $0.updateTab(tab) {
-                        $0.worktreeAgentID = nil
-                        $0.worktreeBranch = nil
-                        $0.workingDirectory = nil
-                    }
+        do {
+            try await GitWorktrees().remove(repo: repo, agentId: agentID, force: true)
+            workspace.update {
+                $0.updateTab(tab) {
+                    $0.worktreeAgentID = nil
+                    $0.worktreeBranch = nil
+                    $0.workingDirectory = nil
                 }
-            } catch {
-                inform(String(localized: "worktree.failed"), text: NewTerminalSheet.describe(error))
             }
+        } catch {
+            inform(String(localized: "worktree.failed"), text: NewTerminalSheet.describe(error))
         }
     }
 
@@ -1166,5 +1213,20 @@ enum WorktreeActions {
 enum AgentLabels {
     static func name(for agent: String) -> String {
         AgentRegistry.builtin.descriptor(for: AgentKind(rawValue: agent))?.displayName ?? agent
+    }
+}
+
+/// Hosts the pending-commit web modal for the sidebar's "Commit worktree changes…" action.
+private struct WorktreeCommitWebHost: View {
+    let folder: URL
+    let branch: String
+    let finish: (WebDialogCenter.Outcome) -> Void
+    @State private var message = GitWorktrees.defaultCommitMessage
+
+    var body: some View {
+        ConfirmWorktreeCommitWebModal(folder: folder, branch: branch, message: $message) {
+            finish(.confirmed(message))
+        }
+        .environment(\.gitModalClose, { finish(.cancelled) })
     }
 }

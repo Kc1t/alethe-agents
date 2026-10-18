@@ -1,5 +1,6 @@
 import AletheModel
 import AppKit
+import SwiftUI
 
 /// Name and delete prompts for a project's named grids (upstream `ProjectGridModal`), as alerts: a
 /// name field that explains why a name is refused, and keep / close choices when deleting.
@@ -33,8 +34,40 @@ enum ProjectGridPrompts {
         }
     }
 
+    /// Web `ProjectGridModal` (create / rename): the name, or nil when cancelled.
+    static func webName(rename: Bool, initial: String, problem: @escaping (String) -> WorkspaceDocument.GridNameProblem?) async -> String? {
+        let outcome = await WebDialogCenter.shared.present(width: 540) { finish in
+            ProjectGridWebModal(mode: rename ? .rename : .create, initial: initial,
+                                isValid: { problem($0) == nil }, finish: finish)
+        }
+        if case .confirmed(let name) = outcome { return name }
+        return nil
+    }
+
+    /// Web `ProjectGridModal` (delete): keep the terminals in Default, or close them.
+    static func webDelete(grid: String, paneCount: Int) async -> DeleteChoice? {
+        let outcome = await WebDialogCenter.shared.present(width: 540) { finish in
+            ProjectGridWebModal(mode: .delete(name: grid, count: paneCount), finish: finish)
+        }
+        switch outcome {
+        case .confirmed: return .keepPanes
+        case .alternate: return .closePanes
+        case .cancelled: return nil
+        }
+    }
+
     /// New Grid…: asks for a name, then adds the grid and shows it (undoable).
     static func createGrid(in project: ProjectID, workspace: WorkspaceModel, undoManager: UndoManager?) {
+        if WebDialogCenter.shared.themed {
+            Task {
+                guard let name = await webName(rename: false, initial: "",
+                    problem: { workspace.document.gridNameProblem($0, in: project) }) else { return }
+                workspace.update(undoManager: undoManager, actionName: String(localized: "undo.newGrid")) {
+                    $0.createGrid(named: name, in: project)
+                }
+            }
+            return
+        }
         guard let name = name(title: String(localized: "projectGrid.new.title"), initial: "",
                               action: String(localized: "projectGrid.create"),
                               problem: { workspace.document.gridNameProblem($0, in: project) }) else { return }
