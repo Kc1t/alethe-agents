@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Context menu parity
+- In the web interface, project, group, terminal, workspace-tab, pane-header and grid/layout menus
+  use a themed panel like the web `ContextMenu`: elevated surface, 1pt border, 8pt radius, shadow,
+  15pt icon column, hover and danger rows, 1pt separators, hover/arrow-key submenu flyouts, Arrow/Return
+  keyboard navigation, Escape and outside-click dismissal, opened at the cursor and kept 8pt inside the
+  window. The macOS interface keeps the native menus.
+
 ### Onboarding parity
 - In the web interface the onboarding dialog matches the web app: a fixed 640-point dialog over a
   dimmed backdrop that ignores outside clicks, a header with brand mark, step dots and an EN/PT

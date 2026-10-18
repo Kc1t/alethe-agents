@@ -114,16 +114,22 @@ struct ContainerHeader: View {
 
     /// Layout picker (upstream `LayoutFooter`): Auto stays the default.
     private var layoutMenu: some View {
-        Menu {
-            Picker(selection: Binding(get: { project.layout }, set: onLayout)) {
+        WebMenu {
+            if metrics.isWebInterface {
                 ForEach(PaneLayoutMode.allCases, id: \.self) { mode in
-                    Label(mode.title, systemImage: mode.symbol).tag(mode)
+                    Button { onLayout(mode) } label: { WebMenuCheckRow(title: Text(mode.title), symbol: mode.symbol, selected: mode == project.layout) }
                 }
-            } label: {
-                EmptyView()
+            } else {
+                Picker(selection: Binding(get: { project.layout }, set: onLayout)) {
+                    ForEach(PaneLayoutMode.allCases, id: \.self) { mode in
+                        Label(mode.title, systemImage: mode.symbol).tag(mode)
+                    }
+                } label: {
+                    EmptyView()
+                }
+                .pickerStyle(.inline)
             }
-            .pickerStyle(.inline)
-            Divider()
+            WebMenuDivider()
             Button("workspace.layout.design", action: onDesignLayout)
             if project.namedGrids.isEmpty {
                 Button("projectGrid.newEllipsis") { onGrid(.new) }
@@ -145,17 +151,28 @@ struct ContainerHeader: View {
 
     /// Switches between the project's grids (upstream `ProjectGrids`), named after the shown one.
     private var gridMenu: some View {
-        Menu {
-            Picker(selection: Binding(get: { project.shownGridID }, set: { onGrid(.activate($0)) })) {
-                Text("projectGrid.main").tag(ProjectGridID?.none)
-                ForEach(project.namedGrids) { grid in
-                    Text(verbatim: grid.name).tag(Optional(grid.id))
+        WebMenu {
+            if metrics.isWebInterface {
+                Button { onGrid(.activate(nil)) } label: {
+                    WebMenuCheckRow(title: Text("projectGrid.main"), symbol: "square.grid.2x2", selected: project.shownGridID == nil)
                 }
-            } label: {
-                EmptyView()
+                ForEach(project.namedGrids) { grid in
+                    Button { onGrid(.activate(grid.id)) } label: {
+                        WebMenuCheckRow(title: Text(verbatim: grid.name), symbol: "square.grid.2x2", selected: project.shownGridID == grid.id)
+                    }
+                }
+            } else {
+                Picker(selection: Binding(get: { project.shownGridID }, set: { onGrid(.activate($0)) })) {
+                    Text("projectGrid.main").tag(ProjectGridID?.none)
+                    ForEach(project.namedGrids) { grid in
+                        Text(verbatim: grid.name).tag(Optional(grid.id))
+                    }
+                } label: {
+                    EmptyView()
+                }
+                .pickerStyle(.inline)
             }
-            .pickerStyle(.inline)
-            Divider()
+            WebMenuDivider()
             Button("projectGrid.newEllipsis") { onGrid(.new) }
             if let shown = project.shownGridID {
                 Button("projectGrid.renameEllipsis") { onGrid(.rename(shown)) }
@@ -440,7 +457,7 @@ struct PaneHeader: View {
                 .onChanged { onDrag($0.translation) }
                 .onEnded { _ in onDrag(nil) }
         )
-        .contextMenu {
+        .webContextMenu {
             Button("subtabs.newEllipsis", action: onNewSubTab)
             Button(isLaneVisible ? LocalizedStringKey("subtabs.hideLane") : "subtabs.showLane", action: onToggleLane)
                 .disabled(isLaneVisible && !canHideLane)
@@ -450,7 +467,7 @@ struct PaneHeader: View {
                 Button("pane.fillFreeSpace", action: onFillFreeSpace)
             }
             if !gridTargets.isEmpty {
-                Menu("pane.moveToGrid") {
+                WebSubmenu("pane.moveToGrid") {
                     ForEach(gridTargets) { target in
                         Button { onMoveToGrid(target.grid) } label: {
                             if let name = target.name { Text(verbatim: name) } else { Text("projectGrid.main") }
@@ -464,10 +481,17 @@ struct PaneHeader: View {
             if let onHandoff {
                 Button("menu.terminal.handoff", action: onHandoff)
             }
-            Toggle("remote.share", isOn: Binding(get: { isRemoteShared }, set: { _ in onToggleRemoteShared() }))
+            if metrics.isWebInterface {
+                Button(action: onToggleRemoteShared) {
+                    WebMenuCheckRow(title: Text("remote.share"), symbol: "iphone", selected: isRemoteShared)
+                }
                 .accessibilityIdentifier("remote.share")
+            } else {
+                Toggle("remote.share", isOn: Binding(get: { isRemoteShared }, set: { _ in onToggleRemoteShared() }))
+                    .accessibilityIdentifier("remote.share")
+            }
             Button("pane.disable", action: onDisable)
-            Divider()
+            WebMenuDivider()
             Button("pane.close", action: onClose)
         }
         .accessibilityElement(children: .contain)

@@ -164,7 +164,7 @@ struct WorkspaceTabBar: View {
             return NSItemProvider(object: tab.id.rawValue as NSString)
         }
         .onDrop(of: [.text], delegate: TabDropDelegate(target: tab.id, dragging: $dragging, workspace: workspace))
-        .contextMenu {
+        .webContextMenu {
             if metrics.isWebInterface {
                 Button("workspaceTabs.openIndividually") {
                     workspace.update { $0.activateWorkspaceTab(tab.id) }
@@ -176,12 +176,12 @@ struct WorkspaceTabBar: View {
                     }
                     environment.showingHome = false
                 }
-                Divider()
+                WebMenuDivider()
                 Button { workspace.update { $0.togglePinned(tab.id) } } label: {
                     Label(tab.pinned ? LocalizedStringKey("workspaceTabs.unpin") : "workspaceTabs.pin",
                           systemImage: tab.pinned ? "pin.slash" : "pin")
                 }
-                Divider()
+                WebMenuDivider()
                 Button { workspace.update { $0.closeWorkspaceTab(tab.id) } } label: {
                     Label("workspaceTabs.close", systemImage: "xmark")
                 }
@@ -189,7 +189,7 @@ struct WorkspaceTabBar: View {
                 Button(tab.pinned ? LocalizedStringKey("workspaceTabs.unpin") : "workspaceTabs.pin") {
                     workspace.update { $0.togglePinned(tab.id) }
                 }
-                Divider()
+                WebMenuDivider()
                 Button("workspaceTabs.close") { workspace.update { $0.closeWorkspaceTab(tab.id) } }
             }
         }

@@ -40,7 +40,7 @@ struct SidebarView: View {
                     .dropDestination(for: URL.self) { urls, _ in
                         !SidebarActions(workspace: workspace, undoManager: undoManager).addProjects(folders: urls).isEmpty
                     }
-                    .contextMenu {
+                    .webContextMenu {
                         SidebarMenuButton("menu.file.newProject", symbol: "plus") {
                             environment.editorRequest = .newProject(.ungrouped)
                         }
@@ -56,7 +56,7 @@ struct SidebarView: View {
                     SidebarProjectVisibility.contains(hiddenProjects, project: $0.id, profile: environment.profileID)
                     || SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
                 }) {
-                    Menu { visibilityControls(workspace) } label: {
+                    WebMenu { visibilityControls(workspace) } label: {
                         Label { Text("sidebar.web.projectVisibility") } icon: { Image(systemName: "eye").webProfileSized(14) }
                             .font(metrics.font(size: 11))
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -117,7 +117,7 @@ struct SidebarView: View {
             let added = actions.addProjects(folders: urls)
             return !added.isEmpty
         }
-        .contextMenu {
+        .webContextMenu {
             SidebarMenuButton("menu.file.newProject", symbol: "plus") { environment.editorRequest = .newProject(.ungrouped) }
             SidebarMenuButton("sidebar.addProject", symbol: "folder.badge.plus") { actions.chooseFolders() }
             SidebarMenuButton("menu.file.newGroup", symbol: "folder.badge.plus") { environment.editorRequest = .newGroup(parent: nil) }
@@ -130,7 +130,7 @@ struct SidebarView: View {
     @ViewBuilder private func visibilityControls(_ workspace: WorkspaceModel) -> some View {
         let groups = workspace.document.groups.filter { groupArchived($0.id) }
         if !groups.isEmpty {
-            Menu("sidebar.web.restoreGroups") {
+            WebSubmenu("sidebar.web.restoreGroups") {
                 ForEach(groups) { group in
                     Button {
                         archivedGroups = SidebarProjectVisibility.setting(archivedGroups,
@@ -147,19 +147,19 @@ struct SidebarView: View {
             SidebarProjectVisibility.contains(archivedProjects, project: $0.id, profile: environment.profileID)
         }
         if !hidden.isEmpty || revealHidden {
-            Divider()
+            WebMenuDivider()
             SidebarMenuButton(revealHidden ? "sidebar.web.hideHidden" : "sidebar.web.revealHidden",
                               symbol: revealHidden ? "eye.slash" : "eye") { revealHidden.toggle() }
         }
         if !archived.isEmpty {
-            Menu {
+            WebSubmenu("sidebar.web.restoreArchived", symbol: "archivebox") {
                 ForEach(archived) { project in
                     Button {
                         archivedProjects = SidebarProjectVisibility.setting(archivedProjects, project: project.id,
                             profile: environment.profileID, enabled: false)
                     } label: { Label { Text(verbatim: project.name) } icon: { Image(systemName: "arrow.uturn.backward").webProfileSized(14) } }
                 }
-            } label: { Label { Text("sidebar.web.restoreArchived") } icon: { Image(systemName: "archivebox").webProfileSized(14) } }
+            }
         }
     }
 
@@ -361,7 +361,7 @@ private struct GroupRow: View {
                 return true
             }
             .onHover { hovering = $0 }
-            .contextMenu {
+            .webContextMenu {
                 SidebarMenuButton("sidebar.openOnlyGroup", symbol: "rectangle") {
                     actions.openGroup(group.id, adding: false, web: metrics.isWebInterface)
                     if metrics.isWebInterface { environment.showingHome = false }
@@ -372,7 +372,7 @@ private struct GroupRow: View {
                     if metrics.isWebInterface { environment.showingHome = false }
                 }
                     .disabled(!metrics.isWebInterface && !doc.groups.contains { doc.isGroup($0.id, inside: group.id) && !$0.projectIDs.isEmpty })
-                Divider()
+                WebMenuDivider()
                 if metrics.isWebInterface {
                     SidebarMenuButton("sidebar.web.archiveGroup", symbol: "archivebox") {
                         archivedGroups = SidebarProjectVisibility.setting(archivedGroups,
@@ -391,7 +391,7 @@ private struct GroupRow: View {
                             actions.workspace.update { $0.moveGroup(group.id, toParent: nil, at: Int.max) }
                         }
                     } else {
-                        Menu("sidebar.web.moveGroup") {
+                        WebSubmenu("sidebar.web.moveGroup") {
                             ForEach(doc.groups.filter { !doc.isGroup($0.id, inside: group.id) }) { parent in
                                 Button { actions.workspace.update { $0.moveGroup(group.id, toParent: parent.id, at: Int.max) } }
                                     label: { Text(verbatim: parent.name) }
@@ -402,13 +402,13 @@ private struct GroupRow: View {
                 SidebarMenuButton("sidebar.editGroup", symbol: "pencil") { environment.editorRequest = .editGroup(group.id) }
                 SidebarMenuButton("sidebar.newProjectHere", symbol: "plus") { environment.editorRequest = .newProject(.group(group.id)) }
                 SidebarMenuButton("sidebar.newSubgroup", symbol: "folder.badge.plus") { environment.editorRequest = .newGroup(parent: group.id) }
-                Divider()
+                WebMenuDivider()
                 if group.suspended == true {
                     SidebarMenuButton("sidebar.resumeGroup", symbol: "play") { actions.resumeGroup(group.id) }
                 } else {
                     SidebarMenuButton("sidebar.suspendGroupEllipsis", symbol: "pause") { actions.suspendGroup(group) }
                 }
-                Divider()
+                WebMenuDivider()
                 if metrics.isWebInterface {
                     SidebarMenuButton("sidebar.web.archiveGroup", symbol: "archivebox") {
                         archivedGroups = SidebarProjectVisibility.settingGroup(archivedGroups, group: group.id,
@@ -517,7 +517,7 @@ private struct ProjectRow: View {
                                 .accessibilityLabel(Text("agentStatus.working"))
                         }
                     } action: {
-                        Menu { ProjectContextMenu(project: project, actions: actions) } label: {
+                        WebMenu { ProjectContextMenu(project: project, actions: actions) } label: {
                             Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
                         }
                         .menuIndicator(.hidden)
@@ -572,7 +572,7 @@ private struct ProjectRow: View {
         .modifier(SidebarDropAppearance(targeted: dropTarget, insertion: !dropInside))
         .onDrop(of: [.plainText, SidebarDrag.paneType], delegate: SidebarProjectDrop(
             targeted: $dropTarget, inside: $dropInside, project: project.id, actions: actions))
-        .contextMenu { ProjectContextMenu(project: project, actions: actions) }
+        .webContextMenu { ProjectContextMenu(project: project, actions: actions) }
         .accessibilityIdentifier("sidebar.project.\(project.name)")
     }
 }
@@ -628,7 +628,7 @@ private struct SidebarTerminalRow: View {
                         || environment.terminals.unread.contains(statusTab.id), hovering: hovering) {
                         SidebarWebTerminalStatus(tab: statusTab.id)
                     } action: {
-                        Menu { TabContextMenu(tab: tab, project: project, actions: actions) } label: {
+                        WebMenu { TabContextMenu(tab: tab, project: project, actions: actions) } label: {
                             Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
                         }
                         .menuIndicator(.hidden)
@@ -689,7 +689,7 @@ private struct SidebarTerminalRow: View {
                                   double: { selectWebPane(individually: true) }))
         .modifier(SidebarWebPaneDrag(pane: pane?.id))
         .modifier(SidebarWebHelp(text: environment.terminals.displayName(of: tab)))
-        .contextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }
+        .webContextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }
         .accessibilityIdentifier("sidebar.tab.\(tab.agent)")
     }
 
@@ -725,7 +725,7 @@ private struct SidebarFileRow: View {
                 .font(metrics.font(size: 12.5))
                 .lineLimit(1)
             Spacer(minLength: 0)
-            Menu {
+            WebMenu {
                 if metrics.isWebInterface, ["md", "markdown"].contains(URL(filePath: path).pathExtension.lowercased()) {
                     SidebarMenuButton("rightSidebar.files.openMarkdown", symbol: "sidebar.right") {
                         NotificationCenter.default.post(name: .sidebarOpenMarkdown, object: URL(filePath: path))
@@ -791,13 +791,13 @@ private struct ProjectContextMenu: View {
                 actions.workspace.update { $0.addWebProject(project.id) }
                 environment.showingHome = false
             }
-            Divider()
+            WebMenuDivider()
         }
         if metrics.isWebInterface {
             SidebarMenuButton("terminal.new", symbol: "plus") { environment.editorRequest = .newTerminal(project.id) }
                 .accessibilityIdentifier("terminal.new")
         } else { NewTerminalButton(project: project) }
-        Divider()
+        WebMenuDivider()
         SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") { environment.editorRequest = .layoutDesigner(project.id) }
         SidebarMenuButton("sidebar.rename", symbol: "pencil") {
             guard let name = SidebarRenamePrompt.name(initial: project.name, width: metrics.size(280), height: metrics.size(24)) else { return }
@@ -818,10 +818,10 @@ private struct ProjectContextMenu: View {
         SidebarMenuButton("projectSettings.importEllipsis", symbol: metrics.isWebInterface ? "arrow.up.to.line" : "square.and.arrow.down") {
             ProjectSettingsTransfer.importSettings(into: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
         }
-        Menu("sidebar.moveToGroup") {
+        WebSubmenu("sidebar.moveToGroup") {
             SidebarMenuButton("sidebar.ungrouped", symbol: "folder") { actions.move(project.id, to: .ungrouped) }
                 .disabled(doc.location(of: project.id) == .ungrouped)
-            if !doc.groups.isEmpty { Divider() }
+            if !doc.groups.isEmpty { WebMenuDivider() }
             ForEach(doc.groups) { group in
                 Button { actions.move(project.id, to: .group(group.id)) } label: { Text(verbatim: group.name) }
                     .disabled(doc.location(of: project.id) == .group(group.id))
@@ -850,17 +850,17 @@ private struct ProjectContextMenu: View {
             }
             .accessibilityIdentifier("orchestrator.addToProject")
         }
-        Menu("sidebar.grids") {
+        WebSubmenu("sidebar.grids") {
             SidebarMenuButton("projectGrid.main", symbol: "square.grid.2x2") { actions.workspace.update { $0.activateGrid(nil, in: project.id) } }
             ForEach(project.namedGrids) { grid in
                 Button { actions.workspace.update { $0.activateGrid(grid.id, in: project.id) } } label: { Text(verbatim: grid.name) }
             }
-            Divider()
+            WebMenuDivider()
             SidebarMenuButton("projectGrid.newEllipsis", symbol: "plus") {
                 ProjectGridPrompts.createGrid(in: project.id, workspace: actions.workspace, undoManager: actions.undoManager)
             }
         }
-        Divider()
+        WebMenuDivider()
         if metrics.isWebInterface {
             SidebarMenuButton("sidebar.web.archiveProject", symbol: "archivebox") {
                 archivedProjects = SidebarProjectVisibility.setting(archivedProjects, project: project.id,
@@ -880,7 +880,7 @@ private struct ProjectContextMenu: View {
             SidebarMenuButton("sidebar.disableProject", symbol: metrics.isWebInterface ? "power" : "pause") { actions.setProjectDisabled(project.id, true) }
                 .disabled(project.panes.isEmpty)
         }
-        Divider()
+        WebMenuDivider()
         SidebarMenuButton("sidebar.removeProject", symbol: "trash") { actions.remove(project.id) }
     }
 }
@@ -899,7 +899,7 @@ private struct TabContextMenu: View {
     @ViewBuilder private var webMenu: some View {
         if let pane = actions.workspace.document.paneHolding(tab.id)?.pane {
             if !project.namedGrids.isEmpty {
-                Menu("pane.moveToGrid") {
+                WebSubmenu("pane.moveToGrid") {
                     Button("projectGrid.main") { move(pane.id, to: nil) }
                     ForEach(project.namedGrids) { grid in
                         Button { move(pane.id, to: grid.id) } label: { Text(verbatim: grid.name) }
@@ -929,7 +929,7 @@ private struct TabContextMenu: View {
                     actions.setLaneVisible(!pane.isLaneVisible, for: pane.id)
                 }
             }
-            Divider()
+            WebMenuDivider()
             Button("sidebar.web.openIndividually") {
                 actions.workspace.update { $0.openWebPane(pane.id) }
                 environment.showingHome = false
@@ -938,7 +938,7 @@ private struct TabContextMenu: View {
                 actions.workspace.update { $0.addWebProject(project.id); $0.focusWebPane(pane.id) }
                 environment.showingHome = false
             }
-            Divider()
+            WebMenuDivider()
             SidebarMenuButton("sidebar.rename", symbol: "pencil") {
                 guard let name = SidebarRenamePrompt.name(initial: environment.terminals.displayName(of: tab),
                     width: metrics.size(280), height: metrics.size(24)),
@@ -955,7 +955,7 @@ private struct TabContextMenu: View {
             SidebarMenuButton("pane.web.killTerminal", symbol: "power") {
                 environment.terminals.view(for: tab.id)?.terminate()
             }
-            Divider()
+            WebMenuDivider()
             SidebarMenuButton("pane.web.deleteTerminal", symbol: "trash", role: .destructive) {
                 let alert = NSAlert()
                 alert.messageText = format("pane.web.confirmDeleteTerminal", environment.terminals.displayName(of: tab))
@@ -987,7 +987,7 @@ private struct TabContextMenu: View {
                 actions.workspace.update { $0.openWebPane(pane.id) }
                 environment.showingHome = false
             }
-            Divider()
+            WebMenuDivider()
         }
         SidebarMenuButton("sidebar.rename", symbol: "pencil") {
             guard let name = SidebarRenamePrompt.name(initial: tab.title ?? "", width: metrics.size(280), height: metrics.size(24)) else { return }
@@ -1015,7 +1015,7 @@ private struct TabContextMenu: View {
                 }
             }
             if !project.namedGrids.isEmpty {
-                Menu("pane.moveToGrid") {
+                WebSubmenu("pane.moveToGrid") {
                     SidebarMenuButton("projectGrid.main", symbol: "square.grid.2x2") { move(pane.id, to: nil) }
                         .disabled(pane.gridID == nil)
                     ForEach(project.namedGrids) { grid in
@@ -1027,25 +1027,25 @@ private struct TabContextMenu: View {
             SidebarMenuButton(pane.isDisabled ? LocalizedStringKey("pane.enable") : "pane.disable", symbol: "power") {
                 actions.setTabDisabled(tab.id, !pane.isDisabled)
             }
-            Divider()
+            WebMenuDivider()
             SidebarMenuButton("subtabs.newEllipsis", symbol: "plus") { environment.editorRequest = .newSubTab(pane.id) }
             SidebarMenuButton(pane.isLaneVisible ? LocalizedStringKey("subtabs.hideLane") : "subtabs.showLane", symbol: "rectangle.split.1x2") {
                 actions.setLaneVisible(!pane.isLaneVisible, for: pane.id)
             }
             .disabled(pane.tabs.count > 1)
             if pane.content.isTerminal {
-                Divider()
+                WebMenuDivider()
                 RemoteShareToggle(pane: pane)
             }
         }
         if let agentID = tab.worktreeAgentID {
-            Divider()
+            WebMenuDivider()
             SidebarMenuButton("worktree.commitEllipsis", symbol: "checkmark") { WorktreeActions.commit(agentID, project: project) }
             SidebarMenuButton("worktree.remove", symbol: "trash") {
                 WorktreeActions.remove(agentID, tab: tab.id, project: project, workspace: actions.workspace)
             }
         }
-        Divider()
+        WebMenuDivider()
         SidebarMenuButton("terminal.close", symbol: "xmark") { actions.closeTab(tab.id) }
     }
 
