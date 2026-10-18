@@ -125,6 +125,12 @@ struct LeftSidebar: View {
             .padding(.horizontal, metrics.size(8))
             .frame(height: metrics.size(40))
             .overlay(alignment: .bottom) { rule }
+            if let id = environment.inspectedPaneID, let workspace = environment.workspace,
+               let (project, pane) = workspace.document.pane(id) {
+                ScrollView { TerminalInspector(workspace: workspace, pane: pane, project: project) }
+                    .webScrollStyle()
+                    .frame(maxHeight: metrics.size(420))
+            }
             webContent
                 .modifier(SidebarPanelMotion(identity: effectiveTab))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

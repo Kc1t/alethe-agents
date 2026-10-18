@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Live spend, project transfer and detached boards
+- Web interface: a collapsible Live spend HUD lists running agent sessions, their tokens and costs,
+  and the aggregate total, refreshed every four seconds.
+- Project hide/archive flags now persist with the project and migrate existing sidebar preferences.
+  Web-interface project export/import transfers the whole project, including terminal sessions,
+  layouts and cover images, using web-compatible JSON without reusing live terminal processes.
+- Orchestration boards can open in a separate restorable window that mirrors the live workspace and
+  reports when its pane is gone. The web sidebar inspector adds pane actions and a sub-tab switcher.
+
 ### Fixed
 - Terminal content now always resizes with its pane (window resize, splitter drag, sidebars, grid
   change, focus mode, tab switch): the surface is pinned to the pane by frame and refit, with the PTY

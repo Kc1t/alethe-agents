@@ -16,6 +16,9 @@ struct OrchestratorPaneView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.contentPaneID) private var paneID
+    @Environment(\.detachedOrchestration) private var detached
     @State private var board = OrchestratorBoardModel()
 
     private var isOn: Bool { environment.features.isOn(.orchestrator) }
@@ -140,6 +143,11 @@ struct OrchestratorPaneView: View {
             Spacer(minLength: 0)
             if isOn {
                 counts
+            }
+            if metrics.isWebInterface && !detached, let paneID {
+                ContentPaneButton(symbol: "macwindow", label: "orchestrator.openInWindow", id: "orchestrator.openInWindow", webSize: 22, webIconSize: 14) {
+                    openWindow(id: "orchestration", value: DetachedBoardID(profile: environment.profileID, pane: paneID))
+                }
             }
             ContentPaneButton(symbol: "xmark", label: "orchestrator.close", id: "pane.close", action: onClose)
         }

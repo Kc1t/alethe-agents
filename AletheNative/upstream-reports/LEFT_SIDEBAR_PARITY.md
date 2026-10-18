@@ -214,3 +214,26 @@ commit or push was performed. This section supersedes earlier click-behavior cla
   scrolling remains unchanged. Visual focus styling uses existing pane/row renderers.
 - No ai-memory or graphify-query skill/connector was available. This existing versioned report
   records decisions, limitations and reviewer next steps as the memory handoff.
+
+## Audit 2 k3 — project persistence, configuration transfer and inspector
+
+Web references: `origin/main:src/components/ProjectSidebar/sidebarMenus.tsx`,
+`src/stores/projectsStore.projectSlices.ts`, `src/lib/types.ts`, and
+`src/components/TerminalInspector/{index.tsx,TerminalInspector.module.css}`.
+
+- Web sidebar visibility and Organization restore now read/write optional `Project.hidden` and
+  `Project.archived` fields. Existing profile-qualified AppStorage entries migrate when each flag is
+  absent; explicit false flags win. The session reveal preference remains local. Archive matches the
+  web action by setting the flag without closing an already-open workspace.
+- Web project menu transfer exports a bare full Project to `.alethe-project.json`. Import adds a new
+  project beside the source row, with a new project identity and creation date, retained sessions,
+  no live PTY handles, unarchived state and collision-safe pane/tab/layout references. Unknown web
+  fields and unsupported plugin panes remain in optional native persistence metadata for re-export.
+  Native settings-only transfer is preserved in `.mac`.
+- Terminal inspector uses the web CSS measurements and theme tokens, with pane focus/reveal, folder
+  and VS Code actions, restart/disable/lane/history/kill, media/browser close actions and the sub-tab
+  switcher. It is bounded above the sidebar content and can be dismissed; the existing Conversations
+  sheet provides history rather than duplicating the web's per-tab history modal.
+- New Swift tests cover persistence, transfer validation and legacy visibility migration. The string
+  gate passes. Compilation, Swift tests and visual/runtime checks are pending outside the sandbox.
+  See `../ORCHESTRATION_PARITY.md` for the complete k3 handoff and implementation memory.
