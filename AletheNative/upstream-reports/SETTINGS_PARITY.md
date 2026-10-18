@@ -78,3 +78,54 @@ compile and run image tests plus Settings UI checks outside the nested sandbox, 
 
 No ai-memory skill or service is available in this session. This report records the decisions,
 current state, limitations and next steps as the available repository handoff.
+
+
+## Plugin marketplace follow-up (k1, 2026-10-18)
+
+Sources read directly from `origin/main`: `PluginMarketplaceModal.tsx` and its CSS,
+`preferences/PluginCatalog.tsx`, `preferences/PluginsPage.tsx` and its CSS,
+`PluginsSidebar/index.tsx`, `useCatalog.ts`, `PluginMarketFilters.tsx`, `PluginDetailsModal.tsx`,
+`PluginsSidebar.module.css`, `lib/pluginBrowse.ts`, `lib/pluginMarket.ts`,
+`lib/tauri/plugins.ts`, `src-tauri/src/plugin_catalog.rs`, and `plugins.json`.
+
+The web interface now has a working marketplace and Settings catalog, installed/browse scopes,
+accent-insensitive search, capability intersection filters, source/state filters, name/update
+sorting, inline details, refresh/retry, and a six-hour profile-local cache with a stale fallback.
+The sidebar merges installed manifests and catalog entries, offers state/source/sort controls,
+and opens the selected plugin detail. Installed remains usable when the catalog cannot load.
+Marketplace geometry copies the 1180×760 maximum (screen minus 48 points), 196-point rail,
+68-point rows, 16×18 header padding, 32-point search, 19-point detail title and 18×22 detail
+padding. Sidebar retains its 44-point header, 26-point search and 10×12 cards.
+
+`PluginWebRegistry` stores original manifest JSON in the profile's `plugins/<id>/manifest.json`.
+Unknown fields, including `spec`, survive verbatim. Folder, JSON-file, pasted-manifest and ZIP
+imports only register manifest data. ZIP imports stream one unambiguous manifest through the
+system unzip tool without extracting archive paths or assets. Catalog packages require HTTPS,
+the pinned SHA-256, and matching manifest ID/version. Built-in IDs cannot be overwritten or
+uninstalled. Rescan and uninstall operate on this metadata registry, separate from `plugins.json`
+and native document schemas. No downloaded code is evaluated and no host capability is granted.
+
+Deliberate differences and outstanding visual review:
+
+- Web JavaScript plugins cannot execute in the compiled native host. They show “Not available on
+  macOS”; the package action explicitly registers metadata. Update/reinstall changes that metadata.
+  Built-ins still use PluginHost enablement; ExtensionKit consent and execution remain untouched.
+- Marketplace uses a SwiftUI sheet, system picker menus, and a system uninstall confirmation.
+  The web uses a blurred window overlay, HTML selects and its own modal. Rendered comparison,
+  including small windows and zoom, remains necessary; this is not a claim of completed pixel parity.
+- Settings catalog offers search/installed scope and opens the full marketplace for capability,
+  source/state and sorting filters rather than duplicating every control inline. Sidebar relevance
+  scoring follows name/ID weighting, but punctuation normalization still follows native search.
+- Native UI mode retains its existing Form and ExtensionKit section. No shared Components.swift,
+  web changelog, native plan, app lifecycle, or model schema was changed.
+
+Validation: strings gate, Swift frontend syntax parsing of all changed Swift files, and
+`git diff --check` pass. Unit tests added for unknown-field retention/round trip, invalid IDs and
+API versions, built-in protection, folder/ZIP import without executable extraction, uninstall,
+and fresh-cache reads. Tests were not executed, and syntax parsing does not typecheck. The reviewer
+must build/test outside the nested sandbox and exercise catalog failures, stale cache, pinned
+packages, import failures, native enablement, mode switching, window sizing and zoom on macOS 26.6.
+All changes are left unstaged; no build, commit, push, or app/server restart was performed.
+
+No ai-memory skill or service is available in this session. This existing report records the
+implementation decisions, limitations and next steps as the repository handoff.

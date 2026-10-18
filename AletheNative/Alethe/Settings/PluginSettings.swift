@@ -11,6 +11,10 @@ struct PluginSettings: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
+    @State private var webModel = PluginCatalogWebModel()
+    @State private var marketplace = false
+    @State private var uninstallID: String?
+
     var body: some View {
         if metrics.isWebInterface { webBody } else { nativeBody }
     }
@@ -19,28 +23,50 @@ struct PluginSettings: View {
         SettingsPageForm("plugins") {
             Section {
                 if let plugins = environment.plugins, !plugins.records.isEmpty {
-                    ForEach(plugins.records) { record in PluginRow(record: record, host: plugins) }
-                } else { Text("settings.plugins.empty") }
+                    ForEach(plugins.records) { record in PluginInstalledWebRow(record: record, host: plugins) }
+                } else if webModel.local.isEmpty { Text("settings.plugins.empty") }
+                ForEach(webModel.local) { manifest in
+                    HStack(spacing: metrics.size(16)) {
+                        VStack(alignment: .leading, spacing: metrics.size(6)) {
+                            HStack(spacing: metrics.size(8)) {
+                                Text(verbatim: manifest.name).font(metrics.font(size: 12, weight: 600))
+                                Text(verbatim: manifest.version).font(metrics.monoFont(size: 10)).foregroundStyle(theme[.fgFaint])
+                            }
+                            Text(verbatim: manifest.description).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                            Text("plugins.web.unavailable").font(metrics.font(size: 10)).foregroundStyle(theme[.fgFaint])
+                            DisclosureGroup("settings.web.reference.market.detailCapabilities") {
+                                ForEach(manifest.capabilities, id: \.self) { Text(verbatim: $0).font(metrics.monoFont(size: 10)) }
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        Button("settings.web.reference.market.uninstall", role: .destructive) { uninstallID = manifest.id }
+                    }.padding(metrics.size(2))
+                }
             } header: { Text("settings.web.reference.prefs.pluginsInstalledTitle") }
               footer: { Text("settings.web.reference.prefs.pluginsInstalledDesc") }
             Section {
-                Text("settings.web.unavailable")
+                Button("settings.web.reference.prefs.pluginsMarketplaceOpen") { marketplace = true }
             } header: { Text("settings.web.reference.market.title") }
               footer: { Text("settings.web.reference.prefs.pluginsMarketplaceDesc") }
             Section {
-                TextEditor(text: .constant(""))
-                    .font(metrics.monoFont(size: 11, weight: .regular))
-                    .scrollContentBackground(.hidden)
-                    .padding(.horizontal, metrics.size(12))
-                    .padding(.vertical, metrics.size(10))
-                    .frame(height: metrics.size(104))
-                    .disabled(true)
-                    .accessibilityLabel(Text("settings.web.reference.prefs.pluginsInstallTitle"))
-                Text("settings.web.unavailable")
+                PluginCatalogWebSection(model: webModel)
+            } header: { Text("settings.web.reference.prefs.pluginsCatalogTitle") }
+              footer: { Text("settings.web.reference.prefs.pluginsCatalogDesc") }
+            Section {
+                PluginInstallWebView(model: webModel)
             } header: { Text("settings.web.reference.prefs.pluginsInstallTitle") }
               footer: { Text("settings.web.reference.prefs.pluginsInstallDesc") }
         }
         .accessibilityIdentifier("settings.plugins")
+        .task { webModel.configure(environment); await webModel.rescan() }
+        .sheet(isPresented: $marketplace) { PluginMarketplaceWebView(model: webModel) }
+        .alert("plugins.web.operationError", isPresented: $webModel.error) { Button("plugins.web.ok", role: .cancel) {} }
+        .confirmationDialog("plugins.web.removeTitle", isPresented: Binding(get: { uninstallID != nil }, set: { if !$0 { uninstallID = nil } })) {
+            Button("settings.web.reference.market.uninstall", role: .destructive) {
+                if let id = uninstallID { Task { await webModel.perform { try await $0.uninstall(id) } } }
+                uninstallID = nil
+            }
+        } message: { Text("settings.web.reference.market.uninstallWarning") }
     }
 
     private var nativeBody: some View {
