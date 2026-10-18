@@ -113,7 +113,7 @@ struct MainWindow: View {
         case .mergeCenter, .worktrees, .branchTesting, .mcpManager, .mcpIntro, .skills, .agentLibrary,
              .gistSync, .onboarding, .dataManagement, .addContent, .addBrowser, .conversations, .handoff,
              .sessionCost, .diagnostics, .remotePairing, .previewLink, .importTauri, .layoutDesigner,
-             .gsdSyncActivity, .welcome, .crashNotice: return true
+             .gsdSyncActivity, .welcome, .crashNotice, .themePicker, .updateAvailable: return true
         case .pluginSheet(let viewID, _): return viewID == GitControlPlugin.viewID
         default: return false
         }
@@ -133,7 +133,7 @@ struct MainWindow: View {
             }
         case .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .addContent, .addBrowser,
              .conversations, .handoff, .sessionCost, .diagnostics, .remotePairing, .previewLink, .importTauri,
-             .layoutDesigner, .gsdSyncActivity, .welcome, .crashNotice:
+             .layoutDesigner, .gsdSyncActivity, .welcome, .crashNotice, .themePicker, .updateAvailable:
             NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }, defaultWidth: modalWidth(request),
                                   minimumWidth: 320) { close in
                 editor(for: request, workspace: workspace)
@@ -186,6 +186,8 @@ struct MainWindow: View {
         case .gsdSyncActivity: 640
         case .welcome: 480
         case .crashNotice: 560
+        case .themePicker: 620
+        case .updateAvailable: 480
         default: 480
         }
     }
@@ -349,6 +351,10 @@ struct MainWindow: View {
             RemotePairingSheet()
         case .gistSync:
             GistSyncSheet()
+        case .themePicker:
+            ThemePickerWebModal()
+        case .updateAvailable(let release):
+            UpdateAvailableWebModal(release: release)
         }
     }
 

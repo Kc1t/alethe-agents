@@ -647,7 +647,7 @@ private struct McpBackupsSheet: View {
                             ForEach(Array(backups.enumerated()), id: \.element.id) { index, backup in
                                 HStack {
                                     VStack(alignment: .leading, spacing: metrics.size(3)) {
-                                        Text(verbatim: backup.createdAt.formatted(date: .abbreviated, time: .standard))
+                                        Text(verbatim: backup.createdAt.formatted(date: .abbreviated, time: .standard)).font(metrics.font(size: 12.5))
                                         Text(verbatim: ByteCountFormatter.string(fromByteCount: Int64(backup.size), countStyle: .file))
                                             .font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
                                     }
@@ -656,6 +656,8 @@ private struct McpBackupsSheet: View {
                                         .disabled(model.busy).accessibilityIdentifier("mcp.backups.restore.\(index)")
                                 }.padding(metrics.size(10))
                                 .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                                    .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                             }
                         }.accessibilityIdentifier("mcp.backups.list")
                     }

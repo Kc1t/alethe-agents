@@ -162,6 +162,9 @@ struct SetupWalkthroughView: View {
             environment.editorRequest = .newProject(.ungrouped)
         case .terminal:
             environment.editorRequest = workspace.document.projects.isEmpty ? .newProject(.ungrouped) : .newTerminal(nil)
+        case .appearance where metrics.isWebInterface:
+            // The web opens its theme picker modal here; Done marks the step.
+            environment.editorRequest = .themePicker
         case .appearance:
             environment.preferences?.update { preferences in
                 var done = preferences.setupDone ?? []

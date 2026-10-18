@@ -129,3 +129,14 @@ extension ProfileError {
         }
     }
 }
+
+extension AppEnvironment {
+    /// Archives any profile into `archive` (the running one is saved first). The web's per-profile
+    /// backup that precedes a delete.
+    func exportProfileBackup(_ id: ProfileID, to archive: URL) async throws {
+        guard let locations, let entry = profiles?.document.profile(id) else { throw ProfileError.notFound }
+        if id == profileID { await saveDocuments() }
+        let folder = locations.profileDirectory(id), name = profileName(entry)
+        try await Task.detached { try ProfileBackup.export(folder, to: archive, profileName: name) }.value
+    }
+}

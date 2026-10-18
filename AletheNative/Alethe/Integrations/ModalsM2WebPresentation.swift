@@ -161,6 +161,67 @@ struct ModalsM2InstallLog: View {
     }
 }
 
+/// agentActions.module.css `.toolchain`: a bordered box for the Node.js / advisory sub-sections.
+struct ModalsM2Toolchain<Content: View>: View {
+    @ViewBuilder let content: () -> Content
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    var body: some View {
+        VStack(alignment: .leading, spacing: metrics.size(6), content: content)
+            .padding(metrics.size(8))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+    }
+}
+
+/// agentActions.module.css `.command`: the exact command, one selectable monospaced line.
+struct ModalsM2Command: View {
+    let command: String
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Text(verbatim: command).font(metrics.monoFont(size: 11)).foregroundStyle(theme[.fgMuted])
+                .textSelection(.enabled).fixedSize()
+        }
+        .padding(.horizontal, metrics.size(8)).padding(.vertical, metrics.size(4))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+    }
+}
+
+/// The "Node.js is missing" section shared by the agent and 9router install modals.
+struct ModalsM2NodeToolchain: View {
+    let command: String?
+    let running: Bool
+    let canInstall: Bool
+    let install: () -> Void
+    let download: () -> Void
+    @Environment(\.metrics) private var metrics
+    var body: some View {
+        ModalsM2Toolchain {
+            Text("agentInstall.needsNode").font(metrics.font(size: 13))
+            HStack(spacing: metrics.size(8)) {
+                if command != nil {
+                    Button(action: install) {
+                        Label { Text(running ? "agentInstall.web.installing" : "agentInstall.web.installNode") }
+                            icon: { Image(systemName: "arrow.down.to.line").font(metrics.font(size: 13)) }
+                    }
+                    .buttonStyle(AletheInstallActionStyle(.primary)).disabled(running || !canInstall)
+                }
+                Button(action: download) {
+                    Label { Text("agentInstall.nodeDownload") }
+                        icon: { Image(systemName: "arrow.up.right.square").font(metrics.font(size: 13)) }
+                }
+                .buttonStyle(AletheInstallActionStyle(.link))
+            }
+            if let command { ModalsM2Command(command: command) }
+        }
+    }
+}
+
 extension EnvironmentValues {
     @Entry var modalsM2Close: (() -> Void)? = nil
 }

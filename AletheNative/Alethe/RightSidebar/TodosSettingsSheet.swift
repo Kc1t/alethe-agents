@@ -34,42 +34,64 @@ struct TodosSettingsSheet: View {
         if metrics.isWebInterface { webBody } else { nativeBody }
     }
 
+    /// TodoSettingsModal.tsx: draft folder, Cancel/Save footer, reference-list reset.
+    /// The Pomodoro minutes the web form still carries do not exist natively.
     private var webBody: some View {
         GitWebModal(close: dismiss) {
-            Text("todos.settings.title")
+            Text("todos.settings.web.title")
         } content: {
-            VStack(alignment: .leading, spacing: metrics.size(14)) {
-                Text("todos.settings.template").font(metrics.font(size: 13, weight: .semibold))
-                TextField("todos.settings.folder.placeholder", text: $path)
-                    .modifier(ProjectGroupWebInput(mono: true))
-                    .onSubmit { Task { await savePath() } }.accessibilityIdentifier("todos.settings.folder")
-                HStack {
-                    Button("todos.settings.choose") { choosingFolder = true }
-                    Button("todos.settings.clear") { path = ""; Task { await savePath() } }.disabled(path.isEmpty)
+            VStack(alignment: .leading, spacing: 0) {
+                ProjectGroupWebField(title: "todos.settings.web.pathLabel") {
+                    HStack(spacing: metrics.size(6)) {
+                        TextField("", text: $path, prompt: Text("todos.settings.web.pathPlaceholder"))
+                            .modifier(ProjectGroupWebInput())
+                            .accessibilityIdentifier("todos.settings.folder")
+                        Button { choosingFolder = true } label: {
+                            Image(systemName: "folder").font(metrics.font(size: 14))
+                        }
+                        .help(Text("todos.settings.web.choosePath"))
+                        .accessibilityLabel(Text("todos.settings.web.choosePath"))
+                        Button { path = "" } label: {
+                            Image(systemName: "arrow.counterclockwise").font(metrics.font(size: 14))
+                        }
+                        .help(Text("todos.settings.web.clearPath"))
+                        .accessibilityLabel(Text("todos.settings.web.clearPath"))
+                    }
                 }
-                if let url = store.templateURL {
-                    Text(verbatim: url.path).font(metrics.monoFont(size: 11)).foregroundStyle(theme[.fgMuted])
-                        .textSelection(.enabled)
+                ProjectGroupWebField(title: "todos.settings.web.defaultLabel") {
+                    Button("todos.settings.web.resetDefault") { confirming = .reset }
+                        .accessibilityIdentifier("todos.settings.reset")
                 }
-                HStack {
-                    Button("todos.settings.open") { Task { await openTemplate() } }
-                    Button("todos.settings.import") { confirming = .importTemplate }
-                    Button("todos.settings.export") { confirming = .exportTemplate }
-                }.disabled(store.templateURL == nil || busy)
-                Button("todos.settings.reset", role: .destructive) { confirming = .reset }
-                    .accessibilityIdentifier("todos.settings.reset")
-                if let message { Text(verbatim: message).foregroundStyle(theme[.statusActive]) }
-                if let error { Text(verbatim: error).foregroundStyle(theme[.statusStopped]).textSelection(.enabled) }
+                // Native extras beyond the web form: the template file helpers.
+                ProjectGroupWebField(title: "todos.settings.template") {
+                    VStack(alignment: .leading, spacing: metrics.size(6)) {
+                        if let url = store.templateURL {
+                            Text(verbatim: url.path).font(metrics.monoFont(size: 11)).foregroundStyle(theme[.fgMuted])
+                                .textSelection(.enabled)
+                        }
+                        HStack(spacing: metrics.size(6)) {
+                            Button("todos.settings.open") { Task { await openTemplate() } }
+                            Button("todos.settings.import") { confirming = .importTemplate }
+                            Button("todos.settings.export") { confirming = .exportTemplate }
+                        }.disabled(store.templateURL == nil || busy)
+                    }
+                }
+                if let message { Text(verbatim: message).font(metrics.font(size: 12)).foregroundStyle(theme[.statusActive]) }
+                if let error {
+                    Text(verbatim: error).font(metrics.font(size: 12)).foregroundStyle(theme[.statusStopped]).textSelection(.enabled)
+                }
             }
         } footer: {
-            if busy { ProgressView().controlSize(.small) }
             Spacer()
-            Button("todos.settings.done") { Task { await close() } }
+            Button("editor.cancel", action: dismiss)
+            Button("editor.save") { Task { await saveAndClose() } }
+                .buttonStyle(AletheButtonStyle(.primary))
+                .disabled(busy)
                 .keyboardShortcut(.defaultAction).accessibilityIdentifier("todos.settings.done")
         }
         .onAppear { path = store.settings.storagePath }
         .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result { path = url.path; Task { await savePath() } }
+            if case .success(let url) = result { path = url.path }
         }
         .gitWebSheet(item: $confirming, width: 440) { action in
             WebConfirmationModal(title: Text(confirmationTitle), message: Text(confirmationMessage(action)),
@@ -183,7 +205,14 @@ struct TodosSettingsSheet: View {
         case .reset:
             store.resetToDefaults()
             message = String(localized: "todos.settings.resetDone")
+            if metrics.isWebInterface { dismiss() }  // web resetDefault closes the modal
         }
+    }
+
+    /// Web `save`: create the template in the chosen folder, store the path, then close.
+    private func saveAndClose() async {
+        await savePath()
+        if error == nil { dismiss() }
     }
 
     private func close() async {
