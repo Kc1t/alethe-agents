@@ -34,8 +34,13 @@ struct PluginSettings: View {
                             }
                             Text(verbatim: manifest.description).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
                             Text("plugins.web.unavailable").font(metrics.font(size: 10)).foregroundStyle(theme[.fgFaint])
-                            DisclosureGroup("settings.web.reference.market.detailCapabilities") {
-                                ForEach(manifest.capabilities, id: \.self) { Text(verbatim: $0).font(metrics.monoFont(size: 10)) }
+                            WebDisclosure {
+                                Text("settings.web.reference.market.detailCapabilities").font(metrics.font(size: 11))
+                                    .foregroundStyle(theme[.fgMuted])
+                            } content: {
+                                VStack(alignment: .leading, spacing: metrics.size(2)) {
+                                    ForEach(manifest.capabilities, id: \.self) { Text(verbatim: $0).font(metrics.monoFont(size: 10)) }
+                                }
                             }
                         }
                         Spacer(minLength: 0)
@@ -60,8 +65,15 @@ struct PluginSettings: View {
         .accessibilityIdentifier("settings.plugins")
         .task { webModel.configure(environment); await webModel.rescan() }
         .sheet(isPresented: $marketplace) { PluginMarketplaceWebView(model: webModel) }
-        .alert("plugins.web.operationError", isPresented: $webModel.error) { Button("plugins.web.ok", role: .cancel) {} }
-        .confirmationDialog("plugins.web.removeTitle", isPresented: Binding(get: { uninstallID != nil }, set: { if !$0 { uninstallID = nil } })) {
+        .webConfirm(isPresented: $webModel.error, message: String(localized: "plugins.web.operationError"),
+                    confirmTitle: String(localized: "plugins.web.ok")) {}
+        .webConfirm(isPresented: Binding(get: { uninstallID != nil }, set: { if !$0 { uninstallID = nil } }),
+                    message: String(localized: "settings.web.reference.market.uninstallWarning"),
+                    title: String(localized: "plugins.web.removeTitle"),
+                    confirmTitle: String(localized: "settings.web.reference.market.uninstall"), destructive: true) {
+            if let id = uninstallID { Task { await webModel.perform { try await $0.uninstall(id) } } }
+        }
+        .confirmationDialog("plugins.web.removeTitle", isPresented: Binding(get: { !metrics.isWebInterface && uninstallID != nil }, set: { if !$0 { uninstallID = nil } })) {
             Button("settings.web.reference.market.uninstall", role: .destructive) {
                 if let id = uninstallID { Task { await webModel.perform { try await $0.uninstall(id) } } }
                 uninstallID = nil

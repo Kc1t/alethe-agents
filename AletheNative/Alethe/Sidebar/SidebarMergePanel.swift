@@ -36,7 +36,98 @@ struct SidebarMergePanel: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
+    @State private var hovering = false
+
     var body: some View {
+        if metrics.isWebInterface { webCard } else { nativeBody }
+    }
+
+    /// `SidebarMergePanel.module.css` `.container`/`.card`: a panel card with a mono branch name, a
+    /// status tag and the conflicted files as a custom collapsible tree.
+    private var webCard: some View {
+        let groups = MergeTree.groups(session.conflicts, by: grouping)
+        let tone: ThemeToken = session.conflicts.isEmpty ? .statusWorking : .statusWaiting
+        let radius = metrics.radius(.md)
+        return VStack(alignment: .leading, spacing: metrics.size(8)) {
+            Button(action: open) {
+                HStack(spacing: metrics.size(6)) {
+                    Image(systemName: "arrow.triangle.merge").font(metrics.font(size: 12))
+                        .foregroundStyle(theme[tone])
+                    Text(verbatim: String(format: String(localized: "sidebar.merge.title"),
+                                          session.meta.source, session.meta.target))
+                        .font(metrics.monoFont(size: 12, weight: .semibold))
+                        .foregroundStyle(theme[.fg])
+                        .lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 0)
+                    Text(stageTitle(session.stage))
+                        .font(metrics.font(size: 10, weight: .semibold))
+                        .foregroundStyle(theme[tone])
+                        .lineLimit(1)
+                        .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(2))
+                        .background(theme[tone == .statusWorking ? .statusWorkingSoft : .statusWaitingSoft],
+                                    in: RoundedRectangle(cornerRadius: metrics.size(4)))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.size(4))
+                            .strokeBorder(theme[tone], lineWidth: metrics.size(1)))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(Text("sidebar.merge.open"))
+            if !groups.isEmpty {
+                Text(verbatim: String(format: String(localized: "sidebar.merge.conflicts"), session.conflicts.count))
+                    .font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                ForEach(groups) { group in
+                    WebDisclosure {
+                        HStack(spacing: metrics.size(6)) {
+                            Image(systemName: grouping == .folder ? "folder" : "tag")
+                                .font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                            Text(verbatim: group.title).font(metrics.font(size: 12, weight: .semibold))
+                                .foregroundStyle(theme[.fg]).lineLimit(1).truncationMode(.middle)
+                        }
+                    } content: {
+                        VStack(alignment: .leading, spacing: metrics.size(2)) {
+                            ForEach(group.files, id: \.path) { file in
+                                Button(action: open) {
+                                    HStack(spacing: metrics.size(6)) {
+                                        Image(systemName: "exclamationmark.triangle").font(metrics.font(size: 10))
+                                            .foregroundStyle(theme[.statusWaiting])
+                                        Text(verbatim: grouping == .folder ? MergeTree.fileName(of: file.path) : file.path)
+                                            .font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                                            .lineLimit(1).truncationMode(.middle)
+                                    }
+                                    .padding(.vertical, metrics.size(2))
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .help(Text(verbatim: "\(file.path) — \(file.class.variantName)"))
+                                .accessibilityIdentifier("sidebar.merge.file")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(metrics.size(10))
+        .background(theme[.panel], in: RoundedRectangle(cornerRadius: radius))
+        .overlay(RoundedRectangle(cornerRadius: radius)
+            .strokeBorder(theme[hovering ? .borderStrong : .border], lineWidth: metrics.size(1)))
+        .padding(.vertical, metrics.size(4))
+        .onHover { hovering = $0 }
+        .contextMenu {
+            Button("sidebar.merge.open", action: open)
+            Divider()
+            Button { grouping = .folder } label: {
+                Label("sidebar.merge.groupByFolder", systemImage: grouping == .folder ? "checkmark" : "")
+            }
+            Button { grouping = .class } label: {
+                Label("sidebar.merge.groupByClass", systemImage: grouping == .class ? "checkmark" : "")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("sidebar.merge.\(session.id)")
+    }
+
+    @ViewBuilder private var nativeBody: some View {
         let groups = MergeTree.groups(session.conflicts, by: grouping)
         if groups.isEmpty {
             header

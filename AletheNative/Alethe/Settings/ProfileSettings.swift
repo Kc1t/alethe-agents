@@ -8,6 +8,7 @@ import SwiftUI
 struct ProfileSettings: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
     @State private var newName = ""
     @State private var summaries: [ProfileID: ProfileSummary] = [:]
     @State private var renaming: ProfileEntry?
@@ -59,7 +60,28 @@ struct ProfileSettings: View {
         .disabled(environment.profiles == nil)
         .accessibilityIdentifier("settings.profiles")
         .task(id: environment.profiles?.document) { summaries = await environment.profileSummaries() }
-        .alert(Text("settings.profiles.rename.title"), isPresented: presented($renaming)) {
+        .webPrompt(isPresented: presented($renaming), message: String(localized: "settings.profiles.rename.title"),
+                   initial: renameText, confirmTitle: String(localized: "settings.profiles.rename")) { name in
+            guard let entry = renaming else { return }
+            perform { try await environment.renameProfile(entry.id, to: name) }
+        }
+        .webConfirm(isPresented: presented($deleting),
+                    message: String(localized: "settings.profiles.delete.message"),
+                    title: String(format: String(localized: "settings.profiles.delete.confirm"),
+                                  deleting.map(environment.profileName) ?? ""),
+                    confirmTitle: String(localized: "settings.profiles.delete"), destructive: true) {
+            guard let entry = deleting else { return }
+            perform { try await environment.deleteProfile(entry.id) }
+        }
+        .webConfirm(isPresented: presented($switching),
+                    message: String(localized: "settings.profiles.switch.message"),
+                    title: String(format: String(localized: "settings.profiles.switch.confirm"),
+                                  switching.map(environment.profileName) ?? ""),
+                    confirmTitle: String(localized: "settings.profiles.switch")) {
+            guard let entry = switching else { return }
+            perform { try await environment.switchProfile(to: entry.id) }
+        }
+        .alert(Text("settings.profiles.rename.title"), isPresented: nativePresented($renaming)) {
             TextField(text: $renameText) { Text("settings.profiles.newName") }
                 .accessibilityIdentifier("settings.profiles.renameField")
             Button("settings.profiles.rename") {
@@ -72,7 +94,7 @@ struct ProfileSettings: View {
         }
         .confirmationDialog(Text(verbatim: String(format: String(localized: "settings.profiles.delete.confirm"),
                                                   deleting.map(environment.profileName) ?? "")),
-                            isPresented: presented($deleting)) {
+                            isPresented: nativePresented($deleting)) {
             Button("settings.profiles.delete", role: .destructive) {
                 guard let entry = deleting else { return }
                 perform { try await environment.deleteProfile(entry.id) }
@@ -83,7 +105,7 @@ struct ProfileSettings: View {
         }
         .confirmationDialog(Text(verbatim: String(format: String(localized: "settings.profiles.switch.confirm"),
                                                   switching.map(environment.profileName) ?? "")),
-                            isPresented: presented($switching)) {
+                            isPresented: nativePresented($switching)) {
             Button("settings.profiles.switch") {
                 guard let entry = switching else { return }
                 perform { try await environment.switchProfile(to: entry.id) }
@@ -116,6 +138,10 @@ struct ProfileSettings: View {
                 self.error = String(format: String(localized: "settings.profiles.error.operation"), error.localizedDescription)
             }
         }
+    }
+
+    private func nativePresented(_ item: Binding<ProfileEntry?>) -> Binding<Bool> {
+        Binding { !metrics.isWebInterface && item.wrappedValue != nil } set: { if !$0 { item.wrappedValue = nil } }
     }
 
     private func presented(_ item: Binding<ProfileEntry?>) -> Binding<Bool> {

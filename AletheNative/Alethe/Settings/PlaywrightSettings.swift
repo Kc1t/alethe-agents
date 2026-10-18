@@ -40,12 +40,20 @@ struct PlaywrightOptions: View {
     }
 
     var body: some View {
-        Picker("settings.playwright.mode", selection: mode) {
-            Text("settings.playwright.mode.shared").tag(PlaywrightBrowserMode.shared)
-            Text("settings.playwright.mode.dedicated").tag(PlaywrightBrowserMode.dedicated)
+        if metrics.isWebInterface {
+            WebSelectRow(title: "settings.playwright.mode", selection: mode,
+                         options: [PlaywrightBrowserMode.shared, .dedicated]) {
+                $0 == .shared ? String(localized: "settings.playwright.mode.shared") : String(localized: "settings.playwright.mode.dedicated")
+            }
+            .accessibilityIdentifier("settings.playwright.mode")
+        } else {
+            Picker("settings.playwright.mode", selection: mode) {
+                Text("settings.playwright.mode.shared").tag(PlaywrightBrowserMode.shared)
+                Text("settings.playwright.mode.dedicated").tag(PlaywrightBrowserMode.dedicated)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.playwright.mode")
         }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("settings.playwright.mode")
         Group {
             if mode.wrappedValue == .shared {
                 Text("settings.playwright.mode.shared.hint")
@@ -68,7 +76,7 @@ struct PlaywrightOptions: View {
         let browser = environment.playwright
         LabeledContent {
             HStack {
-                if browser.state == .starting { ProgressView().controlSize(.small) }
+                if browser.state == .starting { WebBusyIndicator() }
                 if case .running = browser.state {
                     Button("settings.playwright.stop") { Task { await browser.stop() } }
                         .accessibilityIdentifier("settings.playwright.stop")
@@ -98,6 +106,7 @@ struct PlaywrightOptions: View {
             .accessibilityIdentifier("settings.playwright.sharedHeadless")
         TextField("settings.playwright.browserPath", text: browserPath,
                   prompt: Text("settings.playwright.browserPath.placeholder"))
+            .webFieldSurface()
             .accessibilityIdentifier("settings.playwright.browserPath")
     }
 

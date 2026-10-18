@@ -48322,6 +48322,22 @@
         }
       }
     },
+    "settings.custom.customAgentConfirmRemove" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove this custom agent?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remover este agente personalizado?"
+          }
+        }
+      }
+    },
     "settings.custom.customAgentRemove" : {
       "localizations" : {
         "en" : {

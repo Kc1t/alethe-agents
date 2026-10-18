@@ -81,8 +81,19 @@ struct CustomAgentsSection: View {
                 }
             }
         } header: { customLabel("customAgents") } footer: { customLabel("customAgentsDesc") }
+        .webConfirm(isPresented: Binding { removing != nil } set: { if !$0 { removing = nil } },
+                    message: removing?.label ?? "", title: String(localized: "settings.custom.customAgentConfirmRemove"),
+                    destructive: true) {
+            guard let removing else { return }
+            environment.preferences?.update {
+                $0.customAgents = agents.filter { $0.id != removing.id }
+                $0.enabledAgents?.removeAll { $0 == removing.id }
+            }
+            if let file = environment.customAgentIconURL(removing.id) { try? FileManager.default.removeItem(at: file) }
+            if editing == removing.id { draft = nil }
+        }
         .confirmationDialog("settings.custom.customAgentConfirmRemove", isPresented: Binding {
-            removing != nil
+            !metrics.isWebInterface && removing != nil
         } set: { if !$0 { removing = nil } }, titleVisibility: .visible) {
             Button(role: .destructive) {
                 guard let removing else { return }

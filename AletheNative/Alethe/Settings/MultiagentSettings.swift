@@ -39,7 +39,14 @@ struct MultiagentSettings: View {
                 model.projectID = environment.multiagent.focusedProject?.id ?? projects.first?.id.rawValue
             }
         }
-        .confirmationDialog(cancelTitle, isPresented: cancelPresented, titleVisibility: .visible) {
+        .webConfirm(isPresented: cancelPresented, message: String(localized: "settings.multiagent.cancel.message"),
+                    title: format("settings.multiagent.cancel.title", cancelling?.title ?? ""),
+                    confirmTitle: String(localized: "settings.multiagent.cancel.confirm"), destructive: true) {
+            if let task = cancelling { model.cancel(task) }
+        }
+        .confirmationDialog(cancelTitle, isPresented: Binding(get: { !metrics.isWebInterface && cancelling != nil },
+                                                              set: { if !$0 { cancelling = nil } }),
+                            titleVisibility: .visible) {
             Button("settings.multiagent.cancel.confirm", role: .destructive) {
                 if let task = cancelling { model.cancel(task) }
                 cancelling = nil

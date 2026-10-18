@@ -82,7 +82,7 @@ struct AIUsageSheet: View {
             HStack {
                 Text("usage.title").font(metrics.font(.title3))
                 Spacer()
-                if !environment.usage.refreshing.isEmpty { ProgressView().controlSize(.small) }
+                if !environment.usage.refreshing.isEmpty { WebBusyIndicator() }
                 Button("cost.refresh") { Task { await environment.usage.refresh() } }
             }
             ForEach(UsageMonitor.providers, id: \.self) { provider in
@@ -102,7 +102,13 @@ struct AIUsageSheet: View {
         .padding(metrics.space(.xl))
         .frame(width: metrics.size(520))
         .task { await environment.usage.refresh() }
-        .confirmationDialog(Text("usage.credit.confirm"), isPresented: Binding { confirmCredit != nil } set: { if !$0 { confirmCredit = nil } },
+        .webConfirm(isPresented: Binding { confirmCredit != nil } set: { if !$0 { confirmCredit = nil } },
+                    message: confirmCredit.map { [$0.title, $0.detail].filter { !$0.isEmpty }.joined(separator: "\n") } ?? "",
+                    title: String(localized: "usage.credit.confirm"),
+                    confirmTitle: String(localized: "usage.credit.use")) {
+            if let credit = confirmCredit { Task { creditFailed = !(await environment.usage.consumeResetCredit(credit)) } }
+        }
+        .confirmationDialog(Text("usage.credit.confirm"), isPresented: Binding { !metrics.isWebInterface && confirmCredit != nil } set: { if !$0 { confirmCredit = nil } },
                             presenting: confirmCredit) { credit in
             Button("usage.credit.use") {
                 Task { creditFailed = !(await environment.usage.consumeResetCredit(credit)) }
@@ -138,8 +144,12 @@ struct AIUsageSheet: View {
                             }
                         }
                         .font(metrics.font(.footnote))
-                        ProgressView(value: min(window.usedPercent, 100), total: 100)
-                            .tint(theme[UsageLevel.token(window.usedPercent)])
+                        if metrics.isWebInterface {
+                            WebProgressBar(value: min(window.usedPercent, 100), token: UsageLevel.token(window.usedPercent))
+                        } else {
+                            ProgressView(value: min(window.usedPercent, 100), total: 100)
+                                .tint(theme[UsageLevel.token(window.usedPercent)])
+                        }
                     }
                 }
                 if provider == .codex, let credits = usage?.resetCredits, !credits.isEmpty {
@@ -154,7 +164,7 @@ struct AIUsageSheet: View {
             case .noAuth?: Text("usage.noAuth").foregroundStyle(theme[.textTertiary])
             case .unavailable(let reason)?:
                 Text(String(format: String(localized: "usage.unavailable"), reason)).foregroundStyle(theme[.textTertiary])
-            case nil: ProgressView().controlSize(.small)
+            case nil: WebBusyIndicator()
             }
         }
     }

@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Web-styled settings controls
+- Web interface: Integrations (9router, Playwright, usage), Plugins, Custom agents, Multiagent, CLI tool,
+  Profiles and Terminal settings use the themed dropdown, confirm/prompt dialogs, stepper, spinner and
+  progress bar instead of system pickers, alerts, steppers and progress views.
+- The sidebar merge panel is a web-style card with a status tag and a custom conflict tree.
+
 ### Plugin marketplace and local registration
 - Web interface: browse the plugin catalog from Settings or the Plugins sidebar, search and filter
   by capabilities, source and state, sort, inspect details, refresh, and use cached results offline.

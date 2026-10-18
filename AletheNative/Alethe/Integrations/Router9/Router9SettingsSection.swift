@@ -33,14 +33,22 @@ struct Router9SettingsSection: View {
             if controller.hasInstall {
                 installRow
                 if controller.status?.managed.installed == true, controller.status?.external.installed == true {
-                    Picker(selection: binding(\.source)) {
-                        Text("router9.source.managed").tag(AletheModel.Router9Source.managed)
-                        Text("router9.source.external").tag(AletheModel.Router9Source.external)
-                    } label: {
-                        Text("router9.source")
+                    if metrics.isWebInterface {
+                        WebSelectRow(title: "router9.source", selection: binding(\.source),
+                                     options: [AletheModel.Router9Source.managed, .external]) {
+                            $0 == .managed ? String(localized: "router9.source.managed") : String(localized: "router9.source.external")
+                        }
+                        .accessibilityIdentifier("router9.source")
+                    } else {
+                        Picker(selection: binding(\.source)) {
+                            Text("router9.source.managed").tag(AletheModel.Router9Source.managed)
+                            Text("router9.source.external").tag(AletheModel.Router9Source.external)
+                        } label: {
+                            Text("router9.source")
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("router9.source")
                     }
-                    .pickerStyle(.segmented)
-                    .accessibilityIdentifier("router9.source")
                 }
                 Toggle(isOn: binding(\.enabled)) { Text("router9.enabled") }
                     .accessibilityIdentifier("router9.enabled")
@@ -135,6 +143,7 @@ struct Router9SettingsSection: View {
                 HStack {
                     SecureField(text: $keyDraft, prompt: Text(verbatim: "9r_…")) { Text("router9.apiKey") }
                         .labelsHidden()
+                        .webFieldSurface()
                         .frame(width: metrics.size(200))
                         .onSubmit(saveKey)
                         .accessibilityIdentifier("router9.apiKey.field")
@@ -148,6 +157,7 @@ struct Router9SettingsSection: View {
             Text("router9.apiKey.help")
         }
         TextField(value: portBinding, format: .number.grouping(.never)) { Text("router9.port") }
+            .webFieldSurface()
             .accessibilityIdentifier("router9.port")
         Toggle(isOn: binding(\.autoStart)) {
             Text("router9.autoStart")

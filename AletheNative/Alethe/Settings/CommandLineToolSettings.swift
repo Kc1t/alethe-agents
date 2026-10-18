@@ -54,7 +54,18 @@ struct CommandLineToolSection: View {
                 .foregroundStyle(theme[.textTertiary])
         }
         .task { await tool.refresh() }
-        .confirmationDialog(Text(verbatim: confirming.map(title) ?? ""), isPresented: isConfirming,
+        .webConfirm(isPresented: isConfirming, message: confirming.map(cliMessage) ?? "",
+                    title: confirming.map(title), confirmTitle: confirming.map(cliConfirmTitle),
+                    destructive: confirming != .install) {
+            switch confirming {
+            case .install, .replace: Task { await tool.install() }
+            case .uninstall: Task { await tool.uninstall() }
+            case nil: break
+            }
+        }
+        .confirmationDialog(Text(verbatim: confirming.map(title) ?? ""),
+                            isPresented: Binding(get: { !metrics.isWebInterface && confirming != nil },
+                                                 set: { if !$0 { confirming = nil } }),
                             titleVisibility: .visible, presenting: confirming) { action in
             switch action {
             case .install:
@@ -70,6 +81,22 @@ struct CommandLineToolSection: View {
             case .replace: Text("settings.cli.replace.message")
             case .uninstall: Text("settings.cli.uninstall.message")
             }
+        }
+    }
+
+    private func cliMessage(_ action: CommandLineTool.Action) -> String {
+        switch action {
+        case .install: String(localized: "settings.cli.install.message")
+        case .replace: String(localized: "settings.cli.replace.message")
+        case .uninstall: String(localized: "settings.cli.uninstall.message")
+        }
+    }
+
+    private func cliConfirmTitle(_ action: CommandLineTool.Action) -> String {
+        switch action {
+        case .install: String(localized: "settings.cli.install")
+        case .replace: String(localized: "settings.cli.replace")
+        case .uninstall: String(localized: "settings.cli.uninstall")
         }
     }
 

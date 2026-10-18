@@ -196,12 +196,12 @@ struct WebTerminalSettings: View {
         SettingsPageForm("terminal") {
             Section {
                 ResourcePolicyPicker()
-                Stepper(value: idle(\.hiddenAgentIdleMinutes), in: ResourcePolicy.agentIdleRange, step: 5) {
-                    Text(verbatim: format("resources.agentIdle", policy.hiddenAgentIdleMinutes))
-                }.accessibilityIdentifier("resources.agentIdle")
-                Stepper(value: idle(\.hiddenShellIdleMinutes), in: ResourcePolicy.shellIdleRange, step: 5) {
-                    Text(verbatim: format("resources.shellIdle", policy.hiddenShellIdleMinutes))
-                }.accessibilityIdentifier("resources.shellIdle")
+                WebStepperRow(title: format("resources.agentIdle", policy.hiddenAgentIdleMinutes),
+                              value: idle(\.hiddenAgentIdleMinutes), range: ResourcePolicy.agentIdleRange, step: 5)
+                    .accessibilityIdentifier("resources.agentIdle")
+                WebStepperRow(title: format("resources.shellIdle", policy.hiddenShellIdleMinutes),
+                              value: idle(\.hiddenShellIdleMinutes), range: ResourcePolicy.shellIdleRange, step: 5)
+                    .accessibilityIdentifier("resources.shellIdle")
             } header: { Text("settings.web.reference.prefs.resourcePolicy") }
               footer: { Text("settings.web.reference.prefs.resourcePolicyDesc") }
             Section { SpawnConcurrencyField() }
@@ -280,10 +280,10 @@ struct WebAboutSettings: View {
             Section {
                 switch updates.phase {
                 case .checking:
-                    ProgressView().controlSize(.small)
+                    WebBusyIndicator()
                     Text("settings.updates.checking")
                 case .downloading:
-                    ProgressView().controlSize(.small)
+                    WebBusyIndicator()
                     Text("settings.updates.downloading")
                 case .available:
                     Text(verbatim: updates.version).font(metrics.font(size: 12, weight: .semibold))
