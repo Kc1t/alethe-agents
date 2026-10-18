@@ -9,7 +9,8 @@ import SwiftUI
 struct LayoutDesignerSheet: View {
     let workspace: WorkspaceModel
     let undoManager: UndoManager?
-    let projectID: ProjectID
+    let scope: LayoutDesignerScope
+    @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var nativeDismiss
     @Environment(\.modalsM2Close) private var closeOverlay
     private func dismiss() {
@@ -24,8 +25,40 @@ struct LayoutDesignerSheet: View {
 
     static let maxTracks = 8
 
-    private var project: Project? { workspace.document.project(projectID) }
-    private var ids: [String] { project?.visiblePanes.map(\.id.rawValue) ?? [] }
+    private var project: Project? {
+        guard case .project(let id) = scope else { return nil }
+        return workspace.document.project(id)
+    }
+    private var group: ProjectGroup? {
+        guard case .group(let id) = scope else { return nil }
+        return workspace.document.groups.first { $0.id == id }
+    }
+    private var children: [Project] {
+        let ids = group?.projectIDs ?? workspace.document.workspace.openProjectIDs
+        return ids.compactMap(workspace.document.project)
+    }
+    private var ids: [String] { project?.visiblePanes.map(\.id.rawValue) ?? children.map(\.id.rawValue) }
+    private var currentLayout: CustomGrid? {
+        switch scope {
+        case .project: project?.effectiveGrid
+        case .group: group?.gridLayout
+        case .workspace: environment.preferences?.document.workspaceGridLayout
+        }
+    }
+    private var history: [CustomGridHistoryEntry] {
+        switch scope {
+        case .project: project?.activeArrangement.gridLayoutHistory ?? []
+        case .group: group?.gridLayoutHistory ?? []
+        case .workspace: environment.preferences?.document.workspaceGridLayoutHistory ?? []
+        }
+    }
+    private var title: String {
+        switch scope {
+        case .project: String(format: String(localized: "layoutDesigner.title"), project?.name ?? "")
+        case .group: String(format: String(localized: "layoutDesigner.web.groupTitle"), group?.name ?? "")
+        case .workspace: String(localized: "layoutDesigner.web.workspaceTitle")
+        }
+    }
 
     var body: some View {
         if metrics.isWebInterface { webBody } else { nativeBody }
@@ -35,18 +68,24 @@ struct LayoutDesignerSheet: View {
 
     private var webBody: some View {
         GitWebModal(close: dismiss) {
-            Text("layoutDesigner.title")
+            Text(verbatim: title)
         } content: {
             VStack(spacing: metrics.size(12)) {
-                toolbar
-                HStack(spacing: metrics.size(12)) {
+                webToolbar
+                HStack(spacing: 0) {
                     library
-                    canvas.padding(metrics.space(.s))
+                    canvas.padding(metrics.size(18))
                 }
                 .frame(height: max(metrics.size(160), min(metrics.size(340), maximumHeight - metrics.size(220))))
                 Text("layoutDesigner.hint").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
             }
         } footer: {
+            if case .workspace = scope, currentLayout != nil {
+                Button("layoutDesigner.web.remove") {
+                    environment.preferences?.update { $0.workspaceGridLayout = nil }
+                    dismiss()
+                }.accessibilityIdentifier("layoutDesigner.remove")
+            }
             Spacer()
             Button("editor.cancel", action: dismiss)
             Button("layoutDesigner.save", action: save).buttonStyle(AletheButtonStyle(.primary))
@@ -90,9 +129,45 @@ struct LayoutDesignerSheet: View {
 
     // MARK: - Toolbar
 
+    private var webToolbar: some View {
+        HStack(spacing: metrics.size(12)) {
+            webStepper("layoutDesigner.web.columns", value: draft.cols, id: "columns") { setTracks(cols: $0, rows: draft.rows) }
+            webStepper("layoutDesigner.web.rows", value: draft.rows, id: "rows") { setTracks(cols: draft.cols, rows: $0) }
+            Button("layoutDesigner.autoArrange") { apply(.auto(ids, cols: draft.cols)) }
+                .buttonStyle(AletheButtonStyle(size: .small))
+                .accessibilityIdentifier("layoutDesigner.autoArrange")
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, metrics.size(18)).padding(.vertical, metrics.size(10))
+        .background(theme[.bgSunken])
+        .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
+    }
+
+    private func webStepper(_ label: LocalizedStringKey, value: Int, id: String,
+                            set: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: metrics.size(6)) {
+            Text(label).textCase(.uppercase).font(metrics.font(size: 11, weight: .medium))
+                .tracking(metrics.size(0.66)).foregroundStyle(theme[.fgFaint])
+            Button { set(max(1, value - 1)) } label: { Image(systemName: "minus").font(metrics.font(size: 12)) }
+                .buttonStyle(AletheIconButtonStyle(side: 22))
+                .accessibilityLabel(Text("layoutDesigner.web.decrease"))
+                .accessibilityIdentifier("layoutDesigner.\(id).decrease")
+            Text(verbatim: String(value)).font(metrics.monoFont(size: 12)).foregroundStyle(theme[.fg])
+                .frame(minWidth: metrics.size(14))
+            Button { set(min(Self.maxTracks, value + 1)) } label: { Image(systemName: "plus").font(metrics.font(size: 12)) }
+                .buttonStyle(AletheIconButtonStyle(side: 22))
+                .accessibilityLabel(Text("layoutDesigner.web.increase"))
+                .accessibilityIdentifier("layoutDesigner.\(id).increase")
+        }
+        .padding(.leading, metrics.size(10)).padding(.trailing, metrics.size(6)).padding(.vertical, metrics.size(4))
+        .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .accessibilityIdentifier("layoutDesigner.\(id)")
+    }
+
     private var toolbar: some View {
         HStack(spacing: metrics.space(.xl)) {
-            Text(verbatim: String(format: String(localized: "layoutDesigner.title"), project?.name ?? ""))
+            Text(verbatim: title)
                 .font(metrics.font(.headline))
                 .foregroundStyle(theme[.textPrimary])
             Spacer()
@@ -137,7 +212,6 @@ struct LayoutDesignerSheet: View {
                 }
                 heading("layoutDesigner.recent", symbol: "clock")
                     .padding(.top, metrics.space(.m))
-                let history = project?.activeArrangement.gridLayoutHistory ?? []
                 if history.isEmpty {
                     Text("layoutDesigner.noRecent")
                         .font(metrics.font(.footnote))
@@ -150,9 +224,10 @@ struct LayoutDesignerSheet: View {
                     }
                 }
             }
-            .padding(metrics.space(.l))
+            .padding(.horizontal, metrics.isWebInterface ? metrics.size(10) : metrics.space(.l))
+            .padding(.vertical, metrics.isWebInterface ? metrics.size(14) : metrics.space(.l))
         }
-        .frame(width: metrics.size(200))
+        .frame(width: metrics.size(metrics.isWebInterface ? 196 : 200))
         .background(theme[.bgSunken])
     }
 
@@ -237,7 +312,7 @@ struct LayoutDesignerSheet: View {
                 Circle()
                     .fill(theme[pane?.activeTab.map { AgentTokens.accent(for: $0.agent) } ?? .fgFaint])
                     .frame(width: metrics.size(8), height: metrics.size(8))
-                Text(verbatim: pane.map(Self.title) ?? id)
+                Text(verbatim: childTitle(id))
                     .font(metrics.font(.footnote).weight(.medium))
                     .foregroundStyle(theme[.textPrimary])
                     .lineLimit(1)
@@ -263,8 +338,8 @@ struct LayoutDesignerSheet: View {
         )
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
-        .accessibilityLabel(Text(verbatim: pane.map(Self.title) ?? id))
-        .accessibilityIdentifier("layoutDesigner.box.\(pane.map(Self.title) ?? id)")
+        .accessibilityLabel(Text(verbatim: childTitle(id)))
+        .accessibilityIdentifier("layoutDesigner.box.\(childTitle(id))")
     }
 
     /// Grow (+) and shrink (−) buttons on each edge of the selected box, shown only when they apply.
@@ -315,10 +390,15 @@ struct LayoutDesignerSheet: View {
         return pane.content.filePath.map { URL(filePath: $0).lastPathComponent } ?? pane.content.kind.rawValue
     }
 
+    private func childTitle(_ id: String) -> String {
+        if let pane = project?.visiblePanes.first(where: { $0.id.rawValue == id }) { return Self.title(pane) }
+        return children.first { $0.id.rawValue == id }?.name ?? id
+    }
+
     private func load() {
-        guard !loaded, let project else { return }
+        guard !loaded else { return }
         loaded = true
-        draft = normalized(project.effectiveGrid)
+        draft = normalized(currentLayout ?? .auto(ids))
     }
 
     /// Explicit track sizes keep the steppers' add/remove predictable (upstream `normalizeDraft`).
@@ -345,8 +425,21 @@ struct LayoutDesignerSheet: View {
     }
 
     private func save() {
-        workspace.update(undoManager: undoManager, actionName: String(localized: "undo.layout")) {
-            $0.setGridLayout(draft, for: projectID, recordHistory: true)
+        let clean = draft.reconciled(ids)
+        var recent = history
+        if recent.first?.layout != clean { recent.insert(CustomGridHistoryEntry(layout: clean), at: 0) }
+        recent = Array(recent.prefix(WorkspaceDocument.maxGridLayoutHistory))
+        switch scope {
+        case .project(let id):
+            workspace.update(undoManager: undoManager, actionName: String(localized: "undo.layout")) {
+                $0.setGridLayout(clean, for: id, recordHistory: true)
+            }
+        case .group(let id):
+            workspace.update(undoManager: undoManager, actionName: String(localized: "undo.layout")) {
+                $0.updateGroup(id) { $0.layoutMode = .grid; $0.gridLayout = clean; $0.gridLayoutHistory = recent }
+            }
+        case .workspace:
+            environment.preferences?.update { $0.workspaceGridLayout = clean; $0.workspaceGridLayoutHistory = recent }
         }
         dismiss()
     }

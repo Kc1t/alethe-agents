@@ -19,6 +19,9 @@ public struct ProjectGroup: Codable, Hashable, Sendable, Identifiable {
     public var isCollapsed: Bool
     /// Suspended: every project under it is disabled (upstream `group.suspended`, P2-23).
     public var suspended: Bool?
+    public var layoutMode: PaneLayoutMode?
+    public var gridLayout: CustomGrid?
+    public var gridLayoutHistory: [CustomGridHistoryEntry]?
 
     public init(id: GroupID = .make(), name: String, color: ProjectColor? = nil, parentID: GroupID? = nil,
                 projectIDs: [ProjectID] = [], isCollapsed: Bool = false) {

@@ -367,6 +367,9 @@ private struct GroupRow: View {
                     .disabled(!metrics.isWebInterface && !doc.groups.contains { doc.isGroup($0.id, inside: group.id) && !$0.projectIDs.isEmpty })
                 WebMenuDivider()
                 if metrics.isWebInterface {
+                    SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") {
+                        environment.editorRequest = .layoutDesigner(.group(group.id))
+                    }
                     SidebarMenuButton("sidebar.web.archiveGroup", symbol: "archivebox") {
                         archivedGroups = SidebarProjectVisibility.setting(archivedGroups,
                             project: ProjectID(rawValue: group.id.rawValue), profile: environment.profileID, enabled: true)
@@ -404,6 +407,9 @@ private struct GroupRow: View {
                 }
                 WebMenuDivider()
                 if metrics.isWebInterface {
+                    SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") {
+                        environment.editorRequest = .layoutDesigner(.group(group.id))
+                    }
                     SidebarMenuButton("sidebar.web.archiveGroup", symbol: "archivebox") {
                         archivedGroups = SidebarProjectVisibility.settingGroup(archivedGroups, group: group.id,
                             profile: environment.profileID, enabled: true)
@@ -819,7 +825,7 @@ private struct ProjectContextMenu: View {
                 .accessibilityIdentifier("openIn.browser")
         }
         projectGroup("sidebar.web.group.layout", symbol: "rectangle.split.2x2") {
-            SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") { environment.editorRequest = .layoutDesigner(project.id) }
+            SidebarMenuButton("sidebar.designLayout", symbol: "rectangle.split.2x2") { environment.editorRequest = .layoutDesigner(.project(project.id)) }
             WebSubmenu("sidebar.grids") {
                 SidebarMenuButton("projectGrid.main", symbol: "square.grid.2x2") { actions.workspace.update { $0.activateGrid(nil, in: project.id) } }
                 ForEach(project.namedGrids) { grid in

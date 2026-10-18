@@ -19,7 +19,7 @@ enum EditorRequest: Identifiable, Hashable {
     /// Import from the Tauri app's data.
     case importTauri
     /// Custom grid designer for a project (upstream `LayoutDesignerModal`).
-    case layoutDesigner(ProjectID)
+    case layoutDesigner(LayoutDesignerScope)
     /// Find/Jump (⌘K; upstream `FindJumpModal`).
     case findJump
     /// Past conversations of a project (nil: the selected one; P3-7).
@@ -105,4 +105,11 @@ enum EditorRequest: Identifiable, Hashable {
         case .updateAvailable: "updateAvailable"
         }
     }
+}
+
+/// Web LayoutDesignerModal contexts; the native command continues to use project scope.
+enum LayoutDesignerScope: Hashable {
+    case project(ProjectID)
+    case group(GroupID)
+    case workspace
 }

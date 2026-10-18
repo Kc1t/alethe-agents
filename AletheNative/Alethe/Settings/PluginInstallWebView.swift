@@ -16,13 +16,15 @@ struct PluginInstallWebView: View {
                     .foregroundStyle(theme[.fgFaint]).lineLimit(1).truncationMode(.middle)
                 Spacer(minLength: 0)
                 Button("settings.web.reference.prefs.pluginsRescan") { Task { await model.rescan() } }
+                    .accessibilityIdentifier("plugins.local.rescan")
                 Button("settings.web.reference.prefs.pluginsOpenFolder") {
                     if let folder = model.folder { NSWorkspace.shared.open(folder) }
-                }
+                }.accessibilityIdentifier("plugins.local.openFolder")
             }
             HStack(spacing: metrics.size(12)) {
                 Button { choose() } label: { Label("settings.web.reference.prefs.pluginsImport", systemImage: "folder.badge.plus") }
                     .disabled(model.busy)
+                    .accessibilityIdentifier("plugins.local.import")
                 Text("plugins.web.registrationHelp").font(metrics.font(size: 12)).foregroundStyle(theme[.fgFaint])
             }
             DisclosureGroup("settings.web.reference.prefs.pluginsManifestAdvanced") {
@@ -33,16 +35,19 @@ struct PluginInstallWebView: View {
                         .frame(height: metrics.size(104)).background(theme[.bgSunken])
                         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                         .accessibilityLabel(Text("settings.web.reference.prefs.pluginsManifestLabel"))
+                        .accessibilityIdentifier("plugins.local.manifest")
                     HStack {
                         Spacer()
                         Button("settings.web.reference.prefs.pluginsInstallButton") {
                             let data = Data(manifest.utf8)
                             Task { await model.perform { try await $0.install(manifest: data) }; if !model.error { manifest = "" } }
                         }.disabled(model.busy || manifest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityIdentifier("plugins.local.install")
                     }
                 }
             }
         }
+        .accessibilityIdentifier("plugins.local")
     }
 
     private func choose() {

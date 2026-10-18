@@ -13,6 +13,9 @@ public struct PreferencesDocument: VersionedDocument, Hashable {
     public static let uiScaleRange: ClosedRange<Double> = 0.8...1.5
     public static let uiScaleStep = 0.1
 
+    public var workspaceGridLayout: CustomGrid?
+    public var workspaceGridLayoutHistory: [CustomGridHistoryEntry]?
+
     public var customAgents: [CustomAgentDefinition]?
     public var orchestratorShortcuts: [OrchestratorShortcut]?
     public var workerRuleSets: [WorkerRuleSet]?

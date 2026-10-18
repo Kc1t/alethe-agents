@@ -12,6 +12,7 @@ struct GitControlSheet: View {
     let workspace: WorkspaceModel
     let undoManager: UndoManager?
     let projectID: ProjectID?
+    var embedded = false
     @State var model: GitControlModel?
     @State var pendingDiscard: GitStatusEntry?
     @State var pendingDiscardPaths: PendingDiscard?

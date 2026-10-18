@@ -19,6 +19,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Web interface: the usage pill no longer draws an accent outline; the memory pill pulses under
   high and critical memory pressure; the onboarding avatar fades in like the web.
 - Removed the unused disabled-field placeholder from the web settings pages.
+### Web parity audit (n3)
+- Web interface: Git Control now stays in a selected sidebar tab instead of opening a modal.
+- Design and save group and workspace grids, restore recent layouts, and remove a custom workspace
+  layout. Imported grids remap project IDs; layout history uses web-compatible timestamps.
+- Jev ignores repeated Escape/Return events and shows the web's edge breathing, scanning and
+  traveling confirmation border, with reduced-motion support and solid theme colors.
+- Match Clean Todos spacing and row heights, correct Home's content-width breakpoints, and add
+  accessibility identifiers to web controls, plugin import sources, and dialogs.
+
 ### Plugin marketplace and local registration
 - Web interface: browse the plugin catalog from Settings or the Plugins sidebar, search and filter
   by capabilities, source and state, sort, inspect details, refresh, and use cached results offline.

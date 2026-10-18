@@ -13,7 +13,11 @@ struct DictationHUD: View {
     var body: some View {
         let dictation = environment.dictation
         if metrics.isWebInterface, dictation.jev.open {
-            JevVoiceBar()
+            ZStack(alignment: .bottom) {
+                JevVoiceEdge(listening: dictation.jev.listening, processing: dictation.machine.phase == .finishing)
+                JevVoiceBar()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         } else if dictation.machine.phase != .idle {
             HStack(spacing: metrics.space(.m)) {
                 icon(dictation.machine.phase)

@@ -141,6 +141,11 @@ struct MainWindow: View {
                 editor(for: request, workspace: workspace)
                     .environment(\.modalsM2Close, close)
             }
+        case .layoutDesigner:
+            NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }, defaultWidth: 900) { close in
+                editor(for: request, workspace: workspace, closeOverlay: close)
+                    .environment(\.modalsM2Close, close)
+            }
         case .dataManagement:
             NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }, defaultWidth: 620) { close in
                 editor(for: request, workspace: workspace, closeOverlay: close)
@@ -183,7 +188,8 @@ struct MainWindow: View {
         case .sessionCost: 600
         case .diagnostics: 640
         case .remotePairing: 560
-        case .previewLink, .layoutDesigner: 760
+        case .previewLink: 760
+        case .layoutDesigner: 900
         case .importTauri: 520
         case .gsdSyncActivity: 640
         case .welcome: 480
@@ -306,7 +312,7 @@ struct MainWindow: View {
         case .importTauri:
             TauriImportSheet(workspace: workspace, undoManager: undoManager)
         case .layoutDesigner(let project):
-            LayoutDesignerSheet(workspace: workspace, undoManager: undoManager, projectID: project)
+            LayoutDesignerSheet(workspace: workspace, undoManager: undoManager, scope: project)
         case .findJump:
             FindJumpSheet(workspace: workspace, undoManager: undoManager)
         case .conversations(let project):

@@ -251,6 +251,28 @@ public struct CustomGridHistoryEntry: Codable, Hashable, Sendable, Identifiable 
         self.savedAt = savedAt
         self.layout = layout
     }
+
+    private enum CodingKeys: String, CodingKey { case id, savedAt, layout }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        layout = try values.decode(CustomGrid.self, forKey: .layout)
+        // Web stores Date.now() milliseconds; retain decoding of older native Date values.
+        if let timestamp = try? values.decode(Double.self, forKey: .savedAt), timestamp > 100_000_000_000 {
+            savedAt = Date(timeIntervalSince1970: timestamp / 1000)
+        } else {
+            savedAt = try values.decode(Date.self, forKey: .savedAt)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(layout, forKey: .layout)
+        try values.encode(savedAt.timeIntervalSince1970 * 1000, forKey: .savedAt)
+    }
+
 }
 
 /// Ready-made grids offered by the designer (upstream `createLayoutPresets`).

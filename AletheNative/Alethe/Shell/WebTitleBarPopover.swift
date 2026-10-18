@@ -83,6 +83,7 @@ private struct WebPositionedMenu: View {
         .frame(width: width, height: height)
         .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
         .shadow(color: theme.shadow(.md).color.color, radius: metrics.size(15), y: metrics.size(7))
+        .accessibilityIdentifier("chrome.web.popover")
         .onExitCommand(perform: menu.dismiss)
         .position(x: left + width / 2,
                   y: opensBelow ? rect.maxY + gap + height / 2 : rect.minY - gap - height / 2)

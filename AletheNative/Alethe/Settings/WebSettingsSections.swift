@@ -108,6 +108,7 @@ struct WebSettingsSection<Heading: View, Description: View, Content: View>: View
                         .buttonStyle(.plain)
                         .foregroundStyle(theme[hovering ? .accent : .fg])
                         .onHover { hovering = $0 }
+                        .accessibilityIdentifier("settings.section.\(id).toggle")
                         .accessibilityValue(Text(collapsed ? "settings.web.folded" : "settings.web.expanded"))
                     }
                 }

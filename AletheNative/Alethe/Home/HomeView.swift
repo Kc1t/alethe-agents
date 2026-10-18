@@ -24,7 +24,7 @@ struct HomeView: View {
                             streak: ActivityDays.streak(activityDays),
                             availableWidth: min(metrics.size(940), geometry.size.width - 2 * min(
                                 metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03)))
-                                - (geometry.size.width <= metrics.size(620) ? 0 : metrics.size(36)))
+                                - (geometry.size.width - 2 * min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03)) <= metrics.size(620) ? 0 : metrics.size(36)))
                         QuickLaunch(workspace: workspace, compactToolbar: geometry.size.width
                                     - 2 * min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03))
                                     <= metrics.size(620))
@@ -111,7 +111,7 @@ struct HomeView: View {
             .background(alignment: .top) {
                 if metrics.isWebInterface {
                     HomeBackdrop()
-                        .frame(height: geometry.size.width <= metrics.size(900)
+                        .frame(height: geometry.size.width - 2 * min(metrics.size(28), max(metrics.size(16), geometry.size.width * 0.03)) <= metrics.size(900)
                                ? metrics.size(620)
                                : min(metrics.size(780), max(metrics.size(560), geometry.size.height * 0.72)))
                 }

@@ -65,5 +65,6 @@ struct ProfileMenuWebButton: View {
                 Image(systemName: symbol).webProfileSized(13)
             }
         }
+        .accessibilityIdentifier("profile.menu.\(symbol)")
     }
 }

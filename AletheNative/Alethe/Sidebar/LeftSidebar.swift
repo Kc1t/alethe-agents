@@ -23,7 +23,7 @@ struct LeftSidebar: View {
     }
 
     private var effectiveTab: String {
-        selectedTab == "files" || pluginTabs.contains(where: { $0.id == selectedTab }) ? selectedTab : "projects"
+        (metrics.isWebInterface && selectedTab == "git") || selectedTab == "files" || pluginTabs.contains(where: { $0.id == selectedTab }) ? selectedTab : "projects"
     }
 
     @ViewBuilder var body: some View {
@@ -88,15 +88,7 @@ struct LeftSidebar: View {
                     .accessibilityIdentifier("leftSidebar.home")
                     webTab("projects", title: "leftSidebar.projects", symbol: "square.grid.3x3")
                     webTab("files", title: "rightSidebar.files", symbol: "folder")
-                    Button {
-                        environment.openPluginSheet(GitControlPlugin.sheetID, project: selectedProject?.id)
-                    } label: {
-                        Label { Text("menu.git.control") } icon: { Image(systemName: "arrow.triangle.branch").webProfileSized(14) }
-                    }
-                    .buttonStyle(AletheSidebarMotionTabStyle(isSelected: false))
-                    .disabled(selectedProject == nil || !environment.hasPluginCommand(GitControlPlugin.openCommandID))
-                    .help(Text("menu.git.control"))
-                    .accessibilityIdentifier("leftSidebar.tab.git")
+                    webTab("git", title: "menu.git.control", symbol: "arrow.triangle.branch")
                     ForEach(pluginTabs, id: \.id) { tab in
                         webTab(tab.id, title: PluginViewRegistry.title(for: tab), symbol: tab.symbol)
                     }
@@ -136,6 +128,10 @@ struct LeftSidebar: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(theme[.bg])
             webFooter
+                .contextMenu {
+                    Button("layoutDesigner.web.workspaceTitle") { environment.editorRequest = .layoutDesigner(.workspace) }
+                        .accessibilityIdentifier("layoutDesigner.workspace")
+                }
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
         }
@@ -164,7 +160,10 @@ struct LeftSidebar: View {
 
     // Home and the sidebar tab are independent in NormalProjectSidebar.tsx.
     @ViewBuilder private var webContent: some View {
-        if effectiveTab == "files" {
+        if effectiveTab == "git", let workspace = environment.workspace {
+            GitControlSheet(workspace: workspace, undoManager: nil, projectID: selectedProject?.id, embedded: true)
+                .id(selectedProject?.id)
+        } else if effectiveTab == "files" {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: metrics.size(8)) {
                     AletheSectionLabel(Text("leftSidebar.explorer"))

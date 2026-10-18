@@ -285,7 +285,7 @@ enum JumpCommand: String, CaseIterable, Hashable {
             default: .auto
             }
             if let selected { workspace?.update { $0.setLayoutMode(mode, for: selected) } }
-        case .designGrid: if let selected { environment.editorRequest = .layoutDesigner(selected) }
+        case .designGrid: if let selected { environment.editorRequest = .layoutDesigner(.project(selected)) }
         case .importTauri: environment.editorRequest = .importTauri
         case .settings: NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         case .conversations: environment.editorRequest = .conversations(nil)

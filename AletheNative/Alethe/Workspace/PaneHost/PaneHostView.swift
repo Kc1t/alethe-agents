@@ -16,6 +16,7 @@ final class PaneHostView: NSView {
     private var weights: [Double] = []
     private var openIDs: [ProjectID] = []
     private var context: PaneHostContext?
+    private var containerGrid: CustomGrid?
     private lazy var animator = FrameAnimator(host: self)
     private var animateNextLayout = false
     private var liveSizes: [CGFloat]?
@@ -79,6 +80,11 @@ final class PaneHostView: NSView {
             }
         }
         let ids = flat ? [Self.flatID] : state.fullscreenProjectID.flatMap { openIDs.contains($0) ? [$0] : nil } ?? openIDs
+        let groupGrid = document.activeWorkspaceTab?.webGroupID.flatMap { id in
+            document.groups.first { $0.id == id }?.gridLayout
+        }
+        containerGrid = context.metrics.isWebInterface && !flat && state.fullscreenProjectID == nil
+            ? (groupGrid ?? context.environment.preferences?.document.workspaceGridLayout) : nil
         let collapsedNow = flat ? [] : Set(state.collapsedProjectIDs).intersection(ids)
         if ids != order || collapsedNow != collapsed { animateNextLayout = !order.isEmpty }
         for (id, view) in containers where !ids.contains(id) {
@@ -143,6 +149,13 @@ final class PaneHostView: NSView {
 
     /// Frame of every shown container, collapsed ones at their fixed width.
     private func frames() -> [ProjectID: CGRect] {
+        if let containerGrid, collapsed.isEmpty {
+            let ids = order.map(\.rawValue)
+            let grid = containerGrid.reconciled(ids)
+            let geometry = PaneGridGeometry(count: max(2, order.count), in: area, weights: GridWeights(), gap: gap,
+                                            handle: gap, mode: .grid, grid: grid, ids: ids)
+            return Dictionary(uniqueKeysWithValues: zip(order, geometry.paneFrames))
+        }
         let sizes = expandedSizes()
         var frames: [ProjectID: CGRect] = [:]
         var x = area.minX
@@ -241,7 +254,7 @@ final class PaneHostView: NSView {
 
     /// One divider between each pair of neighboring expanded containers.
     private func layoutDividers(_ frames: [ProjectID: CGRect]) {
-        let pairs = zip(expanded, expanded.dropFirst()).map { ($0, $1) }
+        let pairs = containerGrid != nil && collapsed.isEmpty ? [] : zip(expanded, expanded.dropFirst()).map { ($0, $1) }
         while dividers.count > pairs.count { dividers.removeLast().removeFromSuperview() }
         while dividers.count < pairs.count {
             let index = dividers.count

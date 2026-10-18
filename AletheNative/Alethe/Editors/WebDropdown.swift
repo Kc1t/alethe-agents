@@ -10,6 +10,7 @@ struct WebDropdown<Value: Hashable, Label: View>: View {
     @ViewBuilder let label: (Value) -> Label
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
+    var accessibilityID = "web.dropdown"
     @State private var open = false
     @State private var active = 0
     @State private var hovering = false
@@ -42,6 +43,7 @@ struct WebDropdown<Value: Hashable, Label: View>: View {
             .contentShape(RoundedRectangle(cornerRadius: radius))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier(accessibilityID)
         .foregroundStyle(theme[open || hovering || focused ? .fg : .fgMuted])
         .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: radius))
         .overlay(RoundedRectangle(cornerRadius: radius)
@@ -98,6 +100,7 @@ struct WebDropdown<Value: Hashable, Label: View>: View {
                         .onHover { if $0 { active = index } }
                         .accessibilityAddTraits(selected ? [.isSelected] : [])
                         .id(index)
+                        .accessibilityIdentifier("\(accessibilityID).option.\(index)")
                     }
                 }
                 .padding(metrics.size(4))

@@ -25,7 +25,7 @@ struct GitPullRequestWebCard: View {
                 if let url = pr.browserURL { NSWorkspace.shared.open(url) }
             } label: { Label("pullRequests.open", systemImage: "arrow.up.right.square") }
                 .buttonStyle(AletheButtonStyle(size: .small)).disabled(pr.browserURL == nil)
-                .padding(.top, metrics.size(8))
+                .padding(.top, metrics.size(8)).accessibilityIdentifier("pullRequests.open.\(pr.number)")
         }
         .padding(metrics.size(16)).frame(maxWidth: .infinity, alignment: .leading)
         .background(theme[.surfaceCardDefault], in: RoundedRectangle(cornerRadius: metrics.size(9)))
@@ -70,6 +70,7 @@ struct GitPullRequestReviewWebModal: View {
                 ProjectGroupWebField(title: "pullRequests.reviewModel") {
                     TextField("pullRequests.reviewModel.placeholder", text: $model)
                         .modifier(ProjectGroupWebInput())
+                        .accessibilityIdentifier("pullRequests.review.model")
                 }
                 HStack(spacing: metrics.size(6)) {
                     Text("pullRequests.headSHA").foregroundStyle(theme[.fgMuted])
@@ -96,6 +97,7 @@ struct GitPullRequestReviewWebModal: View {
             agent = agents.contains(state.agent) ? state.agent : (agents.first ?? .claude)
             model = state.model
         }
+        .accessibilityIdentifier("pullRequests.review.modal")
         .task { await loadHead() }
     }
 
@@ -168,6 +170,7 @@ struct GitPullRequestMergeWebModal: View {
                     .buttonStyle(AletheButtonStyle(.primary)).keyboardShortcut(.defaultAction).disabled(running)
             }
         }
+        .accessibilityIdentifier("pullRequests.merge.modal")
     }
 
     private func merge() async {

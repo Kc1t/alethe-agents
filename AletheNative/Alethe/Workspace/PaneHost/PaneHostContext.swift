@@ -205,6 +205,6 @@ struct PaneHostContext {
     }
 
     func designLayout(for project: ProjectID) {
-        environment.editorRequest = .layoutDesigner(project)
+        environment.editorRequest = .layoutDesigner(.project(project))
     }
 }

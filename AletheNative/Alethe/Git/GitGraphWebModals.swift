@@ -20,6 +20,7 @@ struct GitGraphBranchWebModal: View {
                 .buttonStyle(AletheButtonStyle(.primary)).keyboardShortcut(.defaultAction)
                 .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
+        .accessibilityIdentifier("git.history.branch.modal")
         .onAppear { focused = true }
     }
 }
@@ -37,5 +38,6 @@ struct GitGraphResetWebModal: View {
             Button("git.history.resetHard.confirm") { reset(); close?() }
                 .buttonStyle(AletheButtonStyle(.danger)).keyboardShortcut(.defaultAction)
         }
+        .accessibilityIdentifier("git.history.reset.modal")
     }
 }
