@@ -143,13 +143,7 @@ private struct InAppToastPill: View {
 
     /// `color-mix(in srgb, a pct%, b)`.
     private static func mix(_ a: Color, _ b: Color, _ amount: Double) -> Color {
-        let first = NSColor(a).usingColorSpace(.sRGB) ?? .gray
-        let second = NSColor(b).usingColorSpace(.sRGB) ?? .gray
-        return Color(.sRGB,
-                     red: first.redComponent * amount + second.redComponent * (1 - amount),
-                     green: first.greenComponent * amount + second.greenComponent * (1 - amount),
-                     blue: first.blueComponent * amount + second.blueComponent * (1 - amount),
-                     opacity: first.alphaComponent * amount + second.alphaComponent * (1 - amount))
+        b.mix(with: a, by: amount, in: .device)
     }
 }
 
