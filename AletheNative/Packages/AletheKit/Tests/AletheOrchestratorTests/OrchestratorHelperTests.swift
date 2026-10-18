@@ -193,7 +193,7 @@ import AletheIntegrations
         #expect(initialize["protocolVersion"]?.stringValue == "2025-03-26")
         #expect(initialize["serverInfo"]?.objectValue?["name"]?.stringValue == "alethe")
         let tools = try #require(replies.first { $0["id"]?.intValue == 2 }?["result"]?.objectValue?["tools"]?.arrayValue)
-        #expect(tools.count == 9)
+        #expect(tools.count == 14)
     }
 
     // MARK: The built helper
@@ -302,6 +302,6 @@ import AletheIntegrations
         #expect(result.answers.contains { $0.contains(#""protocolVersion":"\#(OrchestratorMCP.defaultProtocolVersion)""#) })
         let tools = result.answers.compactMap { try? OrderedJSON.parse($0).objectValue }
             .first { $0["id"]?.intValue == 2 }?["result"]?.objectValue?["tools"]?.arrayValue
-        #expect(tools?.count == 9)
+        #expect(tools?.count == 14)
     }
 }

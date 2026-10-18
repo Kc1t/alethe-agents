@@ -38,6 +38,11 @@ import Testing
             process.start()
         }
         #expect(code == 0)
-        #expect(observed.withLock { $0 } == directory.resolvingSymlinksInPath().path)
+        // The kernel reports the canonical path (/private/var/...); `resolvingSymlinksInPath` strips `/private`.
+        let canonical = directory.path.withCString { realpath($0, nil) }.map { pointer in
+            defer { free(pointer) }
+            return String(cString: pointer)
+        }
+        #expect(observed.withLock { $0 } == canonical)
     }
 }

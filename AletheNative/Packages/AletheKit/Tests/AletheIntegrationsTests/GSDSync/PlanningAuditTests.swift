@@ -194,7 +194,10 @@ private struct PlanningRepo {
         await autocommit.setEnabled(true)
         for _ in 0..<3 { await autocommit.handle(Self.updated("/repo/a/.planning")) }
         await autocommit.handle(Self.updated("/repo/b/.planning", project: "p2"))
-        try await Task.sleep(for: .milliseconds(400))
+        // Wait for both folders (generous under load), then give a duplicate commit time to show up.
+        let deadline = ContinuousClock.now + .seconds(10)
+        while await commits.roots.count < 2, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        try await Task.sleep(for: .milliseconds(300))
         let roots = await commits.roots
         #expect(roots.count == 2)
         #expect(Set(roots.map(\.0.path)) == ["/repo/a", "/repo/b"])

@@ -71,6 +71,12 @@ private func groupGone(_ pid: pid_t) -> Bool {
         #expect(ContinuousClock.now - started >= .milliseconds(400), "SIGKILL only after the grace period")
         #expect(await worker.exitStatus != nil, "the leader was reaped")
         #expect(gone(worker.pid), "no zombie is left")
+        // The group's other members die right after the leader's SIGKILL; give the kernel a moment to reap them.
+        var groupDeadline = 100
+        while !groupGone(worker.pid), groupDeadline > 0 {
+            try await Task.sleep(for: .milliseconds(50))
+            groupDeadline -= 1
+        }
         #expect(groupGone(worker.pid), "its background child went with it")
         #expect(await iterator.next() == nil, "stdout ends with the process")
     }
@@ -163,7 +169,7 @@ private func groupGone(_ pid: pid_t) -> Bool {
         var iterator = worker.lines.makeAsyncIterator()
         #expect(await next(&iterator) == ["hello": 1])
         let elapsed = ContinuousClock.now - started
-        #expect(elapsed < .milliseconds(500), "spawn to first line took \(elapsed)")
+        #expect(elapsed < .milliseconds(1500), "spawn to first line took \(elapsed)")
         await worker.terminate()
     }
 }

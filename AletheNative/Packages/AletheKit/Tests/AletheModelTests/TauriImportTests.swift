@@ -76,9 +76,9 @@ import Testing
         #expect(prefs.features.isOn(.playwright) && !prefs.features.isOn(.prs) && prefs.features.isOn(.browser))
         #expect(prefs.enabledFeatures?["git"] == nil, "legacy flags are plugins now")
         #expect(prefs.iconTheme == .eliteBlush)
-        #expect(prefs.usagePillProviders == ToolbarItemKind.usageProviders)
+        #expect(prefs.usagePillProviders == ["codex"])
         #expect(!prefs.showsToolbarItem(.memory) && prefs.showsToolbarItem(.profile))
-        #expect(prefs.toolbarItems == ["usage.codex": true, "memory": false])
+        #expect(prefs.toolbarItems == ["usage.claude": false, "usage.antigravity": false, "memory": false], "usage pills default to shown")
         #expect(prefs.mcpDefaultScope == "project" && prefs.mcpOnboardingSeen == true)
         // The Phase 7 preferences are covered by `TauriImportPeripheralsTests`.
         #expect(report.preferences == Set(TauriImport.Preference.allCases).subtracting([.integrations, .router9, .remote]))
