@@ -44,11 +44,13 @@ struct ImagePaneView: View {
         VStack(spacing: 0) {
             ContentPaneHeader(symbol: "photo", url: file.url, isFocused: isFocused, onClose: onClose, onDrag: onDrag) {
                 Spacer(minLength: 0)
+                if !metrics.isWebInterface {
                 ContentPaneButton(symbol: actualSize ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
                                   label: actualSize ? "media.fit" : "media.actualSize", id: "image.size") {
                     actualSize.toggle()
                 }
                 .disabled(file.image == nil)
+                }
             }
             content
         }
@@ -60,7 +62,7 @@ struct ImagePaneView: View {
     @ViewBuilder
     private var content: some View {
         if let image = file.image {
-            if actualSize {
+            if actualSize && !metrics.isWebInterface {
                 ScrollView([.horizontal, .vertical]) {
                     Image(nsImage: image).interpolation(.high)
                         .frame(width: image.size.width, height: image.size.height)
@@ -68,7 +70,7 @@ struct ImagePaneView: View {
                 .accessibilityIdentifier("image.actual")
             } else {
                 Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
-                    .padding(metrics.space(.m))
+                    .padding(metrics.isWebInterface ? 0 : metrics.space(.m))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityIdentifier("image.fitted")
             }

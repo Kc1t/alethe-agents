@@ -22,6 +22,7 @@ final class PaneHostView: NSView {
     private var resizeBase: [CGFloat] = []
     private var resizeDelta: CGFloat = 0
     private var focusedPane: PaneID?
+    private var selectedPane: (project: ProjectID, pane: PaneID)?
     private var mouseMonitor: Any?
     private var keyMonitor: Any?
     /// Flat workspace: the one container's panes and the project each belongs to.
@@ -62,7 +63,9 @@ final class PaneHostView: NSView {
         if flat {
             let open = openIDs.compactMap(document.project)
             for project in open { for pane in project.visiblePanes { flatOwners[pane.id] = project } }
-            projects[Self.flatID] = Project(id: Self.flatID, name: "", folder: "", panes: open.flatMap(\.visiblePanes))
+            var combined = Project(id: Self.flatID, name: "", folder: "", panes: open.flatMap(\.visiblePanes))
+            combined.paneGroups = open.flatMap { $0.paneGroups ?? [] }
+            projects[Self.flatID] = combined
         } else {
             for id in openIDs {
                 guard var project = document.project(id) else { continue }
@@ -352,7 +355,19 @@ final class PaneHostView: NSView {
         for (id, container) in containers where container.frame.contains(point) || focusModePane != nil {
             let local = container.convert(point, from: self)
             if let pane = container.paneViews.first(where: { !$0.isHidden && $0.frame.contains(local) }) {
-                context.focus(pane.paneID, in: flatOwners[pane.paneID]?.id ?? id)
+                let owner = flatOwners[pane.paneID]?.id ?? id
+                if context.metrics.isWebInterface {
+                    if event.modifierFlags.contains(.shift), let selectedPane,
+                       selectedPane.project == owner, selectedPane.pane != pane.paneID {
+                        context.workspace?.update { document in
+                            document.updateProject(owner) { $0.groupPanes([selectedPane.pane, pane.paneID]) }
+                        }
+                        self.selectedPane = nil
+                    } else {
+                        selectedPane = (owner, pane.paneID)
+                    }
+                }
+                context.focus(pane.paneID, in: owner)
             }
         }
     }

@@ -85,6 +85,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Web-style keyboard shortcuts (⌘B, ⌘P, ⇧⌘G, ⇧⌘P, ⌘W, ⌘1–9, terminal cycling, R), the full hamburger menu, group archive/quick-rename/move menu items and a web-style file preview overlay.
+- Web-style pane groups persist and import from web workspaces. Shift-click panes to combine them
+  in one layout slot, keep each pane interactive, and ungroup from the group header.
+- Markdown, image, video, diff and Graphify panes use web-style headers and actions; media panes
+  support focus mode and close confirmation. Diff lines retain the web colors and spacing.
 - Debug main-menu action to redo onboarding, plus profile backup/import/reset, data and log shortcuts.
 - Debug builds include Debug → Load sample data and the `ALETHE_SAMPLE_DATA=1` launch option:
   25 varied global/project todos and an editable four-file Markdown sample project with its README

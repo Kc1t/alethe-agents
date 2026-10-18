@@ -24,6 +24,9 @@ struct GraphifyPaneView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if metrics.isWebInterface {
+                webToolbar
+            } else {
             ContentPaneHeader(symbol: "point.3.connected.trianglepath.dotted", url: model.root, isFocused: isFocused,
                               onClose: onClose, onDrag: onDrag) {
                 stats
@@ -40,6 +43,7 @@ struct GraphifyPaneView: View {
                 .disabled(model.state != .loaded)
                 ContentPaneButton(symbol: "scissors", label: "graphify.prune", id: "graphify.prune") { confirmingPrune = true }
                     .disabled(model.snapshots.count <= Self.keepLast)
+            }
             }
             HStack(spacing: 0) {
                 graphArea
@@ -67,14 +71,51 @@ struct GraphifyPaneView: View {
         .accessibilityIdentifier("graphify.pane")
     }
 
+    private var webToolbar: some View {
+        HStack(spacing: metrics.size(8)) {
+            Text("graphify.title").font(metrics.font(size: 13, weight: .semibold))
+                .padding(.trailing, metrics.size(4))
+            stats
+            Spacer(minLength: 0)
+            webAction("graphify.reload", symbol: "arrow.clockwise", id: "graphify.reload") { model.reload() }
+                .disabled(model.state == .loading)
+            webAction("graphify.snapshot", symbol: "camera", id: "graphify.takeSnapshot") { model.takeSnapshot() }
+                .disabled(model.state != .loaded)
+            webAction("graphify.prune", symbol: "scissors", id: "graphify.prune") { confirmingPrune = true }
+                .disabled(model.snapshots.isEmpty)
+            ContentPaneButton(symbol: "xmark", label: "markdown.close", id: "pane.close", webSize: 22, webIconSize: 15, action: onClose)
+        }
+        .foregroundStyle(theme[.fg])
+        .padding(.horizontal, metrics.size(12))
+        .padding(.vertical, metrics.size(8))
+        .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+        .accessibilityIdentifier("pane.header.\(model.root.lastPathComponent)")
+    }
+
+    private func webAction(_ title: LocalizedStringKey, symbol: String, id: String,
+                           action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: metrics.size(6)) {
+                Image(systemName: symbol).font(metrics.font(size: 13))
+                Text(title).font(metrics.font(size: 12))
+            }
+            .padding(.horizontal, metrics.size(10))
+            .padding(.vertical, metrics.size(4))
+            .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(6)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.size(6)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
+    }
+
     @ViewBuilder
     private var stats: some View {
         if let graph = model.graph, model.state == .loaded {
             let text = format("graphify.stats", graph.nodeCount, graph.edgeCount)
                 + (graph.truncated ? " · " + format("graphify.truncated", graph.nodes.count) : "")
             Text(verbatim: text)
-                .font(metrics.font(.caption))
-                .foregroundStyle(theme[.textTertiary])
+                .font(metrics.isWebInterface ? metrics.font(size: 12) : metrics.font(.caption))
+                .foregroundStyle(theme[metrics.isWebInterface ? .fgMuted : .textTertiary])
                 .lineLimit(1)
                 .accessibilityIdentifier("graphify.stats")
         }

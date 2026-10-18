@@ -36,16 +36,16 @@ struct MarkdownPaneView: View {
         }
         Spacer(minLength: 0)
         if file.isEditing {
-            ContentPaneButton(symbol: "checkmark", label: "markdown.save", id: "markdown.save") { file.save() }
+            ContentPaneButton(symbol: "checkmark", label: "markdown.save", id: "markdown.save", webSize: 22) { file.save() }
                 .keyboardShortcut("s", modifiers: .command)
-            ContentPaneButton(symbol: "xmark.circle", label: "markdown.cancelEdit", id: "markdown.cancelEdit") {
+            ContentPaneButton(symbol: "xmark.circle", label: "markdown.cancelEdit", id: "markdown.cancelEdit", webSize: 22) {
                 file.cancelEditing()
             }
         } else {
-            ContentPaneButton(symbol: "arrow.clockwise", label: "markdown.refresh", id: "markdown.refresh") { file.reload() }
+            ContentPaneButton(symbol: "arrow.clockwise", label: "markdown.refresh", id: "markdown.refresh", webSize: 22) { file.reload() }
             ContentPaneButton(symbol: copied ? "checkmark" : "doc.on.doc",
-                              label: copied ? "markdown.copied" : "markdown.copySource", id: "markdown.copy") { copySource() }
-            ContentPaneButton(symbol: "pencil", label: "markdown.edit", id: "markdown.edit") { file.beginEditing() }
+                              label: copied ? "markdown.copied" : "markdown.copySource", id: "markdown.copy", webSize: 22) { copySource() }
+            ContentPaneButton(symbol: "pencil", label: "markdown.edit", id: "markdown.edit", webSize: 22) { file.beginEditing() }
                 .disabled(file.loadError != nil)
         }
     }
@@ -80,9 +80,10 @@ struct MarkdownFileContent: View {
                         .padding(metrics.space(.s))
                 }
                 TextEditor(text: Bindable(file).draft)
-                    .font(metrics.font(.body).monospaced())
+                    .font(metrics.isWebInterface ? metrics.monoFont(size: 13) : metrics.font(.body).monospaced())
                     .scrollContentBackground(.hidden)
-                    .padding(metrics.space(.s))
+                    .padding(.horizontal, metrics.isWebInterface ? metrics.size(22) : metrics.space(.s))
+                    .padding(.vertical, metrics.isWebInterface ? metrics.size(18) : metrics.space(.s))
                     .accessibilityIdentifier("markdown.editor")
             }
         } else if let error = file.loadError {
@@ -101,8 +102,9 @@ struct MarkdownFileContent: View {
         } else {
             ScrollView {
                 MarkdownBlocksView(blocks: file.blocks)
-                    .padding(metrics.space(.xl))
-                    .frame(maxWidth: metrics.size(820), alignment: .leading)
+                    .padding(.horizontal, metrics.isWebInterface ? metrics.size(24) : metrics.space(.xl))
+                    .padding(.vertical, metrics.isWebInterface ? metrics.size(20) : metrics.space(.xl))
+                    .frame(maxWidth: metrics.isWebInterface ? .infinity : metrics.size(820), alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .accessibilityIdentifier("markdown.rendered")

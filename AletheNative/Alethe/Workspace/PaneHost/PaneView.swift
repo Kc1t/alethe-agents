@@ -78,10 +78,14 @@ final class PaneView: NSView {
 
     private func style(focused: Bool, dropTarget: Bool, context: PaneHostContext) {
         let web = context.metrics.isWebInterface
-        layer?.cornerRadius = web ? 0 : context.metrics.radius(.md)
+        let media = context.workspace?.document.pane(paneID)?.pane.content.kind
+        layer?.cornerRadius = web ? (media == .image || media == .video ? context.metrics.radius(.md) : 0)
+            : context.metrics.radius(.md)
         layer?.borderWidth = web ? context.metrics.size(dropTarget ? 2 : 1) : (dropTarget ? 2 : 1)
-        let focusToken: ThemeToken = web && context.metrics.style != .clean ? .focusRing : context.focusBorder
-        let showFocus = focused && (!web || context.environment.focusModePaneID != paneID)
+        let focusToken: ThemeToken = web && context.metrics.style != .clean
+            ? (media == .image || media == .video ? .accent : .focusRing) : context.focusBorder
+        let isMedia = media == .image || media == .video
+        let showFocus = focused && (!web || isMedia || context.environment.focusModePaneID != paneID)
         layer?.borderColor = context.theme.nsColor(dropTarget ? (web ? .focusRing : .accent) : showFocus ? focusToken : .border).cgColor
         layer?.backgroundColor = context.theme.nsColor(.bgSunken).cgColor
         if web && focused && context.environment.focusModePaneID != paneID {
@@ -241,10 +245,11 @@ final class PaneView: NSView {
         case .terminal:
             view = AnyView(EmptyView())
         }
+        let identified = AnyView(view.environment(\.contentPaneID, pane.id))
         if let contentHost {
-            contentHost.rootView = view
+            contentHost.rootView = identified
         } else {
-            let host = NSHostingView(rootView: view)
+            let host = NSHostingView(rootView: identified)
             addSubview(host)
             contentHost = host
         }

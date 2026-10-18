@@ -109,3 +109,75 @@ Exact Windows parity is not achieved for the following existing model/flow const
 Reviewer next steps: compile outside the sandbox; check hover hit targets and inline rename at
 narrow pane widths and all zoom settings; run pane/subtab and remote-sharing UI suites. Resolve
 remaining model/flow gaps before declaring the terminal control set 1:1 with Windows.
+
+
+## Pane grouping and content panes (2026-10-18)
+
+Task state / handoff memory: changes remain unstaged. No commit, push, build, app restart or
+UI automation was performed. No ai-memory skill or memory write tool is available; this
+versioned report records implementation decisions and reviewer follow-up.
+
+Source of truth was read using `git show origin/main:<path>`:
+
+- `src/lib/types.ts` and `src/stores/projectsStore.terminalSlices.ts`: `paneGroups` contains
+  `id`, ordered `paneIds`, optional `kind` and `plannerId`. Grouping absorbs intersecting groups,
+  preserves their member order and metadata, and moves members to the first selected pane's grid.
+  The grouping implementation is in terminalSlices, despite the audit citing workspaceSlices.
+- `src/components/WorkspaceView/PaneArea.tsx` and `WorkspaceView.module.css`: one outer slot
+  per group; 28-point header, 11-point semibold uppercase label, 22-point ungroup target,
+  8-point radius (zero in Clean), 6-point body padding/gaps and two columns. Orchestration groups
+  use a vertical layout. The actual web implementation does not replace members with a tab strip.
+- `src/components/{ImagePane,VideoPane}/index.tsx` and their module CSS: 32-point header,
+  11-point identity, 10-point monospace path, 23-point action targets and 12-point symbols,
+  drag handle, Explorer/Finder, focus mode and confirmed delete. Existing playback/image
+  lifetimes remain in the content registry; grouping does not recreate them.
+- `src/components/MarkdownPane/{index.tsx,MarkdownPane.module.css}`: 32-point tabs-lane header,
+  16-point document icon, bounded monospace path pill, 22-point actions, 20/24-point body padding,
+  14-point paragraphs, heading multipliers and 18/22-point editor padding.
+- `src/components/DiffPane/{index.tsx,DiffPane.module.css}`: 36-point header, 13/11-point
+  identity/path, 24-point close target with 14-point symbol, 16-point content padding and
+  13-point monospace lines at 19.5-point line height, including hunk/add/remove colors.
+- `src/components/GraphifyView/{index.tsx,GraphifyView.module.css}`: title/stats and labeled
+  refresh/snapshot/prune toolbar, 8/12-point padding, 12-point buttons with 13-point symbols.
+
+The native `.mac` view branches remain; the web layout uses metrics and theme tokens. Existing
+accessibility identifiers remain. The new optional model field does not require migrating old
+native documents. Tauri imports retain stacks and image/video/Markdown/diff/Graphify pane IDs.
+Close reconciles dangling and singleton groups. Nested pane hit testing and drag targets include
+all visible members, and layout leaves the currently dragged member alone.
+
+Tests added in `PaneGroupTests.swift`: JSON round trip and optional old-schema field, orchestration
+metadata, selection deduplication, absorption/order/grid assignment, invalid selection, ungroup,
+close promotion/singleton cleanup, invalid membership reconciliation and media-stack import.
+`python3 AletheNative/Scripts/check-strings.py` and `git diff --check` pass. Swift tests have not
+run because compilation is prohibited in this sandbox; reviewer must build/test on macOS 26.
+
+### Audit disposition and remaining parity
+
+- Pane stacking / Shift-click grouping / ungroup: implemented in inspected source. Runtime
+  validation remains: Shift-click terminal and content panes, merge groups, close leader/member,
+  ungroup, drag members, change grids, focus/escape, relaunch and import a web stack.
+- Image/video panes and focus chrome: implemented with native rendering adaptations. AVKit
+  controls and supported codecs differ from browser HTML video; NSImage does not reproduce every
+  browser SVG/GIF animation behavior. These renderer differences are not portable pixel for pixel
+  using the retained native renderers. Verify fitted bounds and zoom externally.
+- Content pane chrome and renderer parity: headers and the listed dimensions/colors are ported;
+  full renderer parity remains partial. Graphify retains the native graph Canvas/timeline rather
+  than Cytoscape. Markdown retains the native block parser (including literal HTML handling),
+  rather than the web renderer's complete syntax/highlighting. Browser blur/shadow/animation and
+  toolbar wrapping are not certified. These must not be represented as full 1:1 parity.
+
+The requested external audit file is outside writable roots. Its existing rows were not rewritten;
+this report supplies the scoped disposition for the reviewer to incorporate. Do not mark the
+content-renderer row done until its remaining differences are resolved or explicitly accepted.
+
+### Cover-image verification
+
+Cover-image implementation and tests already existed when this task began; no cover files were
+changed. Read `ImageInput.tsx`, sidebar TSX/CSS, web types and native fields. Web uploads store
+original bytes as data URLs, accept image MIME types and cap files at 2 MiB; there is no resize or
+compression. Native `ProjectImageInput`, editor fields, `SidebarCoverImage`, `iconUrl` model/import
+fields, recent cards and tab icons already implement this path, including macOS drop/clipboard
+extensions and loading/error fallbacks. No Change image context action appears in the inspected
+web sidebar menu. Existing `ProjectImageTests` cover serialization, validation and imports; they
+also await reviewer execution. Cover rendering for SVG/animated GIF remains a renderer check.

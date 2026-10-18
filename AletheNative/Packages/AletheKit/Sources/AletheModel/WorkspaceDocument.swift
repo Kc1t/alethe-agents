@@ -124,6 +124,8 @@ public struct Project: Codable, Hashable, Sendable, Identifiable {
     /// Absolute path of the project folder; the default working directory of its panes.
     public var folder: String
     public var panes: [Pane]
+    /// Web-compatible pane stacks; absent in older native documents.
+    public var paneGroups: [PaneGroup]?
     public var createdAt: Date
     /// How the panes are arranged; nil means Auto (P2-18; absent in older files).
     public var layoutMode: PaneLayoutMode?

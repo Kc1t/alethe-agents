@@ -285,6 +285,19 @@ public enum TauriImport {
                 if let kind = terminal["kind"] as? String, kind != "terminal" {
                     if kind == PaneContent.Kind.orchestrator.rawValue {
                         panes.append(orchestratorPane(from: terminal))
+                    } else if kind == "graphify" || kind == "diff" {
+                        var imported = orchestratorPane(from: terminal)
+                        imported.content = kind == "graphify" ? .graphify
+                            : .diff(path: terminal["filePath"] as? String, staged: terminal["staged"] as? Bool ?? false)
+                        panes.append(imported)
+                    } else if ["image", "video", "markdown"].contains(kind), let path = terminal["filePath"] as? String {
+                        var imported = orchestratorPane(from: terminal)
+                        switch kind {
+                        case "image": imported.content = .image(path: path)
+                        case "video": imported.content = .video(path: path)
+                        default: imported.content = .markdown(path: path)
+                        }
+                        panes.append(imported)
                     } else {
                         report.skipped.append(.paneKind(project: name, kind: kind))
                     }
@@ -297,7 +310,14 @@ public enum TauriImport {
             if let createdAt = (project["createdAt"] as? Double).map({ Date(timeIntervalSince1970: $0 / 1000) }) {
                 workspace.updateProject(created) { $0.createdAt = createdAt }
             }
-            workspace.updateProject(created) { $0.panes = panes }
+            workspace.updateProject(created) { target in
+                target.panes = panes
+                if let raw = project["paneGroups"], JSONSerialization.isValidJSONObject(raw),
+                   let data = try? JSONSerialization.data(withJSONObject: raw) {
+                    target.paneGroups = try? JSONDecoder().decode([PaneGroup].self, from: data)
+                    target.reconcilePaneGroups()
+                }
+            }
             if project["autoWorktree"] as? Bool == true { workspace.updateProject(created) { $0.autoWorktree = true } }
             if project["graphifyEnabled"] as? Bool == true { workspace.updateProject(created) { $0.graphifyEnabled = true } }
             if let mode = (project["worktreeMode"] as? String).flatMap(ProjectWorktreeMode.init(rawValue:)) {
@@ -335,7 +355,7 @@ public enum TauriImport {
     }
 
     /// An orchestrator board (upstream `createOrchestratorPane`): no tabs, so only its id and grid
-    /// are kept. Upstream's `paneGroups` stacking is not imported; the board keeps its place in order.
+    /// are kept. Its stack membership is imported with the project's paneGroups.
     static func orchestratorPane(from terminal: [String: Any]) -> Pane {
         let id = (terminal["id"] as? String).flatMap { $0.isEmpty ? nil : PaneID(rawValue: $0) } ?? .make()
         var pane = Pane(id: id, content: .orchestrator)
