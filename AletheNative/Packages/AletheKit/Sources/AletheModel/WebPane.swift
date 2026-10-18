@@ -24,13 +24,16 @@ public struct WebPaneOptions: Codable, Hashable, Sendable {
     public var resourceMode: WebResourceMode
     public var javascriptEnabled: Bool
     public var zoom: Double
+    public var name: String?
 
     public static let zoomRange = 0.5...2.0
 
-    public init(resourceMode: WebResourceMode = .appFirst, javascriptEnabled: Bool = true, zoom: Double = 1) {
+    public init(resourceMode: WebResourceMode = .appFirst, javascriptEnabled: Bool = true, zoom: Double = 1, name: String? = nil) {
         self.resourceMode = resourceMode
         self.javascriptEnabled = javascriptEnabled
         self.zoom = zoom
+        let trimmedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.name = trimmedName?.isEmpty == false ? trimmedName : nil
     }
 
     public init(from decoder: Decoder) throws {
@@ -38,6 +41,7 @@ public struct WebPaneOptions: Codable, Hashable, Sendable {
         resourceMode = try container.decodeIfPresent(WebResourceMode.self, forKey: .resourceMode) ?? .appFirst
         javascriptEnabled = try container.decodeIfPresent(Bool.self, forKey: .javascriptEnabled) ?? true
         zoom = try container.decodeIfPresent(Double.self, forKey: .zoom) ?? 1
+        name = try container.decodeIfPresent(String.self, forKey: .name)
     }
 }
 

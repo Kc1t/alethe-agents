@@ -13,6 +13,7 @@ enum EditorRequest: Identifiable, Hashable {
     case newSubTab(PaneID)
     /// Add a file or page pane to a project (nil: the selected one).
     case addContent(ProjectID?)
+    case addBrowser(ProjectID?)
     /// Quick look at a terminal link (upstream link viewer).
     case previewLink(LinkPreviewTarget)
     /// Import from the Tauri app's data.
@@ -71,6 +72,7 @@ enum EditorRequest: Identifiable, Hashable {
         case .newTerminal: "newTerminal"
         case .newSubTab(let id): "newSubTab:\(id)"
         case .addContent: "addContent"
+        case .addBrowser: "addBrowser"
         case .previewLink(let target): "previewLink:\(target)"
         case .importTauri: "importTauri"
         case .layoutDesigner(let id): "layoutDesigner:\(id)"

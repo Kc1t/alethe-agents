@@ -59,6 +59,12 @@ struct WebPaneView: View {
                               label: page.isLoading ? "web.stop" : "web.reload", id: "web.reload") {
                 if page.isLoading { page.webView?.stopLoading() } else { page.reload() }
             }
+            if let name = page.options.name {
+                Text(verbatim: name).font(metrics.font(.footnote).weight(.medium))
+                    .lineLimit(1).frame(maxWidth: metrics.size(110))
+                    .help(Text(verbatim: name))
+                    .accessibilityIdentifier("web.name")
+            }
             TextField(text: $address) { Text("web.addressPlaceholder") }
                 .textFieldStyle(.plain)
                 .font(metrics.font(.footnote))

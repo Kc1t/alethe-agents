@@ -1,6 +1,380 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+  "menu.addBrowser": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Add browser"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Adicionar browser"
+        }
+      }
+    }
+  },
+  "browser.addTitle": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Open browser view"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Abrir visualização do browser"
+        }
+      }
+    }
+  },
+  "browser.url": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "URL"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "URL"
+        }
+      }
+    }
+  },
+  "browser.urlPlaceholder": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "https://example.com"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "https://exemplo.com"
+        }
+      }
+    }
+  },
+  "browser.urlHint": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "HTTP and HTTPS addresses are supported. Localhost uses HTTP automatically."
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Endereços HTTP e HTTPS são aceitos. Localhost usa HTTP automaticamente."
+        }
+      }
+    }
+  },
+  "browser.invalidUrl": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Enter a valid HTTP or HTTPS address."
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Digite um endereço HTTP ou HTTPS válido."
+        }
+      }
+    }
+  },
+  "browser.name": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Name (optional)"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Nome (opcional)"
+        }
+      }
+    }
+  },
+  "browser.namePlaceholder": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Defaults to the website host"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Por padrão, usa o domínio do site"
+        }
+      }
+    }
+  },
+  "browser.zoom": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Page zoom"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Zoom da página"
+        }
+      }
+    }
+  },
+  "browser.javascript": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Enable JavaScript"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Ativar JavaScript"
+        }
+      }
+    }
+  },
+  "browser.javascriptDescription": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Most apps need this. Disable it for a stricter read-only page."
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "A maioria dos apps precisa disso. Desative para uma página mais restrita e somente leitura."
+        }
+      }
+    }
+  },
+  "browser.resourceMode": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Resource priority"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Prioridade de recursos"
+        }
+      }
+    }
+  },
+  "browser.resourceModeAppFirst": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Prioritize Alethe"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Priorizar o Alethe"
+        }
+      }
+    }
+  },
+  "browser.resourceModeBalanced": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Balanced"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Equilibrado"
+        }
+      }
+    }
+  },
+  "browser.resourceModeKeepAlive": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Keep page alive"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Manter página ativa"
+        }
+      }
+    }
+  },
+  "browser.resourceModeDescription.appFirst": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Recommended. Hidden pages release their native webview after 1 second and reload when shown again."
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Recomendado. Páginas ocultas liberam a webview nativa após 1 segundo e recarregam ao reaparecer."
+        }
+      }
+    }
+  },
+  "browser.resourceModeDescription.balanced": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Keeps hidden pages alive for 30 seconds before releasing their native webview."
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Mantém páginas ocultas ativas por 30 segundos antes de liberar a webview nativa."
+        }
+      }
+    }
+  },
+  "browser.resourceModeDescription.keepAlive": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Keeps hidden pages loaded, but still releases them if Alethe detects memory pressure."
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Mantém páginas ocultas carregadas, mas ainda as libera se o Alethe detectar pressão de memória."
+        }
+      }
+    }
+  },
+  "browser.addToGrid": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Add to grid"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Adicionar ao grid"
+        }
+      }
+    }
+  },
+  "browser.privateTitle": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Private session is always on"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Sessão privada sempre ativa"
+        }
+      }
+    }
+  },
+  "browser.privateDescription": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Alethe opens this pane in a native incognito webview. Cookies, logins, cache, autofill, and site storage are not kept after the pane closes."
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "O Alethe abre este pane em uma webview nativa anônima. Cookies, logins, cache, preenchimento automático e dados dos sites não são mantidos depois que o pane é fechado."
+        }
+      }
+    }
+  },
+  "browser.destination": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "This browser will be added to %@."
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Este browser será adicionado a %@."
+        }
+      }
+    }
+  },
   "menu.redoOnboarding": {
     "extractionState": "manual",
     "localizations": {
@@ -991,23 +1365,6 @@
         }
       }
     },
-    "addContent.web.add" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adicionar"
-          }
-        }
-      }
-    },
     "addContent.web.detail" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1021,40 +1378,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mostra uma página ao vivo, como o app que um agente está construindo."
-          }
-        }
-      }
-    },
-    "addContent.web.hint" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Local addresses such as localhost:3000 open over http."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Endereços locais como localhost:3000 abrem via http."
-          }
-        }
-      }
-    },
-    "addContent.web.prompt" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Website address"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Endereço do site"
           }
         }
       }

@@ -206,6 +206,13 @@ struct NewTerminalWebOverlay<Content: View>: View {
             .frame(width: geometry.size.width, height: geometry.size.height)
             .onChange(of: geometry.size) { _, _ in reset() }
         }
+        .backgroundPreferenceValue(NewTerminalDropdownKey.self) { menus in
+            WebModalEscapeHandler {
+                if let menu = menus.last { menu.dismiss() } else { close() }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
         .onAppear { reset(); visible = true }
         .onExitCommand(perform: close)
         .accessibilityAddTraits(.isModal)
@@ -355,4 +362,47 @@ extension EnvironmentValues {
     @Entry var webModalMove: (CGSize) -> Void = { _ in }
     @Entry var webModalEndMove: () -> Void = {}
     @Entry var webModalReset: () -> Void = {}
+}
+
+/// Match the web modal's capture-phase Escape handling even when an AppKit text editor consumes it.
+private struct WebModalEscapeHandler: NSViewRepresentable {
+    let action: () -> Void
+    func makeNSView(context: Context) -> WebModalEscapeView { WebModalEscapeView(action: action) }
+    func updateNSView(_ view: WebModalEscapeView, context: Context) { view.action = action }
+    static func dismantleNSView(_ view: WebModalEscapeView, coordinator: ()) { view.stop() }
+}
+
+@MainActor
+private final class WebModalEscapeView: NSView {
+    private struct Layer { weak var view: WebModalEscapeView? }
+    private static var layers: [Layer] = []
+    private var monitor: Any?
+    var action: () -> Void
+
+    init(action: @escaping () -> Void) {
+        self.action = action
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        stop()
+        guard window != nil else { return }
+        Self.layers.append(Layer(view: self))
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.window === self.window, event.keyCode == 53,
+                  Self.layers.compactMap(\.view).last === self else { return event }
+            self.action()
+            return nil
+        }
+    }
+
+    func stop() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        Self.layers.removeAll { $0.view == nil || $0.view === self }
+    }
 }

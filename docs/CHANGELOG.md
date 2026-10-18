@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Browser setup parity
+- Add Content and browser setup use themed window overlays. Open a browser from the main menu,
+  validate its address, name it and set page zoom, JavaScript and hidden-page resource policy.
+  Browser names persist across relaunch. Escape closes dropdowns before their containing modal,
+  including while a text field is focused.
+
 ### Fixed
 - Native macOS web-style menus now expose data actions and Debug onboarding retry; Git and integration
   dialogs use themed overlays, dropdowns fit the window, and terminal focus expands across the window.

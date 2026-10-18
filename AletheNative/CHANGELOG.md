@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Browser setup parity
+- Add Content and browser setup use themed window overlays. Open a browser from the main menu,
+  validate its address, name it and set page zoom, JavaScript and hidden-page resource policy.
+  Browser names persist across relaunch. Escape closes dropdowns before their containing modal,
+  including while a text field is focused.
+
 ### Added
 - Debug main-menu action to redo onboarding, plus profile backup/import/reset, data and log shortcuts.
 - Debug builds include Debug → Load sample data and the `ALETHE_SAMPLE_DATA=1` launch option:

@@ -40,7 +40,7 @@ This inventory is not a claim of rendered 1:1 parity for every screen.
 | Skills/Agent Library | SkillsSheet, AgentLibrarySheet / SkillsBrowser, AgentLibrary | Top-level overlay integrated |
 | GitHub sync | GistSyncSheet / SyncModal | Overlay integrated; Tauri-import fallback remains native |
 | Onboarding/welcome | OnboardingSheet, WelcomeBackSheet / OnboardingModal, WelcomeModal | Debug retry added; onboarding overlay integrated; welcome remains native |
-| Add content/browser | AddContentSheet / AddContentModal, AddBrowserModal | Still native form and native URL alert; dedicated browser setup UI and main-menu browser shortcut remain a gap |
+| Add content/browser | AddContentSheet / AddContentModal, AddBrowserModal | Themed Add Content and browser setup overlays, main-menu shortcut, named panes, URL validation and persisted page/resource settings implemented |
 | Conversations | ConversationsSheet / RecentChatsModal, ClaudeHistoryModal | Native presentation; agent/scope filtering exists, exact web list/actions differ |
 | Handoff/session cost | HandoffSheet, SessionCostSheet / HandoffModal, terminal session cost | Native presentation; themed web chrome still needs implementation |
 | Layout/grid editing | LayoutDesignerSheet, ProjectGridPrompts / LayoutDesignerModal, ProjectGridModal | Native presentation; designer scope differences remain |
@@ -63,7 +63,7 @@ This inventory is not a claim of rendered 1:1 parity for every screen.
 `WebPageModel` already creates a private `WKWebView`, and `WebPaneView` supplies navigation,
 address validation, zoom, JavaScript and hidden-page resource policy. The Playwright MCP shared
 browser is separate and opens its own Chromium window; it is not the WKWebView session.
-The missing browser menu/setup flow is UI parity work, not a lack of embedded-browser support.
+The browser menu/setup flow is now implemented, using the existing WKWebView session.
 
 ## Validation and repository state
 
@@ -94,3 +94,16 @@ The missing browser menu/setup flow is UI parity work, not a lack of embedded-br
   an identifier boundary and uses a cached regular expression, preserving genuine Color/NSColor/CGColor
   detection. The filtered design lint passes all three checks; no theme colors are suppressed or hardcoded.
 - Full visual parity remains open for the native presentations explicitly listed in the inventory.
+
+### Browser setup follow-up
+
+- Replaced the native URL alert with AddBrowserModal-equivalent fields and main-menu access.
+  The optional name extends WebPaneOptions with backward-compatible decoding; existing panes retain
+  their defaults. Names display in the pane toolbar and persist across restart.
+- Add Content preserves media/diff/graph options already supported by the native app and routes
+  website selection into the browser setup overlay without dismissing the new request.
+- Window-local Escape capture handles AppKit field editors, prioritizes open RowSelect menus and
+  the innermost modal, and unregisters when its presentation leaves the window.
+- Validation: string gate, six WebPaneTests model cases and UI creation/validation/escape/transition/
+  relaunch test at 150% zoom pass. UI run: 18.352 s. The UI test build also typechecks the app.
+- No ai-memory capability is available; this report records the schema decision and validation.

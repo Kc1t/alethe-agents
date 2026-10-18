@@ -12,6 +12,47 @@ final class WebPaneTests: XCTestCase {
         app.descendants(matching: .any)[identifier].firstMatch
     }
 
+    func testBrowserSetupValidatesAndPersistsNamedPane() {
+        let (app, root) = launchAlethe(arguments: ["-AletheUITestSeed", "web", "-interfaceStyle", "web"])
+        let menu = app.buttons["chrome.mainMenu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        for _ in 0..<5 { app.typeKey("+", modifierFlags: .command) }
+        app.typeKey("a", modifierFlags: [.command, .shift])
+        let website = app.buttons["addContent.web"].firstMatch
+        XCTAssertTrue(website.waitForExistence(timeout: 5))
+        website.click()
+        XCTAssertTrue(app.textFields["browser.add.url"].firstMatch.waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(eventually { !app.textFields["browser.add.url"].firstMatch.exists })
+        menu.click()
+        let add = app.buttons["chrome.mainMenu.addBrowser"].firstMatch
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        add.click()
+        let address = app.textFields["browser.add.url"].firstMatch
+        XCTAssertTrue(address.waitForExistence(timeout: 5))
+        let confirm = app.buttons["browser.add.confirm"].firstMatch
+        XCTAssertFalse(confirm.isEnabled)
+        paste("file:///etc/hosts", into: app)
+        XCTAssertFalse(confirm.isEnabled)
+        address.click()
+        app.typeKey("a", modifierFlags: .command)
+        paste("127.0.0.1:9", into: app)
+        let name = app.textFields["browser.add.name"].firstMatch
+        name.click()
+        paste("Local preview", into: app)
+        XCTAssertTrue(confirm.isEnabled)
+        XCTAssertTrue(confirm.isHittable)
+        confirm.click()
+        let label = app.staticTexts["web.name"].firstMatch
+        XCTAssertTrue(label.waitForExistence(timeout: 10))
+        XCTAssertEqual(label.value as? String, "Local preview")
+        app.terminate()
+        let restored = launchAlethe(dataRoot: root, arguments: ["-interfaceStyle", "web"]).0
+        XCTAssertTrue(restored.staticTexts["web.name"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertEqual(restored.staticTexts["web.name"].firstMatch.value as? String, "Local preview")
+        restored.terminate()
+    }
+
     func testFailureAddressOptionsAndCloseAtThreeZoomLevels() {
         for (label, keys) in [("90 %", ["-"]), ("100 %", []), ("120 %", ["+", "+"])] {
             let (app, _) = launchAlethe(arguments: ["-AletheUITestSeed", "web"])

@@ -12,6 +12,7 @@ struct AddContentSheet: View {
     let project: ProjectID?
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
@@ -53,20 +54,7 @@ struct AddContentSheet: View {
             return PaneContent.forFile(url.path) ?? .image(path: url.path)
         },
         Option(kind: .web, title: "addContent.web", detail: "addContent.web.detail", symbol: "globe") { _ in
-            let alert = NSAlert()
-            alert.messageText = String(localized: "addContent.web.prompt")
-            alert.informativeText = String(localized: "addContent.web.hint")
-            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-            field.placeholderString = "http://localhost:3000"
-            field.stringValue = "http://localhost:3000"
-            field.setAccessibilityIdentifier("addContent.web.address")
-            alert.accessoryView = field
-            alert.addButton(withTitle: String(localized: "addContent.web.add"))
-            alert.addButton(withTitle: String(localized: "editor.cancel"))
-            alert.window.initialFirstResponder = field
-            guard alert.runModal() == .alertFirstButtonReturn,
-                  let url = WebAddress.normalize(field.stringValue) else { return nil }
-            return .web(url: url.absoluteString, options: WebPaneOptions())
+            nil
         },
         Option(kind: .diff, title: "addContent.diff", detail: "addContent.diff.detail", symbol: "plusminus") { _ in
             .diff(path: nil, staged: false)
@@ -99,6 +87,43 @@ struct AddContentSheet: View {
     }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: close) {
+            Text("addContent.title")
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.size(10)) {
+                Text("addContent.description").font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+                ForEach(Self.options(for: environment.features)) { option in
+                    Button { add(option) } label: {
+                        HStack(alignment: .top, spacing: metrics.size(12)) {
+                            Image(systemName: option.symbol).webProfileSized(20).foregroundStyle(theme[.accent])
+                            VStack(alignment: .leading, spacing: metrics.size(4)) {
+                                Text(option.title).font(metrics.font(size: 13, weight: .semibold))
+                                Text(option.detail).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(WebContentOptionStyle())
+                    .disabled(target == nil)
+                    .accessibilityIdentifier("addContent.\(option.kind.rawValue)")
+                }
+            }
+        } footer: {
+            Spacer()
+            Button("editor.cancel", action: close)
+        }
+    }
+
+    private func close() {
+        if let closeOverlay { closeOverlay() } else { dismiss() }
+    }
+
+    private var nativeBody: some View {
         Form {
             Section {
                 ForEach(Self.options(for: environment.features)) { option in
@@ -135,10 +160,183 @@ struct AddContentSheet: View {
     }
 
     private func add(_ option: Option) {
-        guard let target, let content = option.choose(target) else { return }
+        guard let target else { return }
+        if option.kind == .web {
+            environment.editorRequest = .addBrowser(target.id)
+            return
+        }
+        guard let content = option.choose(target) else { return }
         workspace.update(undoManager: undoManager, actionName: String(localized: "undo.addContent")) {
+            if metrics.isWebInterface, $0.activeWorkspaceTab?.webPaneID != nil { $0.openWebProject(target.id) }
             $0.addPane(to: target.id, content: content)
         }
-        dismiss()
+        environment.showingHome = false
+        close()
+    }
+}
+
+private struct WebContentOptionStyle: ButtonStyle {
+    @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(theme[.fg])
+            .padding(metrics.size(12))
+            .background(theme[configuration.isPressed ? .panelHover : .bgSunken],
+                        in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+    }
+}
+
+/// Browser setup uses the same private WKWebView and persisted resource policy as existing panes.
+struct AddBrowserSheet: View {
+    let workspace: WorkspaceModel
+    let undoManager: UndoManager?
+    let project: ProjectID?
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @State private var address = ""
+    @State private var name = ""
+    @State private var javascript = true
+    @State private var zoom: Double = 1
+    @State private var resourceMode = WebResourceMode.appFirst
+    @FocusState private var addressFocused: Bool
+
+    private var target: Project? { project.flatMap(workspace.document.project) }
+    private var url: URL? { WebAddress.normalize(address) }
+    var body: some View {
+        GitWebModal(close: close) {
+            Text("browser.addTitle")
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.size(14)) {
+                HStack(alignment: .top, spacing: metrics.size(10)) {
+                    Image(systemName: "checkmark.shield").webProfileSized(18).foregroundStyle(theme[.statusActive])
+                    VStack(alignment: .leading, spacing: metrics.size(3)) {
+                        Text("browser.privateTitle").font(metrics.font(size: 12, weight: .semibold))
+                        Text("browser.privateDescription").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                    }
+                }
+                .padding(metrics.size(12))
+                .background(theme[.statusActive].opacity(0.08), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                    .strokeBorder(theme[.statusActive].opacity(0.32), lineWidth: metrics.size(1)))
+                field("browser.url") {
+                    TextField("browser.urlPlaceholder", text: $address)
+                        .modifier(ProjectGroupWebInput(focus: $addressFocused))
+                        .accessibilityIdentifier("browser.add.url")
+                        .onSubmit(addBrowser)
+                    if !address.isEmpty && url == nil {
+                        Text("browser.invalidUrl").font(metrics.font(size: 11)).foregroundStyle(theme[.statusOffline])
+                    } else {
+                        Text("browser.urlHint").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                    }
+                }
+                field("browser.name") {
+                    TextField("browser.namePlaceholder", text: $name)
+                        .modifier(ProjectGroupWebInput())
+                        .accessibilityIdentifier("browser.add.name")
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: metrics.size(12)) {
+                        zoomPicker.frame(minWidth: metrics.size(130))
+                        javascriptToggle.frame(minWidth: metrics.size(220))
+                    }
+                    VStack(alignment: .leading, spacing: metrics.size(12)) {
+                        zoomPicker
+                        javascriptToggle
+                    }
+                }
+                field("browser.resourceMode") {
+                    NewTerminalRowSelect(selection: $resourceMode, options: WebResourceMode.allCases,
+                        title: resourceLabel) { _ in Image(systemName: "memorychip").webProfileSized(14) }
+                        .accessibilityLabel(Text("browser.resourceMode"))
+                        .accessibilityIdentifier("browser.add.resourceMode")
+                    resourceDescription.font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                }
+                if let target {
+                    Text(verbatim: String(format: String(localized: "browser.destination"), target.name))
+                        .font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint])
+                }
+            }
+        } footer: {
+            Spacer()
+            Button("editor.cancel", action: close)
+            Button("browser.addToGrid", action: addBrowser)
+                .buttonStyle(AletheButtonStyle(.primary))
+                .keyboardShortcut(.defaultAction)
+                .disabled(target == nil || url == nil)
+                .accessibilityIdentifier("browser.add.confirm")
+        }
+        .frame(width: closeOverlay == nil ? metrics.size(520) : nil)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("browser.add")
+        .task { addressFocused = true }
+    }
+
+    private var zoomPicker: some View {
+        field("browser.zoom") {
+            NewTerminalRowSelect(selection: $zoom, options: [0.75, 1, 1.25, 1.5],
+                title: { "\(Int($0 * 100))%" }) { _ in Image(systemName: "magnifyingglass").webProfileSized(14) }
+                .accessibilityLabel(Text("browser.zoom"))
+                .accessibilityIdentifier("browser.add.zoom")
+        }
+    }
+
+    private var javascriptToggle: some View {
+        Toggle(isOn: $javascript) {
+            VStack(alignment: .leading, spacing: metrics.size(3)) {
+                Text("browser.javascript").font(metrics.font(size: 12, weight: .semibold))
+                Text("browser.javascriptDescription").font(metrics.font(size: 10)).foregroundStyle(theme[.fgMuted])
+            }
+        }
+        .toggleStyle(.checkbox)
+        .tint(theme[.accent])
+        .padding(metrics.size(12))
+        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .accessibilityIdentifier("browser.add.javascript")
+    }
+
+    private var resourceDescription: Text {
+        switch resourceMode {
+        case .appFirst: Text("browser.resourceModeDescription.appFirst")
+        case .balanced: Text("browser.resourceModeDescription.balanced")
+        case .keepAlive: Text("browser.resourceModeDescription.keepAlive")
+        }
+    }
+
+    private func resourceLabel(_ mode: WebResourceMode) -> String {
+        switch mode {
+        case .appFirst: String(localized: "browser.resourceModeAppFirst")
+        case .balanced: String(localized: "browser.resourceModeBalanced")
+        case .keepAlive: String(localized: "browser.resourceModeKeepAlive")
+        }
+    }
+
+    private func field<Content: View>(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: metrics.size(6)) {
+            Text(title).font(metrics.font(size: 12, weight: .medium)).foregroundStyle(theme[.fgMuted])
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func close() {
+        if let closeOverlay { closeOverlay() } else { dismiss() }
+    }
+
+    private func addBrowser() {
+        guard let target, let url else { return }
+        workspace.update(undoManager: undoManager, actionName: String(localized: "undo.addContent")) {
+            if metrics.isWebInterface, $0.activeWorkspaceTab?.webPaneID != nil { $0.openWebProject(target.id) }
+            $0.addPane(to: target.id, content: .web(url: url.absoluteString,
+                options: WebPaneOptions(resourceMode: resourceMode, javascriptEnabled: javascript, zoom: zoom, name: name)))
+        }
+        environment.showingHome = false
+        close()
     }
 }

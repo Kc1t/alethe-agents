@@ -3745,3 +3745,13 @@ isolated copy because the working index initially contained an unresolved Scroll
 Concurrent workspace work resolved it and checkpointed the shared implementation (`efbf229`).
 The isolated Debug build and both targeted focus/onboarding UI tests pass. No external ai-memory
 capability is available; the report preserves decisions, state and next steps.
+
+
+### Browser setup parity follow-up — 2026-10-18
+
+The main menu and Add Content now open a themed browser setup overlay. URL validation, optional
+persistent name, zoom, JavaScript and resource policy reuse the existing WKWebView model. Optional
+WebPaneOptions.name decodes older files unchanged. Model tests (6), string gate and the browser
+UI flow at 150% zoom (including modal transition, Escape and relaunch) pass. Shared Escape capture
+now respects dropdowns, nested overlays and focused AppKit text editors. The audit report records
+state and decisions because external ai-memory is unavailable.

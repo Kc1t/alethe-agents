@@ -21,6 +21,10 @@ struct WebWindowMenu: View {
     var body: some View {
         VStack(spacing: 0) {
             row("leftSidebar.preferences", "gearshape") { openSettings() }
+            if environment.features.isOn(.browser), let project = environment.workspace?.document.workspace.selectedProjectID {
+                row("menu.addBrowser", "globe") { environment.editorRequest = .addBrowser(project) }
+                    .accessibilityIdentifier("chrome.mainMenu.addBrowser")
+            }
             row("titlebar.remote", "network") { environment.editorRequest = .remotePairing }
             row("diagnostics.title", "shield.lefthalf.filled") { environment.editorRequest = .diagnostics }
             #if DEBUG

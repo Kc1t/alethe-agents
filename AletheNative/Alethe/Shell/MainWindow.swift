@@ -109,7 +109,7 @@ struct MainWindow: View {
         guard metrics.isWebInterface, let request = environment.editorRequest else { return false }
         switch request {
         case .newTerminal, .newSubTab, .newProject, .editProject, .newGroup, .editGroup, .aiUsage, .findJump: return true
-        case .mergeCenter, .worktrees, .branchTesting, .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding, .dataManagement: return true
+        case .mergeCenter, .worktrees, .branchTesting, .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding, .dataManagement, .addContent, .addBrowser: return true
         case .pluginSheet(let viewID, _): return viewID == GitControlPlugin.viewID
         default: return false
         }
@@ -122,7 +122,7 @@ struct MainWindow: View {
             GitWebOverlay(width: modalWidth(request), close: { environment.editorRequest = nil }) {
                 editor(for: request, workspace: workspace)
             }
-        case .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding:
+        case .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding, .addContent, .addBrowser:
             NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }, defaultWidth: modalWidth(request),
                                   minimumWidth: 320) { close in
                 editor(for: request, workspace: workspace)
@@ -163,6 +163,8 @@ struct MainWindow: View {
         case .agentLibrary: 660
         case .gistSync: 580
         case .onboarding: 620
+        case .addContent: 500
+        case .addBrowser: 520
         default: 480
         }
     }
@@ -268,6 +270,9 @@ struct MainWindow: View {
                              initialProject: workspace.document.pane(pane)?.project.id, targetPane: pane, closeOverlay: closeOverlay)
         case .addContent(let project):
             AddContentSheet(workspace: workspace, undoManager: undoManager,
+                            project: project ?? workspace.document.workspace.selectedProjectID)
+        case .addBrowser(let project):
+            AddBrowserSheet(workspace: workspace, undoManager: undoManager,
                             project: project ?? workspace.document.workspace.selectedProjectID)
         case .previewLink(let target):
             LinkPreviewSheet(target: target)

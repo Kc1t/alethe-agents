@@ -34,4 +34,16 @@ import Testing
         #expect(decoded == WebPaneOptions())
         #expect(try JSONDecoder().decode(WebResourceMode.self, from: Data(#""keep-alive""#.utf8)) == .keepAlive)
     }
+    @Test func namedBrowserOptionsRoundTripAndOldPanesStillDecode() throws {
+        let options = WebPaneOptions(resourceMode: .keepAlive, javascriptEnabled: false, zoom: 1.25, name: "  Preview  ")
+        let content = PaneContent.web(url: "http://localhost:3000/", options: options)
+        let encoded = try JSONEncoder().encode(content)
+        #expect(try JSONDecoder().decode(PaneContent.self, from: encoded) == content)
+        #expect(options.name == "Preview")
+        #expect(WebPaneOptions(name: "  ").name == nil)
+        let old = try JSONDecoder().decode(WebPaneOptions.self, from: Data(#"{"zoom":1.5,"javascriptEnabled":false}"#.utf8))
+        #expect(old.name == nil)
+        #expect(old.zoom == 1.5 && !old.javascriptEnabled)
+    }
+
 }
