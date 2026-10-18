@@ -174,6 +174,25 @@ public final class TerminalPaneView: NSView {
     public func syncSurfaceSize() {
         if terminalView.frame != bounds { terminalView.frame = bounds }
         terminalView.fitToSize()
+        scheduleSettle()
+    }
+
+    private var settleWork: DispatchWorkItem?
+
+    /// Safety net: 120 ms after the last size change (a drag, a spring animation, a reparent) the
+    /// surface is refitted once more and the PTY is told the final grid again, so a lost or
+    /// out-of-order resize can never leave the program at an old size.
+    private func scheduleSettle() {
+        settleWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, window != nil, bounds.width > 0, bounds.height > 0 else { return }
+            if terminalView.frame != bounds { terminalView.frame = bounds }
+            terminalView.fitToSize()
+            let size = grid.size
+            if size.columns > 0, size.rows > 0 { process.reassertSize(size) }
+        }
+        settleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
     }
 
     public func focus() {
