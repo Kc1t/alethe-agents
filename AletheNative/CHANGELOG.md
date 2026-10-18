@@ -20,6 +20,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   About shows the update check, download and install states, settings search lists section hits, and
   the audit sheet gains search, an All or Errors filter and Copy report.
 
+### Modal parity (web interface)
+- Todo settings use the web's Cancel and Save form with a draft storage folder and the reference-list
+  reset; the agent and 9router install dialogs match the web (480-point width, install-method rows,
+  Node.js section, retry and auto-close on success); the toolbar customization in Settings opens the
+  same themed dialog as the title bar. Accounts open as the web's standalone dialog with per-account
+  backup and a typed-name deletion confirmation, and Manage accounts opens it directly. A theme picker
+  dialog (themes, visual style, terminal theme) opens from the Home setup step. What's New lists
+  published release notes and the update dialog opens from the sidebar chip, and the extension consent
+  prompt uses the themed overlay. The native interface is unchanged.
+
 ### Dialog parity
 - Conversations, handoff, session cost, diagnostics, remote pairing, link preview, import, layout
   design, GSD activity, welcome and crash dialogs now use themed window overlays in the web interface.

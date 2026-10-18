@@ -96,7 +96,7 @@ struct AgentSettingsRow: View {
             }
         }
         .task(id: path) { await probe() }
-        .gitWebSheet(item: $sheet, width: 640, onDismiss: { environment.launchers.invalidate(); Task { await probe() } }) { mode in
+        .gitWebSheet(item: $sheet, width: 480, onDismiss: { environment.launchers.invalidate(); Task { await probe() } }) { mode in
             AgentInstallSheet(agent: agent, mode: mode)
                 .environment(environment)
                 .environment(\.theme, theme)
@@ -142,7 +142,7 @@ struct AgentSettingsRow: View {
             }
         }
         .task(id: path) { await probe() }
-        .gitWebSheet(item: $sheet, width: 640, onDismiss: { environment.launchers.invalidate(); Task { await probe() } }) { mode in
+        .gitWebSheet(item: $sheet, width: 480, onDismiss: { environment.launchers.invalidate(); Task { await probe() } }) { mode in
             AgentInstallSheet(agent: agent, mode: mode)
                 .environment(environment)
                 .environment(\.theme, theme)

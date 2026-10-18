@@ -10,7 +10,7 @@ struct WebAccountSettings: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var language = LanguageSetting().current()
-    @State private var managing = false
+    @State fileprivate var managing = false
     @State private var name = ""
     @State private var photo = ""
     @State private var loaded = false
@@ -76,10 +76,10 @@ struct WebAccountSettings: View {
             } header: { Text("settings.web.reference.prefs.localAccounts") }
               footer: { Text("settings.web.reference.prefs.localAccountsDesc") }
         }
-        .gitWebSheet(isPresented: $managing, width: 700) {
-            WebSettingsSubdialog(title: "settings.profiles.tab") { ProfileSettings() }
-        }
+        .gitWebSheet(isPresented: $managing, width: 760) { ProfilesWebModal() }
+        .onChange(of: environment.settingsTab) { _, _ in openRequestedProfiles() }
         .onAppear {
+            openRequestedProfiles()
             name = environment.preferences?.document.displayName ?? environment.activeProfileName
             let values = (try? JSONDecoder().decode([String: String].self, from: Data(avatars.utf8))) ?? [:]
             if let bytes = values[environment.profileID?.rawValue ?? "default"] {
@@ -95,6 +95,15 @@ struct WebAccountSettings: View {
     }
 
 
+}
+
+extension WebAccountSettings {
+    /// "Manage accounts" in the profile menus lands here and opens the accounts modal directly.
+    fileprivate func openRequestedProfiles() {
+        guard environment.settingsTab == .profiles else { return }
+        environment.settingsTab = .general
+        managing = true
+    }
 }
 
 struct WebOrganizationSettings: View {

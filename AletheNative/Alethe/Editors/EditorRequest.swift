@@ -62,6 +62,10 @@ enum EditorRequest: Identifiable, Hashable {
     case remotePairing
     /// GitHub gist sync (P7-15; upstream `SyncModal`).
     case gistSync
+    /// The web's theme picker modal (upstream `ThemePickerModal`): themes, visual style, terminal theme.
+    case themePicker
+    /// The web's update modal (upstream `UpdateModal`) for a newer published native release.
+    case updateAvailable(SidebarNativeRelease)
 
     var id: String {
         switch self {
@@ -97,6 +101,8 @@ enum EditorRequest: Identifiable, Hashable {
         case .mcpIntro: "mcpIntro"
         case .remotePairing: "remotePairing"
         case .gistSync: "gistSync"
+        case .themePicker: "themePicker"
+        case .updateAvailable: "updateAvailable"
         }
     }
 }

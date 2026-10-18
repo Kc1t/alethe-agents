@@ -20,6 +20,8 @@ struct AgentInstallSheet: View {
     @Environment(\.theme) private var theme
     @State private var toolchain: InstallToolchain?
     @State private var selection: InstallMethod.ID?
+    /// The current run is the Node.js toolchain install, not the agent's own.
+    @State private var startedNode = false
 
     private var installer: AgentInstaller { environment.installer }
     private var entry: AgentInstallCatalog.Entry? { AgentInstallCatalog.entries[agent.kind] }
@@ -46,65 +48,104 @@ struct AgentInstallSheet: View {
         .accessibilityIdentifier("agentInstall")
     }
 
+    /// AgentInstallModal.tsx + agentActions.module.css.
     private var webBody: some View {
-        ModalsM2WebModal(title: Text(verbatim: String(format: String(localized: mode.title), agent.displayName)), close: closeWeb) {
+        ModalsM2WebModal(title: Text(verbatim: String(format: String(localized: mode.title), agent.displayName)), close: closeWeb, width: 480) {
             VStack(alignment: .leading, spacing: metrics.size(10)) {
                 if toolchain == nil {
-                    Text("modalsM2.install.probing")
+                    Text("modalsM2.install.probing").font(metrics.font(size: 13))
                 } else if methods.isEmpty {
-                    unavailable
+                    webUnavailable
                 } else {
                     Text(verbatim: String(format: String(localized: "modalsM2.install.chooseMethod"), agent.displayName))
+                        .font(metrics.font(size: 13))
                     VStack(spacing: metrics.size(6)) {
                         ForEach(methods) { method in
-                            Button { selection = method.id } label: {
-                                HStack(alignment: .top, spacing: metrics.size(10)) {
-                                    Image(systemName: selectedMethod?.id == method.id ? "largecircle.fill.circle" : "circle")
-                                        .font(metrics.font(size: 13)).foregroundStyle(theme[.accent])
-                                        .padding(.top, metrics.size(2))
-                                    VStack(alignment: .leading, spacing: metrics.size(3)) {
-                                        Text(method.kind.title).font(metrics.font(size: 12.5, weight: .medium))
-                                        Text(verbatim: method.command).font(metrics.monoFont(size: 11))
-                                            .foregroundStyle(theme[.fgMuted]).textSelection(.enabled)
-                                    }.frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                                .padding(.horizontal, metrics.size(11)).padding(.vertical, metrics.size(9))
-                                .background(theme[selectedMethod?.id == method.id ? .accentSoft : .bg],
-                                            in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-                                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                                    .strokeBorder(theme[selectedMethod?.id == method.id ? .accent : .border], lineWidth: metrics.size(1)))
-                            }
-                            .buttonStyle(.plain).disabled(installer.isBusy)
-                            .accessibilityAddTraits(selectedMethod?.id == method.id ? [.isSelected] : [])
+                            AgentInstallMethodRow(method: method, selected: selectedMethod?.id == method.id,
+                                                  disabled: installer.isBusy) { selection = method.id }
                         }
                     }
+                    .padding(.bottom, metrics.size(2))
                     .accessibilityIdentifier("agentInstall.method")
                     .onKeyPress(.downArrow) { moveMethod(1); return .handled }
                     .onKeyPress(.upArrow) { moveMethod(-1); return .handled }
                 }
+                if isThisRun && !startedNode { webResult }
                 if isThisRun {
-                    result
                     ModalsM2InstallLog(log: installer.log).accessibilityIdentifier("agentInstall.log")
                 }
                 if let entry {
                     Button { openURL(entry.docsURL) } label: {
-                        Label("agentInstall.docs", systemImage: "arrow.up.right.square")
-                            .font(metrics.font(size: 12))
-                    }.buttonStyle(.plain).foregroundStyle(theme[.accent]).padding(.top, metrics.size(10))
+                        Label { Text("agentInstall.web.docs") } icon: {
+                            Image(systemName: "arrow.up.right.square").font(metrics.font(size: 12))
+                        }.font(metrics.font(size: 12))
+                    }.buttonStyle(.plain).foregroundStyle(theme[.accent])
                 }
             }
         } footer: {
             Spacer()
-            Button("agentInstall.cancel", action: closeWeb).keyboardShortcut(.cancelAction)
-            if !isThisRun || installer.status != .succeeded {
+            Button("editor.cancel", action: closeWeb)
+                .accessibilityIdentifier("agentInstall.cancel")
+            if installer.status == .succeeded && isThisRun && !startedNode {
+                Button("agentInstall.done", action: closeWeb)
+                    .buttonStyle(AletheButtonStyle(.primary)).keyboardShortcut(.defaultAction)
+            } else if selectedMethod != nil || toolchain == nil {
                 Button(action: start) {
-                    Label { Text(mode.action) } icon: { Image(systemName: "arrow.down.to.line").font(metrics.font(size: 13)) }
+                    Label { Text(installer.isBusy && isThisRun ? mode.busyAction : mode.action) } icon: {
+                        Image(systemName: "arrow.down.to.line").font(metrics.font(size: 13))
+                    }
                 }
                 .buttonStyle(AletheButtonStyle(.primary))
                 .keyboardShortcut(.defaultAction)
                 .disabled(selectedMethod == nil || installer.isBusy)
                 .accessibilityIdentifier("agentInstall.run")
             }
+        }
+        // The web closes the install modal as soon as the install lands.
+        .onChange(of: installer.status) { _, status in
+            if status == .succeeded, isThisRun, !startedNode, mode == .install { closeWeb() }
+        }
+    }
+
+    @ViewBuilder
+    private var webUnavailable: some View {
+        if mode == .install, AgentInstallCatalog.needsNode(agent.kind, toolchain: toolchain) {
+            let node = AgentInstallCatalog.nodeMethods(toolchain: toolchain).first
+            ModalsM2NodeToolchain(command: node?.command, running: installer.isBusy && startedNode,
+                                  canInstall: !installer.isBusy, install: installNode,
+                                  download: { openURL(AgentInstallCatalog.nodeDownloadURL) })
+        } else {
+            Text(mode == .uninstall ? "agentInstall.noUninstall" : "agentInstall.noMethod")
+                .font(metrics.font(size: 13))
+        }
+    }
+
+    @ViewBuilder
+    private var webResult: some View {
+        switch installer.status {
+        case .succeeded:
+            Text(verbatim: String(format: String(localized: mode.success), agent.displayName))
+                .font(metrics.font(size: 13)).foregroundStyle(theme[.statusWorking])
+                .accessibilityIdentifier("agentInstall.succeeded")
+        case .failed:
+            Group {
+                if mode == .install { Text("agentInstall.web.failed") }
+                else { Text(verbatim: String(format: String(localized: "agentInstall.failed"), agent.displayName)) }
+            }
+            .font(metrics.font(size: 13)).foregroundStyle(theme[.statusOffline])
+            .accessibilityIdentifier("agentInstall.failed")
+        case .running, .idle:
+            EmptyView()
+        }
+    }
+
+    private func installNode() {
+        startedNode = true
+        guard let node = AgentInstallCatalog.nodeMethods(toolchain: toolchain).first else { return }
+        Task {
+            await installer.run(node, for: agent.kind, cli: "npm", launchers: environment.launchers)
+            toolchain = await installer.toolchain(launchers: environment.launchers)
+            selection = methods.first?.id
         }
     }
 
@@ -229,12 +270,55 @@ struct AgentInstallSheet: View {
     }
 
     private func start() {
+        startedNode = false
         guard let method = selectedMethod, let cli = agent.cliCommand else { return }
         Task { await installer.run(method, for: agent.kind, cli: cli, launchers: environment.launchers) }
     }
 }
 
+/// agentActions.module.css `.method` / `.methodActive`: radio row with the exact command.
+private struct AgentInstallMethodRow: View {
+    let method: InstallMethod
+    let selected: Bool
+    let disabled: Bool
+    let choose: () -> Void
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: choose) {
+            HStack(alignment: .top, spacing: metrics.size(10)) {
+                Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+                    .font(metrics.font(size: 13)).foregroundStyle(theme[.accent])
+                    .padding(.top, metrics.size(2))
+                VStack(alignment: .leading, spacing: metrics.size(3)) {
+                    Text(method.kind.title).font(metrics.font(size: 12.5, weight: .medium)).foregroundStyle(theme[.fg])
+                    Text(verbatim: method.command).font(metrics.monoFont(size: 11))
+                        .foregroundStyle(theme[.fgMuted]).textSelection(.enabled)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, metrics.size(11)).padding(.vertical, metrics.size(9))
+            .background(theme[selected ? .accentSoft : .bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                .strokeBorder(theme[selected ? .accent : hovering ? .borderStrong : .border], lineWidth: metrics.size(1)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).disabled(disabled)
+        .onHover { hovering = $0 }
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+}
+
 extension AgentInstallSheet.Mode {
+    var busyAction: LocalizedStringKey {
+        switch self {
+        case .install: "agentInstall.web.installing"
+        case .update: "agentInstall.web.updating"
+        case .uninstall: "agentInstall.web.uninstalling"
+        }
+    }
+
     var title: String.LocalizationValue {
         switch self {
         case .install: "agentInstall.install.title"

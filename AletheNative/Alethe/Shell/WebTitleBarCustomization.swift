@@ -9,21 +9,27 @@ extension Notification.Name {
 /// TopbarSettingsModal.tsx: seven 42-point rows, provider artwork and trailing checked squares.
 struct WebTitleBarCustomization: View {
     let close: () -> Void
+
+    var body: some View {
+        WebTitleBarAnalytics(title: "settings.toolbar", close: close) { WebTitleBarCustomizationContent() }
+    }
+}
+
+/// The modal's body, shared by the title-bar overlay and Settings › Appearance › Customize topbar.
+struct WebTitleBarCustomizationContent: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     private let items: [ToolbarItemKind] = [.usageClaude, .usageCodex, .usageAntigravity, .sync, .profile, .memory, .router9]
 
     var body: some View {
-        WebTitleBarAnalytics(title: "settings.toolbar", close: close) {
-            VStack(alignment: .leading, spacing: metrics.size(12)) {
-                Text("titlebar.customize.description").font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
-                VStack(spacing: metrics.size(6)) {
-                    ForEach(items, id: \.self) { item in
-                        WebTitleBarCustomizationRow(item: item, enabled: environment.preferences?.document.showsToolbarItem(item) ?? item.shownByDefault) {
-                            environment.preferences?.update {
-                                $0.setToolbarItem(item, shown: !$0.showsToolbarItem(item))
-                            }
+        VStack(alignment: .leading, spacing: metrics.size(12)) {
+            Text("titlebar.customize.description").font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+            VStack(spacing: metrics.size(6)) {
+                ForEach(items, id: \.self) { item in
+                    WebTitleBarCustomizationRow(item: item, enabled: environment.preferences?.document.showsToolbarItem(item) ?? item.shownByDefault) {
+                        environment.preferences?.update {
+                            $0.setToolbarItem(item, shown: !$0.showsToolbarItem(item))
                         }
                     }
                 }
@@ -83,5 +89,16 @@ private struct WebTitleBarCustomizationRow: View {
         case .memory: "memorychip"
         default: "point.3.connected.trianglepath.dotted"
         }
+    }
+}
+
+/// TopbarSettingsModal as opened from Settings: the same chrome and rows as the title-bar overlay.
+struct WebSettingsToolbarModal: View {
+    @Environment(\.modalsM2Close) private var closeOverlay
+
+    var body: some View {
+        ModalsM2WebModal(title: Text("settings.toolbar"), close: { closeOverlay?() }, width: 440) {
+            WebTitleBarCustomizationContent()
+        } footer: {}
     }
 }

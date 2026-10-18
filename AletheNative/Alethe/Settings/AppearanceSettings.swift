@@ -163,29 +163,7 @@ struct AppearanceSettings: View {
     private var webBody: some View {
         SettingsPageForm("appearance") {
             Section {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: metrics.size(10)), GridItem(.flexible(), spacing: metrics.size(10))], spacing: metrics.size(10)) {
-                    ForEach(VisualStyle.allCases, id: \.self) { style in
-                        Button {
-                            environment.preferences?.update { $0.visualStyle = style == .normal ? nil : style.rawValue }
-                        } label: {
-                            VStack(alignment: .leading, spacing: metrics.size(10)) {
-                                stylePreview(style)
-                                Text(style.title).font(metrics.font(size: 12, weight: .semibold))
-                                Text(style.detail)
-                                    .font(metrics.font(size: 10))
-                                    .foregroundStyle(theme[.fgMuted])
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .padding(metrics.size(10))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(theme[environment.visualStyle == style ? .accentFaint : .bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
-                            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
-                                .strokeBorder(theme[environment.visualStyle == style ? .accent : .border], lineWidth: metrics.size(1)))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(environment.visualStyle == style ? .isSelected : [])
-                    }
-                }
+                WebVisualStyleGrid()
                 .accessibilityIdentifier("settings.style")
             } header: { Text("settings.web.reference.prefs.visualStyle") }
               footer: { Text("settings.web.reference.prefs.visualStyleDesc") }
@@ -297,49 +275,17 @@ struct AppearanceSettings: View {
 
         }
         .disabled(environment.preferences == nil)
-        .gitWebSheet(isPresented: $showingToolbar, width: 700) {
-            WebSettingsSubdialog(title: "settings.toolbar") { ToolbarSettings() }
+        .gitWebSheet(isPresented: $showingToolbar, width: 440) {
+            WebSettingsToolbarModal()
         }
-    }
-
-    private func stylePreview(_ style: VisualStyle) -> some View {
-        VStack(spacing: 0) {
-            theme[.bgElevated].frame(height: metrics.size(18))
-                .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
-            HStack(spacing: 0) {
-                VStack(spacing: metrics.size(5)) {
-                    ForEach(0..<3) { _ in
-                        RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 6 : 0))
-                            .fill(theme[.panel])
-                            .overlay(RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 6 : 0)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                            .frame(height: metrics.size(15))
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, metrics.size(5))
-                .padding(.vertical, metrics.size(7))
-                .frame(maxWidth: metrics.size(80))
-                .overlay(alignment: .trailing) { theme[.border].frame(width: metrics.size(1)) }
-                HStack(spacing: metrics.size(5)) {
-                    ForEach(0..<2) { _ in
-                        RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 6 : 0))
-                            .fill(theme[.panel])
-                            .overlay(RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 6 : 0)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                    }
-                }
-                .padding(metrics.size(6))
-            }
-        }
-        .frame(height: metrics.size(104))
-        .background(theme[.bg])
-        .clipShape(RoundedRectangle(cornerRadius: metrics.size(style == .normal ? 8 : 0)))
-        .accessibilityHidden(true)
     }
 }
 
 /// The built-in themes as swatch tiles, in the Tauri app's picker order. Selecting one applies it
 /// everywhere at once, terminals included.
 struct ThemeGrid: View {
+    /// Minimum tile width in the web interface (settings 150, ThemePickerModal 160).
+    var webMinimum: CGFloat = 150
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -353,7 +299,7 @@ struct ThemeGrid: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(metrics.isWebInterface ? 150 : 100)), spacing: metrics.size(metrics.isWebInterface ? 10 : 12))],
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(metrics.isWebInterface ? webMinimum : 100)), spacing: metrics.size(metrics.isWebInterface ? 10 : 12))],
                   spacing: metrics.size(metrics.isWebInterface ? 10 : 12)) {
             ForEach(themes) { option in
                 if metrics.isWebInterface { webTile(option) } else { tile(option) }

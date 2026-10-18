@@ -53,7 +53,10 @@ struct ExtensionSettingsSection: View {
                 .padding()
             }
         }
-        .sheet(item: Binding { manager.pendingConsent } set: { manager.pendingConsent = $0 }) { request in
+        // Web interface: the themed window overlay; closing it (X, backdrop, Escape) declines.
+        .gitWebSheet(item: Binding { manager.pendingConsent } set: { value in
+            if value == nil { manager.resolveConsent(approved: false) } else { manager.pendingConsent = value }
+        }, width: 480) { request in
             ExtensionConsentSheet(request: request) { approved in
                 manager.resolveConsent(approved: approved)
             }

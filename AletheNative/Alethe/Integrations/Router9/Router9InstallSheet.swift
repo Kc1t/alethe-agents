@@ -38,53 +38,91 @@ struct Router9InstallSheet: View {
         .accessibilityIdentifier("router9.installSheet")
     }
 
+    /// Router9InstallModal.tsx + agentActions.module.css.
     private var webBody: some View {
-        ModalsM2WebModal(title: Text(installing ? "router9.install.title" : "router9.uninstall.title"), close: closeWeb) {
+        ModalsM2WebModal(title: Text(installing ? "router9.install.title" : "router9.uninstall.title"), close: closeWeb, width: 480) {
             VStack(alignment: .leading, spacing: metrics.size(10)) {
-                if toolchain == nil { Text("modalsM2.install.probing") }
+                if toolchain == nil { Text("modalsM2.install.probing").font(metrics.font(size: 13)) }
                 Text(installing ? "router9.install.intro" : "router9.uninstall.intro")
+                    .font(metrics.font(size: 13)).lineSpacing(metrics.size(4))
                     .fixedSize(horizontal: false, vertical: true)
                 if installing {
-                    VStack(alignment: .leading, spacing: metrics.size(6)) {
-                        Text("router9.securityNote")
+                    ModalsM2Toolchain {
+                        Text("router9.securityNote").font(metrics.font(size: 13))
+                            .fixedSize(horizontal: false, vertical: true)
                         Button { openURL(Router9.advisoriesURL) } label: {
-                            Label("router9.advisories", systemImage: "arrow.up.right.square")
-                        }.buttonStyle(AletheButtonStyle())
+                            Label { Text("router9.advisories") } icon: {
+                                Image(systemName: "arrow.up.right.square").font(metrics.font(size: 13))
+                            }
+                        }.buttonStyle(AletheInstallActionStyle(.link))
                     }
-                    .padding(metrics.size(8))
-                    .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 }
                 if let command {
-                    Text(verbatim: command).font(metrics.monoFont(size: 11)).foregroundStyle(theme[.fgMuted])
-                        .textSelection(.enabled).padding(.horizontal, metrics.size(8)).padding(.vertical, metrics.size(4))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(theme[.bg], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                        .accessibilityIdentifier("router9.install.command")
+                    ModalsM2Command(command: command).accessibilityIdentifier("router9.install.command")
                 }
-                if missingNode { nodeRow }
-                if isThisRun { result }
+                if missingNode {
+                    ModalsM2NodeToolchain(command: AgentInstallCatalog.nodeMethods(toolchain: toolchain).first?.command,
+                                          running: installer.isBusy && isNodeRun, canInstall: !installer.isBusy,
+                                          install: installNode, download: { openURL(AgentInstallCatalog.nodeDownloadURL) })
+                }
+                if isThisRun { webResult }
                 if isThisRun || isNodeRun {
                     ModalsM2InstallLog(log: installer.log).accessibilityIdentifier("router9.install.log")
                 }
-                if blocked { Text("router9.install.busy").foregroundStyle(theme[.fgMuted]) }
+                if blocked { Text("router9.install.busy").font(metrics.font(size: 13)).foregroundStyle(theme[.fgMuted]) }
             }
         } footer: {
             Spacer()
-            Button(isThisRun && installer.status != .running ? "agentInstall.done" : "agentInstall.cancel", action: closeWeb)
+            Button(isThisRun && installer.status != .running ? "router9.web.close" : "editor.cancel", action: closeWeb)
                 .accessibilityIdentifier("router9.install.close")
+            // The run worked: offering to do it again would undo what just happened.
             if !isThisRun || installer.status != .succeeded {
                 Button(action: run) {
-                    Label(installing ? "agentInstall.install" : "agentInstall.uninstall",
-                          systemImage: installing ? "arrow.down.to.line" : "trash")
-                        .font(metrics.font(size: 13))
+                    Label {
+                        Text(runLabel)
+                    } icon: {
+                        Image(systemName: installing ? "arrow.down.to.line" : "trash").font(metrics.font(size: 13))
+                    }
                 }
                 .buttonStyle(AletheButtonStyle(installing ? .primary : .danger))
                 .keyboardShortcut(.defaultAction)
-                .disabled(command == nil || installer.isBusy || missingNode)
+                .disabled(command == nil || installer.isBusy || (installing && missingNode))
                 .accessibilityIdentifier("router9.install.run")
             }
+        }
+    }
+
+    private var runLabel: LocalizedStringKey {
+        if isThisRun && installer.status == .running {
+            return installing ? "agentInstall.web.installing" : "agentInstall.web.uninstalling"
+        }
+        if isThisRun && installer.status == .failed { return "router9.web.retry" }
+        return installing ? "agentInstall.install" : "agentInstall.uninstall"
+    }
+
+    @ViewBuilder
+    private var webResult: some View {
+        switch installer.status {
+        case .succeeded:
+            Text(installing ? "router9.web.installDone" : "router9.web.uninstallDone")
+                .font(metrics.font(size: 13)).foregroundStyle(theme[.statusWorking])
+                .accessibilityIdentifier("router9.install.succeeded")
+        case .failed:
+            Text(installing ? "router9.web.installFailed" : "router9.web.uninstallFailed")
+                .font(metrics.font(size: 13)).foregroundStyle(theme[.statusOffline])
+                .accessibilityIdentifier("router9.install.failed")
+        case .running, .idle:
+            EmptyView()
+        }
+    }
+
+    private func installNode() {
+        guard let node = AgentInstallCatalog.nodeMethods(toolchain: toolchain).first else { return }
+        startedNode = true
+        Task {
+            // Any agent carries the Node install: it verifies against npm, not the agent.
+            await installer.run(node, for: .claude, cli: "npm", launchers: environment.launchers)
+            toolchain = await installer.toolchain(launchers: environment.launchers)
         }
     }
 

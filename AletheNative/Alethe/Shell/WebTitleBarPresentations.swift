@@ -31,6 +31,8 @@ struct WebWindowMenu: View {
             row("diagnostics.title", "shield.lefthalf.filled") { environment.editorRequest = .diagnostics }
             #if DEBUG
             separator
+            row("themePicker.title", "sun.max") { environment.editorRequest = .themePicker }
+                .accessibilityIdentifier("chrome.mainMenu.pickTheme")
             row("menu.redoOnboarding", "arrow.clockwise") { environment.editorRequest = .onboarding }
                 .accessibilityIdentifier("chrome.mainMenu.redoOnboarding")
             #endif
@@ -81,50 +83,5 @@ struct WebWindowMenu: View {
                 Text(title)
             }
         }
-    }
-}
-
-/// WhatsNewModal.module.css hero and Modal.module.css shell, using native release copy.
-struct WebTitleBarNews: View {
-    let close: () -> Void
-    @Environment(\.metrics) private var metrics
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("chrome.whatsNew").font(metrics.font(size: 15, weight: .semibold))
-                Spacer()
-                Button(action: close) {
-                    Image(systemName: "xmark").resizable().scaledToFit()
-                        .frame(width: metrics.size(16), height: metrics.size(16))
-                }
-                .buttonStyle(AletheIconButtonStyle(side: 26))
-                .accessibilityLabel(Text("editor.cancel"))
-            }
-            .padding(.horizontal, metrics.size(20)).padding(.top, metrics.size(16))
-            HStack(alignment: .top, spacing: metrics.size(12)) {
-                Image(systemName: "newspaper").resizable().scaledToFit()
-                    .frame(width: metrics.size(18), height: metrics.size(18))
-                    .foregroundStyle(theme[.accent])
-                    .frame(width: metrics.size(32), height: metrics.size(32))
-                    .overlay(RoundedRectangle(cornerRadius: metrics.size(9)).strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
-                Text("chrome.news.chrome").font(metrics.font(size: 12))
-                    .foregroundStyle(theme[.fgMuted])
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(metrics.size(12))
-            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-            .padding(.horizontal, metrics.size(20)).padding(.top, metrics.size(14)).padding(.bottom, metrics.size(18))
-            theme[.border].frame(height: metrics.size(1))
-            HStack {
-                Spacer()
-                Button("agentInstall.done", action: close).buttonStyle(AletheButtonStyle())
-            }.padding(.horizontal, metrics.size(20)).padding(.vertical, metrics.size(16))
-        }
-        .foregroundStyle(theme[.fg])
-        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
-        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg)).strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
-        .accessibilityIdentifier("chrome.whatsNew.modal")
     }
 }
