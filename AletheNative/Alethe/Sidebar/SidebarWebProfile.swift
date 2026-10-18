@@ -70,7 +70,7 @@ struct SidebarWebProfile: View {
         .help(Text(verbatim: String(format: String(localized: "profiles.menu.help"), environment.activeProfileName)))
         .accessibilityIdentifier("leftSidebar.profile")
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
-        .popover(isPresented: $showingMenu, arrowEdge: .top) {
+        .popover(isPresented: $showingMenu, arrowEdge: metrics.isWebInterface ? .bottom : .top) {
             if metrics.isWebInterface {
                 webMenu.modifier(SidebarProfilePopoverMotion())
             } else {
@@ -101,8 +101,7 @@ struct SidebarWebProfile: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(verbatim: environment.activeProfileName)
                         .font(metrics.font(size: metrics.style == .clean ? 12 : 13, weight: .semibold))
-                    Text(verbatim: String(format: String(localized: "leftSidebar.localAccount"),
-                                         environment.activeProfileName))
+                    Text("profile.web.localAccount")
                         .font(metrics.font(size: metrics.style == .clean ? 10 : 11))
                         .foregroundStyle(theme[.fgMuted])
                 }
@@ -113,48 +112,32 @@ struct SidebarWebProfile: View {
             .padding(.top, metrics.size(metrics.style == .clean ? 7 : 10))
             .padding(.bottom, metrics.size(metrics.style == .clean ? 5 : 6))
             profileDivider
-            SidebarMenuButton("leftSidebar.preferences", symbol: "gearshape") {
+            ProfileMenuWebButton("leftSidebar.preferences", symbol: "gearshape") {
                 showingMenu = false
                 openSettings()
             }
-            SidebarMenuButton("sidebar.web.chooseAvatar", symbol: "photo") { chooseAvatar() }
-            if customAvatar != nil {
-                SidebarMenuButton("sidebar.web.resetAvatar", symbol: "arrow.counterclockwise") { setAvatar(nil) }
-            }
-            profileDivider
-            ForEach(environment.profiles?.document.ordered(defaultName: AppEnvironment.defaultProfileName) ?? []) { entry in
-                Button {
-                    if entry.id != environment.profileID {
-                        showingMenu = false
-                        switching = entry
-                    }
-                } label: {
-                    HStack(spacing: metrics.size(8)) {
-                        Text(verbatim: environment.profileName(entry))
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        if entry.id == environment.profileID {
-                            Image(systemName: "checkmark").webProfileSized(14)
-                                .accessibilityHidden(true)
-                        }
-                    }
-                }
-                .accessibilityAddTraits(entry.id == environment.profileID ? [.isSelected] : [])
-            }
-            profileDivider
-            SidebarMenuButton("profiles.menu.manage", symbol: "person.2") {
+            ProfileMenuWebButton("profile.web.manageAccounts", symbol: "person.2") {
                 showingMenu = false
                 environment.settingsTab = .profiles
                 openSettings()
             }
             .accessibilityIdentifier("profiles.menu.manage")
+            ProfileMenuWebButton("profile.web.logout", symbol: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                showingMenu = false
+                setAvatar(nil)
+                environment.preferences?.update { $0.onboardingDone = false }
+                environment.editorRequest = .onboarding
+            }
+
         }
-        .buttonStyle(AletheProfileMenuStyle())
-        .labelStyle(AletheProfileMenuLabelStyle())
+        .buttonStyle(ProfileMenuWebStyle())
+        .labelStyle(ProfileMenuWebLabelStyle())
         .padding(metrics.size(4))
         .frame(width: max(metrics.size(1), rowWidth - metrics.size(metrics.style == .clean ? 12 : 16)))
         .foregroundStyle(theme[.fg])
         .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .shadow(color: theme.shadow(.md).color.color, radius: metrics.size(theme.shadow(.md).blur / 2),
+                x: metrics.size(theme.shadow(.md).x), y: metrics.size(theme.shadow(.md).y))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
             .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
     }

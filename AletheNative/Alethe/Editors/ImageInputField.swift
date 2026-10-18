@@ -41,6 +41,7 @@ struct ImageInputField: View {
                         .font(metrics.font(size: 18, weight: .bold)).foregroundStyle(theme[.accentOn])
                 }
             }
+            .shadow(color: theme[.bgSunken].opacity(metrics.isWebInterface ? 0.3 : 0), radius: metrics.size(4), y: metrics.size(2))
             .overlay(RoundedRectangle(cornerRadius: metrics.size(10))
                 .strokeBorder(theme[targeted ? .accent : .borderStrong], lineWidth: metrics.size(1)))
             Group {

@@ -29,6 +29,23 @@ import Testing
         #expect(json["iconUrl"] == nil)
     }
 
+    @Test func explicitWebNullImagesDecodeAsDefaultIcons() throws {
+        let values: [Data] = [
+            try JSONEncoder().encode(Project(name: "API", folder: "/api")),
+            try JSONEncoder().encode(ProjectGroup(name: "Work"))
+        ]
+        for (index, data) in values.enumerated() {
+            var json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            json["iconUrl"] = NSNull()
+            let encoded = try JSONSerialization.data(withJSONObject: json)
+            if index == 0 {
+                #expect(try JSONDecoder().decode(Project.self, from: encoded).iconUrl == nil)
+            } else {
+                #expect(try JSONDecoder().decode(ProjectGroup.self, from: encoded).iconUrl == nil)
+            }
+        }
+    }
+
     @Test func importedWebImagesSurviveNativeSave() throws {
         let fixture = try #require(Bundle.module.url(forResource: "projects-v9", withExtension: "json",
                                                      subdirectory: "Fixtures/Tauri"))
