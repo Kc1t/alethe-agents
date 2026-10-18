@@ -40,7 +40,7 @@ struct AletheApp: App {
                     Button("chrome.toggleSidebar") {
                         NotificationCenter.default.post(name: .aletheToggleWebSidebar, object: nil)
                     }
-                    .keyboardShortcut("s", modifiers: [.command, .control])
+                    .keyboardShortcut("b", modifiers: .command)
                 }
             } else {
                 SidebarCommands()
@@ -72,10 +72,10 @@ private struct FileCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("menu.file.newProject") { environment.editorRequest = .newProject(.ungrouped) }
-                .keyboardShortcut("n", modifiers: .command)
+                .keyboardShortcut(environment.metrics.isWebInterface ? "p" : "n", modifiers: environment.metrics.isWebInterface ? [.command, .shift] : .command)
                 .disabled(environment.workspace == nil)
             Button("menu.file.newGroup") { environment.editorRequest = .newGroup(parent: nil) }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .keyboardShortcut(environment.metrics.isWebInterface ? "g" : "n", modifiers: [.command, .shift])
                 .disabled(environment.workspace == nil)
             Button("menu.file.newTerminal") { environment.editorRequest = .newTerminal(nil) }
                 .keyboardShortcut("t", modifiers: .command)
@@ -190,7 +190,7 @@ private struct ViewCommands: Commands {
             Button(environment.dictation.machine.isActive ? LocalizedStringKey("menu.edit.stopDictation") : "menu.edit.dictate") {
                 environment.dictation.toggle()
             }
-            .keyboardShortcut("e", modifiers: [.command, .option])
+            .keyboardShortcut("e", modifiers: environment.metrics.isWebInterface ? .command : [.command, .option])
         }
         CommandGroup(after: .help) {
             Button("menu.help.showSetup") {
@@ -219,14 +219,14 @@ private struct HistoryCommands: Commands {
     var body: some Commands {
         CommandMenu("menu.history") {
             Button("menu.history.findJump") { environment.editorRequest = .findJump }
-                .keyboardShortcut("k", modifiers: .command)
+                .keyboardShortcut(environment.metrics.isWebInterface ? "p" : "k", modifiers: .command)
                 .disabled(environment.workspace == nil)
             Divider()
             Button("menu.view.back") { environment.workspace?.update { $0.navigateHistory(-1) } }
-                .keyboardShortcut("[", modifiers: .command)
+                .keyboardShortcut(environment.metrics.isWebInterface ? .leftArrow : "[", modifiers: environment.metrics.isWebInterface ? .option : .command)
                 .disabled(document?.canGoBack != true)
             Button("menu.view.forward") { environment.workspace?.update { $0.navigateHistory(1) } }
-                .keyboardShortcut("]", modifiers: .command)
+                .keyboardShortcut(environment.metrics.isWebInterface ? .rightArrow : "]", modifiers: environment.metrics.isWebInterface ? .option : .command)
                 .disabled(document?.canGoForward != true)
             Button("menu.history.conversations") { environment.editorRequest = .conversations(nil) }
                 .keyboardShortcut("y", modifiers: .command)
@@ -254,8 +254,14 @@ private struct HistoryCommands: Commands {
                 .disabled(document?.workspaceTab(-1) == nil)
             Divider()
             Button("menu.history.closeTab") {
-                environment.workspace?.update { doc in doc.workspace.activeTabID.map { doc.closeWorkspaceTab($0) } }
+                environment.workspace?.update { doc in
+                    if environment.metrics.isWebInterface {
+                        if let project = doc.workspace.openProjectIDs.first.flatMap(doc.project),
+                           let pane = project.visiblePanes.first { doc.closePane(pane.id) }
+                    } else { doc.workspace.activeTabID.map { doc.closeWorkspaceTab($0) } }
+                }
             }
+            .keyboardShortcut(environment.metrics.isWebInterface ? KeyboardShortcut("w", modifiers: .command) : nil)
             .disabled(document?.workspace.activeTabID == nil)
             Button("menu.history.reopenTab") { environment.workspace?.update { $0.reopenClosedWorkspaceTab() } }
                 .keyboardShortcut("t", modifiers: [.command, .shift])

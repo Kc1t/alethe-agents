@@ -1,3 +1,5 @@
+import AletheFoundation
+import AppKit
 import AletheDesign
 import SwiftUI
 
@@ -32,11 +34,17 @@ struct WebWindowMenu: View {
             row("menu.redoOnboarding", "arrow.clockwise") { environment.editorRequest = .onboarding }
                 .accessibilityIdentifier("chrome.mainMenu.redoOnboarding")
             #endif
-            row("menu.view.flat", "square.stack.3d.up") {
+            row(environment.workspace?.document.workspace.flat == true ? "menu.groupByProject" : "menu.view.flat", "square.stack.3d.up") {
                 environment.workspace?.update { $0.workspace.flat.toggle() }
             }
             separator
             row("settings.data.openFolder", "folder") { environment.openDataFolder() }
+            row("menu.openSpawnLog", "doc.text") {
+                guard let directory = environment.diagnostics.logsDirectory else { return }
+                let file = directory.appending(path: Diagnostics.spawnLogName)
+                if FileManager.default.fileExists(atPath: file.path) { NSWorkspace.shared.open(file) }
+                else { NSWorkspace.shared.open(directory) }
+            }
             row("menu.help.openLogsFolder", "doc.text") { environment.diagnostics.openLogsFolder() }
             row("menu.help.exportLogs", "square.and.arrow.up") { environment.diagnostics.exportLogs() }
             separator

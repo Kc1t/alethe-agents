@@ -29,6 +29,7 @@ struct MainWindow: View {
                 nativeShell
             }
         }
+        .background { if metrics.isWebInterface { WebShortcutEvents(environment: environment) } }
         .onReceive(NotificationCenter.default.publisher(for: .aletheOpenTitleBarMemory)) { _ in
             if metrics.isWebInterface { showsTitleBarMemory = true }
         }

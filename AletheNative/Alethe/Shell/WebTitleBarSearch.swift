@@ -22,13 +22,18 @@ struct WebTitleBarSearch: View {
         var agent: String?
         var directory: String?
         var shortcut: String?
+        var pluginID: String?
         var command: JumpCommand?
         var tab: TabID?
     }
 
     private var hits: [Hit] {
         let commands = JumpCommand.allCases.filter { $0.isAvailable(workspace.document) }.map {
-            Hit(id: "command:\($0.rawValue)", title: String(localized: $0.title), group: String(localized: "findJump.command"), symbol: $0.symbol, shortcut: $0.shortcut, command: $0)
+            Hit(id: "command:\($0.rawValue)", title: String(localized: $0.title), group: String(localized: "findJump.command"), symbol: $0.symbol, shortcut: $0 == .newProject ? "⇧⌘P" : $0 == .newGroup ? "⇧⌘G" : $0.shortcut, command: $0)
+        }
+        let plugins = (environment.plugins?.contributions.commands ?? []).filter { $0.placement.contains(.findJump) }.map {
+            Hit(id: "plugin:" + $0.id, title: $0.title, group: String(localized: "findJump.command"),
+                symbol: "command", shortcut: $0.keyEquivalent.map { "⌘" + $0.uppercased() }, pluginID: $0.id)
         }
         let terminals = workspace.document.projects.flatMap { project in
             project.panes.flatMap { pane in pane.tabs.map { tab in
@@ -37,7 +42,7 @@ struct WebTitleBarSearch: View {
             } }
         }
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return Array((commands + terminals).filter {
+        return Array((commands + plugins + terminals).filter {
             needle.isEmpty || [$0.title, $0.group, $0.directory ?? ""].joined(separator: " ").localizedCaseInsensitiveContains(needle)
         }.prefix(50))
     }
@@ -105,11 +110,13 @@ struct WebTitleBarSearch: View {
         environment.editorRequest = nil
         if let tab = hit.tab {
             workspace.update { document in
-                guard let project = document.paneHolding(tab)?.project else { return }
-                document.openInTab(project.id)
+                guard let pane = document.paneHolding(tab)?.pane else { return }
+                document.focusWebPane(pane.id)
                 document.activateTab(tab)
             }
             environment.showingHome = false
+        } else if let id = hit.pluginID {
+            environment.performPluginCommand(id)
         } else if let command = hit.command {
             command.run(environment: environment, undoManager: undoManager)
         }

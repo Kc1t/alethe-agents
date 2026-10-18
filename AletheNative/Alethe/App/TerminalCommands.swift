@@ -20,7 +20,7 @@ struct TerminalCommands: Commands {
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(focusedTerminal?.search.isPresented != true)
             Button("menu.terminal.useSelection") { focusedTerminal?.searchSelection() }
-                .keyboardShortcut("e", modifiers: .command)
+                .keyboardShortcut("e", modifiers: environment.metrics.isWebInterface ? [.command, .option] : .command)
                 .disabled(focusedTerminal == nil)
             Button("menu.terminal.clearScrollback") { focusedTerminal?.clearScrollback() }
                 .keyboardShortcut("k", modifiers: [.command, .option])

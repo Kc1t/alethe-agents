@@ -22,14 +22,6 @@ struct WorkspaceView: View {
             content
             #endif
         }
-        .background {
-            if metrics.isWebInterface, let workspace = environment.workspace {
-                ForEach(Array(workspace.document.projects.prefix(9).enumerated()), id: \.element.id) { index, project in
-                    WorkspaceTabEvents(number: index + 1, listensForMiddleClick: false,
-                        activate: { workspace.update { $0.openWebProject(project.id) } }, close: {})
-                }
-            }
-        }
         .onChange(of: environment.workspace?.document.currentSnapshot) { _, _ in
             environment.workspace?.update { $0.syncActiveTab() }
         }
