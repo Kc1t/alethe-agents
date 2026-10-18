@@ -38,6 +38,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   image data instead of silently leaving the project or group image unchanged.
 - Web-style image previews retain the selected project or group color behind transparent images,
   matching the web image field after the preview finishes loading.
+- Web-style profile dropdown follows the Windows Preferences, Manage accounts and Sign out order,
+  with compact icons, destructive hover styling and an upward-opening menu. Sign out resets the
+  local avatar and reopens native onboarding; the native macOS profile menu is unchanged.
+- Image-input previews use the web thumbnail shadow; web imports explicitly support null icons.
 - Settings opens at the web size (1180×780) and stays resizable instead of reopening tiny.
 - Web-style title-bar controls reserve only visible macOS traffic lights, followed by the web
   left padding. Hidden or absent buttons and fullscreen no longer leave an empty leading gap.
