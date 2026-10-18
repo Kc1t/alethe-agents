@@ -126,7 +126,12 @@ struct MainWindow: View {
             GitWebOverlay(width: modalWidth(request), close: { environment.editorRequest = nil }) {
                 editor(for: request, workspace: workspace)
             }
-        case .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding, .addContent, .addBrowser,
+        case .onboarding:
+            OnboardingWebOverlay {
+                editor(for: request, workspace: workspace)
+                    .environment(\.modalsM2Close, { environment.editorRequest = nil })
+            }
+        case .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .addContent, .addBrowser,
              .conversations, .handoff, .sessionCost, .diagnostics, .remotePairing, .previewLink, .importTauri,
              .layoutDesigner, .gsdSyncActivity, .welcome, .crashNotice:
             NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }, defaultWidth: modalWidth(request),

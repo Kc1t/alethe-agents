@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Onboarding parity
+- In the web interface the onboarding dialog matches the web app: a fixed 640-point dialog over a
+  dimmed backdrop that ignores outside clicks, a header with brand mark, step dots and an EN/PT
+  switch, an avatar with photo upload or GitHub avatar shortcut, a three-column agent card grid with
+  versions and install, and a searchable, grouped feature list with switches. The native layout is
+  unchanged.
+
 ### Settings parity
 - Terminal settings gain spawn concurrency (1 to 8), a shell executable override and a terminal font
   family; the shell and font apply to new and open terminals. Appearance gains window opacity,

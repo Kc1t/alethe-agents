@@ -25,6 +25,8 @@ struct OnboardingSheet: View {
     @State private var nameError: String?
     @State private var saving = false
     @State private var tauriAvailable = false
+    @State private var photo = ""
+    @State private var bodyHeight: CGFloat = 0
     @FocusState private var nameFocused: Bool
 
     private var steps: [OnboardingStep] {
@@ -38,6 +40,10 @@ struct OnboardingSheet: View {
     }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: 0) {
             header
             Divider()
@@ -56,9 +62,106 @@ struct OnboardingSheet: View {
         .accessibilityIdentifier("onboarding")
         .task {
             name = suggestedName
+            photo = environment.preferences?.document.profileImageUrl ?? ""
             nameFocused = true
             tauriAvailable = await Task.detached { !TauriImportSheet.availableProfiles().isEmpty }.value
         }
+    }
+
+    // MARK: - Web chrome (OnboardingModal.module.css)
+
+    private var webBody: some View {
+        let shape = RoundedRectangle(cornerRadius: metrics.radius(.lg))
+        return VStack(spacing: 0) {
+            OnboardingWebHeader(count: steps.count, current: index,
+                                progressLabel: format("onboarding.progress", index + 1, steps.count))
+            ScrollView {
+                webStep
+                    .padding(metrics.size(26))
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bodyHeight = $0 }
+                    .id(step)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: metrics.size(4))),
+                                            removal: .identity))
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: min(max(metrics.size(322), bodyHeight), max(metrics.size(120), maximumHeight - metrics.size(104))))
+            .clipped()
+            .animation(metrics.reducesMotion ? nil : .easeOut(duration: 0.18), value: step)
+            webFooter
+        }
+        .font(metrics.font(size: 13))
+        .foregroundStyle(theme[.fg])
+        .tint(theme[.accent])
+        .background(theme[.surfaceModal], in: shape)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onboarding")
+        .task {
+            name = suggestedName
+            photo = environment.preferences?.document.profileImageUrl ?? ""
+            nameFocused = true
+            tauriAvailable = await Task.detached { !TauriImportSheet.availableProfiles().isEmpty }.value
+        }
+    }
+
+    @ViewBuilder
+    private var webStep: some View {
+        switch step {
+        case .name:
+            OnboardingWebProfileStep(name: $name, photo: $photo, nameError: nameError, focus: $nameFocused)
+        case .importData: OnboardingImportStep(workspace: workspace, undoManager: undoManager)
+        case .appearance: appearanceStep
+        case .agents: OnboardingWebAgentsStep()
+        case .features: OnboardingWebFeaturesStep()
+        case .mcp: OnboardingMcpStep(store: environment.mcpStore)
+        }
+    }
+
+    private var webFooter: some View {
+        HStack(spacing: metrics.size(10)) {
+            Text(verbatim: webFootnote)
+                .font(metrics.font(size: 11.5)).foregroundStyle(theme[.fgFaint])
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("onboarding.skip") { skip() }
+                .buttonStyle(OnboardingWebButtonStyle(kind: .ghost))
+                .keyboardShortcut(.cancelAction)
+                .accessibilityIdentifier("onboarding.skip")
+            if index > 0 {
+                Button("onboarding.web.back") { move(-1) }
+                    .buttonStyle(OnboardingWebButtonStyle(kind: .ghost))
+                    .keyboardShortcut("[", modifiers: .command)
+                    .accessibilityIdentifier("onboarding.back")
+            }
+            Button {
+                next()
+            } label: {
+                HStack(spacing: metrics.size(7)) {
+                    Text(isLast ? LocalizedStringKey("onboarding.web.goToApp") : "onboarding.web.next")
+                    Text(verbatim: "\u{23CE}")
+                        .font(metrics.monoFont(size: 10.5, weight: .regular))
+                        .foregroundStyle(Color.black.opacity(0.45))
+                        .padding(.horizontal, metrics.size(5)).padding(.vertical, metrics.size(1))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                            .strokeBorder(Color.black.opacity(0.22), lineWidth: metrics.size(1)))
+                }
+            }
+            .buttonStyle(OnboardingWebButtonStyle(kind: .primary))
+            .keyboardShortcut(.defaultAction)
+            .disabled(!canContinue)
+            .accessibilityIdentifier("onboarding.next")
+        }
+        .padding(.horizontal, metrics.size(18)).padding(.vertical, metrics.size(12))
+        .background(theme[.bgSunken])
+        .overlay(alignment: .top) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+    }
+
+    private var webFootnote: String {
+        step == .features
+            ? format("onboarding.web.featuresEnabledOf", Feature.allCases.filter(environment.features.isOn).count,
+                     Feature.allCases.count)
+            : String(localized: "onboarding.web.footerNote")
     }
 
     // MARK: - Chrome
@@ -184,8 +287,12 @@ struct OnboardingSheet: View {
             .pickerStyle(.segmented)
             .fixedSize()
             .accessibilityIdentifier("onboarding.style")
-            ScrollView {
+            if metrics.isWebInterface {
                 ThemeGrid()
+            } else {
+                ScrollView {
+                    ThemeGrid()
+                }
             }
         }
     }
@@ -225,9 +332,16 @@ struct OnboardingSheet: View {
         // The name is the running profile's name (P5-9).
         guard let profileID = environment.profileID else { return move(1) }
         saving = true
+        let trimmedPhoto = photo.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             defer { saving = false }
             do {
+                if metrics.isWebInterface {
+                    environment.preferences?.update {
+                        $0.displayName = name.trimmingCharacters(in: .whitespaces)
+                        $0.profileImageUrl = trimmedPhoto.isEmpty ? nil : trimmedPhoto
+                    }
+                }
                 if environment.activeProfileName != name.trimmingCharacters(in: .whitespaces) {
                     try await environment.renameProfile(profileID, to: name)
                 }
@@ -274,11 +388,15 @@ private struct OnboardingStepTitle: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        VStack(alignment: .leading, spacing: metrics.space(.xs)) {
-            Text(title).font(metrics.font(.title2))
-            Text(subtitle)
-                .foregroundStyle(theme[.textSecondary])
-                .fixedSize(horizontal: false, vertical: true)
+        if metrics.isWebInterface {
+            OnboardingWebIntro(title: title, subtitle: Text(subtitle))
+        } else {
+            VStack(alignment: .leading, spacing: metrics.space(.xs)) {
+                Text(title).font(metrics.font(.title2))
+                Text(subtitle)
+                    .foregroundStyle(theme[.textSecondary])
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }
