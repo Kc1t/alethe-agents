@@ -14,8 +14,13 @@ struct TauriImportSheet: View {
     /// A `projects.json` to import instead of the Tauri app's profiles (a pulled Tauri gist, P7-15).
     var projectsFile: URL?
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
 
     @State private var profiles: [TauriProfile] = []
     @State private var profileID: String?
@@ -27,6 +32,83 @@ struct TauriImportSheet: View {
     private var profile: TauriProfile? { profiles.first { $0.id == profileID } ?? profiles.first }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            Text("import.title")
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.size(14)) {
+
+            if let done {
+                summary(done, title: "import.done")
+                if languageChanged {
+                    Section {
+                        HStack {
+                            Text("settings.appearance.language.restartNote").foregroundStyle(theme[.fgMuted])
+                            Spacer()
+                            Button("settings.appearance.language.restart") { AppRelaunch.relaunch() }
+                        }
+                    }
+                }
+            } else if profiles.isEmpty {
+                Text("import.noData")
+                    .foregroundStyle(theme[.fgMuted])
+                    .accessibilityIdentifier("import.noData")
+            } else {
+                Section {
+                    if profiles.count > 1 {
+                        NewTerminalRowSelect(selection: $profileID, options: profiles.map { Optional($0.id) },
+                            title: { id in profiles.first { Optional($0.id) == id }?.name ?? "" }) { _ in
+                            Image(systemName: "person").webProfileSized(16)
+                        }
+                        .accessibilityIdentifier("import.profile")
+                    }
+                    Toggle(isOn: $includePreferences) {
+                        Text("import.preferences")
+                        Text("import.preferences.help")
+                    }
+                    .accessibilityIdentifier("import.preferences")
+                }
+                switch preview {
+                case .success(let report) where report.isEmpty:
+                    Text("import.nothingNew")
+                        .foregroundStyle(theme[.fgMuted])
+                        .accessibilityIdentifier("import.nothingNew")
+                    skipped(report)
+                case .success(let report):
+                    summary(report, title: "import.preview")
+                case .failure(let failure):
+                    Text(verbatim: message(for: failure))
+                        .foregroundStyle(theme[.fgMuted])
+                        .accessibilityIdentifier("import.failure")
+                case nil:
+                    EmptyView()
+                }
+            }
+            }
+        } footer: {
+            Spacer()
+            Button(done == nil ? "editor.cancel" : "import.close", action: dismiss)
+                .accessibilityIdentifier(done == nil ? "editor.cancel" : "editor.confirm")
+            if done == nil {
+                Button("import.confirm", action: runImport).buttonStyle(AletheButtonStyle(.primary))
+                    .disabled(!canImport).accessibilityIdentifier("editor.confirm")
+            }
+        }
+        .onAppear {
+            profiles = projectsFile.map {
+                [TauriProfile(id: "file", name: $0.lastPathComponent, projectsFile: $0, isActive: true)]
+            } ?? Self.availableProfiles()
+            profileID = profiles.first?.id
+            refreshPreview()
+        }
+        .onChange(of: profileID) { refreshPreview() }
+        .onChange(of: includePreferences) { refreshPreview() }
+    }
+
+    private var nativeBody: some View {
         Form {
             if let done {
                 summary(done, title: "import.done")

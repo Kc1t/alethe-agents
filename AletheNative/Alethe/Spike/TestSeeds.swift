@@ -180,6 +180,8 @@ enum TestSeeds {
 
     /// Preferences a seed needs (applied with the workspace seed).
     static func apply(_ name: String, to preferences: inout PreferencesDocument) {
+        if let style = UserDefaults.standard.string(forKey: "AletheUITestVisualStyle") { preferences.visualStyle = style }
+        if let theme = UserDefaults.standard.string(forKey: "AletheUITestTheme") { preferences.themeID = theme }
         switch name {
         case "gsdSync":
             preferences.features.set(.gsdSync, on: true)

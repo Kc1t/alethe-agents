@@ -12,7 +12,11 @@ struct HandoffSheet: View {
     let undoManager: UndoManager?
     let tabID: TabID
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var draft: Handoff.Draft?
@@ -31,6 +35,75 @@ struct HandoffSheet: View {
     private var byteCount: Int { content.utf8.count }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            if let source, let target {
+                Text(verbatim: String(format: String(localized: "handoff.title"),
+                    AgentLabels.name(for: source.tab.agent), AgentLabels.name(for: target.rawValue)))
+            } else { Text("menu.terminal.handoff") }
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.size(10)) {
+            if let draft {
+                HStack(spacing: metrics.space(.l)) {
+                    Text(String(format: String(localized: "handoff.included"), draft.includedEvents))
+                    if draft.omittedEvents > 0 { Text(String(format: String(localized: "handoff.omitted"), draft.omittedEvents)) }
+                    if draft.redactions > 0 {
+                        Text(String(format: String(localized: "handoff.redacted"), draft.redactions))
+                            .foregroundStyle(theme[.statusWaiting])
+                    }
+                    Spacer()
+                    Text(verbatim: "\(byteCount.formatted()) / \(Handoff.materializedByteLimit.formatted())")
+                        .monospacedDigit()
+                        .foregroundStyle(byteCount > Handoff.materializedByteLimit ? theme[.statusStopped] : theme[.textTertiary])
+                }
+                .font(metrics.font(.footnote))
+                .foregroundStyle(theme[.textSecondary])
+                if draft.usedNewest {
+                    Text("handoff.usedNewest").font(metrics.font(.footnote)).foregroundStyle(theme[.statusWaiting])
+                }
+                Text("handoff.review").font(metrics.font(.footnote).weight(.semibold))
+                TextEditor(text: $content)
+                    .font(.system(size: metrics.size(11), design: .monospaced))
+                    .frame(height: metrics.size(300))
+                    .scrollContentBackground(.hidden)
+                    .padding(metrics.space(.xs))
+                    .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                    .accessibilityIdentifier("handoff.content")
+                Text("handoff.privacy").font(metrics.font(.caption)).foregroundStyle(theme[.textTertiary])
+                if let target, AgentRegistry.builtin.descriptor(for: target)?.unrestrictedFlag != nil {
+                    Toggle(String(format: String(localized: "handoff.unrestricted"), AgentLabels.name(for: target.rawValue)),
+                           isOn: $unrestricted)
+                }
+            } else if let failure {
+                Text(failure.message).foregroundStyle(theme[.textSecondary]).accessibilityIdentifier("handoff.failure")
+            } else {
+                HStack { ProgressView().controlSize(.small); Text("handoff.preparing") }
+            }
+            if let error { Text(verbatim: error).foregroundStyle(theme[.statusStopped]).font(metrics.font(.footnote)) }
+            }
+        } footer: {
+            HStack {
+                Spacer()
+                Button("editor.cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                if let target {
+                    Button(String(format: String(localized: "handoff.continue"), AgentLabels.name(for: target.rawValue))) { start() }
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(draft == nil || content.trimmingCharacters(in: .whitespaces).isEmpty
+                                  || byteCount > Handoff.materializedByteLimit)
+                        .accessibilityIdentifier("handoff.continue")
+                }
+            }
+        }
+        .task { await prepare() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("handoff")
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             if let source, let target {
                 Text(verbatim: String(format: String(localized: "handoff.title"),

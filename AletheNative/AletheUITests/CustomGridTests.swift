@@ -16,9 +16,9 @@ final class CustomGridTests: XCTestCase {
         let one = element(app, "pane.header.one"), two = element(app, "pane.header.two")
         XCTAssertTrue(one.waitForExistence(timeout: 5))
 
-        let picker = element(app, "container.layout.api")
-        picker.click()
-        picker.menuItems["Design Grid…"].click()
+        let project = element(app, "sidebar.project.api")
+        project.rightClick()
+        app.menuItems["Design Layout…"].click()
         XCTAssertTrue(element(app, "layoutDesigner").waitForExistence(timeout: 5))
         element(app, "layoutDesigner.preset.rows").click()
         element(app, "editor.confirm").click()

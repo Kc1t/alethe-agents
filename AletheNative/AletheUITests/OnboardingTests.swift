@@ -100,7 +100,8 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Imported"].waitForExistence(timeout: 5))
         app.buttons["editor.confirm"].firstMatch.click()
         XCTAssertTrue(element(app, "onboarding.import.summary").waitForExistence(timeout: 5))
-        XCTAssertTrue(element(app, "sidebar.project.imported-tmp").exists)
+        element(app, "onboarding.skip").click()
+        XCTAssertTrue(element(app, "sidebar.project.imported-tmp").waitForExistence(timeout: 5))
         app.terminate()
     }
 }

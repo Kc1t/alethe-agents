@@ -70,12 +70,42 @@ struct SessionCostSheet: View {
     let workspace: WorkspaceModel
     let tabID: TabID
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.metrics) private var metrics
     @State private var cost: SessionCost?
     @State private var loading = true
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            Text("menu.terminal.sessionCost")
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.space(.l)) {
+                if let (project, pane) = workspace.document.paneHolding(tabID),
+                   let tab = pane.tabs.first(where: { $0.id == tabID }) {
+                    Text(verbatim: "\(tab.title ?? AgentLabels.name(for: tab.agent)) · \(project.name)")
+                    ScrollView(.horizontal) { SessionCostView(cost: cost, loading: loading) }
+                        .fixedSize(horizontal: false, vertical: true).webScrollStyle()
+                }
+            }
+        } footer: {
+            Spacer()
+            Button("cost.refresh") { Task { await load() } }
+            Button("agentInstall.done", action: dismiss).keyboardShortcut(.defaultAction)
+        }
+        .task { await load() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("sessionCost")
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             if let (project, pane) = workspace.document.paneHolding(tabID),
                let tab = pane.tabs.first(where: { $0.id == tabID }) {

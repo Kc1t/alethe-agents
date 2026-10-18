@@ -12,7 +12,11 @@ struct ConversationsSheet: View {
     let undoManager: UndoManager?
     let initialProject: ProjectID?
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
@@ -46,6 +50,72 @@ struct ConversationsSheet: View {
     }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            Text("menu.history.conversations")
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.size(12)) {
+                HStack(spacing: metrics.size(8)) {
+                    ForEach([AgentKind.claude, .codex], id: \.self) { choice in
+                        Button { agent = choice } label: { Text(verbatim: AgentLabels.name(for: choice.rawValue)) }
+                            .buttonStyle(ModalsM2RowStyle(selected: agent == choice))
+                            .accessibilityIdentifier("conversations.agent.\(choice.rawValue)")
+                            .accessibilityAddTraits(agent == choice ? [.isSelected] : [])
+                    }
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("conversations.agent")
+                NewTerminalRowSelect(selection: $allProjects, options: [false, true],
+                    title: { $0 ? String(localized: "conversations.allProjects") : project?.name ?? "" }) { _ in
+                    Image(systemName: "folder").webProfileSized(16)
+                }.accessibilityIdentifier("conversations.scope")
+                TextField("conversations.filter", text: $filter)
+                    .modifier(ProjectGroupWebInput())
+                    .accessibilityIdentifier("conversations.filter")
+                if rows == nil {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: metrics.size(120))
+                } else if visible.isEmpty {
+                    Text("conversations.none").foregroundStyle(theme[.fgMuted])
+                        .frame(maxWidth: .infinity, minHeight: metrics.size(120))
+                } else {
+                    LazyVStack(spacing: metrics.size(4)) {
+                        ForEach(visible) { row in
+                            Button { selection = row.id } label: {
+                                rowView(row).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(ModalsM2RowStyle(selected: selection == row.id))
+                            .simultaneousGesture(TapGesture(count: 2).onEnded { open(row) })
+                        }
+                    }.accessibilityIdentifier("conversations.list")
+                }
+                if selection != nil {
+                    ScrollView(.horizontal) { SessionCostView(cost: cost, loading: costLoading) }
+                        .fixedSize(horizontal: false, vertical: true).webScrollStyle()
+                }
+            }
+        } footer: {
+            if AgentRegistry.builtin.descriptor(for: agent)?.unrestrictedFlag != nil {
+                Toggle("newTerminal.unrestricted", isOn: $unrestricted).tint(theme[.accent])
+            }
+            Spacer()
+            Button("editor.cancel", action: dismiss)
+            Button("conversations.open") { selection.flatMap { id in visible.first { $0.id == id } }.map(open) }
+                .buttonStyle(AletheButtonStyle(.primary))
+                .keyboardShortcut(.defaultAction).disabled(selection == nil)
+                .accessibilityIdentifier("conversations.open")
+        }
+        .task(id: "\(agent.rawValue)|\(allProjects)") { await load() }
+        .task(id: selection) { await loadCost() }
+        .onAppear { unrestricted = environment.preferences?.document.alwaysStartUnrestricted ?? false }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("conversations")
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: 0) {
             HStack(spacing: metrics.space(.l)) {
                 Picker(selection: $agent) {

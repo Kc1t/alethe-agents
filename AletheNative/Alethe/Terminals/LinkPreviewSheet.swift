@@ -16,7 +16,11 @@ enum LinkPreviewTarget: Hashable {
 /// Markdown rendered, images, videos, pages (private), other text files as source; Esc closes.
 struct LinkPreviewSheet: View {
     let target: LinkPreviewTarget
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
@@ -28,6 +32,27 @@ struct LinkPreviewSheet: View {
     }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    @Environment(\.newTerminalModalHeight) private var maximumHeight
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss, closeIdentifier: "linkPreview.close") {
+            Text(verbatim: title).lineLimit(1).truncationMode(.middle)
+        } content: {
+            content.frame(maxWidth: .infinity)
+                .frame(height: max(metrics.size(120), min(metrics.size(440), maximumHeight - metrics.size(140))))
+        } footer: {
+            Spacer()
+            Button("linkPreview.open", action: openExternally)
+            Button("linkPreview.close", action: dismiss)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("linkPreview")
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: 0) {
             HStack(spacing: metrics.space(.s)) {
                 Text(verbatim: title)

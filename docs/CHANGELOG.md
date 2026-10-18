@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Dialog parity
+- Conversations, handoff, session cost, diagnostics, remote pairing, link preview, import, layout
+  design, GSD activity, welcome and crash dialogs now use themed window overlays in the web interface.
+  Dialog bodies scroll at high zoom; conversation filters and imported-profile selection use themed
+  controls. Nested onboarding import returns to onboarding without closing its parent.
+
 ### Browser setup parity
 - Add Content and browser setup use themed window overlays. Open a browser from the main menu,
   validate its address, name it and set page zoom, JavaScript and hidden-page resource policy.

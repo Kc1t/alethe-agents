@@ -22,7 +22,11 @@ struct GSDSyncActivityTarget: Hashable {
 struct GSDSyncActivitySheet: View {
     let target: GSDSyncActivityTarget
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var session: OpenCodeExportSession?
@@ -34,6 +38,26 @@ struct GSDSyncActivitySheet: View {
     private static let stickThreshold: CGFloat = 80
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    @Environment(\.newTerminalModalHeight) private var maximumHeight
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            Text(verbatim: target.title).lineLimit(1)
+        } content: {
+            feed.frame(height: max(metrics.size(120), min(metrics.size(400), maximumHeight - metrics.size(140))))
+        } footer: {
+            Spacer()
+            Button("agentInstall.done", action: dismiss).accessibilityIdentifier("gsdActivity.done")
+        }
+        .task(id: target) { await poll() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("gsdActivity.sheet")
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()

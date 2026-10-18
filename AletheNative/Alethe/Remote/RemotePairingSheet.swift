@@ -9,7 +9,11 @@ import SwiftUI
 /// closes with it, so the URL and its token are only ever shown here, while the sheet is open.
 struct RemotePairingSheet: View {
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.openSettings) private var openSettings
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
@@ -19,6 +23,44 @@ struct RemotePairingSheet: View {
     private var remote: RemoteControlController { environment.remoteControl }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            Text("titlebar.remote")
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.size(16)) {
+                header(enabled: remote.isEnabled)
+                if remote.isEnabled {
+                    pairing(remote.info)
+                    devices(remote.info)
+                } else {
+                    Text("remote.pairing.disabledCard").foregroundStyle(theme[.fgMuted])
+                        .frame(maxWidth: .infinity, minHeight: metrics.size(120))
+                        .accessibilityIdentifier("remote.pairing.disabledCard")
+                }
+                Text(remote.info?.reachMode == .tailscale ? "remote.pairing.securityTailscale" : "remote.pairing.security")
+                    .font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+            }
+        } footer: {
+            footer(enabled: remote.isEnabled)
+        }
+        .task {
+            while !Task.isCancelled {
+                remote.refresh()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        .task(id: remote.isEnabled) {
+            if remote.isEnabled, remote.info?.pairingOpen != true { remote.openPairing() }
+        }
+        .onDisappear { if remote.isEnabled { remote.closePairing() } }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("remote.pairing")
+    }
+
+    @ViewBuilder private var nativeBody: some View {
         let info = remote.info
         let enabled = remote.isEnabled
         VStack(alignment: .leading, spacing: metrics.space(.l)) {

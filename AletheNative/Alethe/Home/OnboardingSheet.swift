@@ -314,7 +314,7 @@ private struct OnboardingImportStep: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
-        .sheet(isPresented: $importing) {
+        .gitWebSheet(isPresented: $importing, width: 520) {
             TauriImportSheet(workspace: workspace, undoManager: undoManager, onImported: { imported = $0 })
                 .environment(environment)
                 .environment(\.theme, theme)
@@ -503,13 +503,57 @@ private struct OnboardingMcpStep: View {
 struct WelcomeBackSheet: View {
     let welcome: WelcomeBack
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     private var name: String { environment.activeProfileName }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            Text(verbatim: format("welcome.day", welcome.day, AppIdentity.productName))
+        } content: {
+            VStack(spacing: metrics.size(14)) {
+            Circle()
+                .fill(theme[.accentSoft])
+                .frame(width: metrics.size(56), height: metrics.size(56))
+                .overlay {
+                    Text(verbatim: name.first.map { String($0).uppercased() } ?? "?")
+                        .font(metrics.font(.title1))
+                        .foregroundStyle(theme[.accent])
+                }
+                .accessibilityHidden(true)
+            Text(verbatim: format("welcome.day", welcome.day, AppIdentity.productName))
+                .font(metrics.font(.footnote).weight(.semibold))
+                .foregroundStyle(theme[.textSecondary])
+            Text(verbatim: format("welcome.greeting", name))
+                .font(metrics.font(.title1))
+            Text(verbatim: subtitle)
+                .foregroundStyle(theme[.textSecondary])
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("welcome.subtitle")
+            }.frame(maxWidth: .infinity)
+        } footer: {
+            Spacer()
+            Button("welcome.skip", action: dismiss)
+            Button("welcome.start") { environment.showingHome = false; dismiss() }
+                .buttonStyle(AletheButtonStyle(.primary))
+                .keyboardShortcut(.defaultAction).accessibilityIdentifier("welcome.start")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("welcome")
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: metrics.space(.l)) {
             Circle()
                 .fill(theme[.accentSoft])

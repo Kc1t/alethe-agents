@@ -109,7 +109,10 @@ struct MainWindow: View {
         guard metrics.isWebInterface, let request = environment.editorRequest else { return false }
         switch request {
         case .newTerminal, .newSubTab, .newProject, .editProject, .newGroup, .editGroup, .aiUsage, .findJump: return true
-        case .mergeCenter, .worktrees, .branchTesting, .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding, .dataManagement, .addContent, .addBrowser: return true
+        case .mergeCenter, .worktrees, .branchTesting, .mcpManager, .mcpIntro, .skills, .agentLibrary,
+             .gistSync, .onboarding, .dataManagement, .addContent, .addBrowser, .conversations, .handoff,
+             .sessionCost, .diagnostics, .remotePairing, .previewLink, .importTauri, .layoutDesigner,
+             .gsdSyncActivity, .welcome, .crashNotice: return true
         case .pluginSheet(let viewID, _): return viewID == GitControlPlugin.viewID
         default: return false
         }
@@ -122,7 +125,9 @@ struct MainWindow: View {
             GitWebOverlay(width: modalWidth(request), close: { environment.editorRequest = nil }) {
                 editor(for: request, workspace: workspace)
             }
-        case .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding, .addContent, .addBrowser:
+        case .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding, .addContent, .addBrowser,
+             .conversations, .handoff, .sessionCost, .diagnostics, .remotePairing, .previewLink, .importTauri,
+             .layoutDesigner, .gsdSyncActivity, .welcome, .crashNotice:
             NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }, defaultWidth: modalWidth(request),
                                   minimumWidth: 320) { close in
                 editor(for: request, workspace: workspace)
@@ -165,6 +170,16 @@ struct MainWindow: View {
         case .onboarding: 620
         case .addContent: 500
         case .addBrowser: 520
+        case .conversations: 680
+        case .handoff: 640
+        case .sessionCost: 600
+        case .diagnostics: 640
+        case .remotePairing: 560
+        case .previewLink, .layoutDesigner: 760
+        case .importTauri: 520
+        case .gsdSyncActivity: 640
+        case .welcome: 480
+        case .crashNotice: 560
         default: 480
         }
     }

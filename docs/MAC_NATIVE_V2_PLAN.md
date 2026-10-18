@@ -3755,3 +3755,12 @@ WebPaneOptions.name decodes older files unchanged. Model tests (6), string gate 
 UI flow at 150% zoom (including modal transition, Escape and relaunch) pass. Shared Escape capture
 now respects dropdowns, nested overlays and focused AppKit text editors. The audit report records
 state and decisions because external ai-memory is unavailable.
+
+
+### Remaining top-level dialogs — 2026-10-18
+
+The web path now presents conversations, handoff, cost, diagnostics, remote pairing, preview,
+import, layout design, GSD activity, welcome and crash artifacts through the themed window overlay.
+Native presentations remain available. UI validation covers both visual styles, light/dark themes,
+150% zoom, dropdown/field Escape priority, native conversations, preview, import+undo, grid+undo
+and nested onboarding import. The audit report records detailed state because ai-memory is unavailable.

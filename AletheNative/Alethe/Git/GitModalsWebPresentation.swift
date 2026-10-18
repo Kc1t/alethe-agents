@@ -51,6 +51,8 @@ struct GitWebModal<Header: View, Body: View, Footer: View>: View {
                     .padding(.top, metrics.size(12)).padding(.bottom, metrics.size(16))
             }
         }
+        .buttonStyle(AletheButtonStyle())
+        .tint(theme[.accent])
         .font(metrics.font(size: 13))
         .foregroundStyle(theme[.fg])
         .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
@@ -70,6 +72,7 @@ struct GitWebOverlay<Content: View>: View {
         NewTerminalWebOverlay(onClose: close, defaultWidth: width,
                               minimumWidth: min(width, 320)) { animatedClose in
             content().environment(\.gitModalClose, animatedClose)
+                .environment(\.modalsM2Close, animatedClose)
         }
         .gitWebModalLayer()
     }

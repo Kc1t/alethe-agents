@@ -10,7 +10,11 @@ struct LayoutDesignerSheet: View {
     let workspace: WorkspaceModel
     let undoManager: UndoManager?
     let projectID: ProjectID
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var draft = CustomGrid(cols: 2, rows: 1)
@@ -24,6 +28,36 @@ struct LayoutDesignerSheet: View {
     private var ids: [String] { project?.visiblePanes.map(\.id.rawValue) ?? [] }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    @Environment(\.newTerminalModalHeight) private var maximumHeight
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            Text("layoutDesigner.title")
+        } content: {
+            VStack(spacing: metrics.size(12)) {
+                toolbar
+                HStack(spacing: metrics.size(12)) {
+                    library
+                    canvas.padding(metrics.space(.s))
+                }
+                .frame(height: max(metrics.size(160), min(metrics.size(340), maximumHeight - metrics.size(220))))
+                Text("layoutDesigner.hint").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+            }
+        } footer: {
+            Spacer()
+            Button("editor.cancel", action: dismiss)
+            Button("layoutDesigner.save", action: save).buttonStyle(AletheButtonStyle(.primary))
+                .keyboardShortcut(.defaultAction).accessibilityIdentifier("editor.confirm")
+        }
+        .onAppear(perform: load)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("layoutDesigner")
+    }
+
+    private var nativeBody: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()

@@ -39,14 +39,14 @@ This inventory is not a claim of rendered 1:1 parity for every screen.
 | MCP manager/add/edit/intro | McpManagerSheet, McpServerEditor, McpIntroSheet / McpManagerModal, AddServerFlow, McpIntroModal | Top-level overlay integrated; backup-list sheet still uses system presentation |
 | Skills/Agent Library | SkillsSheet, AgentLibrarySheet / SkillsBrowser, AgentLibrary | Top-level overlay integrated |
 | GitHub sync | GistSyncSheet / SyncModal | Overlay integrated; Tauri-import fallback remains native |
-| Onboarding/welcome | OnboardingSheet, WelcomeBackSheet / OnboardingModal, WelcomeModal | Debug retry added; onboarding overlay integrated; welcome remains native |
+| Onboarding/welcome | OnboardingSheet, WelcomeBackSheet / OnboardingModal, WelcomeModal | Onboarding, nested import and welcome use themed overlays; Debug retry preserved |
 | Add content/browser | AddContentSheet / AddContentModal, AddBrowserModal | Themed Add Content and browser setup overlays, main-menu shortcut, named panes, URL validation and persisted page/resource settings implemented |
-| Conversations | ConversationsSheet / RecentChatsModal, ClaudeHistoryModal | Native presentation; agent/scope filtering exists, exact web list/actions differ |
-| Handoff/session cost | HandoffSheet, SessionCostSheet / HandoffModal, terminal session cost | Native presentation; themed web chrome still needs implementation |
-| Layout/grid editing | LayoutDesignerSheet, ProjectGridPrompts / LayoutDesignerModal, ProjectGridModal | Native presentation; designer scope differences remain |
-| Remote pairing | RemotePairingSheet / RemoteControlModal | Native presentation and functional service; web chrome still differs |
-| Diagnostics/crash/memory | DiagnosticsSheet, CrashNoticeSheet, MemoryIndicator / AuditModal, MemoryAnalyticsModal | Native presentation and different data model; exact web audit/memory screens absent |
-| Link preview/import/GSD activity | LinkPreviewSheet, TauriImportSheet, GSDSyncActivitySheet / LinkViewerOverlay and native migration tools | Native presentation; not routed to generic overlays without adapting dismissal and sizing |
+| Conversations | ConversationsSheet / RecentChatsModal, ClaudeHistoryModal | Themed overlay, agent/scope filters, search and selectable conversation rows implemented; native agent history service retained |
+| Handoff/session cost | HandoffSheet, SessionCostSheet / HandoffModal, terminal session cost | Themed headers/body/footer, existing handoff review/launch and session-cost loading retained |
+| Layout/grid editing | LayoutDesignerSheet, ProjectGridPrompts / LayoutDesignerModal, ProjectGridModal | Themed overlay and save/undo validated; workspace/group designer scopes remain a domain backlog item |
+| Remote pairing | RemotePairingSheet / RemoteControlModal | Themed overlay using the existing real pairing service and lifecycle |
+| Diagnostics/crash/memory | DiagnosticsSheet, CrashNoticeSheet, MemoryIndicator / AuditModal, MemoryAnalyticsModal | Diagnostics/crash use themed overlays with recorded events/artifacts; memory analytics still uses the existing native data model |
+| Link preview/import/GSD activity | LinkPreviewSheet, TauriImportSheet, GSDSyncActivitySheet / LinkViewerOverlay and native migration tools | Themed overlay routing, dismissal and height bounds adapted for all three |
 | Preferences/profile management | WebSettingsView, ProfileSettings / PreferencesModal, ProfilesModal | Separate Settings window and nested native profile sheet; SETTINGS_PARITY.md lists field/service gaps |
 | Appearance/toolbar/theme | AppearanceSettings / ThemePickerModal, TopbarSettingsModal | Native nested toolbar sheet; dedicated theme-picker menu shortcut remains a gap |
 | Agent and Router9 installation | AgentInstallSheet, Router9InstallSheet | Web content exists; Settings entry points still use system sheets |
@@ -107,3 +107,19 @@ The browser menu/setup flow is now implemented, using the existing WKWebView ses
 - Validation: string gate, six WebPaneTests model cases and UI creation/validation/escape/transition/
   relaunch test at 150% zoom pass. UI run: 18.352 s. The UI test build also typechecks the app.
 - No ai-memory capability is available; this report records the schema decision and validation.
+
+### Remaining top-level dialog presentation follow-up
+
+- Added separate web header/body/footer presentations for conversations, handoff, session cost,
+  diagnostics, remote pairing, link preview, Tauri import, layout design, GSD activity, welcome
+  and crash artifacts. Native macOS presentations retain their original controls and behavior.
+- Shared content actions use theme button styles and accent tint; cost tables scroll horizontally
+  at constrained widths. Conversation agent/scope/search/list controls use the web design system.
+- Nested onboarding import uses the window presentation layer and receives its own close callback.
+  It closes back to onboarding; background UI remains inaccessible while a modal is open.
+- Validation: app builds and strings gate pass. UI tests pass for native conversations, web
+  conversations/diagnostics/remote pairing in Normal+light and Clean+dark at 150% zoom, Markdown
+  preview, import preview/apply/undo, grid preset/save/undo, and nested onboarding import.
+- The grid test opens Design Layout from the current sidebar menu; the onboarding test verifies
+  imported sidebar content after dismissing the modal. Neither test depends on hidden background UI.
+- External ai-memory remains unavailable; this report records the presentation and validation state.
