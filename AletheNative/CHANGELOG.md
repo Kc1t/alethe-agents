@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Debug builds include Debug → Load sample data and the `ALETHE_SAMPLE_DATA=1` launch option:
+  25 varied global/project todos and an editable four-file Markdown sample project with its README
+  open beside Todos. Repeated loads preserve existing tasks, sample edits and project/pane identity.
 - Project and group editors accept icon URLs, local images, file drops and clipboard images, with
   previews and removal. Images persist across relaunch and web imports, and appear in web-style
   sidebar rows, recent-project cards and workspace tabs. Local uploads retain the web 2 MB limit.
@@ -33,6 +36,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   items precede it. Profile photo fields use their own labels and hints.
 - Image drops and clipboard imports select the first supported attachment and report unreadable
   image data instead of silently leaving the project or group image unchanged.
+- Web-style image previews retain the selected project or group color behind transparent images,
+  matching the web image field after the preview finishes loading.
 - Settings opens at the web size (1180×780) and stays resizable instead of reopening tiny.
 - Web-style title-bar controls reserve only visible macOS traffic lights, followed by the web
   left padding. Hidden or absent buttons and fullscreen no longer leave an empty leading gap.
