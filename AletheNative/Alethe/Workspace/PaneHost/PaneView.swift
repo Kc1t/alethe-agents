@@ -388,6 +388,7 @@ final class PaneView: NSView {
         terminal.frame = content.bounds
         terminal.autoresizingMask = [.width, .height]
         content.addSubview(terminal)
+        terminal.syncSurfaceSize()
     }
 
     override func layout() {
@@ -411,6 +412,8 @@ final class PaneView: NSView {
                                width: max(0, body.width - leading - (web ? padding?.size(14) ?? 14 : 0)),
                                height: max(0, body.height - (web ? padding?.size(6) ?? 6 : 0)))
         overlay?.frame = content.frame
+        // The content frame just changed; refit explicitly instead of relying on autoresizing.
+        (content.subviews.first as? TerminalPaneView)?.syncSurfaceSize()
         if let offerBar {
             let height = offerBar.fittingSize.height
             offerBar.frame = CGRect(x: content.frame.minX, y: content.frame.minY, width: content.frame.width, height: height)

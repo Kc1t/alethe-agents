@@ -103,14 +103,12 @@ public final class TerminalPaneView: NSView {
         registerForDraggedTypes([.fileURL] + SmartPaste.imageTypes)
         dropHighlight = theme.nsColor(.accent)
         terminalView.controller = controller
-        terminalView.translatesAutoresizingMaskIntoConstraints = false
+        // Frame-based on purpose: the pane host drives this view with frames (spring animation,
+        // reparenting for focus mode), and a constraint pass can lag a frame change, leaving the
+        // surface at its old size. `syncSurfaceSize()` pins and fits it on every size change.
+        terminalView.translatesAutoresizingMaskIntoConstraints = true
+        terminalView.autoresizingMask = [.width, .height]
         addSubview(terminalView)
-        NSLayoutConstraint.activate([
-            terminalView.topAnchor.constraint(equalTo: topAnchor),
-            terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
 
         let session = session
         let activity = activity
@@ -147,6 +145,34 @@ public final class TerminalPaneView: NSView {
 
     override public func layout() {
         super.layout()
+        syncSurfaceSize()
+    }
+
+    override public func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        syncSurfaceSize()
+    }
+
+    override public func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { syncSurfaceSize() }
+    }
+
+    override public func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        if superview != nil { syncSurfaceSize() }
+    }
+
+    override public func viewDidUnhide() {
+        super.viewDidUnhide()
+        syncSurfaceSize()
+    }
+
+    /// Pins the surface view to the pane's bounds and refits Ghostty (grid, pixel size, PTY winsize
+    /// through the session's resize callback). Safe to call at any time; a zero size is a no-op
+    /// until the view regains one.
+    public func syncSurfaceSize() {
+        if terminalView.frame != bounds { terminalView.frame = bounds }
         terminalView.fitToSize()
     }
 

@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Terminal content now always resizes with its pane (window resize, splitter drag, sidebars, grid
+  change, focus mode, tab switch): the surface is pinned to the pane by frame and refit, with the PTY
+  size updated, on every size change, reparent and unhide.
+
 ### Context menu parity
 - In the web interface, project, group, terminal, workspace-tab, pane-header and grid/layout menus
   use a themed panel like the web `ContextMenu`: elevated surface, 1pt border, 8pt radius, shadow,
