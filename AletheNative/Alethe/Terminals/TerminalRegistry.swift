@@ -99,6 +99,10 @@ final class TerminalRegistry {
         discoveries.removeValue(forKey: tab)?.cancel()
         preparing.remove(tab)
         watches.removeValue(forKey: tab)?.stop()
+        if watches.isEmpty {
+            ticker?.invalidate()
+            ticker = nil
+        }
         activity.removeValue(forKey: tab)
         unread.remove(tab)
         launches.removeValue(forKey: tab)

@@ -7,6 +7,7 @@ struct WebHomeNowPlaying: View {
     var homeDockInfoWidth: CGFloat = .infinity
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.metrics) private var metrics
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.theme) private var theme
     @State private var hovered = false
     @FocusState private var focused: Bool
@@ -74,7 +75,7 @@ struct WebHomeNowPlaying: View {
         .frame(width: metrics.size(30), height: metrics.size(30)).clipShape(Circle())
         .background {
             if track.playing, !metrics.reducesMotion {
-                TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+                TimelineView(.animation(minimumInterval: 1 / 30, paused: scenePhase != .active)) { context in
                     let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.2) / 2.2
                     ZStack {
                         ring(phase)
@@ -107,10 +108,11 @@ private struct HomeMusicEqualizer: View {
     let height: CGFloat
     var compact = false
     @Environment(\.metrics) private var metrics
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.theme) private var theme
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 20, paused: metrics.reducesMotion)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 20, paused: metrics.reducesMotion || scenePhase != .active)) { context in
             HStack(alignment: .bottom, spacing: metrics.size(compact ? 1 : 1.5)) {
                 ForEach(0..<4) { index in
                     let phase = (context.date.timeIntervalSinceReferenceDate - Double(index) * 0.15) / 1.2

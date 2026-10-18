@@ -13,11 +13,13 @@ private struct TitleBarMenuRow: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
     @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         configuration.label
             .font(metrics.font(size: 13))
-            .foregroundStyle(theme[.fg])
+            .foregroundStyle(theme[configuration.role == .destructive ? .statusStopped : .fg])
+            .opacity(isEnabled ? 1 : 0.45)
             .padding(.horizontal, metrics.size(10))
             .padding(.vertical, metrics.size(metrics.style == .clean ? 5 : 7))
             .frame(maxWidth: .infinity, minHeight: metrics.size(28), alignment: .leading)

@@ -32,6 +32,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Running shell panes persist their reported working directory, with process-directory fallback.
   Unambiguous agent session-file changes continue to update the saved conversation after initial
   discovery; pane-specific Claude hooks remain authoritative when multiple panes share a directory.
+- Project and group covers decode off the main thread and share cached thumbnails; local image
+  imports retain the web byte format and size limit without blocking the editor.
+- Reduced startup JSON work, repeated logo rendering, inactive Home animation and idle terminal
+  timer work. Resource sampling runs in the background; scrollback reads and disk batches are
+  bounded, and failed workspace saves retain their latest snapshot for retry.
 - In full screen the window buttons are handed back to the system title bar, so the menu-bar reveal shows exit full screen and minimize again.
 - The Projects tab icon in the sidebar is no longer highlighted while Home is showing.
 - Web-style Settings follows the web category order from Account through About, with separate

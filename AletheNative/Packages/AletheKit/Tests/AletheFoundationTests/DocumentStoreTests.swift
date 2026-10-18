@@ -97,4 +97,37 @@ private func temporaryURL() -> URL {
         let (document, _) = try await DocumentStore<Sample>(url: url).load()
         #expect(document.name == "new")
     }
+
+    @Test func failedDebouncedWriteCanBeRetriedByFlushing() async throws {
+        let parent = FileManager.default.temporaryDirectory.appending(
+            path: "alethe-blocked-\(UUID().uuidString)", directoryHint: .notDirectory)
+        let url = parent.appending(path: "doc.json")
+        try Data("blocks directory creation".utf8).write(to: parent)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let store = DocumentStore<Sample>(url: url, debounce: .seconds(60))
+        await store.scheduleSave(Sample(schemaVersion: 3, name: "latest", count: 7), revision: 7)
+        await store.flush()
+        try FileManager.default.removeItem(at: parent)
+        await store.flush()
+        let (document, _) = try await DocumentStore<Sample>(url: url).load()
+        #expect(document.name == "latest")
+    }
+
+    @Test func failedImmediateWriteDoesNotConsumeItsRevision() async throws {
+        let parent = FileManager.default.temporaryDirectory.appending(
+            path: "alethe-blocked-\(UUID().uuidString)", directoryHint: .notDirectory)
+        let url = parent.appending(path: "doc.json")
+        try Data("blocks directory creation".utf8).write(to: parent)
+        defer { try? FileManager.default.removeItem(at: parent) }
+        let store = DocumentStore<Sample>(url: url)
+        do {
+            try await store.save(Sample.initial, revision: 1)
+            Issue.record("Expected the blocked write to fail")
+        } catch { }
+        try FileManager.default.removeItem(at: parent)
+        try await store.save(Sample(schemaVersion: 3, name: "retry", count: 1), revision: 1)
+        let (document, _) = try await DocumentStore<Sample>(url: url).load()
+        #expect(document.name == "retry")
+    }
+
 }

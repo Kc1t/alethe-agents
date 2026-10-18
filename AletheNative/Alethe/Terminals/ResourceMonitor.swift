@@ -33,6 +33,7 @@ final class ResourceMonitor {
     @ObservationIgnored private weak var environment: AppEnvironment?
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var pressureSource: DispatchSourceMemoryPressure?
+    @ObservationIgnored private var sampling = false
     @ObservationIgnored private var background: Set<TabID> = []
     @ObservationIgnored private var lastUsed: [TabID: Date] = [:]
     /// Pressure level changes so far (upstream `policy_trigger_count`).
@@ -60,10 +61,40 @@ final class ResourceMonitor {
 
     /// One supervision pass (upstream `run_cycle`).
     func check() {
-        guard let environment, let document = environment.workspace?.document else { return }
+        guard !sampling, let environment, let workspace = environment.workspace else { return }
+        sampling = true
+        let processes = environment.terminals.running.map { $0.view.processID }
+        Task {
+            defer { sampling = false }
+            let sample = await Task.detached(priority: .utility) {
+                let parents = ProcessTree.currentParents()
+                var memory: [pid_t: Double] = [:]
+                var counts: [pid_t: Int] = [:]
+                for pid in processes where pid > 0 {
+                    let descendants = ProcessTree.descendants(of: pid, parents: parents)
+                    counts[pid] = descendants.count
+                    memory[pid] = descendants.reduce(0) { $0 + SystemResources.footprintMB(of: $1) }
+                }
+                return Sample(parents: parents, memory: memory, counts: counts,
+                              system: SystemResources.memory(), appMB: SystemResources.footprintMB(of: getpid()))
+            }.value
+            guard environment.workspace === workspace else { return }
+            apply(sample, environment: environment, document: workspace.document)
+        }
+    }
+
+    private struct Sample: Sendable {
+        let parents: [pid_t: pid_t]
+        let memory: [pid_t: Double]
+        let counts: [pid_t: Int]
+        let system: SystemResources.Memory
+        let appMB: Double
+    }
+
+    private func apply(_ sample: Sample, environment: AppEnvironment, document: WorkspaceDocument) {
         let policy = environment.preferences?.document.resources ?? ResourcePolicy()
         let running = environment.terminals.running
-        let parents = ProcessTree.currentParents()
+        let parents = sample.parents
         let mounted = document.mountedTabIDs
         let focused = document.workspace.focusedPaneID.flatMap { document.pane($0)?.pane.activeTab?.id }
         let now = Date()
@@ -73,8 +104,10 @@ final class ResourceMonitor {
         var usage: [TerminalUsage] = []
         var processCount = 1  // the app, like upstream's walk
         for (tab, view) in running {
-            let memory = SystemResources.treeFootprintMB(of: view.processID, parents: parents)
-            if view.processID > 0 { processCount += ProcessTree.descendants(of: view.processID, parents: parents).count }
+            // A terminal spawned during sampling belongs to the next pass.
+            guard view.processID <= 0 || sample.memory[view.processID] != nil else { continue }
+            let memory = sample.memory[view.processID] ?? 0
+            if view.processID > 0 { processCount += sample.counts[view.processID] ?? 0 }
             usage.append(TerminalUsage(tab: tab, memoryMB: memory))
             let quiet = Double(view.quietFor.components.seconds)
             runtimes.append(TerminalRuntime(
@@ -90,10 +123,12 @@ final class ResourceMonitor {
                 if off { background.insert(tab) } else { background.remove(tab) }
             }
         }
-        background.formIntersection(Set(running.map(\.tab)))
+        let runningTabs = Set(running.map(\.tab))
+        background.formIntersection(runningTabs)
+        lastUsed = lastUsed.filter { runningTabs.contains($0.key) }
 
-        system = SystemResources.memory()
-        appMB = SystemResources.footprintMB(of: getpid())
+        system = sample.system
+        appMB = sample.appMB
         let previous = pressure
         pressure = MemoryPressure.level(availableMB: system.availableMB, totalMB: system.totalMB, previous: pressure)
         if pressure != previous { pressureChanges += 1 }

@@ -105,4 +105,21 @@ import Testing
         #expect(ProjectImageInput.normalized(" \n ") == nil)
         #expect(ProjectImageInput.normalized(" https://example.com/icon.png\n") == "https://example.com/icon.png")
     }
+
+    @Test func localFilesPreserveBytesAndEnforceTheWebLimit() throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: "alethe-cover-\(UUID().uuidString).svg")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let bytes = Data("<svg/>".utf8)
+        try bytes.write(to: url)
+        #expect(try ProjectImageInput.fileDataURL(url, mimeType: "image/svg+xml") ==
+                ProjectImageInput.dataURL(bytes, mimeType: "image/svg+xml"))
+        try Data(count: ProjectImageInput.maximumBytes + 1).write(to: url)
+        #expect(throws: ProjectImageInput.ValidationError.tooLarge) {
+            try ProjectImageInput.fileDataURL(url, mimeType: "image/svg+xml")
+        }
+        #expect(throws: ProjectImageInput.ValidationError.mustBeImage) {
+            try ProjectImageInput.fileDataURL(url, mimeType: "text/plain")
+        }
+    }
+
 }
