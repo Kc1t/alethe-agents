@@ -105,6 +105,7 @@ struct WebTitleBar: View {
         .background(WindowDragRegion())
         .background(theme[.bgElevated])
         .overlay(alignment: .bottom) { theme[.border].frame(height: metrics.size(1)) }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("chrome.titleBar")
         .preference(key: WebTitleBarNewsKey.self, value: showsNews)
         .onReceive(NotificationCenter.default.publisher(for: .aletheCloseTitleBarNews)) { _ in showsNews = false }

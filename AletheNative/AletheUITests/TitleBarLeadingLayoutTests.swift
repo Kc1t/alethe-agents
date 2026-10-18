@@ -7,7 +7,7 @@ final class TitleBarLeadingLayoutTests: XCTestCase {
     }
 
     func testDebugMenuReopensOnboardingAtLargeZoom() {
-        let (app, _) = launchAlethe()
+        let (app, _) = launchAlethe(arguments: ["-interfaceStyle", "web"])
         let menu = app.buttons["chrome.mainMenu"].firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 10))
         for _ in 0..<5 { app.typeKey("+", modifierFlags: .command) }

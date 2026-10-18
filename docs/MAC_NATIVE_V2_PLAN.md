@@ -3733,3 +3733,15 @@ Resolved (2026-09-22):
 - Reviewer follow-up (2026-10-17): removed the reintroduced `listRowSpacing(0)` call from the
   pending sidebar polish. The string gate and whitespace checks pass; no sidebar calls remain.
   No build was attempted. AI memory is still unavailable; external compilation remains required.
+
+
+### Modal/dropdown and focus audit — 2026-10-18
+
+See `AletheNative/upstream-reports/MODALS_DROPDOWNS_AUDIT.md` for the complete presentation inventory,
+corrected window-overlay routing, Debug onboarding retry, menu actions, dropdown bounds and terminal
+window-wide focus. The audit explicitly distinguishes existing themed content from unresolved web UI
+and service parity. Do not mark all modal/dropdown parity complete from this pass. Validation uses an
+isolated copy because the working index initially contained an unresolved ScrollbackFile merge.
+Concurrent workspace work resolved it and checkpointed the shared implementation (`efbf229`).
+The isolated Debug build and both targeted focus/onboarding UI tests pass. No external ai-memory
+capability is available; the report preserves decisions, state and next steps.

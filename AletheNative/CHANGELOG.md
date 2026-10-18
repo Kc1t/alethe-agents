@@ -6,6 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Debug main-menu action to redo onboarding, plus profile backup/import/reset, data and log shortcuts.
 - Debug builds include Debug → Load sample data and the `ALETHE_SAMPLE_DATA=1` launch option:
   25 varied global/project todos and an editable four-file Markdown sample project with its README
   open beside Todos. Repeated loads preserve existing tasks, sample edits and project/pane identity.
@@ -26,6 +27,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Existing Todos lists and template settings continue to load, ignoring legacy timer fields.
 
 ### Fixed
+- Opening a dialog exits terminal focus mode, and title-bar controls retain separate accessibility identifiers.
+- Git and integration dialog routing now uses themed window overlays. Dropdowns fit the available
+  window at interface zoom, and RowSelect corners respect Clean style.
+- Terminal focus expands the existing surface across the whole window, restores keyboard focus and
+  preserves its animation through repeated layout passes.
 - Terminal scrollback compaction preserves UTF-8 and ANSI sequence boundaries, bounds pending output,
   and retains pending bytes after disk-write failures. Prompt history sanitizes restored entries and
   applies the web's Unicode length limit.

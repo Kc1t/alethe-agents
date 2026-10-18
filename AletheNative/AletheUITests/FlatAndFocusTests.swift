@@ -26,11 +26,18 @@ final class FlatAndFocusTests: XCTestCase {
     }
 
     func testFocusModeEntersAndLeaves() {
-        let (app, _) = launchAlethe(arguments: ["-AletheUITestSeed", "panes"])
+        let (app, _) = launchAlethe(arguments: ["-AletheUITestSeed", "panes", "-interfaceStyle", "mac"])
         let one = element(app, "pane.header.one")
         XCTAssertTrue(one.waitForExistence(timeout: 5))
         let before = one.frame
-        one.doubleClick()
+        one.click()
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let hierarchy = XCTAttachment(string: app.debugDescription)
+        hierarchy.lifetime = .keepAlways
+        add(hierarchy)
         XCTAssertTrue(element(app, "focusMode.backdrop").waitForExistence(timeout: 5))
         XCTAssertTrue(eventually { one.frame.width > before.width * 1.5 }, "the pane floats over the workspace")
         let window = app.windows.firstMatch.frame
@@ -40,8 +47,13 @@ final class FlatAndFocusTests: XCTestCase {
         XCTAssertTrue(eventually { abs(one.frame.width - before.width) < 2 }, "the original layout returns")
         app.typeKey("f", modifierFlags: [.command, .shift])
         XCTAssertTrue(element(app, "focusMode.backdrop").waitForExistence(timeout: 5), "⇧⌘F focuses the focused pane")
-        element(app, "focusMode.backdrop").click()
+        element(app, "focusMode.backdrop").coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5)).click()
         XCTAssertTrue(eventually { !self.element(app, "focusMode.backdrop").exists }, "clicking the backdrop leaves")
+        app.typeKey("f", modifierFlags: [.command, .shift])
+        XCTAssertTrue(element(app, "focusMode.backdrop").waitForExistence(timeout: 5))
+        app.typeKey("n", modifierFlags: .command)
+        XCTAssertTrue(element(app, "editor.project.name").waitForExistence(timeout: 5))
+        XCTAssertTrue(eventually { !self.element(app, "focusMode.backdrop").exists }, "dialogs dismiss the window-level terminal overlay")
         app.terminate()
     }
 }

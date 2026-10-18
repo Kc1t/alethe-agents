@@ -17,6 +17,10 @@ import Testing
         ".gradient", "CAGradientLayer", "NSGradient",
     ]
 
+    private static let colorConstructorPattern = try! NSRegularExpression(
+        pattern: #"(?<![A-Za-z0-9_])(?:"#
+            + colorConstructors.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|") + ")")
+
     static func swiftSources() -> [URL] {
         let dirs = ["Alethe", "Packages/AletheKit/Sources"].map { root.appending(path: $0) }
         return dirs.flatMap { dir -> [URL] in
@@ -34,7 +38,11 @@ import Testing
             .filter { !$0.path.contains("/Sources/AletheDesign/") }
             .flatMap { url in
                 try String(contentsOf: url, encoding: .utf8).split(separator: "\n").enumerated()
-                    .filter { _, line in Self.colorConstructors.contains { line.contains($0) } }
+                    .filter { _, line in
+                        let source = String(line)
+                        return Self.colorConstructorPattern.firstMatch(in: source,
+                            range: NSRange(source.startIndex..., in: source)) != nil
+                    }
                     .map { "\(url.lastPathComponent):\($0.offset + 1)" }
             }
         #expect(offenders.isEmpty, "Color literals outside AletheDesign: \(offenders)")

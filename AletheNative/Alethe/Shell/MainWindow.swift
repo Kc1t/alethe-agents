@@ -35,6 +35,9 @@ struct MainWindow: View {
         .onReceive(NotificationCenter.default.publisher(for: .aletheCustomizeTitleBar)) { _ in
             if metrics.isWebInterface { showsTitleBarCustomization = true }
         }
+        .onChange(of: environment.editorRequest) { _, request in
+            if request != nil { environment.focusModePaneID = nil }
+        }
         .onChange(of: metrics.isWebInterface) { _, web in
             if !web {
                 showsTitleBarMemory = false

@@ -11,6 +11,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ## [Unreleased]
 
 ### Fixed
+- Native macOS web-style menus now expose data actions and Debug onboarding retry; Git and integration
+  dialogs use themed overlays, dropdowns fit the window, and terminal focus expands across the window.
 - Fixed a native macOS sidebar menu compilation error caused by a missing view builder.
 - Fixed the web-style Home usage enable action to save its toolbar preference through the supported setter.
 
