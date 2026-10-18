@@ -12,10 +12,11 @@ final class DictationEngine: @unchecked Sendable {
     private var analyzer: SpeechAnalyzer?
     private var input: AsyncStream<AnalyzerInput>.Continuation?
     private var results: Task<Void, Never>?
+    private var tapInstalled = false
 
     /// Starts listening in `locale`'s language (the nearest supported one), installing its speech model
     /// on first use.
-    func start(locale: Locale, onModelDownload: @escaping @MainActor () -> Void,
+    func start(locale: Locale, microphone: String = "", onModelDownload: @escaping @MainActor () -> Void,
                onResult: @escaping @MainActor (_ text: String, _ isFinal: Bool) -> Void) async throws {
         guard SpeechTranscriber.isAvailable else { throw StartError.unavailable }
         guard let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
@@ -44,6 +45,7 @@ final class DictationEngine: @unchecked Sendable {
         }
         try await analyzer.start(inputSequence: stream)
 
+        try Self.selectMicrophone(microphone, audio: audio)
         let node = audio.inputNode
         let source = node.outputFormat(forBus: 0)
         guard source.sampleRate > 0, let converter = AVAudioConverter(from: source, to: format) else {
@@ -53,6 +55,7 @@ final class DictationEngine: @unchecked Sendable {
             guard let converted = Self.convert(buffer, with: converter, to: format) else { return }
             continuation.yield(AnalyzerInput(buffer: converted))
         }
+        tapInstalled = true
         audio.prepare()
         try audio.start()
     }
@@ -77,7 +80,10 @@ final class DictationEngine: @unchecked Sendable {
 
     private func stopAudio() {
         if audio.isRunning { audio.stop() }
-        audio.inputNode.removeTap(onBus: 0)
+        if tapInstalled {
+            audio.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
     }
 
     private func reset() {

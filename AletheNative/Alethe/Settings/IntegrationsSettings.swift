@@ -5,6 +5,7 @@ import SwiftUI
 /// its own task (Spotify P7-14, Discord P7-13, 9router P7-16).
 struct IntegrationsSettings: View {
     @Environment(\.metrics) private var metrics
+    @Environment(AppEnvironment.self) private var environment
     @State private var showingUsage = false
     var body: some View {
         SettingsPageForm {
@@ -17,9 +18,7 @@ struct IntegrationsSettings: View {
                 Router9SettingsSection()
                 SpotifySettingsSection()
                 DiscordSettingsSection()
-                Section { Text("settings.web.unavailable") }
-                    header: { Text("settings.web.reference.prefs.dictation") }
-                    footer: { Text("settings.web.reference.prefs.dictationDesc") }
+                DictationSettingsSections(settings: environment.dictation.settings)
             } else {
                 SpotifySettingsSection()
                 DiscordSettingsSection()

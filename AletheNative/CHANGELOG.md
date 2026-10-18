@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Dictation and Jev (k2)
+- Web interface: dictation settings now offer On/Off, Toggle/Hold for Cmd/Ctrl+E, a microphone
+  picker, and Apple on-device language model selection/download with progress and readiness.
+- Cmd/Ctrl+Shift+Space opens Jev; hold F9 or use the microphone button to speak a registered
+  Find/Jump command title, then confirm with Run or Return. History keeps the latest 50 commands,
+  their status and invoked actions, with Clear. Escape and app deactivation cancel recording.
+- The macOS interface retains its existing settings and Option+Cmd+E dictation behavior.
+- Apple manages speech model removal. Jev currently matches registered command titles locally;
+  cloud planning, arbitrary agent prompts and continuous hands-free listening are not included.
+
 ### Fixed
 - Terminal content now always resizes with its pane (window resize, splitter drag, sidebars, grid
   change, focus mode, tab switch): the surface is pinned to the pane by frame and refit, with the PTY
