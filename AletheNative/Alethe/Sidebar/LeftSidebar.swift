@@ -150,10 +150,10 @@ struct LeftSidebar: View {
             selectedTab = id
             if metrics.style == .clean { environment.showingHome = false }
         } label: { Label { Text(title) } icon: { Image(systemName: symbol).webProfileSized(14) } }
-        .buttonStyle(AletheSidebarMotionTabStyle(isSelected: effectiveTab == id))
+        .buttonStyle(AletheSidebarMotionTabStyle(isSelected: effectiveTab == id && !environment.showingHome))
         .help(Text(title))
         .accessibilityIdentifier("leftSidebar.tab.\(id)")
-        .accessibilityAddTraits(effectiveTab == id ? .isSelected : [])
+        .accessibilityAddTraits(effectiveTab == id && !environment.showingHome ? .isSelected : [])
     }
 
     // Home and the sidebar tab are independent in NormalProjectSidebar.tsx.

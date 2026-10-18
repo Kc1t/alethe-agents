@@ -19,6 +19,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Fixed
+- The Projects tab icon in the sidebar is no longer highlighted while Home is showing.
 - Settings opens at the web size (1180×780) and stays resizable instead of reopening tiny.
 - Web-style title-bar controls reserve only visible macOS traffic lights, followed by the web
   left padding. Hidden or absent buttons and fullscreen no longer leave an empty leading gap.
