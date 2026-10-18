@@ -44,7 +44,7 @@ import Testing
         #expect(doc.ungroupedProjectIDs == [notes.id] && notes.color == .green)
 
         // Terminals become panes; tabs keep sessions, arguments, titles and their own folders.
-        #expect(api.panes.count == 3)
+        #expect(api.panes.count == 4)
         let first = api.panes[0]
         #expect(first.tabs.map(\.agent) == ["claude", "shell"])
         #expect(first.tabs[0].sessionID == "11111111-2222-4333-8444-555555555555")
@@ -53,14 +53,14 @@ import Testing
         #expect(first.tabs[1].title == "web" && first.tabs[1].workingDirectory == "/Users/example/code/api/web")
         #expect(first.activeTabID == first.tabs[1].id)
         #expect(api.panes[1].tabs.first?.sessionID == "0199aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee")
-        #expect(api.panes[2].tabs.map(\.agent) == ["opencode"])
+        #expect(api.panes[2].content == .markdown(path: "/Users/example/code/api/README.md") && api.panes[2].tabs.isEmpty)
+        #expect(api.panes[3].tabs.map(\.agent) == ["opencode"])
         #expect(site.panes.first?.tabs.first?.agent == "cursor")
 
         #expect(api.usesGraphify && !site.usesGraphify && notes.graphifyEnabled == nil)
 
-        #expect(report.groups == 2 && report.projects == 3 && report.panes == 5 && report.tabs == 6)
+        #expect(report.groups == 2 && report.projects == 3 && report.panes == 6 && report.tabs == 6)
         #expect(report.skipped == [
-            .paneKind(project: "api", kind: "markdown"),
             .agent(project: "api", agent: "kiro"),
             .projectArchived(project: "old-site"),
             .paneKind(project: "notes", kind: "web"),
@@ -199,12 +199,12 @@ import Testing
         let report = TauriImport.apply(try TauriImport.File(data: Data(json.utf8)), to: &workspace,
                                        preferences: &preferences, context: Self.context)
         let project = try #require(workspace.projects.first)
-        #expect(project.panes.map(\.content) == [.terminal, .orchestrator])
+        #expect(project.panes.map(\.content) == [.terminal, .orchestrator, .markdown(path: "/Users/example/orch/README.md")])
         let board = project.panes[1]
         #expect(board.id == PaneID(rawValue: "orchestrator-abc") && board.tabs.isEmpty)
         #expect(board.gridID == ProjectGridID(rawValue: "g1"))
-        #expect(report.skipped == [.paneKind(project: "orch", kind: "markdown")])
-        #expect(report.panes == 2 && report.tabs == 1)
+        #expect(report.skipped.isEmpty)
+        #expect(report.panes == 3 && report.tabs == 1)
     }
 
     /// Upstream's job history beside `projects.json` is copied once into a profile that has none.

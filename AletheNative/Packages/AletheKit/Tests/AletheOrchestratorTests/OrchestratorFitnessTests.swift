@@ -220,7 +220,9 @@ private func fitness(_ worst: String, _ used: Int, plan: String? = nil, rateLimi
             UsageWindow(label: "7d", usedPercent: 70, resetsAt: nil),
         ], plan: "pro")
         let pushed = await core.setAgentFitness(from: usage)
-        #expect(pushed == AgentFitness(worst: "week", used: 70, plan: "pro"))
+        var expected = AgentFitness(worst: "week", used: 70, plan: "pro")
+        expected.windows = ["5h": 30, "week": 70]
+        #expect(pushed == expected)
         #expect(await core.agentFitness()["codex"] == pushed)
 
         // A reading without windows keeps the last one, as upstream does when a fetch fails.
