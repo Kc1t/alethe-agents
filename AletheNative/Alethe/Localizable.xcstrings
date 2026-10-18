@@ -36424,150 +36424,6 @@
         }
       }
     },
-    "settings.web.profiles.detail" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Manage your local profile, language, and Alethe accounts."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gerencie seu perfil local, idioma e contas do Alethe."
-          }
-        }
-      }
-    },
-    "settings.web.general.detail" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Startup, notifications and application data"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inicialização, notificações e dados do aplicativo"
-          }
-        }
-      }
-    },
-    "settings.web.appearance.detail" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Customize the interface colors and scale."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Personalize as cores e a escala da interface."
-          }
-        }
-      }
-    },
-    "settings.web.remote.detail" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Manage LAN access, security policies, and connected devices."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gerencie acesso LAN, políticas de segurança e dispositivos conectados."
-          }
-        }
-      }
-    },
-    "settings.web.resources.detail" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Memory and terminal resource controls"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Controles de memória e recursos dos terminais"
-          }
-        }
-      }
-    },
-    "settings.web.integrations.detail" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Connect external services and control what Alethe shares."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Conecte serviços externos e controle o que o Alethe compartilha."
-          }
-        }
-      }
-    },
-    "settings.web.multiagent.detail" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Coordinate coding agents"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Coordene agentes de programação"
-          }
-        }
-      }
-    },
-    "settings.web.about" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "About"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sobre"
-          }
-        }
-      }
-    },
-    "settings.web.shortcuts" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shortcuts"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Atalhos"
-          }
-        }
-      }
-    },
     "settings.web.close" : {
       "localizations" : {
         "en" : {
@@ -36596,22 +36452,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Buscar configurações"
-          }
-        }
-      }
-    },
-    "settings.web.version" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Application version"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Versão do aplicativo"
           }
         }
       }
@@ -38692,6 +38532,2284 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Imagem muito grande. Use uma imagem de até 2 MB."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationRolesDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A planner that delegates with a role gets exactly what the role sets: agent, model, effort, read-only and budget. It cannot change them in the call."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um planner que delega com um papel recebe exatamente o que o papel define: agente, modelo, esforço, somente leitura e orçamento. Ele não pode mudar isso na chamada."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationRoles" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roles"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Papéis"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.archivedProjectsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore projects to the sidebar when you need them again."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaure projetos para a sidebar quando precisar deles novamente."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryTerminal" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal and agents"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal e agentes"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryAboutDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App version and software updates."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versão do app e atualizações de software."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.resourcePolicyDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inspect real app and Windows memory without automatically closing or parking runtimes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra o consumo real do app e do Windows sem fechar nem estacionar runtimes automaticamente."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.localAccounts" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local accounts"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contas locais"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.archivedProjectsTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archived projects"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Projetos arquivados"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryRemoteControlDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage LAN access, security policies, and connected devices."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerencie acesso LAN, políticas de segurança e dispositivos conectados."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.aboutCheckUpdates" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check for updates"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificar atualizações"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.agentsTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enabled agents"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agentes habilitados"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationSkill" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local orchestration skill"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skill de orquestração local"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationLimits" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Worker limits"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limites dos workers"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryOrchestrationDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roles and limits for delegated workers."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Papéis e limites dos workers delegados."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.editProfile" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit profile"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Editar perfil"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationLimitsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply to every delegation, from any planner."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valem para toda delegação, de qualquer planner."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationRoutingDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Which role a delegated call runs as when the planner leaves the choice to Alethe."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Com qual papel uma chamada delegada roda quando o planner deixa a escolha para o Alethe."
+          }
+        }
+      }
+    },
+    "settings.web.reference.profile.manageAccounts" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage accounts"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerenciar contas"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.aboutUpdatesTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updates"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atualizações"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryOrganizationDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage archived groups without losing their projects."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerencie grupos arquivados sem perder os projetos."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryAppearanceDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Customize the interface colors and scale."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personalize as cores e a escala da interface."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryTerminalDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configure terminal appearance and available agents."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configure a aparência do terminal e os agentes disponíveis."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.restoreProject" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore project"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaurar projeto"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryPluginsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extensions that add themes, panes, sidebar tabs and commands."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Extensões que adicionam temas, painéis, abas e comandos."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryOrchestration" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orchestration"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orquestração"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryAccountDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage your local profile, language, and Alethe accounts."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerencie seu perfil local, idioma e contas do Alethe."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.language" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Idioma"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.aboutVersionTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Version"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Versão"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.resourcePolicy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memory monitoring"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitoramento de memória"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.aboutVersionDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The Alethe build currently installed."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A build do Alethe instalada no momento."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.experimentalPermissions" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent Canvas permissions"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permissões do Agent Canvas"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.profile" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profile"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perfil"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.profileDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose how your local profile appears inside the application."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha como seu perfil local aparece dentro do aplicativo."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationSkillDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose how the bundled skill works when you orchestrate with or without MCP."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha como a skill incluída funciona ao orquestrar com ou sem MCP."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.archivedProjectsEmpty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No archived projects."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum projeto arquivado."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationRouting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Routing"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roteamento"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.languageDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sets the language used in application menus, actions, and messages."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Define o idioma dos menus, ações e mensagens do aplicativo."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.namePlaceholder" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryMultiagentDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Real-time metrics, event traces, and structured logs."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Métricas em tempo real, rastros de eventos e logs estruturados."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.archivedGroupsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restore a group to the sidebar or remove it while keeping its projects."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaure um grupo para a sidebar ou remova-o mantendo os projetos."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryIntegrationsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect external services and control what Alethe shares."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conecte serviços externos e controle o que o Alethe compartilha."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.localAccountsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch between profiles with independent projects and preferences."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alterne entre perfis com projetos e preferências independentes."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.archivedGroupsTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Archived groups"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grupos arquivados"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.settingsLabel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configurações"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.featuresDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose which optional modules are visible in Alethe."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha quais módulos opcionais ficam visíveis no Alethe."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.experimentalPermissionsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How the worker agents started by the experimental Agent Canvas handle permissions. Applies to agents started from now on, and stays on this computer."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Como os agentes workers iniciados pelo Agent Canvas experimental lidam com permissões. Vale para os agentes iniciados a partir de agora e fica só neste computador."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.aboutUpdatesDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check for and install new versions of Alethe."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verifique e instale novas versões do Alethe."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryAccount" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Account"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conta"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.displayName" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Display name"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome de exibição"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.archivedGroupsEmpty" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No archived groups."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum grupo arquivado."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryOrganization" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organization"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organização"
+          }
+        }
+      }
+    },
+    "settings.web.folded" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collapsed"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recolhido"
+          }
+        }
+      }
+    },
+    "settings.web.expanded" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expanded"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Expandido"
+          }
+        }
+      }
+    },
+    "settings.web.unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not available in the native app yet."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda não disponível no aplicativo nativo."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryRemoteControl" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remote Control"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controle remoto"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.shell" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shell"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shell"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.limitResetNotifyDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notify when a Claude or Codex usage window resets, showing which one."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifica quando uma janela de uso do Claude ou Codex reseta, mostrando qual."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.shellDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alethe picks the shell on its own (PowerShell 7 when available, then Windows PowerShell; $SHELL elsewhere). Point it at another binary to override that — it applies to Shell tabs, not to agent tabs."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Alethe escolhe o shell sozinho (PowerShell 7 quando disponível, senão o Windows PowerShell; $SHELL nos demais sistemas). Aponte outro binário para sobrescrever — vale para abas Shell, não para abas de agente."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.features" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Features"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recursos"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.terminalFont" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal font"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonte do terminal"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryAppearance" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appearance"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aparência"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.limitResetNotify" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Limit reset alerts"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avisos de reset de limite"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.spawnConcurrency" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parallel spawns"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spawns em paralelo"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.terminalFontDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Font stack used by the terminal panes. Prompts such as oh-my-posh and Starship need a Nerd Font installed on the system — for example \"CaskaydiaCove Nerd Font\"."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fontes usadas nos painéis de terminal. Prompts como oh-my-posh e Starship precisam de uma Nerd Font instalada no sistema — por exemplo \"CaskaydiaCove Nerd Font\"."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.spawnConcurrencyDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How many terminals start at once. Lower if opening big groups freezes the app; higher to start faster."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quantos terminais sobem de uma vez. Diminua se abrir grupos grandes travar o app; aumente pra subir mais rápido."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryIntegrations" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integrations"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Integrações"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.resetSessionDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If reopening the app did not resume your agents, this finds each open agent’s most recent conversation and restarts it with resume."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se reabrir o app não retomou seus agentes, isto acha a conversa mais recente de cada agente aberto e reinicia com resume."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.resetSession" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset last session"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resetar última sessão"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.terminalFontFamily" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Font family"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Família da fonte"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryMultiagent" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multi-Agent & Telemetry"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multiagente e Telemetria"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.limitResetNotifyOn" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligado"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryPlugins" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugins"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugins"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.customAgents" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Custom agents"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agentes personalizados"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.customAgentsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add your own agent CLIs. They appear alongside the built-ins everywhere and open a real terminal with the command you configure."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicione seus próprios CLIs de agente. Eles aparecem junto aos nativos em todo lugar e abrem um terminal real com o comando configurado."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.categoryAbout" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About & updates"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sobre & atualizações"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.appIconThemeDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Icon shown in the taskbar and window, independent from the interface theme."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ícone exibido na barra de tarefas e na janela, independente do tema da interface."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.uiZoomDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Increase or decrease the size of the entire interface."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aumente ou reduza o tamanho de toda a interface."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.topbarStyle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Topbar style"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estilo da topbar"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.pluginsInstalledTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installed"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalados"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.multiagentTracesDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Real-time tracking of structured Event Bus logs."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acompanhamento em tempo real dos logs estruturados do barramento de eventos."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationDefaultTimeout" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Default budget per worker (seconds)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orçamento padrão por worker (segundos)"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.uiThemeDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the palette used throughout the Alethe interface."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha a paleta usada em toda a interface do Alethe."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.terminalTheme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminal theme"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tema do terminal"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.terminalThemeDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Follow the interface theme or choose a dedicated terminal palette."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use o tema da interface ou escolha uma paleta exclusiva para terminais."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.multiagentTracesTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recent event history"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Histórico recente de eventos"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.dictation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voice dictation"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ditado por voz"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationSkillConserve" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provider to conserve"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provider a economizar"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.visualStyle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visual style"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estilo visual"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.motionDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose how the Home and loading ASCII background moves."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha como o fundo ASCII da Home e do carregamento se movimenta."
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.tutorialStep2" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on Remote control below, then tap \"Open pairing window\" to show a QR code."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligue o controle remoto abaixo e depois toque em \"Abrir janela de pareamento\" pra mostrar um QR code."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestratorShortcuts" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orchestration shortcuts"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atalhos de orquestração"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.pluginsInstalledDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everything Alethe has loaded. Turning one off removes what it contributes right away."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tudo o que o Alethe carregou. Desligar um plugin remove na hora o que ele adiciona."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.pluginsInstallDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Put the plugin folder in the plugins directory, then register it by pasting its manifest."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coloque a pasta do plugin no diretório de plugins e registre ele colando o manifesto."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.multiagentAuditDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monitors changes in `.planning/` and configures automatic audit commits."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acompanha mudanças em `.planning/` e configura commits automáticos de auditoria."
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.settingsStatusTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remote service"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serviço remoto"
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.tutorialStep1" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Right-click a terminal and choose \"Show on remote devices\" for anything you want visible remotely — every terminal is private by default."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clique com o botão direito num terminal e escolha \"Mostrar em dispositivos remotos\" pra tudo que você quiser visível remotamente — todo terminal é privado por padrão."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.uiZoom" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Interface zoom"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zoom da interface"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.visualStyleDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose between the production appearance and the application-wide minimal system."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha entre o visual de produção e o sistema minimalista aplicado ao app inteiro."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationConcurrency" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Workers at the same time"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Workers ao mesmo tempo"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.appIconTheme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App icon"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ícone do app"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.pluginsMarketplaceDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Browse, search and install plugins in a window of its own."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Navegue, busque e instale plugins numa janela só para isso."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.workerRules" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rules for delegated work"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Regras para o trabalho delegado"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationBudget" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Budget (s)"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orçamento (s)"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.workerRulesDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What Alethe tells the agents it delegates to. The general set goes with every task; the lead agent names the set that matches the work. A repository’s own conventions always win over these."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que o Alethe diz aos agentes para quem delega trabalho. O conjunto geral vale para toda tarefa; o agente líder escolhe o conjunto que combina com o trabalho. As convenções do próprio repositório sempre prevalecem sobre estas."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.viewPlacementDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose which sidebar each plugin panel opens in."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha em qual sidebar cada painel de plugin abre."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.multiagentMetricsTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Execution metrics"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Métricas de execução"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.multiagentMetricsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accumulated global counters from the internal event bus."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contadores globais acumulados do barramento de eventos interno."
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.tutorialTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How to use it"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Como usar"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.usageAccessDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose which providers Alethe reads your usage from. Turning one on uses the credentials of the CLI already installed on this computer and contacts that provider. While it is off, Alethe never reads those credentials or contacts the provider."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha de quais provedores o Alethe lê o seu uso. Ligar um deles usa as credenciais da CLI já instalada neste computador e contata esse provedor. Enquanto estiver desligado, o Alethe nunca lê essas credenciais nem contata o provedor."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.multiagentAuditTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GSD audit & autocommit"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auditoria e auto-commit do GSD"
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.tutorialStep3" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On your phone, open a browser on the same Wi-Fi network and scan the QR code to pair — the code expires in 2 minutes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No celular, abra um navegador na mesma rede Wi-Fi e escaneie o QR code pra parear — o código expira em 2 minutos."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.windowOpacity" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Window opacity"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opacidade da janela"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.uiTheme" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "UI theme"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tema da UI"
+          }
+        }
+      }
+    },
+    "settings.web.reference.market.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugins"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugins"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.multiagentSchedulerTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scheduler & task queue"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agendador e fila de tarefas"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.dictationDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local speech-to-text with on-device models. Press {shortcut} to dictate text into any focused pane."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speech-to-text local com modelos no dispositivo. Pressione {shortcut} para ditar texto em qualquer painel focado."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.windowOpacityDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Let the desktop show through the entire Alethe window."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixe o desktop aparecer através de toda a janela do Alethe."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.usageAccess" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "AI usage reading"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leitura de uso de IA"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.viewPlacement" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panel location"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local dos painéis"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.motion" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Motion"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Movimento"
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.tutorialStep5" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To reach Alethe from outside your Wi-Fi, install Tailscale on this PC and your phone, then set Reach to Tailscale below — see docs/REMOTE_CONTROL_TAILSCALE.md for the full guide."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pra alcançar o Alethe fora do seu Wi-Fi, instale o Tailscale neste PC e no celular, depois mude o Alcance pra Tailscale abaixo — veja docs/REMOTE_CONTROL_TAILSCALE.md pro guia completo."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.topbarStyleDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose how the topbar divides sidebars, tabs, status, and window controls."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha como a topbar divide sidebars, abas, status e controles da janela."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationWorkerPlugins" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Codex plugins off in workers"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugins do Codex desligados nos workers"
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.tutorialDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Off by default. Nobody can connect until you do all of this yourself."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desligado por padrão. Ninguém conecta até você fazer tudo isso aqui."
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.tutorialStep4" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From the paired device you can view live output and, unless Read-only is on, send one message at a time to a shared terminal."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pelo dispositivo pareado dá pra ver a saída ao vivo e, a menos que o modo somente-leitura esteja ligado, enviar uma mensagem por vez pra um terminal compartilhado."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestratorShortcutsDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One-click instructions for the lead agent. Clicking one on the board writes it into the lead’s terminal, where you edit it before sending."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instruções de um clique para o agente líder. Clicar em uma no board escreve ela no terminal do líder, onde você edita antes de enviar."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.pluginsInstallTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Install from a folder"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instalar de uma pasta"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.multiagentSchedulerDesc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manages execution waves from the real `.planning/task.md` backlog per project."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gerencia ondas de execução a partir do backlog real de `.planning/task.md` por projeto."
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationSkillBackend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preferred backend"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Backend preferido"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.orchestrationSkillPreferred" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preferred local provider"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provider local preferido"
+          }
+        }
+      }
+    },
+    "settings.web.reference.remote.reachTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reach"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alcance"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.profilePhoto" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profile photo"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto do perfil"
+          }
+        }
+      }
+    },
+    "settings.web.reference.prefs.photoPlaceholder" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photo link"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Link da foto"
+          }
+        }
+      }
+    },
+    "settings.web.reference.image.urlOrUpload" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use a URL or upload a local image."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use uma URL ou faça upload de uma imagem local."
           }
         }
       }

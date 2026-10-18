@@ -9,6 +9,7 @@ struct AppearanceSettings: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var language = LanguageSetting().current()
+    @State private var showingToolbar = false
 
     private var uiScale: Double { environment.preferences?.document.uiScale ?? 1 }
 
@@ -160,9 +161,9 @@ struct AppearanceSettings: View {
         .onChange(of: language) { _, language in LanguageSetting().set(language) }
     }
     private var webBody: some View {
-        AletheSettingsForm {
-            Section("settings.appearance.styleAndMotion") {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.size(160)), spacing: metrics.size(10))], spacing: metrics.size(10)) {
+        SettingsPageForm {
+            Section {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: metrics.size(10)), GridItem(.flexible(), spacing: metrics.size(10))], spacing: metrics.size(10)) {
                     ForEach(VisualStyle.allCases, id: \.self) { style in
                         Button {
                             environment.preferences?.update { $0.visualStyle = style == .normal ? nil : style.rawValue }
@@ -186,6 +187,9 @@ struct AppearanceSettings: View {
                     }
                 }
                 .accessibilityIdentifier("settings.style")
+            } header: { Text("settings.web.reference.prefs.visualStyle") }
+              footer: { Text("settings.web.reference.prefs.visualStyleDesc") }
+            Section {
                 Toggle(isOn: Binding {
                     environment.preferences?.document.reducedMotion == true
                 } set: { reduced in
@@ -195,10 +199,18 @@ struct AppearanceSettings: View {
                     Text("settings.appearance.reduceMotion.help")
                 }
                 .accessibilityIdentifier("settings.reduceMotion")
-            }
-            Section("settings.appearance.theme") { ThemeGrid() }
-            Section("settings.appearance.appIcon") { AppIconGrid() }
-            Section("settings.appearance.zoom") {
+            } header: { Text("settings.web.reference.prefs.motion") }
+              footer: { Text("settings.web.reference.prefs.motionDesc") }
+            Section { ThemeGrid() }
+                header: { Text("settings.web.reference.prefs.uiTheme") }
+                footer: { Text("settings.web.reference.prefs.uiThemeDesc") }
+            Section { AppIconGrid() }
+                header: { Text("settings.web.reference.prefs.appIconTheme") }
+                footer: { Text("settings.web.reference.prefs.appIconThemeDesc") }
+            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.terminalTheme"]) }
+                header: { Text("settings.web.reference.prefs.terminalTheme") }
+                footer: { Text("settings.web.reference.prefs.terminalThemeDesc") }
+            Section {
                 HStack(spacing: metrics.size(8)) {
                     Button { environment.preferences?.update { $0.zoom(by: -1) } } label: {
                         Image(systemName: "minus").webProfileSized(14)
@@ -226,34 +238,29 @@ struct AppearanceSettings: View {
                 }
                 .buttonStyle(SettingsZoomButtonStyle())
                 .frame(maxWidth: metrics.size(320))
-            }
-            Section("settings.appearance.interface") {
+            } header: { Text("settings.web.reference.prefs.uiZoom") }
+              footer: { Text("settings.web.reference.prefs.uiZoomDesc") }
+            Section {
+                Button("settings.toolbar") { showingToolbar = true }
                 AletheSelect(selection: Binding { environment.interfaceStyle } set: { environment.interfaceStyle = $0 }, options: InterfaceStyle.allCases) { style in
                     Text(style.title)
                 }
                 .accessibilityLabel(Text("settings.appearance.interface"))
                 .accessibilityIdentifier("settings.interface")
-            }
-            Section("settings.appearance.language") {
-                AletheSelect(selection: $language, options: AppLanguage.allCases) { option in
-                    if option == .system { Text("settings.appearance.language.system") } else {
-                        Text(verbatim: option.nativeName ?? option.rawValue)
-                    }
-                }
-                .accessibilityLabel(Text("settings.appearance.language"))
-                .accessibilityIdentifier("settings.language")
-                if language != environment.launchLanguage {
-                    VStack(alignment: .leading, spacing: metrics.size(8)) {
-                        Text("settings.appearance.language.restartNote")
-                        Button("settings.appearance.language.restart") { AppRelaunch.relaunch() }
-                            .accessibilityIdentifier("settings.language.restart")
-                    }
-                    .accessibilityIdentifier("settings.language.restartNote")
-                }
-            }
+            } header: { Text("settings.web.reference.prefs.topbarStyle") }
+              footer: { Text("settings.web.reference.prefs.topbarStyleDesc") }
+            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.viewPlacement"]) }
+                header: { Text("settings.web.reference.prefs.viewPlacement") }
+                footer: { Text("settings.web.reference.prefs.viewPlacementDesc") }
+            Section { WebUnavailableFields(labels: ["settings.web.reference.prefs.windowOpacity"]) }
+                header: { Text("settings.web.reference.prefs.windowOpacity") }
+                footer: { Text("settings.web.reference.prefs.windowOpacityDesc") }
+
         }
         .disabled(environment.preferences == nil)
-        .onChange(of: language) { _, language in LanguageSetting().set(language) }
+        .sheet(isPresented: $showingToolbar) {
+            ToolbarSettings().frame(width: metrics.size(700), height: metrics.size(600))
+        }
     }
 
     private func stylePreview(_ style: VisualStyle) -> some View {

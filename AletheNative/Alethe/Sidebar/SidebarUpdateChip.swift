@@ -52,7 +52,7 @@ struct SidebarUpdateChip: View {
     }
 }
 
-private struct SidebarNativeRelease: Sendable {
+struct SidebarNativeRelease: Sendable {
     let version: String
     let page: URL
 

@@ -20,6 +20,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - The Projects tab icon in the sidebar is no longer highlighted while Home is showing.
+- Web-style Settings follows the web category order from Account through About, with separate
+  appearance sections, archived-project restoration, profile controls and persistent section folds.
+  Settings scrollbars use thin overlay thumbs and theme colors; unavailable native settings are
+  identified without creating new document fields. Native macOS Settings keeps its existing layout.
+- Image inputs report failed file drops and accept a supported image provider when unrelated drop
+  items precede it. Profile photo fields use their own labels and hints.
 - Settings opens at the web size (1180×780) and stays resizable instead of reopening tiny.
 - Web-style title-bar controls reserve only visible macOS traffic lights, followed by the web
   left padding. Hidden or absent buttons and fullscreen no longer leave an empty leading gap.

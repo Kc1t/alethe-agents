@@ -20,6 +20,23 @@ import Testing
         }
     }
 
+    @Test func uploadedSVGSurvivesEditingAndJSONRoundTripWithoutRecompression() throws {
+        let bytes = Data(#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><path d="M0 0h8v8H0z"/></svg>"#.utf8)
+        let source = try ProjectImageInput.dataURL(bytes, mimeType: "image/svg+xml")
+        var project = Project(name: "API", folder: "/api")
+        project.iconUrl = ProjectImageInput.normalized(" \n" + source + "\n ")
+        let decoded = try JSONDecoder().decode(Project.self, from: JSONEncoder().encode(project))
+        let persisted = try #require(decoded.iconUrl)
+        let payload = try #require(persisted.split(separator: ",", maxSplits: 1).last)
+        #expect(Data(base64Encoded: String(payload)) == bytes)
+
+        var group = ProjectGroup(name: "Work")
+        group.iconUrl = decoded.iconUrl
+        group.iconUrl = ProjectImageInput.normalized("")
+        let object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(group)) as? [String: Any])
+        #expect(object["iconUrl"] == nil)
+    }
+
     @Test func olderDocumentsNeedNoMigration() throws {
         let project = Project(name: "API", folder: "/api")
         let group = ProjectGroup(name: "Work")

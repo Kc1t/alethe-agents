@@ -29,7 +29,19 @@ struct RemoteSettings: View {
     private var tailscaleAvailable: Bool { controller.tailscale?.available == true }
 
     var body: some View {
-        AletheSettingsForm {
+        SettingsPageForm {
+            if metrics.isWebInterface {
+                Section {
+                    VStack(alignment: .leading, spacing: metrics.size(8)) {
+                        Text("settings.web.reference.remote.tutorialStep1")
+                        Text("settings.web.reference.remote.tutorialStep2")
+                        Text("settings.web.reference.remote.tutorialStep3")
+                        Text("settings.web.reference.remote.tutorialStep4")
+                        Text("settings.web.reference.remote.tutorialStep5")
+                    }
+                } header: { Text("settings.web.reference.remote.tutorialTitle") }
+                  footer: { Text("settings.web.reference.remote.tutorialDesc") }
+            }
             serviceSection
             reachSection
             if controller.isEnabled { pairingSection }
@@ -82,7 +94,7 @@ struct RemoteSettings: View {
             }
             #endif
         } header: {
-            Text("settings.remote.service")
+            Text(metrics.isWebInterface ? "settings.web.reference.remote.settingsStatusTitle" : "settings.remote.service")
         } footer: {
             VStack(alignment: .leading, spacing: metrics.space(.xs)) {
                 Text("settings.remote.startupNote")
@@ -100,7 +112,7 @@ struct RemoteSettings: View {
                 Text("settings.remote.reach.tailscale").tag(true)
                     .disabled(!tailscaleAvailable && !remote.useTailscale)
             } label: {
-                Text("settings.remote.reach")
+                Text(metrics.isWebInterface ? "settings.web.reference.remote.reachTitle" : "settings.remote.reach")
                 Text("settings.remote.reach.help")
             }
             .accessibilityIdentifier("settings.remote.reach")

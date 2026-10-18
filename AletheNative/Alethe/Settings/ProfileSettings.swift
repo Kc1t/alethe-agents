@@ -22,7 +22,7 @@ struct ProfileSettings: View {
     }
 
     var body: some View {
-        AletheSettingsForm {
+        SettingsPageForm {
             Section {
                 ForEach(entries) { entry in
                     ProfileRow(entry: entry, summary: summaries[entry.id],

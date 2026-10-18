@@ -9,8 +9,41 @@ import SwiftUI
 struct PluginSettings: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
+    @Environment(\.metrics) private var metrics
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        SettingsPageForm("plugins") {
+            Section {
+                if let plugins = environment.plugins, !plugins.records.isEmpty {
+                    ForEach(plugins.records) { record in PluginRow(record: record, host: plugins) }
+                } else { Text("settings.plugins.empty") }
+            } header: { Text("settings.web.reference.prefs.pluginsInstalledTitle") }
+              footer: { Text("settings.web.reference.prefs.pluginsInstalledDesc") }
+            Section {
+                Text("settings.web.unavailable")
+            } header: { Text("settings.web.reference.market.title") }
+              footer: { Text("settings.web.reference.prefs.pluginsMarketplaceDesc") }
+            Section {
+                TextEditor(text: .constant(""))
+                    .font(metrics.monoFont(size: 11, weight: .regular))
+                    .scrollContentBackground(.hidden)
+                    .padding(.horizontal, metrics.size(12))
+                    .padding(.vertical, metrics.size(10))
+                    .frame(height: metrics.size(104))
+                    .disabled(true)
+                    .accessibilityLabel(Text("settings.web.reference.prefs.pluginsInstallTitle"))
+                Text("settings.web.unavailable")
+            } header: { Text("settings.web.reference.prefs.pluginsInstallTitle") }
+              footer: { Text("settings.web.reference.prefs.pluginsInstallDesc") }
+        }
+        .accessibilityIdentifier("settings.plugins")
+    }
+
+    private var nativeBody: some View {
         AletheSettingsForm {
             Section {
                 if let plugins = environment.plugins, !plugins.records.isEmpty {
