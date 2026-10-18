@@ -174,7 +174,7 @@ extension WorkspaceDocument {
     public mutating func closePane(_ paneID: PaneID) {
         guard let (project, _) = pane(paneID) else { return }
         if workspace.isolatedPaneID == paneID { workspace.isolatedPaneID = nil }
-        updateProject(project.id) { $0.panes.removeAll { $0.id == paneID } }
+        updateProject(project.id) { $0.panes.removeAll { $0.id == paneID }; $0.reconcilePaneGroups() }
         workspace.gridWeights.removeValue(forKey: project.weightsKey)
         if workspace.focusedPaneID == paneID {
             workspace.focusedPaneID = self.project(project.id)?.visiblePanes.last?.id

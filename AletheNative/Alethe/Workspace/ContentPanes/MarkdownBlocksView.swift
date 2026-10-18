@@ -38,9 +38,9 @@ private struct MarkdownBlockView: View {
             .accessibilityAddTraits(.isHeader)
         case .paragraph(let text):
             Text(text)
-                .font(metrics.font(.body))
+                .font(metrics.isWebInterface ? metrics.font(size: 14) : metrics.font(.body))
                 .foregroundStyle(theme[.textPrimary])
-                .lineSpacing(metrics.space(.xxs))
+                .lineSpacing(metrics.isWebInterface ? metrics.size(9.1) : metrics.space(.xxs))
                 .fixedSize(horizontal: false, vertical: true)
         case .image(let source, let alt):
             MarkdownImage(source: source, alt: alt)
@@ -98,7 +98,11 @@ private struct MarkdownBlockView: View {
     }
 
     private func headingFont(_ level: Int) -> Font {
-        switch level {
+        if metrics.isWebInterface {
+            let multiplier: CGFloat = level == 1 ? 1.7 : level == 2 ? 1.4 : level == 3 ? 1.18 : 1
+            return metrics.font(size: 14 * multiplier, weight: .semibold)
+        }
+        return switch level {
         case 1: metrics.font(.title1)
         case 2: metrics.font(.title2)
         case 3: metrics.font(.title3)

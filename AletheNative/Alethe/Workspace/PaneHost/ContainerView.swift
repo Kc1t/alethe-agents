@@ -13,6 +13,9 @@ final class ContainerView: NSView {
     private var emptyState: NSHostingView<AnyView>?
     private var panes: [PaneID: PaneView] = [:]
     private var order: [PaneID] = []
+    private var stacks: [PaneGroup] = []
+    private var stackFrames: [String: NSView] = [:]
+    private var stackHeaders: [String: NSHostingView<AnyView>] = [:]
     private var dividers: [PaneGridGeometry.Divider: DividerView] = [:]
     private var weights = GridWeights()
     private var context: PaneHostContext?
@@ -64,7 +67,10 @@ final class ContainerView: NSView {
 
     override var isFlipped: Bool { true }
 
-    var paneViews: [PaneView] { order.compactMap { panes[$0] } }
+    var paneViews: [PaneView] {
+        context?.metrics.isWebInterface == true ? (lastProject?.visiblePanes.compactMap { panes[$0.id] } ?? [])
+            : order.compactMap { panes[$0] }
+    }
 
     func configure(project: Project, isSelected: Bool, focusedPane: PaneID?, weights: GridWeights,
                    isCollapsed: Bool, isFullscreen: Bool, isolatedPane: PaneID?,
@@ -118,12 +124,42 @@ final class ContainerView: NSView {
         configureStrip(project: project, context: context)
 
         let ids = project.visiblePanes.map(\.id)
-        if ids != order { animateNextLayout = !order.isEmpty }
         for (id, view) in panes where !ids.contains(id) {
             view.removeFromSuperview()
             panes.removeValue(forKey: id)
         }
-        order = ids
+        stacks = context.metrics.isWebInterface ? (project.paneGroups ?? []).compactMap { group in
+            var next = group
+            next.paneIds = group.paneIds.filter { ids.contains($0) }
+            return next.paneIds.count >= 2 ? next : nil
+        } : []
+        let nested = Set(stacks.flatMap { $0.paneIds.dropFirst() })
+        let nextOrder = ids.filter { !nested.contains($0) }
+        if nextOrder != order { animateNextLayout = !order.isEmpty }
+        order = nextOrder
+        for (id, view) in stackHeaders where !stacks.contains(where: { $0.id == id }) {
+            view.removeFromSuperview()
+            stackHeaders.removeValue(forKey: id)
+            stackFrames.removeValue(forKey: id)?.removeFromSuperview()
+        }
+        for stack in stacks {
+            let view = stackHeaders[stack.id] ?? NSHostingView(rootView: AnyView(EmptyView()))
+            let border = stackFrames[stack.id] ?? NSView()
+            border.wantsLayer = true
+            border.layer?.borderWidth = context.metrics.size(1)
+            border.layer?.borderColor = context.theme.nsColor(.borderStrong).cgColor
+            border.layer?.cornerRadius = context.metrics.style == .clean ? 0 : context.metrics.size(8)
+            border.layer?.backgroundColor = context.theme.nsColor(.panel).blended(withFraction: 0.08,
+                                                                                 of: context.theme.nsColor(.accent))?.cgColor
+            if border.superview == nil { addSubview(border, positioned: .below, relativeTo: nil) }
+            stackFrames[stack.id] = border
+            view.rootView = context.hosted(PaneStackHeader(orchestration: stack.kind == "orchestration") {
+                let owner = stack.paneIds.first.flatMap { owners[$0]?.id } ?? project.id
+                context.workspace?.update { $0.updateProject(owner) { $0.ungroupPanes(stack.id) } }
+            })
+            if view.superview == nil { addSubview(view) }
+            stackHeaders[stack.id] = view
+        }
         for pane in project.visiblePanes {
             let view = panes[pane.id] ?? {
                 let view = PaneView(paneID: pane.id)
@@ -194,6 +230,8 @@ final class ContainerView: NSView {
         emptyState?.frame = paneArea
         let animated = animateNextLayout
         animateNextLayout = false
+        stackHeaders.values.forEach { $0.isHidden = isCollapsed || focus != nil || isolatedPane != nil }
+        stackFrames.values.forEach { $0.isHidden = isCollapsed || focus != nil || isolatedPane != nil }
         if isCollapsed {
             panes.values.forEach { $0.isHidden = true }
             dividers.values.forEach { $0.isHidden = true }
@@ -226,7 +264,31 @@ final class ContainerView: NSView {
         for (index, id) in order.enumerated() {
             guard let view = panes[id], geometry.paneFrames.indices.contains(index) else { continue }
             if reorder?.pane == id { continue }
-            animator.set(view, frame: geometry.paneFrames[index].integral, animated: animated)
+            let frame = geometry.paneFrames[index]
+            if let stack = stacks.first(where: { $0.paneIds.first == id }), let context {
+                let m = context.metrics
+                stackFrames[stack.id]?.frame = frame
+                let head = min(frame.height, m.size(28))
+                stackHeaders[stack.id]?.frame = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: head)
+                let body = CGRect(x: frame.minX + m.size(6), y: frame.minY + head + m.size(6),
+                                  width: max(0, frame.width - m.size(12)),
+                                  height: max(0, frame.height - head - m.size(12)))
+                let vertical = stack.kind == "orchestration"
+                let columns = vertical ? 1 : 2
+                let rows = vertical ? stack.paneIds.count : (stack.paneIds.count + 1) / 2
+                let gap = m.size(6)
+                let width = max(0, (body.width - CGFloat(columns - 1) * gap) / CGFloat(columns))
+                let height = max(0, (body.height - CGFloat(rows - 1) * gap) / CGFloat(rows))
+                for (position, member) in stack.paneIds.enumerated() {
+                    guard reorder?.pane != member, let child = panes[member], child.superview === self else { continue }
+                    let target = CGRect(x: body.minX + CGFloat(position % columns) * (width + gap),
+                                        y: body.minY + CGFloat(position / columns) * (height + gap),
+                                        width: width, height: height)
+                    animator.set(child, frame: target.integral, animated: animated)
+                }
+            } else {
+                animator.set(view, frame: frame.integral, animated: animated)
+            }
         }
         layoutDividers(geometry)
         layoutSlots(geometry.freeSlots)
@@ -364,7 +426,8 @@ final class ContainerView: NSView {
         guard var current = reorder else { return }
         view.frame = current.base.offsetBy(dx: translation.width, dy: translation.height)
         let center = CGPoint(x: view.frame.midX, y: view.frame.midY)
-        let target = order.first { $0 != pane && (panes[$0].map { animator.target(of: $0).contains(center) } ?? false) }
+        let candidates = context?.metrics.isWebInterface == true ? (lastProject?.visiblePanes.map(\.id) ?? []) : order
+        let target = candidates.first { $0 != pane && (panes[$0].map { animator.target(of: $0).contains(center) } ?? false) }
         let slot = target == nil ? geometry().freeSlots.first { $0.frame.contains(center) }.map { ($0.col, $0.row) } : nil
         if target != current.target || slot?.0 != current.slot?.col || slot?.1 != current.slot?.row {
             current.target = target

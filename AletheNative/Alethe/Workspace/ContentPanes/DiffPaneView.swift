@@ -16,6 +16,7 @@ final class DiffModel {
     let folder: String
     let path: String?
     private(set) var staged: Bool
+    private(set) var source = ""
     private(set) var state = State.loading
     @ObservationIgnored private var generation = 0
 
@@ -40,7 +41,9 @@ final class DiffModel {
             let result = await GitDiff.run(folder: folder, path: path, staged: staged)
             guard generation == self.generation else { return }
             switch result {
-            case .success(let text): state = .loaded(DiffParser.parse(text))
+            case .success(let text):
+                source = text
+                state = .loaded(DiffParser.parse(text))
             case .failure(let error): state = .failed(error)
             }
         }
@@ -66,6 +69,9 @@ struct DiffPaneView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if metrics.isWebInterface {
+                webHeader
+            } else {
             ContentPaneHeader(symbol: "plusminus", url: url, isFocused: isFocused, onClose: onClose, onDrag: onDrag) {
                 Text(model.staged ? LocalizedStringKey("diff.staged") : "diff.unstaged")
                     .font(metrics.font(.caption))
@@ -81,11 +87,76 @@ struct DiffPaneView: View {
                 }
                 ContentPaneButton(symbol: "arrow.clockwise", label: "diff.refresh", id: "diff.refresh") { model.reload() }
             }
-            content
+            }
+            if metrics.isWebInterface { webContent } else { content }
         }
         .background(theme[.bg])
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("diff.pane")
+    }
+
+    private var webHeader: some View {
+        HStack(spacing: metrics.size(8)) {
+            Text(verbatim: url.lastPathComponent)
+                .font(metrics.font(size: 13, weight: .medium))
+                .foregroundStyle(theme[.fgMuted])
+                .lineLimit(1)
+            Text(verbatim: (model.path ?? "") + " " + String(localized: model.staged ? "diff.staged" : "diff.unstaged"))
+                .font(metrics.font(size: 11))
+                .foregroundStyle(theme[.fgFaint])
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            ContentPaneButton(symbol: "xmark", label: "markdown.close", id: "pane.close", webSize: 24, webIconSize: 14, action: onClose)
+        }
+        .padding(.horizontal, metrics.size(12))
+        .frame(height: metrics.size(36))
+        .background(theme[.bgElevated])
+        .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
+        .accessibilityIdentifier("pane.header.\(url.lastPathComponent)")
+    }
+
+    @ViewBuilder
+    private var webContent: some View {
+        switch model.state {
+        case .loading:
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .failed(let error):
+            message(errorText(error)).accessibilityIdentifier("diff.error")
+        case .loaded where model.source.isEmpty:
+            message(String(localized: "diff.empty")).accessibilityIdentifier("diff.empty")
+        case .loaded:
+            ScrollView([.vertical, .horizontal]) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(model.source.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                        Text(verbatim: line.isEmpty ? " " : line)
+                            .font(metrics.monoFont(size: 13))
+                            .lineSpacing(metrics.size(6.5))
+                            .foregroundStyle(theme[webLineColor(line)])
+                            .frame(minHeight: metrics.size(19.5), alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(webLineBackground(line))
+                    }
+                }
+                .textSelection(.enabled)
+                .padding(metrics.size(16))
+            }
+            .accessibilityIdentifier("diff.unified")
+        }
+    }
+
+    private func webLineColor(_ line: String) -> ThemeToken {
+        if line.hasPrefix("+") && !line.hasPrefix("+++") { return .statusWorking }
+        if line.hasPrefix("-") && !line.hasPrefix("---") { return .statusOffline }
+        if line.hasPrefix("@@ ") { return .accent }
+        return line.hasPrefix("diff ") || line.hasPrefix("index ") || line.hasPrefix("--- ") || line.hasPrefix("+++ ")
+            ? .fgFaint : .fgMuted
+    }
+
+    private func webLineBackground(_ line: String) -> Color {
+        if line.hasPrefix("+") && !line.hasPrefix("+++") { return theme[.statusWorkingSoft] }
+        if line.hasPrefix("-") && !line.hasPrefix("---") { return theme[.statusOfflineSoft] }
+        if line.hasPrefix("@@ ") { return theme[.accentBgSoft] }
+        return theme[.bg]
     }
 
     @ViewBuilder
