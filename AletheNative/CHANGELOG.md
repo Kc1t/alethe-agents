@@ -9,6 +9,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Terminal content now always resizes with its pane (window resize, splitter drag, sidebars, grid
   change, focus mode, tab switch): the surface is pinned to the pane by frame and refit, with the PTY
   size updated, on every size change, reparent and unhide.
+- A terminal shrunk and enlarged again (Claude Code TUI) no longer stays cut off: 120 ms after the
+  last size change the surface is refitted and the final grid is re-sent to the PTY, with a SIGWINCH
+  to the foreground program when it was not last told that size.
 ### Settings, right sidebar and chrome parity (c2)
 - The Agents and Queue right-sidebar tabs no longer depend on the orchestrator feature flag (web `agentsPanel` is always on).
 - Settings: 52pt bottom padding under the content; Features gains the "Review my MCP servers" link (reopens the MCP intro); Appearance lists every contributed sidebar tab with a Left/Right placement dropdown.

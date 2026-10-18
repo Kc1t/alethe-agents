@@ -105,6 +105,7 @@ public final class PTYProcess: @unchecked Sendable {
         onQueue {
             pid = spawned
             masterFD = master
+            lastSent = size
             if size.widthPixels > 0 {
                 _ = alethe_pty_resize(master, size.columns, size.rows, size.widthPixels, size.heightPixels)
             }
@@ -193,11 +194,35 @@ public final class PTYProcess: @unchecked Sendable {
     public func resize(_ size: PTYSize) {
         queue.async { [self] in
             guard masterFD >= 0 else { return }
-            _ = alethe_pty_resize(masterFD, size.columns, size.rows, size.widthPixels, size.heightPixels)
+            applyOnQueue(size)
         }
     }
 
     private var pendingResize = 0
+    /// The size last written to the PTY (spawn or resize). On `queue` only.
+    private var lastSent: PTYSize?
+
+    /// On `queue` only. TIOCSWINSZ; the kernel raises SIGWINCH itself when the size changed.
+    private func applyOnQueue(_ size: PTYSize) {
+        guard masterFD >= 0, !exited else { return }
+        lastSent = size
+        _ = alethe_pty_resize(masterFD, size.columns, size.rows, size.widthPixels, size.heightPixels)
+    }
+
+    /// Safety net once a size has settled: writes `size` again (idempotent) and, when it differs
+    /// from what the PTY was last given, also signals SIGWINCH to the foreground process group, so
+    /// a program that missed or ignored an earlier notification still redraws at the final size.
+    public func reassertSize(_ size: PTYSize) {
+        queue.async { [self] in
+            guard masterFD >= 0, !exited, pid > 0, size.columns > 0, size.rows > 0 else { return }
+            let differs = lastSent.map { $0.columns != size.columns || $0.rows != size.rows } ?? true
+            applyOnQueue(size)
+            if differs {
+                let group = tcgetpgrp(masterFD)
+                kill(group > 0 ? -group : -pid, SIGWINCH)
+            }
+        }
+    }
 
     /// Applies only the last of a burst of sizes, once none arrived for `quiet`. A live split drag
     /// or a spring animation changes the size every frame; each change is a SIGWINCH, and shells
@@ -209,8 +234,8 @@ public final class PTYProcess: @unchecked Sendable {
             pendingResize += 1
             let ticket = pendingResize
             queue.asyncAfter(deadline: .now() + seconds) { [weak self] in
-                guard let self, ticket == pendingResize, !exited, masterFD >= 0 else { return }
-                _ = alethe_pty_resize(masterFD, size.columns, size.rows, size.widthPixels, size.heightPixels)
+                guard let self, ticket == pendingResize else { return }
+                applyOnQueue(size)
             }
         }
     }
