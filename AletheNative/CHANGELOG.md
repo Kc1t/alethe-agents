@@ -16,6 +16,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Todos: Cmd+N focuses and expands the composer. Orchestrator board: Cmd/Ctrl + scroll wheel zooms around the pointer.
 - Recent chats (web interface): "Open here" restarts the focused terminal pane on the chat, "New pane" resumes it in a new one.
 - Find/Jump lists plugin commands placed in Find/Jump.
+### Workspace and Git parity
+- In the web interface an empty workspace with no project shows the web quick-start card (agent grid,
+  project folder picker, Graphify toggle, "Open folder as project" and the project form shortcut), and an
+  empty group workspace offers Open group workspace, New project and Find and jump.
+- Git Control history uses the web commit graph (34-point rows, 18-point lanes, thicker main lane, ref
+  badges, filter field), and selecting a commit swaps the list for a detail screen with a Back button.
+- Git Control changes use the web layout: staged, merge, changes and untracked groups with a nested
+  folder tree, folder and group stage or discard, a confirmation when committing with nothing staged
+  (stages everything), and a Sync button (pull when behind, then push) in the branch row and next to Commit.
+  Fetch, pull and push stay in the branch menu. The macOS interface is unchanged.
 
 ### Context menu parity
 - In the web interface, project, group, terminal, workspace-tab, pane-header and grid/layout menus

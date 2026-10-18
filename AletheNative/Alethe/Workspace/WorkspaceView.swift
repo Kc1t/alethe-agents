@@ -68,6 +68,10 @@ struct WorkspaceView: View {
                 PaneHost(document: doc, terminalStates: environment.terminals.states,
                          terminalGenerations: environment.terminals.generations,
                          focusModePane: environment.focusModePaneID)
+            } else if metrics.isWebInterface, emptyGroupID == nil, emptyProject == nil, let workspace = environment.workspace {
+                // Upstream `NoWorkspace` without a project: the quick-start card.
+                WorkspaceQuickStartCard(workspace: workspace)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if metrics.isWebInterface {
                 webEmptyState
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -84,6 +88,34 @@ struct WorkspaceView: View {
     private var emptyProject: Project? {
         guard let document = environment.workspace?.document else { return nil }
         return document.workspace.selectedProjectID.flatMap(document.project) ?? document.projects.first
+    }
+
+    /// The group whose (empty) composition tab is active.
+    private var emptyGroupID: GroupID? { environment.workspace?.document.activeWorkspaceTab?.webGroupID }
+
+    private var emptyGroup: ProjectGroup? {
+        guard let id = emptyGroupID else { return nil }
+        return environment.workspace?.document.groups.first { $0.id == id }
+    }
+
+    /// Upstream `NoWorkspace` group branch: open the group, new project in it, Find/Jump.
+    private func groupActions(_ group: ProjectGroup) -> some View {
+        let document = environment.workspace?.document
+        let members = Set((document?.groups ?? []).filter { document?.isGroup($0.id, inside: group.id) == true }.flatMap(\.projectIDs))
+        let hasPanes = document?.projects.contains { members.contains($0.id) && !$0.panes.isEmpty } ?? false
+        return Group {
+            if hasPanes {
+                webEmptyAction("workspace.webEmpty.openGroup", shortcut: nil, id: "launcher.openGroup") {
+                    environment.workspace?.update { $0.openWebGroup(group.id, adding: false) }
+                }
+            }
+            webEmptyAction("workspace.webEmpty.newProject", shortcut: "⌘⇧P", id: "launcher.newProject") {
+                environment.editorRequest = .newProject(.group(group.id))
+            }
+            webEmptyAction("workspace.webEmpty.findJump", shortcut: "⌘P", id: "launcher.findJump") {
+                environment.editorRequest = .findJump
+            }
+        }
     }
 
     private var webEmptyState: some View {
@@ -103,7 +135,9 @@ struct WorkspaceView: View {
                     .frame(width: availableMarkSide, height: availableMarkSide)
                     .accessibilityHidden(true)
                 VStack(spacing: metrics.size(2)) {
-                    if let project = emptyProject, !project.panes.isEmpty {
+                    if let group = emptyGroup {
+                        groupActions(group)
+                    } else if let project = emptyProject, !project.panes.isEmpty {
                         webEmptyAction("workspace.webEmpty.openPanes", shortcut: nil, id: "launcher.open") {
                             environment.workspace?.update { $0.openInTab(project.id) }
                         }

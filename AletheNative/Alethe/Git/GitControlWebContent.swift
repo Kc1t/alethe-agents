@@ -1,6 +1,7 @@
 import AletheDesign
 import AletheGit
 import AletheGitControl
+import AletheModel
 import AppKit
 import SwiftUI
 
@@ -29,6 +30,16 @@ extension GitControlSheet {
                     title: String(localized: "git.discard.title"),
                     confirmTitle: String(localized: "git.discard.confirm"), destructive: true) {
             if let entry = pendingDiscard { model?.discard(entry) }
+        }
+        .webConfirm(isPresented: Binding(get: { pendingDiscardPaths != nil }, set: { if !$0 { pendingDiscardPaths = nil } }),
+                    message: pendingDiscardPaths.map { String(format: String(localized: "git.web.confirm.discard"), $0.paths.count) } ?? "",
+                    title: String(localized: "git.discard.title"),
+                    confirmTitle: String(localized: "git.discard.confirm"), destructive: true) {
+            if let pending = pendingDiscardPaths { model?.discard(paths: pending.paths, untracked: pending.untracked) }
+        }
+        .webConfirm(isPresented: $confirmingStageAll, message: String(localized: "git.web.confirm.stageAllCommit"),
+                    confirmTitle: String(localized: "git.commit")) {
+            model?.commitWeb(stagingAll: true)
         }
         .confirmationDialog(Text("git.discard.title"), isPresented: nativeDiscardPresented, presenting: pendingDiscard) { entry in
             Button("git.discard.confirm", role: .destructive) { model?.discard(entry) }
@@ -70,18 +81,19 @@ extension GitControlSheet {
                         Button { model.switchBranch(item.name) } label: { Text(verbatim: item.name) }.disabled(item.isCurrent)
                     }
                     Button("git.newBranch.menu") { creatingBranch = true }.accessibilityIdentifier("git.newBranch")
+                    Divider()
+                    Button("git.fetch") { model.remote(.fetch) }.accessibilityIdentifier("git.fetch")
+                    Button("git.pull") { model.remote(.pull) }.accessibilityIdentifier("git.pull")
+                    Button("git.push") { model.remote(.push) }.accessibilityIdentifier("git.push")
                 } label: {
                     Text(verbatim: model.status?.branch.head ?? String(localized: "git.detached"))
                 }
                 .menuStyle(.borderlessButton).fixedSize().accessibilityIdentifier("git.branch")
                 .disabled(model.busy || model.status?.branch.oid == nil)
                 Spacer(minLength: 0)
-                if let branch = model.status?.branch {
-                    Text(verbatim: "↓\(branch.behind) ↑\(branch.ahead)").accessibilityIdentifier("git.aheadBehind")
+                if model.status?.branch.upstream != nil || model.status?.branch.head != nil {
+                    webSyncButton(model)
                 }
-                remoteButton(model, .fetch, symbol: "arrow.triangle.2.circlepath", label: "git.fetch")
-                remoteButton(model, .pull, symbol: "arrow.down", label: "git.pull")
-                remoteButton(model, .push, symbol: "arrow.up", label: "git.push")
             }
             .font(metrics.monoFont(size: 10, weight: .regular)).foregroundStyle(theme[.fgMuted])
             .padding(.leading, metrics.size(12)).padding(.trailing, metrics.size(8)).frame(minHeight: metrics.size(30))
@@ -90,16 +102,35 @@ extension GitControlSheet {
                 TextEditor(text: Bindable(model).message)
                     .font(metrics.font(size: 11)).scrollContentBackground(.hidden)
                     .frame(height: metrics.size(48)).modifier(GitWebEditor())
+                    .overlay(alignment: .topLeading) {
+                        if model.message.isEmpty {
+                            Text("git.web.commit.placeholder").font(metrics.font(size: 11))
+                                .foregroundStyle(theme[.fgFaint]).allowsHitTesting(false)
+                                .padding(.horizontal, metrics.size(14)).padding(.vertical, metrics.size(7))
+                        }
+                    }
                     .accessibilityLabel(Text("git.commitMessage")).accessibilityIdentifier("git.message")
                 HStack(spacing: metrics.size(6)) {
-                    Button("git.commit") { model.commit() }
-                        .buttonStyle(AletheButtonStyle(.primary, size: .small))
-                        .keyboardShortcut(.return, modifiers: .command).disabled(!model.canCommit)
-                        .accessibilityIdentifier("git.commit")
-                    Toggle("git.amend", isOn: Bindable(model).amend)
-                        .toggleStyle(.checkbox).accessibilityIdentifier("git.amend")
-                    Spacer(minLength: 0)
+                    Button { requestCommit(model) } label: {
+                        HStack(spacing: metrics.size(6)) {
+                            Image(systemName: "checkmark").font(metrics.font(size: 14))
+                            Text(model.busy ? "git.web.commit.busy" : "git.commit")
+                                .font(metrics.font(size: 11, weight: .semibold))
+                        }
+                        .foregroundStyle(theme[.accentOn])
+                        .frame(maxWidth: .infinity, minHeight: metrics.size(30))
+                        .background(theme[.accent], in: RoundedRectangle(cornerRadius: metrics.size(4)))
+                        .opacity(model.canCommitWeb ? 1 : 0.42)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.return, modifiers: .command).disabled(!model.canCommitWeb)
+                    .accessibilityIdentifier("git.commit")
+                    webSyncWide(model)
                 }
+                Toggle("git.amend", isOn: Bindable(model).amend)
+                    .toggleStyle(.checkbox).font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                    .frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("git.amend")
             }.padding(.horizontal, metrics.size(10)).padding(.vertical, metrics.size(9))
             webDivider
             HStack(spacing: metrics.size(6)) {
@@ -112,17 +143,24 @@ extension GitControlSheet {
                 GitGraphView(history: history).frame(height: metrics.size(380))
             } else {
                 let groups = GitChangeGroups(model.status)
+                let changes = groups.unstaged.filter { !$0.isUntracked }
+                let untracked = groups.unstaged.filter(\.isUntracked)
                 VStack(spacing: 0) {
-                    webGroup("git.staged", entries: groups.staged, model: model, staged: true)
-                    webGroup("git.conflicts", entries: groups.conflicts, model: model, staged: false)
-                    webGroup("git.changes", entries: groups.unstaged, model: model, staged: false)
+                    webGroup(.staged, "git.web.group.staged", groups.staged, model)
+                    webGroup(.conflicts, "git.web.group.conflicts", groups.conflicts, model)
+                    webGroup(.changes, "git.web.group.changes", changes, model)
+                    webGroup(.untracked, "git.web.group.untracked", untracked, model)
                     if model.status?.isClean == true {
                         VStack(spacing: metrics.size(6)) {
                             Image(systemName: "checkmark").font(metrics.font(size: 18)).foregroundStyle(theme[.statusWorking])
-                            Text("git.clean").font(metrics.font(size: 12, weight: .semibold))
-                        }.frame(maxWidth: .infinity, minHeight: metrics.size(150)).accessibilityIdentifier("git.clean")
+                            Text("git.web.clean.title").font(metrics.font(size: 12, weight: .semibold)).foregroundStyle(theme[.fg])
+                            Text("git.web.clean.description").font(metrics.font(size: 10)).foregroundStyle(theme[.fgMuted])
+                                .lineSpacing(metrics.size(3)).multilineTextAlignment(.center).frame(maxWidth: metrics.size(240))
+                        }
+                        .padding(.horizontal, metrics.size(16)).padding(.vertical, metrics.size(24))
+                        .frame(maxWidth: .infinity, minHeight: metrics.size(150)).accessibilityIdentifier("git.clean")
                     }
-                }.accessibilityIdentifier("git.changesList")
+                }.padding(.bottom, metrics.size(8)).accessibilityIdentifier("git.changesList")
             }
             if let io = model.incomingOutgoing {
                 webCommits("git.incoming", commits: io.incoming, identifier: "git.incoming")
@@ -156,66 +194,111 @@ extension GitControlSheet {
     var webDivider: some View { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
 
     @ViewBuilder
-    func webGroup(_ title: LocalizedStringKey, entries: [GitStatusEntry], model: GitControlModel, staged: Bool) -> some View {
-        if !entries.isEmpty {
-            GitChangeWebGroup(title: title, entries: entries, staged: staged, busy: model.busy,
-                              stage: { paths in if staged { model.unstage(paths) } else { model.stage(paths) } },
-                              discard: { pendingDiscard = $0 }, open: { openDiff($0, staged: staged) })
+    func webGroup(_ kind: GitWebChangeGroup.Kind, _ title: LocalizedStringKey, _ entries: [GitStatusEntry],
+                  _ model: GitControlModel) -> some View {
+        let staged = kind == .staged
+        let discardable = kind == .changes || kind == .untracked
+        GitWebChangeGroup(
+            kind: kind, title: title, entries: entries, busy: model.busy,
+            primary: { paths in if staged { model.unstage(paths) } else { model.stage(paths) } },
+            discard: discardable ? { paths in pendingDiscardPaths = PendingDiscard(paths: paths, untracked: kind == .untracked) } : nil,
+            open: { entry in
+                if kind == .untracked, addToGridAvailable(entry.path, model) { _ = addToGrid(entry.path, model) }
+                else { openDiff(entry, staged: staged) }
+            },
+            reveal: { path in revealPath(path, model) },
+            addToGrid: { addToGrid($0, model) },
+            addToGridAvailable: { addToGridAvailable($0, model) })
+    }
+
+    private func absolute(_ path: String, _ model: GitControlModel) -> String {
+        (model.root ?? model.folder).appending(path: path).path
+    }
+
+    func revealPath(_ path: String, _ model: GitControlModel) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(filePath: absolute(path, model))])
+    }
+
+    func addToGridAvailable(_ path: String, _ model: GitControlModel) -> Bool {
+        projectID != nil && PaneContent.forFile(absolute(path, model)) != nil
+    }
+
+    func addToGrid(_ path: String, _ model: GitControlModel) -> Bool {
+        guard let projectID, let content = PaneContent.forFile(absolute(path, model)) else { return false }
+        workspace.update(undoManager: undoManager, actionName: String(localized: "undo.addContent")) {
+            _ = $0.addPane(to: projectID, content: content)
         }
+        if let closeOverlay { closeOverlay() } else { dismiss() }
+        return true
+    }
+
+    /// Web `commit`: with nothing staged it asks before staging everything.
+    func requestCommit(_ model: GitControlModel) {
+        guard model.canCommitWeb else { return }
+        if model.commitNeedsStageAll, model.status?.entries.contains(where: \.isConflict) != true {
+            confirmingStageAll = true
+        } else {
+            model.commitWeb(stagingAll: false)
+        }
+    }
+
+    private func webSyncTitle(_ model: GitControlModel) -> String {
+        String(format: String(localized: "git.web.sync.title"), model.status?.branch.behind ?? 0, model.status?.branch.ahead ?? 0)
+    }
+
+    /// `.syncButton`: the small refresh icon with the behind / ahead counts.
+    func webSyncButton(_ model: GitControlModel) -> some View {
+        let detached = model.status?.branch.head == nil
+        let working = model.remoteAction == .sync
+        return Button { model.remote(.sync) } label: {
+            HStack(spacing: metrics.size(6)) {
+                Image(systemName: "arrow.triangle.2.circlepath").font(metrics.font(size: 12))
+                HStack(spacing: metrics.size(6)) {
+                    HStack(spacing: metrics.size(1)) {
+                        Image(systemName: "arrow.down").font(metrics.font(size: 11))
+                        Text(verbatim: "\(model.status?.branch.behind ?? 0)")
+                    }
+                    HStack(spacing: metrics.size(1)) {
+                        Image(systemName: "arrow.up").font(metrics.font(size: 11))
+                        Text(verbatim: "\(model.status?.branch.ahead ?? 0)")
+                    }
+                }
+            }
+            .foregroundStyle(theme[working ? .fg : .fgMuted])
+            .padding(.horizontal, metrics.size(7)).frame(height: metrics.size(22))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opacity(model.busy || model.remoteAction != nil || detached ? 0.4 : 1)
+        .disabled(model.busy || model.remoteAction != nil || detached)
+        .help(Text(verbatim: webSyncTitle(model)))
+        .accessibilityLabel(Text(verbatim: webSyncTitle(model)))
+        .accessibilityIdentifier("git.sync")
+    }
+
+    /// `.syncWide`: the labelled Sync button next to Commit.
+    func webSyncWide(_ model: GitControlModel) -> some View {
+        let detached = model.status?.branch.head == nil
+        return Button { model.remote(.sync) } label: {
+            HStack(spacing: metrics.size(6)) {
+                Image(systemName: "arrow.triangle.2.circlepath").font(metrics.font(size: 13))
+                Text("git.web.sync.action").font(metrics.font(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(theme[.fg])
+            .padding(.horizontal, metrics.size(12)).frame(minHeight: metrics.size(30))
+            .background(theme[.panel], in: RoundedRectangle(cornerRadius: metrics.size(4)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+            .opacity(model.busy || model.remoteAction != nil || detached ? 0.42 : 1)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(model.busy || model.remoteAction != nil || detached)
+        .help(Text(verbatim: webSyncTitle(model)))
+        .accessibilityIdentifier("git.syncWide")
     }
 }
 
-private struct GitChangeWebGroup: View {
-    let title: LocalizedStringKey
-    let entries: [GitStatusEntry]
-    let staged: Bool
-    let busy: Bool
-    let stage: ([String]) -> Void
-    let discard: (GitStatusEntry) -> Void
-    let open: (GitStatusEntry) -> Void
-    @State private var expanded = true
-    @Environment(\.metrics) private var metrics
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: metrics.size(5)) {
-                Button { expanded.toggle() } label: {
-                    HStack(spacing: metrics.size(5)) {
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right").font(metrics.font(size: 13))
-                        Text(title).textCase(.uppercase).font(metrics.font(size: 10, weight: .bold)).tracking(metrics.size(0.4))
-                        Text(verbatim: "\(entries.count)").font(metrics.font(size: 9))
-                            .frame(minWidth: metrics.size(18), minHeight: metrics.size(18))
-                            .background(theme[.panel], in: Capsule())
-                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                }.buttonStyle(.plain)
-                Button { stage(entries.map(\.path)) } label: { Image(systemName: staged ? "minus" : "plus") }
-                    .buttonStyle(AletheIconButtonStyle(side: 22)).disabled(busy)
-                    .accessibilityLabel(Text(staged ? "git.unstageAll" : "git.stageAll"))
-            }.frame(height: metrics.size(32)).padding(.leading, metrics.size(4)).padding(.trailing, metrics.size(6))
-            if expanded {
-                ForEach(entries, id: \.path) { entry in
-                    HStack(spacing: metrics.size(4)) {
-                        Button { open(entry) } label: {
-                            Text(verbatim: entry.path).font(metrics.font(size: 11)).lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                        Text(verbatim: (staged ? entry.index : entry.worktree)?.rawValue ?? (entry.isUntracked ? "U" : "!"))
-                            .font(metrics.monoFont(size: 11, weight: .bold)).foregroundStyle(theme[.fgMuted])
-                            .frame(width: metrics.size(14))
-                        if !staged && !entry.isConflict {
-                            Button { discard(entry) } label: { Image(systemName: "arrow.uturn.backward") }
-                                .buttonStyle(AletheIconButtonStyle(side: 20)).accessibilityLabel(Text("git.discard"))
-                        }
-                        Button { stage([entry.path]) } label: { Image(systemName: staged ? "minus" : "plus") }
-                            .buttonStyle(AletheIconButtonStyle(side: 20))
-                            .accessibilityLabel(Text(staged ? "git.unstage" : "git.stage"))
-                    }
-                    .padding(.horizontal, metrics.size(8)).frame(minHeight: metrics.size(26)).disabled(busy)
-                    .accessibilityIdentifier("git.file.\(entry.path)")
-                }
-            }
-            Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
-        }
-    }
+struct PendingDiscard: Equatable {
+    var paths: [String]
+    var untracked: Bool
 }

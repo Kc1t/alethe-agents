@@ -14,6 +14,8 @@ struct GitControlSheet: View {
     let projectID: ProjectID?
     @State var model: GitControlModel?
     @State var pendingDiscard: GitStatusEntry?
+    @State var pendingDiscardPaths: PendingDiscard?
+    @State var confirmingStageAll = false
     @State var tab = Tab.changes
     @State var history: GitHistoryModel?
     @State var creatingBranch = false
