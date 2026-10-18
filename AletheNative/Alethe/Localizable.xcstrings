@@ -33272,6 +33272,23 @@
         }
       }
     },
+    "toast.close" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fechar"
+          }
+        }
+      }
+    },
     "todos.complete" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -40016,23 +40033,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Expandido"
-          }
-        }
-      }
-    },
-    "settings.web.unavailable" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Not available in the native app yet."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ainda não disponível no aplicativo nativo."
           }
         }
       }

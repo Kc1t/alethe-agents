@@ -98,6 +98,7 @@ struct MainWindow: View {
                 }
             }
         }
+        .overlay { if metrics.isWebInterface { InAppToastHost() } }
         .gitWebModalLayer()
         .webDialogLayer()
     }

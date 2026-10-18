@@ -303,33 +303,6 @@ struct WebAboutSettings: View {
     }
 }
 
-/// An empty disabled input identifies a web setting with no native preference or service yet.
-/// It deliberately has no invented saved value.
-struct WebUnavailableFields: View {
-    let labels: [LocalizedStringKey]
-    @Environment(\.metrics) private var metrics
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: metrics.size(12)) {
-            ForEach(Array(labels.enumerated()), id: \.offset) { _, label in
-                VStack(alignment: .leading, spacing: metrics.size(6)) {
-                    Text(label).font(metrics.font(size: 11, weight: .semibold)).foregroundStyle(theme[.fgMuted])
-                    TextField(text: .constant(""), prompt: Text("settings.web.unavailable")) { Text(label) }
-                        .textFieldStyle(.plain)
-                        .font(metrics.font(size: 11))
-                        .padding(.horizontal, metrics.size(10))
-                        .frame(height: metrics.size(38))
-                        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
-                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
-                            .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
-                        .disabled(true)
-                }
-            }
-        }
-    }
-}
-
 /// Web `TerminalPage` spawn concurrency stepper: 1...8, default 3.
 private struct SpawnConcurrencyField: View {
     @Environment(AppEnvironment.self) private var environment
