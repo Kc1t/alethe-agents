@@ -8,7 +8,7 @@ struct ToolbarSettings: View {
     @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
-        AletheSettingsForm {
+        SettingsPageForm {
             Section {
                 ForEach(ToolbarItemKind.allCases, id: \.self) { item in
                     Toggle(item.title, isOn: Binding {

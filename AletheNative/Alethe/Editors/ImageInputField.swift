@@ -9,6 +9,9 @@ struct ImageInputField: View {
     @Binding var value: String
     let name: String
     let color: ProjectColor?
+    var label: LocalizedStringKey = "image.label"
+    var placeholder: LocalizedStringKey = "image.placeholder"
+    var hint: LocalizedStringKey = "image.hint"
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var error: LocalizedStringKey?
@@ -17,12 +20,12 @@ struct ImageInputField: View {
     var body: some View {
         Group {
             if metrics.isWebInterface {
-                ProjectGroupWebField(title: "image.label") {
+                ProjectGroupWebField(title: label) {
                     controls
-                    Text("image.hint").font(metrics.font(size: 10)).foregroundStyle(theme[.fgMuted])
+                    Text(hint).font(metrics.font(size: 10)).foregroundStyle(theme[.fgMuted])
                 }
             } else {
-                LabeledContent("image.label") { controls }
+                LabeledContent(label) { controls }
             }
         }
         .onDrop(of: [.fileURL, .image], isTargeted: $targeted, perform: drop)
@@ -70,7 +73,7 @@ struct ImageInputField: View {
     }
 
     private var urlField: some View {
-        TextField(text: $value, prompt: Text("image.placeholder")) { Text("image.label") }
+        TextField(text: $value, prompt: Text(placeholder)) { Text(label) }
     }
 
     private func choose() {
@@ -115,10 +118,16 @@ struct ImageInputField: View {
     }
 
     private func drop(_ providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first else { return false }
+        guard let provider = providers.first(where: {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+                || $0.registeredTypeIdentifiers.contains { UTType($0)?.conforms(to: .image) == true }
+        }) else { return false }
         if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
-                guard let data, let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                guard let data, let url = URL(dataRepresentation: data, relativeTo: nil), url.isFileURL else {
+                    Task { @MainActor in error = "image.readFailed" }
+                    return
+                }
                 Task { @MainActor in load(url) }
             }
             return true
@@ -126,7 +135,10 @@ struct ImageInputField: View {
         guard let identifier = provider.registeredTypeIdentifiers.first(where: { UTType($0)?.conforms(to: .image) == true }),
               let mime = UTType(identifier)?.preferredMIMEType else { return false }
         provider.loadDataRepresentation(forTypeIdentifier: identifier) { data, _ in
-            guard let data else { return }
+            guard let data else {
+                Task { @MainActor in error = "image.readFailed" }
+                return
+            }
             Task { @MainActor in accept(data, mime: mime) }
         }
         return true

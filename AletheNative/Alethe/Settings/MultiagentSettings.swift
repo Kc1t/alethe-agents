@@ -19,11 +19,19 @@ struct MultiagentSettings: View {
     private var projects: [Project] { environment.workspace?.document.projects ?? [] }
 
     var body: some View {
-        AletheSettingsForm {
+        SettingsPageForm {
             schedulerSection
             metricsSection
             tracesSection
             auditSection
+            if metrics.isWebInterface {
+                Section { Text("settings.web.unavailable") }
+                    header: { Text("settings.web.reference.prefs.orchestratorShortcuts") }
+                    footer: { Text("settings.web.reference.prefs.orchestratorShortcutsDesc") }
+                Section { Text("settings.web.unavailable") }
+                    header: { Text("settings.web.reference.prefs.workerRules") }
+                    footer: { Text("settings.web.reference.prefs.workerRulesDesc") }
+            }
         }
         .formStyle(.grouped)
         .frame(minHeight: metrics.isWebInterface ? nil : metrics.size(520) / metrics.scale)
@@ -85,9 +93,9 @@ struct MultiagentSettings: View {
                 }
             }
         } header: {
-            Text("settings.multiagent.scheduler.title")
+            Text(metrics.isWebInterface ? "settings.web.reference.prefs.multiagentSchedulerTitle" : "settings.multiagent.scheduler.title")
         } footer: {
-            Text("settings.multiagent.scheduler.help")
+            Text(metrics.isWebInterface ? "settings.web.reference.prefs.multiagentSchedulerDesc" : "settings.multiagent.scheduler.help")
         }
     }
 
@@ -98,7 +106,7 @@ struct MultiagentSettings: View {
             if model.metrics.isEmpty {
                 note("settings.multiagent.metrics.empty", id: "multiagent.metrics.empty")
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: metrics.space(.m))],
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: metrics.isWebInterface ? metrics.size(140) : 140), spacing: metrics.space(.m))],
                           alignment: .leading, spacing: metrics.space(.m)) {
                     ForEach(model.metrics) { metric in
                         VStack(alignment: .leading, spacing: metrics.space(.xxs)) {
@@ -123,9 +131,9 @@ struct MultiagentSettings: View {
                 }
             }
         } header: {
-            Text("settings.multiagent.metrics.title")
+            Text(metrics.isWebInterface ? "settings.web.reference.prefs.multiagentMetricsTitle" : "settings.multiagent.metrics.title")
         } footer: {
-            Text("settings.multiagent.metrics.help")
+            Text(metrics.isWebInterface ? "settings.web.reference.prefs.multiagentMetricsDesc" : "settings.multiagent.metrics.help")
         }
     }
 
@@ -146,9 +154,9 @@ struct MultiagentSettings: View {
                 }
             }
         } header: {
-            Text("settings.multiagent.traces.title")
+            Text(metrics.isWebInterface ? "settings.web.reference.prefs.multiagentTracesTitle" : "settings.multiagent.traces.title")
         } footer: {
-            Text("settings.multiagent.traces.help")
+            Text(metrics.isWebInterface ? "settings.web.reference.prefs.multiagentTracesDesc" : "settings.multiagent.traces.help")
         }
     }
 
@@ -174,9 +182,9 @@ struct MultiagentSettings: View {
                 }
             }
         } header: {
-            Text("settings.multiagent.audit.title")
+            Text(metrics.isWebInterface ? "settings.web.reference.prefs.multiagentAuditTitle" : "settings.multiagent.audit.title")
         } footer: {
-            Text("settings.multiagent.audit.help")
+            Text(metrics.isWebInterface ? "settings.web.reference.prefs.multiagentAuditDesc" : "settings.multiagent.audit.help")
         }
     }
 

@@ -13,7 +13,7 @@ struct FeatureSettings: View {
     private var secondaryCount: Int { Feature.allCases.filter(\.isSecondary).count }
 
     var body: some View {
-        AletheSettingsForm {
+        SettingsPageForm {
             Section {
                 ForEach(Feature.allCases.filter { !$0.isSecondary }, id: \.self) { FeatureRow(feature: $0) }
             } footer: {
