@@ -6,6 +6,30 @@ final class TitleBarLeadingLayoutTests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testDebugMenuReopensOnboardingAtLargeZoom() {
+        let (app, _) = launchAlethe()
+        let menu = app.buttons["chrome.mainMenu"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 10))
+        for _ in 0..<5 { app.typeKey("+", modifierFlags: .command) }
+        menu.click()
+        let redo = app.buttons["chrome.mainMenu.redoOnboarding"].firstMatch
+        XCTAssertTrue(redo.waitForExistence(timeout: 5))
+        XCTAssertTrue(redo.isHittable)
+        redo.click()
+        let onboarding = app.descendants(matching: .any)["onboarding"].firstMatch
+        XCTAssertTrue(onboarding.waitForExistence(timeout: 5))
+        let window = app.windows.firstMatch.frame
+        XCTAssertLessThanOrEqual(onboarding.frame.width, window.width)
+        XCTAssertLessThanOrEqual(onboarding.frame.height, window.height)
+        app.buttons["onboarding.skip"].firstMatch.click()
+        XCTAssertTrue(eventually { !onboarding.exists })
+        menu.click()
+        XCTAssertTrue(redo.waitForExistence(timeout: 5))
+        redo.click()
+        XCTAssertTrue(onboarding.waitForExistence(timeout: 5), "Can rerun without relaunching")
+        app.terminate()
+    }
+
     func testFullscreenUsesWebPaddingAtEveryZoomEndpointAndSidebarState() {
         let (app, _) = launchAlethe()
         let window = app.windows.firstMatch

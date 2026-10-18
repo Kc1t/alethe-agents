@@ -29,6 +29,10 @@ final class PaneHostView: NSView {
     /// Focus mode (upstream `FocusOverlay`): the pane floating over a blurred backdrop.
     private var focusModePane: PaneID?
     private var backdrop: FocusBackdropView?
+    private var focusOverlay: FocusOverlayView?
+    private weak var floatingPane: PaneView?
+    private weak var floatingContainer: ContainerView?
+    private var overlayAnimator: FrameAnimator?
 
     /// Id of the single container of a flat workspace.
     static let flatID = ProjectID(rawValue: "alethe.flat")
@@ -169,39 +173,65 @@ final class PaneHostView: NSView {
 
     // MARK: - Focus mode
 
-    /// Raises the focused pane's container above a blurred backdrop and floats the pane inside the
-    /// whole area (upstream `FocusOverlay`: 24 × 32 pt margins). Click the backdrop or press Esc to
-    /// leave.
+    /// Move the existing surface above the whole window, including both sidebars and title bar.
+    /// Reparenting preserves the PTY, scrollback and selection while the pane expands.
     private func layoutFocusMode(_ frames: [ProjectID: CGRect]) {
         guard let pane = focusModePane,
-              let (id, container) = containers.first(where: { $0.value.paneViews.contains { $0.paneID == pane } }) else {
+              let container = containers.values.first(where: { $0.paneViews.contains { $0.paneID == pane } }),
+              let view = container.paneViews.first(where: { $0.paneID == pane }),
+              let root = window?.contentView else {
+            restoreFloatingPane()
             containers.values.forEach { $0.setFocus(nil, frame: .zero) }
-            if let backdrop {
-                NSAnimationContext.runAnimationGroup({ $0.duration = context?.metrics.reducesMotion == true ? 0 : 0.15; backdrop.animator().alphaValue = 0 },
-                                                     completionHandler: { backdrop.removeFromSuperview() })
-                self.backdrop = nil
-            }
             return
         }
-        let backdrop = self.backdrop ?? {
-            let view = FocusBackdropView()
-            view.onClick = { [weak self] in self?.context?.setFocusMode(nil) }
-            view.alphaValue = 0
-            self.backdrop = view
-            return view
+        if floatingPane !== view { restoreFloatingPane() }
+        let overlay = focusOverlay ?? {
+            let overlay = FocusOverlayView(frame: root.bounds)
+            overlay.autoresizingMask = [.width, .height]
+            root.addSubview(overlay)
+            focusOverlay = overlay
+            overlayAnimator = FrameAnimator(host: overlay)
+            let backdrop = FocusBackdropView(frame: overlay.bounds)
+            backdrop.autoresizingMask = [.width, .height]
+            backdrop.onClick = { [weak self] in self?.context?.setFocusMode(nil) }
+            backdrop.alphaValue = 0
+            overlay.addSubview(backdrop)
+            self.backdrop = backdrop
+            NSAnimationContext.runAnimationGroup {
+                $0.duration = context?.metrics.reducesMotion == true ? 0 : 0.22
+                backdrop.animator().alphaValue = 1
+            }
+            return overlay
         }()
-        backdrop.tint = context?.theme.nsColor(.bg).withAlphaComponent(0.55)
-        backdrop.frame = bounds
-        if backdrop.superview == nil {
-            addSubview(backdrop, positioned: .above, relativeTo: nil)
-            NSAnimationContext.runAnimationGroup { $0.duration = context?.metrics.reducesMotion == true ? 0 : 0.22; backdrop.animator().alphaValue = 1 }
+        backdrop?.tint = context?.theme.nsColor(.bg).withAlphaComponent(0.55)
+        if floatingPane !== view {
+            let start = overlay.convert(view.bounds, from: view)
+            container.setFocus(pane, frame: view.frame)
+            overlay.addSubview(view)
+            view.frame = start
+            floatingPane = view
+            floatingContainer = container
+            DispatchQueue.main.async { [weak view] in view?.focusTerminal() }
         }
-        addSubview(container, positioned: .above, relativeTo: backdrop)
-        let origin = frames[id]?.origin ?? container.frame.origin
-        let inset = CGSize(width: context?.metrics.size(32) ?? 32, height: context?.metrics.size(24) ?? 24)
-        let target = bounds.insetBy(dx: inset.width, dy: inset.height).offsetBy(dx: -origin.x, dy: -origin.y)
-        for (other, view) in containers where other != id { view.setFocus(nil, frame: .zero) }
-        container.setFocus(pane, frame: target)
+        let target = overlay.bounds.insetBy(dx: context?.metrics.size(32) ?? 32,
+                                            dy: context?.metrics.size(24) ?? 24)
+        overlayAnimator?.set(view, frame: target.integral, animated: true)
+    }
+
+    private func restoreFloatingPane() {
+        if let view = floatingPane, let container = floatingContainer {
+            let start = container.convert(view.bounds, from: view)
+            container.addSubview(view)
+            view.frame = start
+            container.setFocus(nil, frame: .zero)
+            DispatchQueue.main.async { [weak view] in view?.focusTerminal() }
+        }
+        floatingPane = nil
+        floatingContainer = nil
+        overlayAnimator = nil
+        focusOverlay?.removeFromSuperview()
+        focusOverlay = nil
+        backdrop = nil
     }
 
     // MARK: - Container resizing
@@ -296,7 +326,9 @@ final class PaneHostView: NSView {
         super.viewDidMoveToWindow()
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
-        guard window != nil else { return }
+        if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
+        keyMonitor = nil
+        guard window != nil else { restoreFloatingPane(); return }
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             self?.focusPane(at: event)
             return event
@@ -312,6 +344,10 @@ final class PaneHostView: NSView {
 
     private func focusPane(at event: NSEvent) {
         guard event.window === window, let context else { return }
+        if let view = floatingPane, let owner = context.workspace?.document.pane(view.paneID)?.project.id {
+            context.focus(view.paneID, in: owner)
+            return
+        }
         let point = convert(event.locationInWindow, from: nil)
         for (id, container) in containers where container.frame.contains(point) || focusModePane != nil {
             let local = container.convert(point, from: self)
@@ -383,4 +419,10 @@ final class FocusBackdropView: NSVisualEffectView {
         onClick()
         return true
     }
+}
+
+/// A window-level coordinate space for the existing terminal surface and its backdrop.
+@MainActor
+private final class FocusOverlayView: NSView {
+    override var isFlipped: Bool { true }
 }

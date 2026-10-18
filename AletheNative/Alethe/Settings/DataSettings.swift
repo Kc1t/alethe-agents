@@ -7,7 +7,13 @@ import UniformTypeIdentifiers
 /// Settings › General › Data (P5-10, upstream `backup.rs`, `diagnostics.rs`): export and import a
 /// backup of the running profile, reset it, erase everything, open the data folder, open GitHub Sync
 /// (P7-15). Import, reset and erase ask once, take a safety backup and relaunch.
+enum DataSettingsAction: String, Hashable {
+    case manage, exportBackup, importBackup, reset, erase
+}
+
 struct DataSettingsSection: View {
+    var initialAction: DataSettingsAction = .manage
+    @State private var performedInitialAction = false
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.theme) private var theme
     @Environment(\.openWindow) private var openWindow
@@ -88,6 +94,17 @@ struct DataSettingsSection: View {
         }
         .disabled(busy || environment.locations == nil)
         .onAppear(perform: reportLaunchResult)
+        .task {
+            guard !performedInitialAction else { return }
+            performedInitialAction = true
+            switch initialAction {
+            case .manage: break
+            case .exportBackup: export()
+            case .importBackup: chooseImport()
+            case .reset: confirmReset = true
+            case .erase: confirmErase = true
+            }
+        }
         .confirmationDialog(Text("settings.data.import.confirm"), isPresented: $confirmImport) {
             // The staged archive is captured now: the dialog may clear its binding before the action runs.
             if let pending = staged {
@@ -207,5 +224,22 @@ struct DataSettingsSection: View {
         guard status == nil, case .failure(let error) = environment.dataMaintenanceResult else { return }
         let message = (error as? BackupError)?.localizedMessage ?? error.localizedDescription
         status = .failure(String(format: String(localized: "settings.data.error.launch"), message))
+    }
+}
+
+/// Main-menu data actions reuse the profile backup, confirmation and recovery implementation.
+struct DataManagementSheet: View {
+    let action: DataSettingsAction
+    let close: () -> Void
+
+    var body: some View {
+        GitWebModal(close: close) {
+            Text("settings.data.title")
+        } content: {
+            DataSettingsSection(initialAction: action)
+        } footer: {
+            Spacer()
+            Button("agentInstall.done", action: close)
+        }
     }
 }

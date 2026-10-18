@@ -70,12 +70,13 @@ struct SidebarWebProfile: View {
         .help(Text(verbatim: String(format: String(localized: "profiles.menu.help"), environment.activeProfileName)))
         .accessibilityIdentifier("leftSidebar.profile")
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
-        .popover(isPresented: $showingMenu, arrowEdge: metrics.isWebInterface ? .bottom : .top) {
-            if metrics.isWebInterface {
-                webMenu.modifier(SidebarProfilePopoverMotion())
-            } else {
-                nativeMenu
-            }
+        .webTitleBarPopover(isPresented: Binding(get: { metrics.isWebInterface && showingMenu },
+                                                set: { showingMenu = $0 }), width: max(1, rowWidth / metrics.scale - (metrics.style == .clean ? 12 : 16)), trailing: false) {
+            webMenu.modifier(SidebarProfilePopoverMotion())
+        }
+        .popover(isPresented: Binding(get: { !metrics.isWebInterface && showingMenu },
+                                     set: { showingMenu = $0 }), arrowEdge: .top) {
+            nativeMenu
         }
         .confirmationDialog(Text(verbatim: String(format: String(localized: "settings.profiles.switch.confirm"),
                                                   switching.map(environment.profileName) ?? "")),

@@ -126,6 +126,9 @@ struct PaneHostContext {
 
     /// Focus mode is a momentary view, not saved (upstream keeps it in the UI store).
     func setFocusMode(_ pane: PaneID?) {
+        if let pane, let project = workspace?.document.pane(pane)?.project.id {
+            focus(pane, in: project)
+        }
         environment.focusModePaneID = pane
     }
 

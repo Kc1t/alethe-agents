@@ -23,6 +23,24 @@ struct WebWindowMenu: View {
             row("leftSidebar.preferences", "gearshape") { openSettings() }
             row("titlebar.remote", "network") { environment.editorRequest = .remotePairing }
             row("diagnostics.title", "shield.lefthalf.filled") { environment.editorRequest = .diagnostics }
+            #if DEBUG
+            separator
+            row("menu.redoOnboarding", "arrow.clockwise") { environment.editorRequest = .onboarding }
+                .accessibilityIdentifier("chrome.mainMenu.redoOnboarding")
+            #endif
+            row("menu.view.flat", "square.stack.3d.up") {
+                environment.workspace?.update { $0.workspace.flat.toggle() }
+            }
+            separator
+            row("settings.data.openFolder", "folder") { environment.openDataFolder() }
+            row("menu.help.openLogsFolder", "doc.text") { environment.diagnostics.openLogsFolder() }
+            row("menu.help.exportLogs", "square.and.arrow.up") { environment.diagnostics.exportLogs() }
+            separator
+            row("settings.data.export", "square.and.arrow.down") { environment.editorRequest = .dataManagement(.exportBackup) }
+            row("settings.data.import", "square.and.arrow.up") { environment.editorRequest = .dataManagement(.importBackup) }
+            separator
+            row("settings.data.reset", "trash", role: .destructive) { environment.editorRequest = .dataManagement(.reset) }
+            row("settings.data.erase", "trash", role: .destructive) { environment.editorRequest = .dataManagement(.erase) }
             separator
             row("menu.file.newProject", "folder.badge.plus") { environment.editorRequest = .newProject(.ungrouped) }
             row("menu.file.newGroup", "square.3.layers.3d") { environment.editorRequest = .newGroup(parent: nil) }
@@ -43,8 +61,8 @@ struct WebWindowMenu: View {
             .padding(.horizontal, metrics.size(2)).padding(.vertical, metrics.size(4))
     }
 
-    private func row(_ title: LocalizedStringKey, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button { close(); action() } label: {
+    private func row(_ title: LocalizedStringKey, _ symbol: String, role: ButtonRole? = nil, action: @escaping () -> Void) -> some View {
+        Button(role: role) { close(); action() } label: {
             HStack(spacing: metrics.size(8)) {
                 Image(systemName: symbol).resizable().scaledToFit()
                     .frame(width: metrics.size(14), height: metrics.size(14))

@@ -47,15 +47,44 @@ struct WebTitleBarPopoverLayer: ViewModifier {
                         .contentShape(outsideTrigger, eoFill: true)
                         .onTapGesture(perform: menu.dismiss)
                         .accessibilityHidden(true)
-                    menu.content
-                        .frame(width: width)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .shadow(color: theme.shadow(.md).color.color, radius: metrics.size(15), y: metrics.size(7))
-                        .onExitCommand(perform: menu.dismiss)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        .offset(x: left, y: rect.maxY + metrics.size(7))
+                    WebPositionedMenu(menu: menu, rect: rect, width: width, left: left, viewport: geometry.size)
                 }
             }
         }
+    }
+}
+
+/// Fit menus above or below their trigger and scroll when interface zoom exceeds the window.
+private struct WebPositionedMenu: View {
+    let menu: WebTitleBarPopover
+    let rect: CGRect
+    let width: CGFloat
+    let left: CGFloat
+    let viewport: CGSize
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        let margin = metrics.size(4)
+        let gap = metrics.size(7)
+        let below = max(0, viewport.height - rect.maxY - gap - margin)
+        let above = max(0, rect.minY - gap - margin)
+        let opensBelow = contentHeight <= below || below >= above
+        let height = min(contentHeight, opensBelow ? below : above)
+        ScrollView {
+            menu.content
+                .frame(width: width)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .webScrollStyle()
+        .frame(width: width, height: height)
+        .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .shadow(color: theme.shadow(.md).color.color, radius: metrics.size(15), y: metrics.size(7))
+        .onExitCommand(perform: menu.dismiss)
+        .position(x: left + width / 2,
+                  y: opensBelow ? rect.maxY + gap + height / 2 : rect.minY - gap - height / 2)
     }
 }

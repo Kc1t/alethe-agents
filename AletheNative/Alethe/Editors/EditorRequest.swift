@@ -42,6 +42,7 @@ enum EditorRequest: Identifiable, Hashable {
     case agentLibrary(ProjectID?)
     /// Help › Diagnostics…: recent errors and log export (P5-11).
     case diagnostics
+    case dataManagement(DataSettingsAction)
     /// The previous run did not exit cleanly: its crash records (P5-11).
     case crashNotice
     /// History › Skills…: the skills of every agent (P5-15).
@@ -84,6 +85,7 @@ enum EditorRequest: Identifiable, Hashable {
         case .branchTesting: "branchTesting"
         case .agentLibrary: "agentLibrary"
         case .diagnostics: "diagnostics"
+        case .dataManagement(let action): "dataManagement:\(action.rawValue)"
         case .crashNotice: "crashNotice"
         case .skills: "skills"
         case .gsdSyncActivity(let target): "gsdSyncActivity:\(target.sessionID)"

@@ -1,6 +1,23 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+  "menu.redoOnboarding": {
+    "extractionState": "manual",
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Redo onboarding"
+        }
+      },
+      "pt-BR": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Refazer onboarding"
+        }
+      }
+    }
+  },
     "sidebar.web.revealTerminal" : {
       "extractionState" : "manual",
       "localizations" : {

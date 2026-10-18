@@ -44,8 +44,8 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
         .buttonStyle(.plain)
         .foregroundStyle(theme[.fg])
         .background(theme[open || hovering ? .panelHover : .bgSunken],
-                    in: RoundedRectangle(cornerRadius: metrics.size(12)))
-        .overlay(RoundedRectangle(cornerRadius: metrics.size(12))
+                    in: RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 12)))
+        .overlay(RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 12))
             .strokeBorder(theme[open || focused ? .accent : hovering ? .borderStrong : .border],
                           lineWidth: metrics.size(1)))
         .focused($focused)
@@ -102,7 +102,7 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
                             .padding(.vertical, metrics.size(9))
                             .background(theme[value == selection ? .accentSoft : .panelHover]
                                 .opacity(value == selection || active == index ? 1 : 0),
-                                in: RoundedRectangle(cornerRadius: metrics.size(9)))
+                                in: RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 9)))
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -113,8 +113,8 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
                 }.padding(metrics.size(5))
             }
             .frame(maxHeight: dropdownHeight)
-            .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(14)))
-            .overlay(RoundedRectangle(cornerRadius: metrics.size(14))
+            .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 14)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 14))
                 .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
             .shadow(color: theme.shadow(.lg).color.color, radius: metrics.size(16), y: metrics.size(8))
             .onAppear { proxy.scrollTo(active) }
@@ -304,10 +304,20 @@ struct NewTerminalDropdownLayer: ViewModifier {
                     let below = rect.maxY + metrics.size(6)
                     let top = below + height <= geometry.size.height
                         ? below : max(metrics.size(8), rect.minY - height - metrics.size(6))
-                    Rectangle().fill(.clear).contentShape(Rectangle()).onTapGesture(perform: menu.dismiss)
+                    let width = min(rect.width, max(0, geometry.size.width - metrics.size(16)))
+                    let left = min(max(metrics.size(8), rect.minX), max(metrics.size(8), geometry.size.width - width - metrics.size(8)))
+                    let outsideTrigger = Path { path in
+                        path.addRect(CGRect(origin: .zero, size: geometry.size))
+                        path.addRect(rect)
+                    }
+                    outsideTrigger.fill(.clear, style: FillStyle(eoFill: true))
+                        .contentShape(outsideTrigger, eoFill: true)
+                        .onTapGesture(perform: menu.dismiss)
+                        .accessibilityHidden(true)
                     menu.content
-                        .frame(width: rect.width, height: height)
-                        .position(x: rect.midX, y: top + height / 2)
+                        .frame(width: width, height: height)
+                        .onExitCommand(perform: menu.dismiss)
+                        .position(x: left + width / 2, y: top + height / 2)
                 }
             }
         }

@@ -1,4 +1,5 @@
 import AletheDesign
+import AletheGitControl
 import AletheIntegrations
 import AletheModel
 import SwiftUI
@@ -93,6 +94,7 @@ struct MainWindow: View {
                 }
             }
         }
+        .gitWebModalLayer()
     }
 
     private func closeTitleBarNews() {
@@ -104,6 +106,8 @@ struct MainWindow: View {
         guard metrics.isWebInterface, let request = environment.editorRequest else { return false }
         switch request {
         case .newTerminal, .newSubTab, .newProject, .editProject, .newGroup, .editGroup, .aiUsage, .findJump: return true
+        case .mergeCenter, .worktrees, .branchTesting, .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding, .dataManagement: return true
+        case .pluginSheet(let viewID, _): return viewID == GitControlPlugin.viewID
         default: return false
         }
     }
@@ -111,6 +115,20 @@ struct MainWindow: View {
     @ViewBuilder
     private func editorOverlay(for request: EditorRequest, workspace: WorkspaceModel) -> some View {
         switch request {
+        case .mergeCenter, .worktrees, .branchTesting, .pluginSheet:
+            GitWebOverlay(width: modalWidth(request), close: { environment.editorRequest = nil }) {
+                editor(for: request, workspace: workspace)
+            }
+        case .mcpManager, .mcpIntro, .skills, .agentLibrary, .gistSync, .onboarding:
+            NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }, defaultWidth: modalWidth(request),
+                                  minimumWidth: 320) { close in
+                editor(for: request, workspace: workspace)
+                    .environment(\.modalsM2Close, close)
+            }
+        case .dataManagement:
+            NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }, defaultWidth: 620) { close in
+                editor(for: request, workspace: workspace, closeOverlay: close)
+            }
         case .findJump:
             ProjectGroupWebOverlay(width: 520, onClose: { environment.editorRequest = nil }) { close in
                 WebTitleBarSearch(workspace: workspace, undoManager: undoManager, close: close)
@@ -128,6 +146,21 @@ struct MainWindow: View {
             NewTerminalWebOverlay(onClose: { environment.editorRequest = nil }) { close in
                 editor(for: request, workspace: workspace, closeOverlay: close)
             }
+        }
+    }
+
+    private func modalWidth(_ request: EditorRequest) -> CGFloat {
+        switch request {
+        case .worktrees: 620
+        case .branchTesting: 560
+        case .pluginSheet: 520
+        case .mcpManager: 860
+        case .mcpIntro: 560
+        case .skills: 760
+        case .agentLibrary: 660
+        case .gistSync: 580
+        case .onboarding: 620
+        default: 480
         }
     }
 
@@ -266,6 +299,8 @@ struct MainWindow: View {
             AgentLibrarySheet(workspace: workspace, projectID: project ?? workspace.document.workspace.selectedProjectID)
         case .diagnostics:
             DiagnosticsSheet()
+        case .dataManagement(let action):
+            DataManagementSheet(action: action, close: closeOverlay ?? { environment.editorRequest = nil })
         case .crashNotice:
             CrashNoticeSheet()
         case .skills:

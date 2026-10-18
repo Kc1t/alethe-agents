@@ -29,6 +29,7 @@ struct ProjectGroupWebModal<Content: View>: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.newTerminalModalHeight) private var maximumHeight
+    @Environment(\.webModalHasExplicitHeight) private var explicitHeight
     @State private var contentHeight: CGFloat = 0
 
     var body: some View {
@@ -45,6 +46,7 @@ struct ProjectGroupWebModal<Content: View>: View {
                 .accessibilityLabel(Text("editor.cancel"))
             }
             .padding(.horizontal, metrics.size(20)).padding(.top, metrics.size(16))
+            .webModalHeader()
             ScrollView {
                 VStack(alignment: .leading, spacing: 0, content: content)
                     .padding(.horizontal, metrics.size(20))
@@ -53,7 +55,7 @@ struct ProjectGroupWebModal<Content: View>: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
             .scrollBounceBehavior(.basedOnSize)
-            .frame(height: min(contentHeight, max(metrics.size(60), maximumHeight - metrics.size(112))))
+            .frame(height: explicitHeight ? nil : min(contentHeight, max(metrics.size(60), maximumHeight - metrics.size(112))))
             Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
             HStack(spacing: metrics.size(8)) {
                 Spacer()
@@ -72,6 +74,8 @@ struct ProjectGroupWebModal<Content: View>: View {
         .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.lg)))
         .overlay(RoundedRectangle(cornerRadius: metrics.radius(.lg))
             .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
+        .newTerminalDropdownLayer()
+        .webScrollStyle()
         .onExitCommand(perform: close)
     }
 }

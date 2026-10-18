@@ -15,6 +15,8 @@ struct OnboardingSheet: View {
     let undoManager: UndoManager?
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    @Environment(\.newTerminalModalHeight) private var maximumHeight
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
@@ -46,7 +48,8 @@ struct OnboardingSheet: View {
             Divider()
             footer
         }
-        .frame(width: metrics.size(620), height: metrics.size(580))
+        .frame(width: closeOverlay == nil ? metrics.size(620) : nil,
+               height: closeOverlay == nil ? metrics.size(580) : min(metrics.size(580), maximumHeight))
         .background(theme[.bg])
         .interactiveDismissDisabled()
         .accessibilityElement(children: .contain)
@@ -246,7 +249,11 @@ struct OnboardingSheet: View {
 
     private func skip() {
         environment.preferences?.update { $0.onboardingDone = true }
-        dismiss()
+        close()
+    }
+
+    private func close() {
+        if let closeOverlay { closeOverlay() } else { dismiss() }
     }
 
     private func finish() {
@@ -255,7 +262,7 @@ struct OnboardingSheet: View {
             preferences.setupHidden = nil
         }
         environment.showingHome = true
-        dismiss()
+        close()
     }
 }
 

@@ -33,8 +33,11 @@ final class FlatAndFocusTests: XCTestCase {
         one.doubleClick()
         XCTAssertTrue(element(app, "focusMode.backdrop").waitForExistence(timeout: 5))
         XCTAssertTrue(eventually { one.frame.width > before.width * 1.5 }, "the pane floats over the workspace")
+        let window = app.windows.firstMatch.frame
+        XCTAssertTrue(eventually { one.frame.width > window.width * 0.8 }, "focus spans the window, including the sidebar area")
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(eventually { !self.element(app, "focusMode.backdrop").exists }, "Esc leaves")
+        XCTAssertTrue(eventually { abs(one.frame.width - before.width) < 2 }, "the original layout returns")
         app.typeKey("f", modifierFlags: [.command, .shift])
         XCTAssertTrue(element(app, "focusMode.backdrop").waitForExistence(timeout: 5), "⇧⌘F focuses the focused pane")
         element(app, "focusMode.backdrop").click()

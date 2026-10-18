@@ -28,12 +28,12 @@ final class FrameAnimator {
 
     func set(_ view: NSView, frame: CGRect, animated: Bool) {
         let key = ObjectIdentifier(view)
+        if !Self.reducesMotion, let item = items[key], item.to == frame { return }
         if !animated || Self.reducesMotion || view.frame == .zero {
             items.removeValue(forKey: key)
             if view.frame != frame { view.frame = frame }
             return
         }
-        if let item = items[key], item.to == frame { return }
         guard view.frame != frame else {
             items.removeValue(forKey: key)
             return

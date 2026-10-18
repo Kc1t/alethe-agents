@@ -203,7 +203,9 @@ final class ContainerView: NSView {
         if let focus {
             for (id, view) in panes {
                 view.isHidden = id != focus.pane
-                if id == focus.pane { animator.set(view, frame: focus.frame.integral, animated: animated) }
+                if id == focus.pane, view.superview === self {
+                    animator.set(view, frame: focus.frame.integral, animated: animated)
+                }
             }
             dividers.values.forEach { $0.isHidden = true }
             layoutSlots([])

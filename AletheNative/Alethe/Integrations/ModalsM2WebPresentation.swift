@@ -39,6 +39,7 @@ struct ModalsM2WebModal<Body: View, Footer: View>: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bodyHeight = $0 }
             }
             .scrollBounceBehavior(.basedOnSize)
+            .webScrollStyle()
             .frame(height: explicitHeight ? nil : min(bodyHeight, max(metrics.size(60), maximumHeight - metrics.size(112))))
             if Footer.self != EmptyView.self {
                 Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
