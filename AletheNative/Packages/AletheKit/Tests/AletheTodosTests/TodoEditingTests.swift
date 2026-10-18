@@ -54,19 +54,6 @@ actor MemoryFiles {
         #expect(store.todo(id: a.id)?.tags == [])
     }
 
-    @Test func settingsClampPomodoroLengths() {
-        let store = TodoStore(storage: nil)
-        store.updateSettings {
-            $0.pomodoroWorkMinutes = 0
-            $0.pomodoroShortBreakMinutes = 500
-            $0.pomodoroLongBreakMinutes = 20
-        }
-        #expect(store.settings.pomodoroWorkMinutes == 1)
-        #expect(store.settings.pomodoroShortBreakMinutes == 120)
-        #expect(store.settings.pomodoroLongBreakMinutes == 20)
-        #expect(store.settings.pomodoroLengths.longBreak == 20 * 60)
-    }
-
     @Test func resetToDefaultsReplacesTheList() {
         let store = TodoStore(storage: nil)
         store.add(title: "Mine", scope: .project("p"))
@@ -109,97 +96,4 @@ actor MemoryFiles {
         #expect(TodoFileAccess.isMissingFile(POSIXError(.ENOENT)))
         #expect(!TodoFileAccess.isMissingFile(CocoaError(.fileReadNoPermission)))
     }
-}
-
-@MainActor
-@Suite struct PomodoroStoreTests {
-    @Test func focusTodoFollowsTheList() {
-        let store = TodoStore(storage: nil)
-        let a = store.add(title: "A")!
-        let b = store.add(title: "B")!
-        store.setFocus(a.id)
-        #expect(store.pomodoro.focusTodoId == a.id)
-        #expect(store.focusTodo?.id == a.id)
-        store.toggle(a.id)
-        #expect(store.pomodoro.focusTodoId == nil)
-        store.setFocus(a.id)
-        #expect(store.pomodoro.focusTodoId == nil)
-        store.setFocus(b.id)
-        store.delete(b.id)
-        #expect(store.focusTodo == nil)
-        #expect(store.pomodoro.focusTodoId == nil)
-    }
-
-    @Test func tickReportsEachPhaseEndOnce() {
-        let clock = TestClock()
-        let store = TodoStore(storage: nil, now: { clock.now })
-        store.updateSettings { $0.pomodoroWorkMinutes = 1; $0.pomodoroShortBreakMinutes = 1 }
-        #expect(store.tickPomodoro() == nil)
-        store.updatePomodoro { timer, lengths, now in timer.start(lengths: lengths, now: now) }
-        clock.advance(59)
-        #expect(store.tickPomodoro() == nil)
-        clock.advance(1)
-        #expect(store.tickPomodoro() == .work)
-        #expect(store.tickPomodoro() == nil)
-        #expect(store.pomodoro.status == .finished)
-        store.updatePomodoro { timer, lengths, now in timer.start(lengths: lengths, now: now) }
-        #expect(store.pomodoro.phase == .shortBreak)
-        clock.advance(61)
-        #expect(store.tickPomodoro() == .shortBreak)
-        #expect(store.pomodoro.cyclesCompleted == 1)
-    }
-
-    @Test func phaseEndedWhileClosedIsReportedOnceAfterRelaunch() async throws {
-        let root = temporaryTodosDirectory()
-        let start = Date(timeIntervalSince1970: 10_000)
-        let store = TodoStore(storage: PluginStorage(root: root, pluginID: "p", debounce: .milliseconds(1)), now: { start })
-        await store.load()
-        let focus = store.add(title: "Focus")!
-        store.setFocus(focus.id)
-        store.updatePomodoro { timer, lengths, now in timer.start(lengths: lengths, now: now) }
-        try await store.flush()
-
-        let relaunched = TodoStore(storage: PluginStorage(root: root, pluginID: "p", debounce: .milliseconds(1)),
-                                   now: { start.addingTimeInterval(30 * 60) })
-        await relaunched.load()
-        #expect(relaunched.pomodoro.status == .finished)
-        #expect(relaunched.pomodoro.focusTodoId == focus.id)
-        #expect(relaunched.tickPomodoro() == .work)
-        #expect(relaunched.tickPomodoro() == nil)
-        try await relaunched.flush()
-
-        // The finished state was persisted: a second relaunch reports nothing.
-        let again = TodoStore(storage: PluginStorage(root: root, pluginID: "p"), now: { start.addingTimeInterval(60 * 60) })
-        await again.load()
-        #expect(again.pomodoro.status == .finished)
-        #expect(again.tickPomodoro() == nil)
-    }
-
-    @Test func runningSessionResumesAcrossRelaunch() async throws {
-        let root = temporaryTodosDirectory()
-        let start = Date(timeIntervalSince1970: 20_000)
-        let store = TodoStore(storage: PluginStorage(root: root, pluginID: "p", debounce: .milliseconds(1)), now: { start })
-        await store.load()
-        store.updatePomodoro { timer, lengths, now in timer.start(lengths: lengths, now: now) }
-        try await store.flush()
-        let relaunched = TodoStore(storage: PluginStorage(root: root, pluginID: "p"), now: { start.addingTimeInterval(600) })
-        await relaunched.load()
-        #expect(relaunched.pomodoro.status == .running)
-        #expect(relaunched.tickPomodoro() == nil)
-        #expect(relaunched.pomodoro.remaining(now: start.addingTimeInterval(600)) == 15 * 60)
-    }
-}
-
-/// A settable clock for `TodoStore(now:)`.
-private final class TestClock: @unchecked Sendable {
-    private let lock = NSLock()
-    private var value = Date(timeIntervalSince1970: 0)
-    var now: Date { lock.withLock { value } }
-    func advance(_ seconds: TimeInterval) { lock.withLock { value = value.addingTimeInterval(seconds) } }
-}
-
-private func temporaryTodosDirectory() -> URL {
-    let url = FileManager.default.temporaryDirectory.appending(path: "AletheTodoEditingTests-\(UUID().uuidString)")
-    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-    return url
 }

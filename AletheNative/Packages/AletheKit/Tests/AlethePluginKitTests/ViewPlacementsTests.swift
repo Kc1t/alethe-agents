@@ -38,8 +38,8 @@ struct ViewPlacementsTests {
     @Test func newTabsAppendOnTheirContributedSide() {
         var placements = ViewPlacements.empty
         placements.move("docs", to: .left, at: 0, in: tabs)
-        let arranged = placements.arranged(tabs + [tab("pomodoro"), tab("graph", .right)])
-        #expect(ids(arranged.left) == ["docs", "git", "todos", "pomodoro"])
+        let arranged = placements.arranged(tabs + [tab("extra-view"), tab("graph", .right)])
+        #expect(ids(arranged.left) == ["docs", "git", "todos", "extra-view"])
         #expect(ids(arranged.right) == ["mcp", "graph"])
     }
 

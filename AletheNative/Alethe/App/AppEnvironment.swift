@@ -62,8 +62,6 @@ final class AppEnvironment {
     let installer = AgentInstaller()
     /// Agent notifications and the in-app list (P3-11).
     let notifier = AgentNotifier()
-    /// Ticks the Todos plugin's Pomodoro session and notifies phase ends (P4-17).
-    let pomodoro = PomodoroController()
     /// AI usage of the providers (P3-13).
     let usage = UsageMonitor()
     /// Time analytics (P3-14).
@@ -267,7 +265,6 @@ final class AppEnvironment {
         graphify.start(environment: self)
         playwright.start(profileDirectory: locations.browserSession(profile), wiring: terminals.mcp, environment: self)
         notifier.start(environment: self)
-        pomodoro.start(environment: self)
         await terminals.hooks.start(terminals: terminals)
         self.profiles = profiles
         self.workspace = loadedWorkspace

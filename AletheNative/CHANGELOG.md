@@ -18,6 +18,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Queue MCP tools and `/queue` skill; `alethe_delegate` accepts `queue: true` to defer work when
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
+### Removed
+- Removed the native Pomodoro timer, focus actions, notifications, toolbar item and duration settings.
+  Existing Todos lists and template settings continue to load, ignoring legacy timer fields.
+
 ### Fixed
 - The Projects tab icon in the sidebar is no longer highlighted while Home is showing.
 - Web-style Settings follows the web category order from Account through About, with separate
@@ -26,6 +30,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   identified without creating new document fields. Native macOS Settings keeps its existing layout.
 - Image inputs report failed file drops and accept a supported image provider when unrelated drop
   items precede it. Profile photo fields use their own labels and hints.
+- Image drops and clipboard imports select the first supported attachment and report unreadable
+  image data instead of silently leaving the project or group image unchanged.
 - Settings opens at the web size (1180×780) and stays resizable instead of reopening tiny.
 - Web-style title-bar controls reserve only visible macOS traffic lights, followed by the web
   left padding. Hidden or absent buttons and fullscreen no longer leave an empty leading gap.
@@ -121,7 +127,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   440-point creation/group and 760-point project-edit widths, compact labeled fields, folder
   browsing, wrapping color swatches, footer actions and Return/Escape handling. Native-style
   sheets retain their existing forms and creation behavior.
-- Project/group editor parity remains limited to existing model settings: image fields,
+- Project/group editor parity remains limited to existing model settings:
   conflict-provider cards, validation/health-check settings and the web edit-project navigation
   are not ported. Existing theme-backed colors and clone controls remain available.
 - Web-style New Terminal and Add Sub-tab use a centered overlay, branded agent dropdowns,

@@ -1,6 +1,6 @@
 import XCTest
 
-/// The Todos tab (P4-16) and its Pomodoro (P4-17): add, edit tags, focus, settings, toolbar pill.
+/// The Todos tab: add items, edit tags and manage settings.
 @MainActor
 final class TodosTests: XCTestCase {
     override func setUp() async throws {
@@ -20,7 +20,7 @@ final class TodosTests: XCTestCase {
         app.typeKey(.return, modifierFlags: [])
     }
 
-    func testAddEditTagsAndFocus() {
+    func testAddAndEditTags() {
         let (app, _) = launchAlethe()
         newTodo("Write the report #docs", in: app)
         let row = app.staticTexts["Write the report"].firstMatch
@@ -35,9 +35,6 @@ final class TodosTests: XCTestCase {
         app.typeKey(.return, modifierFlags: [])
         XCTAssertTrue(app.staticTexts["#review #ui"].firstMatch.waitForExistence(timeout: 5), "tags were replaced")
 
-        row.rightClick()
-        app.menuItems["Focus in Pomodoro"].click()
-        XCTAssertTrue(element(app, "pomodoro.focus").waitForExistence(timeout: 5), "the panel shows the focus todo")
         app.terminate()
     }
 
@@ -55,26 +52,6 @@ final class TodosTests: XCTestCase {
         element(app, "todos.settings.done").click()
         XCTAssertTrue(eventually { !self.element(app, "todos.settings.sheet").exists })
         XCTAssertTrue(app.staticTexts["Review active workspace"].firstMatch.waitForExistence(timeout: 5), "defaults restored")
-        app.terminate()
-    }
-
-    func testToolbarPillFollowsARunningSession() {
-        let (app, _) = launchAlethe()
-        app.menuBars.menuBarItems["View"].click()
-        app.menuItems["New Todo"].click()
-        XCTAssertFalse(element(app, "pomodoro.toolbarPill").exists, "hidden while idle")
-        let start = element(app, "pomodoro.panel").buttons["Start"].firstMatch
-        XCTAssertTrue(start.waitForExistence(timeout: 5))
-        start.click()
-        let pill = element(app, "pomodoro.toolbarPill")
-        XCTAssertTrue(pill.waitForExistence(timeout: 5), "shown while running")
-        // Hide the sidebar; the pill brings the Todos tab back.
-        app.typeKey("0", modifierFlags: [.command, .option])
-        XCTAssertTrue(eventually { !self.element(app, "todos.newField").exists })
-        pill.click()
-        XCTAssertTrue(element(app, "todos.newField").waitForExistence(timeout: 5))
-        element(app, "pomodoro.panel").buttons["Reset"].firstMatch.click()
-        XCTAssertTrue(eventually { !self.element(app, "pomodoro.toolbarPill").exists }, "hidden again after reset")
         app.terminate()
     }
 }

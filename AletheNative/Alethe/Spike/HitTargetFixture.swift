@@ -8,7 +8,7 @@ import SwiftUI
 /// where it is drawn and verify the click landed. `-AletheUITestScale <n>` applies the UI scale the
 /// supported way (metrics); `-AletheUITestBrokenScale YES` applies `scaleEffect` instead (the first
 /// attempt's zoom). `-AletheUITestBrokenOverlay YES` adds an invisible full-window view that takes
-/// clicks — the first attempt's pomodoro-overlay bug — and the harness must catch it.
+/// clicks, and the harness must catch it.
 struct HitTargetFixture: View {
     @State private var toggleOn = false
     @State private var taps = 0

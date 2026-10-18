@@ -82,31 +82,49 @@ private func temporaryDirectory() -> URL {
         store.add(title: "Second")
         store.toggle(a.id)
         store.setPullRequestURL(a.id, URL(string: "https://example.com/pr/1"))
-        store.updateSettings { $0.storagePath = "/tmp/todos"; $0.pomodoroWorkMinutes = 50 }
-        store.updatePomodoro { timer, lengths, now in timer.start(lengths: lengths, now: now) }
+        store.updateSettings { $0.storagePath = "/tmp/todos" }
         try await store.flush()
 
         let reopened = TodoStore(storage: PluginStorage(root: root, pluginID: TodosPlugin.manifest.id))
         await reopened.load()
         #expect(reopened.todos == store.todos)
         #expect(reopened.settings.storagePath == "/tmp/todos")
-        #expect(reopened.settings.pomodoroWorkMinutes == 50)
-        #expect(reopened.pomodoro.status == .running)
-        #expect(reopened.pomodoro.phase == .work)
+    }
+    @Test func legacyTimerKeysDoNotAffectTodoPersistence() async throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let storage = PluginStorage(root: root, pluginID: TodosPlugin.manifest.id)
+        let todo = Todo(title: "Keep me", tags: ["legacy"], projectID: "project")
+        try await storage.encode([todo], forKey: "todos")
+        await storage.set(.object([
+            "storagePath": .string("/tmp/legacy-todos"),
+            "pomodoroWorkMinutes": .number(50),
+            "pomodoroShortBreakMinutes": .null,
+            "pomodoroLongBreakMinutes": .string("invalid legacy value"),
+        ]), forKey: "settings")
+        // Even a malformed legacy session must be ignored when loading the list.
+        await storage.set(.string("unused legacy session"), forKey: "pomodoro")
+        try await storage.flush()
+
+        let store = TodoStore(storage: storage)
+        await store.load()
+        #expect(store.todos == [todo])
+        #expect(store.settings.storagePath == "/tmp/legacy-todos")
+        store.rename(todo.id, to: "Still editable")
+        store.updateSettings { $0.storagePath = "/tmp/current-todos" }
+        try await store.flush()
+
+        let reopenedStorage = PluginStorage(root: root, pluginID: TodosPlugin.manifest.id)
+        let reopened = TodoStore(storage: reopenedStorage)
+        await reopened.load()
+        #expect(reopened.todos.first?.title == "Still editable")
+        #expect(reopened.todos.first?.tags == ["legacy"])
+        #expect(reopened.todos.first?.projectID == "project")
+        #expect(reopened.settings.storagePath == "/tmp/current-todos")
+        let settings = try #require(try await reopenedStorage.decode([String: String].self, forKey: "settings"))
+        #expect(settings == ["storagePath": "/tmp/current-todos"])
     }
 
-    @Test func expiredPomodoroSessionLoadsAsFinished() async throws {
-        let root = temporaryDirectory()
-        let start = Date(timeIntervalSince1970: 1_000)
-        let store = TodoStore(storage: PluginStorage(root: root, pluginID: "t", debounce: .milliseconds(1)), now: { start })
-        await store.load()
-        store.updatePomodoro { timer, lengths, now in timer.start(lengths: lengths, now: now) }
-        try await store.flush()
-        let later = TodoStore(storage: PluginStorage(root: root, pluginID: "t"), now: { start.addingTimeInterval(3_600) })
-        await later.load()
-        #expect(later.pomodoro.status == .finished)
-        #expect(later.pomodoro.cyclesCompleted == 1)
-    }
 }
 
 @Suite struct TodoTemplateTests {
@@ -208,68 +226,5 @@ private func temporaryDirectory() -> URL {
         plugin.store?.updateSettings { $0.storagePath = "/virtual/none" }
         await #expect(throws: PluginError.serviceUnavailable(.filesystemRead)) { try await plugin.ensureTemplate() }
         try await host.setEnabled(false, for: TodosPlugin.manifest.id)
-    }
-}
-
-@Suite struct PomodoroTimerTests {
-    let t0 = Date(timeIntervalSince1970: 0)
-    let lengths = PomodoroLengths(work: 100, shortBreak: 10, longBreak: 30, cyclesPerLongBreak: 2)
-
-    @Test func startPauseResumeReset() {
-        var timer = PomodoroTimer(focusTodoId: "todo-1")
-        #expect(timer.remaining(now: t0) == 0)
-        timer.start(lengths: lengths, now: t0)
-        #expect(timer.phase == .work && timer.status == .running)
-        #expect(timer.remaining(now: t0.addingTimeInterval(40)) == 60)
-        timer.pause(now: t0.addingTimeInterval(40))
-        #expect(timer.status == .paused)
-        #expect(timer.remaining(now: t0.addingTimeInterval(500)) == 60)
-        #expect(timer.tick(now: t0.addingTimeInterval(500)) == nil)
-        timer.resume(now: t0.addingTimeInterval(500))
-        #expect(timer.endsAt == t0.addingTimeInterval(560))
-        timer.reset()
-        #expect(timer.status == .idle && timer.phase == .idle && timer.cyclesCompleted == 0)
-        #expect(timer.focusTodoId == "todo-1")
-    }
-
-    @Test func phaseTransitionsWithLongBreakCadence() {
-        var timer = PomodoroTimer()
-        var now = t0
-        timer.start(lengths: lengths, now: now)
-        #expect(timer.tick(now: now.addingTimeInterval(99)) == nil)
-        now = now.addingTimeInterval(100)
-        #expect(timer.tick(now: now) == .work)
-        #expect(timer.status == .finished && timer.cyclesCompleted == 1)
-        timer.start(lengths: lengths, now: now)
-        #expect(timer.phase == .shortBreak)
-        now = now.addingTimeInterval(10)
-        #expect(timer.tick(now: now) == .shortBreak)
-        #expect(timer.cyclesCompleted == 1)
-        timer.start(lengths: lengths, now: now)
-        #expect(timer.phase == .work)
-        now = now.addingTimeInterval(100)
-        timer.tick(now: now)
-        timer.start(lengths: lengths, now: now)
-        #expect(timer.phase == .longBreak)
-        #expect(timer.remaining(now: now) == 30)
-        timer.start(.work, lengths: lengths, now: now)
-        #expect(timer.phase == .work)
-    }
-
-    @Test func codableSessionSurvivesRelaunch() throws {
-        var timer = PomodoroTimer(focusTodoId: "f")
-        timer.start(lengths: lengths, now: t0)
-        timer.pause(now: t0.addingTimeInterval(25))
-        let decoded = try JSONDecoder().decode(PomodoroTimer.self, from: JSONEncoder().encode(timer))
-        #expect(decoded == timer)
-        #expect(decoded.remaining(now: t0.addingTimeInterval(9_999)) == 75)
-    }
-
-    @Test func focusClearsWhenTodoCompletesOrDisappears() {
-        var timer = PomodoroTimer(focusTodoId: "a")
-        timer.validateFocus(against: [Todo(id: "a", title: "A")])
-        #expect(timer.focusTodoId == "a")
-        timer.validateFocus(against: [Todo(id: "a", title: "A", done: true)])
-        #expect(timer.focusTodoId == nil)
     }
 }

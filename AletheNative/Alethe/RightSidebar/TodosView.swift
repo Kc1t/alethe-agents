@@ -34,9 +34,8 @@ struct TodosView: View {
                     TodosWebPanel(store: store) { showingSettings = true }
                 } else {
             VStack(spacing: 0) {
-                PomodoroPill(store: store)
-                    .padding(.top, 8)
                 addRow(store)
+                    .padding(.top, metrics.size(8))
                 if metrics.isWebInterface {
                     ScrollView {
                         VStack(spacing: metrics.size(16)) {
@@ -171,12 +170,6 @@ struct TodosView: View {
                 }
             }
             Spacer(minLength: 0)
-            if store.pomodoro.focusTodoId == todo.id {
-                Image(systemName: "scope")
-                    .foregroundStyle(theme[.accent])
-                    .help("pomodoro.focusedTodo")
-                    .accessibilityLabel(Text("pomodoro.focusedTodo"))
-            }
             if let url = todo.prURL {
                 Button { NSWorkspace.shared.open(url) } label: { Image(systemName: "arrow.triangle.pull") }
                     .buttonStyle(.borderless)
@@ -191,13 +184,6 @@ struct TodosView: View {
     private func menu(_ store: TodoStore, _ todo: Todo) -> some View {
         Button("todos.rename") { beginRename(todo) }
         Button("todos.editTags") { beginTags(todo) }
-        if !todo.done {
-            if store.pomodoro.focusTodoId == todo.id {
-                Button("pomodoro.clearFocus") { store.setFocus(nil) }
-            } else {
-                Button("pomodoro.setFocus") { store.setFocus(todo.id) }
-            }
-        }
         Divider()
         if todo.projectID != nil {
             Button("todos.moveToGlobal") { store.move(todo.id, to: .global) }
