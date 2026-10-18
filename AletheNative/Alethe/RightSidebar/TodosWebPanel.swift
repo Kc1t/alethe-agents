@@ -94,6 +94,7 @@ struct TodosWebPanel: View {
         }
         .background(theme[.bg])
         .modifier(AletheSidebarWebEntrance(.sidebar))
+        .accessibilityIdentifier("todos.web.panel")
         .onChange(of: environment.newTodoRequest) { expanded = true; composerFocused = true }
     }
 
@@ -102,7 +103,7 @@ struct TodosWebPanel: View {
             HStack(spacing: metrics.size(7)) {
                 Image(systemName: "checklist").resizable().scaledToFit()
                     .frame(width: metrics.size(17), height: metrics.size(17))
-                Text("rightSidebar.todo.title").font(metrics.font(size: 14, weight: .medium))
+                Text("rightSidebar.todo.title").font(metrics.font(size: metrics.style == .clean ? 13 : 14, weight: .medium))
                 Spacer(minLength: 0)
                 Button(action: settings) {
                     Label("todos.settings", systemImage: "gearshape").font(metrics.font(size: 14))
@@ -138,7 +139,7 @@ struct TodosWebPanel: View {
             .frame(minHeight: metrics.size(32))
             .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
         }
-        .padding(.horizontal, metrics.size(10)).padding(.top, metrics.size(10))
+        .padding(.horizontal, metrics.size(metrics.style == .clean ? 8 : 10)).padding(.top, metrics.size(metrics.style == .clean ? 8 : 10))
     }
 
     private var composer: some View {
@@ -150,6 +151,7 @@ struct TodosWebPanel: View {
                 .buttonStyle(AletheSidebarUtilityStyle(width: 22, height: 22, disabledOpacity: 0.55))
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .help(Text("rightSidebar.todo.add"))
+                .accessibilityIdentifier("todos.add")
                 TextField("rightSidebar.todo.placeholder", text: $draft)
                     .textFieldStyle(.plain).font(metrics.font(size: 12)).foregroundStyle(theme[.fg])
                     .focused($composerFocused).onSubmit(add)
@@ -173,7 +175,7 @@ struct TodosWebPanel: View {
                 }
             }
         }
-        .padding(.horizontal, metrics.size(10)).padding(.top, metrics.size(10)).padding(.bottom, metrics.size(2))
+        .padding(.horizontal, metrics.size(metrics.style == .clean ? 8 : 10)).padding(.top, metrics.size(metrics.style == .clean ? 8 : 10)).padding(.bottom, metrics.size(2))
     }
 
     private func add() {
@@ -222,7 +224,7 @@ private struct TodoWebSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: metrics.size(1)) {
+        VStack(spacing: metrics.size(metrics.style == .clean ? 0 : 1)) {
             HStack(spacing: metrics.size(2)) {
                 Button { collapsed.toggle() } label: {
                     HStack(spacing: metrics.size(7)) {
@@ -230,13 +232,14 @@ private struct TodoWebSection<Content: View>: View {
                             .frame(width: metrics.size(13), height: metrics.size(13))
                             .rotationEffect(.degrees(collapsed ? -90 : 0))
                             .animation(Motion.sidebarChevron(reduceMotion: metrics.reducesMotion), value: collapsed)
-                        title.font(metrics.font(size: 11, weight: .medium)).lineLimit(1)
+                        title.font(metrics.font(size: 11, weight: metrics.style == .clean ? .semibold : .medium)).lineLimit(1)
                         Text(verbatim: String(count)).font(metrics.font(size: 9))
-                            .padding(.horizontal, metrics.size(5)).frame(minWidth: metrics.size(18), minHeight: metrics.size(16))
-                            .background(theme[.bgElevated], in: Capsule())
+                            .padding(.horizontal, metrics.size(metrics.style == .clean ? 0 : 5))
+                            .frame(minWidth: metrics.style == .clean ? nil : metrics.size(18), minHeight: metrics.style == .clean ? nil : metrics.size(16))
+                            .background(theme[.bgElevated].opacity(metrics.style == .clean ? 0 : 1), in: Capsule())
                         Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
                     }
-                    .foregroundStyle(theme[.fgMuted]).padding(.horizontal, metrics.size(5))
+                    .foregroundStyle(theme[.fgMuted]).padding(.horizontal, metrics.size(metrics.style == .clean ? 0 : 5))
                     .frame(height: metrics.size(26)).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).modifier(AletheSidebarRowHover())
@@ -284,6 +287,7 @@ private struct TodoWebRow: View {
                         .strokeBorder(theme[todo.done ? .statusWorking : .fgFaint], lineWidth: metrics.size(1.5)))
             }
             .buttonStyle(.plain).frame(width: metrics.size(19))
+            .accessibilityIdentifier("todos.toggle.\(todo.id)")
             .accessibilityLabel(Text((todo.done ? "todos.reopen" : "todos.complete") as LocalizedStringKey))
             .help(Text((todo.done ? "todos.reopen" : "todos.complete") as LocalizedStringKey))
             if editing || editingTags {
@@ -330,10 +334,11 @@ private struct TodoWebRow: View {
             }
         }
         .padding(.leading, metrics.size(1)).padding(.trailing, metrics.size(5)).padding(.vertical, metrics.size(2))
-        .frame(minHeight: metrics.size(36))
-        .background(theme[.panelHover].opacity(hovering || focused ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+        .frame(minHeight: metrics.size(metrics.style == .clean ? 30 : 36))
+        .background(theme[.panelHover].opacity(hovering || focused ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.style == .clean ? metrics.size(0) : metrics.radius(.md)))
         .animation(Motion.sidebarColor(reduceMotion: metrics.reducesMotion), value: hovering)
         .onHover { hovering = $0 }
+        .accessibilityIdentifier("todos.row.\(todo.id)")
         .contextMenu {
             Button { beginEdit() } label: { Label("todos.rename", systemImage: "pencil") }
             Button {

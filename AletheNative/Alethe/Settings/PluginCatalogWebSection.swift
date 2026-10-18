@@ -26,16 +26,18 @@ struct PluginCatalogWebSection: View {
             HStack(spacing: metrics.size(10)) {
                 Button { Task { await model.reload(refresh: true) } } label: {
                     Label("settings.web.reference.prefs.pluginsCatalogRefresh", systemImage: "arrow.clockwise")
-                }.disabled(model.loading)
+                }.disabled(model.loading).accessibilityIdentifier("plugins.catalog.refresh")
                 if model.stale { Text("settings.web.reference.market.stale").font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint]) }
             }.padding(.bottom, metrics.size(2))
             HStack(spacing: metrics.size(8)) {
-                TextField("settings.web.reference.market.search", text: $query).textFieldStyle(.plain)
+                TextField("settings.web.reference.market.search", text: $query).textFieldStyle(.plain).accessibilityIdentifier("plugins.catalog.search")
                     .padding(.horizontal, metrics.size(8)).frame(height: metrics.size(26))
                     .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                 Toggle("settings.web.reference.market.installed", isOn: $installedOnly)
+                    .accessibilityIdentifier("plugins.catalog.installed")
                 Button("plugins.web.filters") { selectedID = nil; marketplace = true }
+                    .accessibilityIdentifier("plugins.catalog.filters")
             }
             if model.failed { Text("settings.web.reference.market.error").foregroundStyle(theme[.fgMuted]) }
             else if model.loading && entries.isEmpty { Text("settings.web.reference.market.loading").foregroundStyle(theme[.fgMuted]) }
@@ -46,7 +48,7 @@ struct PluginCatalogWebSection: View {
                         VStack(alignment: .leading, spacing: metrics.size(6)) {
                             HStack(spacing: metrics.size(8)) {
                                 Button { selectedID = row.id; marketplace = true } label: { Text(verbatim: row.name).font(metrics.font(size: 12, weight: 600)) }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(.plain).accessibilityIdentifier("plugins.catalog.details.\(row.id)")
                                 Text(verbatim: row.version).font(metrics.monoFont(size: 10)).foregroundStyle(theme[.fgFaint])
                                 if row.installed { Text("settings.web.reference.market.installedMark").font(metrics.font(size: 9)).foregroundStyle(theme[.fgMuted]) }
                             }
@@ -60,7 +62,7 @@ struct PluginCatalogWebSection: View {
                                 if entry.package != nil && !row.native {
                                     Button(row.update ? "settings.web.reference.prefs.pluginsCatalogUpdate" : row.installed ? "settings.web.reference.prefs.pluginsCatalogReinstall" : "plugins.web.register") {
                                         Task { await model.perform { try await $0.install(entry) } }
-                                    }.disabled(model.busy)
+                                    }.disabled(model.busy).accessibilityIdentifier("plugins.catalog.install.\(row.id)")
                                 }
                                 if let url = URL(string: entry.downloadUrl), url.scheme == "https" {
                                     Link("settings.web.reference.prefs.pluginsCatalogSource", destination: url).font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint])
@@ -74,6 +76,7 @@ struct PluginCatalogWebSection: View {
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
             }
         }
+        .accessibilityIdentifier("plugins.catalog")
         .task { model.configure(environment); await model.reload() }
         .sheet(isPresented: $marketplace) { PluginMarketplaceWebView(model: model, initialSelection: selectedID) }
     }

@@ -30,6 +30,7 @@ struct WebVisualStyleGrid: View {
                         .strokeBorder(theme[environment.visualStyle == style ? .accent : .border], lineWidth: metrics.size(1)))
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.visualStyle.\(style.rawValue)")
                 .accessibilityAddTraits(environment.visualStyle == style ? .isSelected : [])
             }
         }

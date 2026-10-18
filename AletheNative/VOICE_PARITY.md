@@ -41,7 +41,9 @@ The existing shared Components.swift is unchanged; task-specific segments are in
   It invokes the existing registry, with no model-generated shell execution. Recorded actions mean
   the command was invoked; editor commands can still require user input.
 - The cloud Jev planner's free-form project/agent inference, prompt execution, costs/confidences,
-  continuous listening, VAD spectrum and gradient edge effects are not ported. This is a deliberate
+  continuous listening and VAD spectrum are not ported. The n3 follow-up adds edge breathing/scanning
+  and the traveling confirmation border with the CSS timing and geometry, using solid theme colors
+  and honoring reduced motion. This remains a deliberate
   native-engine subset, not full natural-language planner parity. Gradient effects also conflict
   with the repository's design rule.
 - Voice history records failures, blocked matches, waiting confirmations and invoked commands.

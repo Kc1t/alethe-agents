@@ -48,6 +48,7 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
         .overlay(RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 12))
             .strokeBorder(theme[open || focused ? .accent : hovering ? .borderStrong : .border],
                           lineWidth: metrics.size(1)))
+        .accessibilityIdentifier("newTerminal.rowSelect")
         .focused($focused)
         .onHover { hovering = $0 }
         .onKeyPress(.downArrow) { move(1); return .handled }
@@ -109,6 +110,7 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
                         .onHover { if $0 { active = index } }
                         .accessibilityAddTraits(value == selection ? [.isSelected] : [])
                         .id(index)
+                        .accessibilityIdentifier("newTerminal.rowSelect.option.\(index)")
                     }
                 }.padding(metrics.size(5))
             }

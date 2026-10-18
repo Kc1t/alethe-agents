@@ -8,6 +8,8 @@ struct JevVoiceBar: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
 
+    @State private var appeared = false
+
     var body: some View {
         let jev = environment.dictation.jev
         VStack(spacing: metrics.size(12)) {
@@ -26,15 +28,18 @@ struct JevVoiceBar: View {
                     HStack(spacing: metrics.size(8)) {
                         if jev.pendingID != nil {
                             Button("jev.run") { jev.confirm() }.buttonStyle(AletheButtonStyle(.primary))
+                                .accessibilityIdentifier("jev.run")
                         }
                         Button("jev.cancel") { environment.dictation.cancelSession() }
                             .buttonStyle(AletheButtonStyle())
+                            .accessibilityIdentifier("jev.cancel")
                     }
                 }
                 .padding(.vertical, metrics.size(20)).padding(.horizontal, metrics.size(24))
                 .frame(minWidth: metrics.size(280), maxWidth: metrics.size(420))
                 .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(32)))
                 .overlay(RoundedRectangle(cornerRadius: metrics.size(32)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                .overlay { JevVoiceBorder() }
             }
             Button { environment.dictation.toggleVoice() } label: {
                 Image(systemName: "mic").font(metrics.font(size: 21))
@@ -58,6 +63,10 @@ struct JevVoiceBar: View {
         }
         .frame(maxWidth: metrics.size(520))
         .padding(.bottom, metrics.size(44))
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : metrics.size(8))
+        .animation(metrics.reducesMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.28), value: appeared)
+        .onAppear { appeared = true }
         .accessibilityIdentifier("jev.voiceBar")
     }
 }

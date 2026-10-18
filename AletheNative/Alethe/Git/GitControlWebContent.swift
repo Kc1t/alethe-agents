@@ -7,19 +7,16 @@ import SwiftUI
 
 extension GitControlSheet {
     var webContent: some View {
-        GitWebModal(close: closeWeb, closeIdentifier: "git.close") { Text("git.title") } content: {
-            VStack(spacing: 0) {
-                if let model {
-                    if let error = model.error { errorBanner(error, model) }
-                    switch model.phase {
-                    case .loading: ProgressView().padding(metrics.size(24))
-                    case .notARepository: notARepository(model).frame(minHeight: metrics.size(180))
-                    case .ready: webRepository(model)
-                    }
-                } else { Text("git.noProject").foregroundStyle(theme[.fgMuted]) }
+        Group {
+            if embedded {
+                ScrollView { webPanelBody }
+            } else {
+                GitWebModal(close: closeWeb, closeIdentifier: "git.close") { Text("git.title") } content: {
+                    webPanelBody
+                } footer: { EmptyView() }
+                .frame(width: closeOverlay == nil ? metrics.size(520) : nil)
             }
-        } footer: { EmptyView() }
-        .frame(width: closeOverlay == nil ? metrics.size(520) : nil)
+        }
         .task { await loadModel() }
         .onDisappear { model?.stop() }
         .gitWebSheet(isPresented: $creatingBranch, width: 440) {
@@ -47,6 +44,19 @@ extension GitControlSheet {
             Button("editor.cancel", role: .cancel) {}
         } message: { entry in Text(verbatim: format("git.discard.message", entry.path)) }
         .accessibilityIdentifier("git.control")
+    }
+
+    private var webPanelBody: some View {
+        VStack(spacing: 0) {
+            if let model {
+                if let error = model.error { errorBanner(error, model) }
+                switch model.phase {
+                case .loading: ProgressView().padding(metrics.size(24))
+                case .notARepository: notARepository(model).frame(minHeight: metrics.size(180))
+                case .ready: webRepository(model)
+                }
+            } else { Text("git.noProject").foregroundStyle(theme[.fgMuted]) }
+        }
     }
 
     func closeWeb() { if let closeOverlay { closeOverlay() } else { dismiss() } }
@@ -228,7 +238,7 @@ extension GitControlSheet {
         workspace.update(undoManager: undoManager, actionName: String(localized: "undo.addContent")) {
             _ = $0.addPane(to: projectID, content: content)
         }
-        if let closeOverlay { closeOverlay() } else { dismiss() }
+        if !embedded { closeWeb() }
         return true
     }
 

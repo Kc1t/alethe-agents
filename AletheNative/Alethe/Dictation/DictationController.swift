@@ -75,8 +75,8 @@ final class DictationController {
                 }
                 return true
             }
-            if jev.open, event.type == .keyDown, event.keyCode == 53 { cancelSession(); return true }
-            if jev.open, event.type == .keyDown, event.keyCode == 36, jev.pendingID != nil {
+            if jev.open, event.type == .keyDown, !event.isARepeat, event.keyCode == 53 { cancelSession(); return true }
+            if jev.open, event.type == .keyDown, !event.isARepeat, event.keyCode == 36, jev.pendingID != nil {
                 jev.confirm(); return true
             }
             if jev.open, event.keyCode == 101 {
