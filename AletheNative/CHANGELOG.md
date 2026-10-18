@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Settings, right sidebar and chrome parity (c2)
+- The Agents and Queue right-sidebar tabs no longer depend on the orchestrator feature flag (web `agentsPanel` is always on).
+- Settings: 52pt bottom padding under the content; Features gains the "Review my MCP servers" link (reopens the MCP intro); Appearance lists every contributed sidebar tab with a Left/Right placement dropdown.
+- Web interface: the disabled-pane overlay uses the web icon box, name and Reactivate button; the usage pill outline is the 15% agent soft tone; What's New shows the unread dot while a newer native release is available.
+- Todos: Cmd+N focuses and expands the composer. Orchestrator board: Cmd/Ctrl + scroll wheel zooms around the pointer.
+- Recent chats (web interface): "Open here" restarts the focused terminal pane on the chat, "New pane" resumes it in a new one.
+- Find/Jump lists plugin commands placed in Find/Jump.
+
 ### Context menu parity
 - In the web interface, project, group, terminal, workspace-tab, pane-header and grid/layout menus
   use a themed panel like the web `ContextMenu`: elevated surface, 1pt border, 8pt radius, shadow,

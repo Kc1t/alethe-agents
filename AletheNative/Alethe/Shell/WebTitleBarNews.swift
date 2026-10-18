@@ -94,6 +94,32 @@ struct WebTitleBarNews: View {
     }
 }
 
+/// TitleBar.module.css `.whatsNewDot`: a 5pt status-working dot at top 4 / right 4 of the What's New
+/// button while a newer native release is waiting (the web's `updateInfo`).
+private struct WebTitleBarNewsBadge: ViewModifier {
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @State private var pending = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .topTrailing) {
+                if pending {
+                    Circle().fill(theme[.statusWorking])
+                        .frame(width: metrics.size(5), height: metrics.size(5))
+                        .padding(.top, metrics.size(4)).padding(.trailing, metrics.size(4))
+                        .allowsHitTesting(false)
+                        .accessibilityIdentifier("chrome.whatsNew.badge")
+                }
+            }
+            .task { pending = await SidebarNativeRelease.check() != nil }
+    }
+}
+
+extension View {
+    func webTitleBarNewsBadge() -> some View { modifier(WebTitleBarNewsBadge()) }
+}
+
 /// UpdateModal.tsx. Native builds are not installed in place: the primary action opens the release.
 struct UpdateAvailableWebModal: View {
     let release: SidebarNativeRelease

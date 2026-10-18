@@ -39,6 +39,7 @@ struct WebTitleBar: View {
                 .help(Text(sidebarVisible ? "titlebar.sidebar.close" : "titlebar.sidebar.open"))
                 if threeAreas {
                     icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
+                        .webTitleBarNewsBadge()
                 }
                 if threeAreas { Spacer(minLength: 0) }
 
@@ -59,6 +60,7 @@ struct WebTitleBar: View {
                     HStack(spacing: metrics.size(4)) {
                         if !threeAreas {
                             icon("newspaper", label: "chrome.whatsNew", id: "chrome.whatsNew", size: 13) { showsNews.toggle() }
+                                .webTitleBarNewsBadge()
                         }
                         if shown(.sync) {
                             SyncToolbarItem()

@@ -135,19 +135,61 @@ func format(_ key: String.LocalizationValue, _ arguments: any CVarArg...) -> Str
 /// output comes back with it.
 struct DisabledPaneOverlay: View {
     var agent: String = "shell"
+    /// Web: the terminal name under the icon and its working directory (both optional).
+    var name: String?
+    var cwd: String?
     let onEnable: () -> Void
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        VStack(spacing: metrics.space(.m)) {
-            if metrics.isWebInterface {
-                AgentLogo(agent: agent, size: 56, templateColor: theme[AgentTokens.accent(for: agent)])
-            } else {
-                Image(systemName: "pause.circle").webProfileSized(14)
-                    .font(metrics.font(.title1))
-                    .foregroundStyle(theme[.statusDisabled])
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    /// TerminalPane.module.css `.disabledOverlay`: gap 10, padding 24, 64 icon box with a 56 logo at 0.85.
+    private var webBody: some View {
+        VStack(spacing: metrics.size(10)) {
+            AgentLogo(agent: agent, size: 56, templateColor: theme[AgentTokens.accent(for: agent)])
+                .frame(width: metrics.size(64), height: metrics.size(64))
+                .opacity(0.85)
+                .padding(.bottom, metrics.size(4))
+            Text(verbatim: name ?? agent.capitalized)
+                .font(metrics.font(size: 16, weight: .semibold))
+                .foregroundStyle(theme[.fg])
+                .multilineTextAlignment(.center)
+            if let cwd, !cwd.isEmpty {
+                Text(verbatim: cwd)
+                    .font(metrics.monoFont(size: 11))
+                    .foregroundStyle(theme[.fgFaint])
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.bottom, metrics.size(12))
             }
+            Button(action: onEnable) {
+                Text("pane.web.reactivate")
+                    .font(metrics.font(size: 13, weight: .medium))
+                    .foregroundStyle(theme[.fg])
+                    .padding(.horizontal, metrics.size(18))
+                    .padding(.vertical, metrics.size(7))
+                    .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                    .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                        .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("pane.enable")
+        }
+        .padding(metrics.size(24))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme[.bgSunken])
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("pane.disabled")
+    }
+
+    private var nativeBody: some View {
+        VStack(spacing: metrics.space(.m)) {
+            Image(systemName: "pause.circle").webProfileSized(14)
+                .font(metrics.font(.title1))
+                .foregroundStyle(theme[.statusDisabled])
             Text("pane.disabled.title")
                 .font(metrics.font(.headline))
                 .foregroundStyle(theme[.textPrimary])
