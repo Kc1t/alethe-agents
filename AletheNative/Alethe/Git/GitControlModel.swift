@@ -16,6 +16,8 @@ final class GitControlModel {
 
     enum RemoteAction: Equatable {
         case fetch, pull, push
+        /// Web "Sync": pull when behind, then push.
+        case sync
     }
 
     let folder: URL
@@ -112,6 +114,47 @@ final class GitControlModel {
         perform { try await self.repository?.discard([entry.path], untracked: entry.isUntracked) }
     }
 
+    /// Web `discard`: several paths at once (a folder or a whole group).
+    func discard(paths: [String], untracked: Bool) {
+        guard !paths.isEmpty else { return }
+        perform { try await self.repository?.discard(paths, untracked: untracked) }
+    }
+
+    /// Paths a commit can stage on its own: changes, untracked files and conflicts (web `allStageable`).
+    var stageablePaths: [String] {
+        guard let status else { return [] }
+        var seen = Set<String>()
+        return status.entries.filter { $0.isUnstaged || $0.isUntracked || $0.isConflict }
+            .map(\.path).filter { seen.insert($0).inserted }
+    }
+
+    /// Web commit button: enabled with a message and any change at all.
+    var canCommitWeb: Bool {
+        guard !busy, let status else { return false }
+        let hasMessage = !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return amend ? true : hasMessage && (!status.staged.isEmpty || !stageablePaths.isEmpty)
+    }
+
+    /// Whether committing now first needs the "stage everything?" confirmation (nothing staged).
+    var commitNeedsStageAll: Bool { !amend && (status?.staged.isEmpty ?? true) }
+
+    /// Web `commit`: refuses with conflicts; with nothing staged, stages everything first.
+    func commitWeb(stagingAll: Bool) {
+        guard canCommitWeb else { return }
+        if amend { commit(); return }
+        if status?.entries.contains(where: \.isConflict) == true {
+            error = String(localized: "git.web.error.conflicts")
+            return
+        }
+        let message = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let paths = stageablePaths
+        perform {
+            if stagingAll { try await self.repository?.stage(paths) }
+            try await self.repository?.commit(message: message, amend: false)
+            self.message = ""
+        }
+    }
+
     func switchBranch(_ name: String) { perform { try await self.repository?.switchBranch(name) } }
 
     /// The problem with a new branch name, or nil when it can be created.
@@ -157,6 +200,9 @@ final class GitControlModel {
                 case .fetch: _ = try await repository.fetch(onProgress: report)
                 case .pull: _ = try await repository.pull(onProgress: report)
                 case .push: _ = try await repository.push(onProgress: report)
+                case .sync:
+                    if (self.status?.branch.behind ?? 0) > 0 { _ = try await repository.pull(onProgress: report) }
+                    _ = try await repository.push(onProgress: report)
                 }
             } catch {
                 self.error = Self.describe(error)

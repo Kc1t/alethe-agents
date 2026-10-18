@@ -14,28 +14,11 @@ struct GitGraphView: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let error = history.error {
-                HStack(alignment: .top) {
-                    Label {
-                        Text(verbatim: error).textSelection(.enabled)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                    }
-                    .font(.callout)
-                    .foregroundStyle(theme[.statusStopped])
-                    Spacer()
-                    Button { history.dismissError() } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel(Text("git.dismissError"))
-                }
-                .padding(metrics.space(.m))
-                .accessibilityIdentifier("git.history.error")
-            }
-            list
-            if let hash = history.selection {
-                Divider()
-                detail(hash)
+        Group {
+            if metrics.isWebInterface {
+                GitGraphWebView(history: history) { menu($0) }
+            } else {
+                nativeBody
             }
         }
         .task { await history.reload() }
@@ -64,6 +47,33 @@ struct GitGraphView: View {
                                          set: { if !$0 { hardResetTarget = nil } }), width: 440) {
             GitGraphResetWebModal(hash: hardResetTarget ?? "") {
                 if let hash = hardResetTarget { history.reset(hash, mode: .hard) }
+            }
+        }
+    }
+
+    private var nativeBody: some View {
+        VStack(spacing: 0) {
+            if let error = history.error {
+                HStack(alignment: .top) {
+                    Label {
+                        Text(verbatim: error).textSelection(.enabled)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                    }
+                    .font(.callout)
+                    .foregroundStyle(theme[.statusStopped])
+                    Spacer()
+                    Button { history.dismissError() } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel(Text("git.dismissError"))
+                }
+                .padding(metrics.space(.m))
+                .accessibilityIdentifier("git.history.error")
+            }
+            list
+            if let hash = history.selection {
+                Divider()
+                detail(hash)
             }
         }
     }
