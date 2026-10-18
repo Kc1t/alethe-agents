@@ -8,7 +8,10 @@ struct SettingsView: View {
     @Environment(\.metrics) private var metrics
 
     var body: some View {
-        if metrics.isWebInterface { WebSettingsView() } else { nativeBody }
+        Group {
+            if metrics.isWebInterface { WebSettingsView() } else { nativeBody }
+        }
+        .gitWebModalLayer()
     }
 
     private var nativeBody: some View {

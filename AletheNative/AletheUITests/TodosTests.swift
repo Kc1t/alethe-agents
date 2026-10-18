@@ -48,10 +48,12 @@ final class TodosTests: XCTestCase {
         XCTAssertTrue(element(app, "todos.settings.sheet").waitForExistence(timeout: 5))
         XCTAssertTrue(element(app, "todos.settings.folder").exists)
         element(app, "todos.settings.reset").click()
-        app.buttons["Reset to Default List"].firstMatch.click()
+        let confirm = app.buttons["webConfirmation.confirm"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.click()
         element(app, "todos.settings.done").click()
         XCTAssertTrue(eventually { !self.element(app, "todos.settings.sheet").exists })
-        XCTAssertTrue(app.staticTexts["Review active workspace"].firstMatch.waitForExistence(timeout: 5), "defaults restored")
+        XCTAssertTrue(app.buttons["Review active workspace"].firstMatch.waitForExistence(timeout: 5), "defaults restored")
         app.terminate()
     }
 }

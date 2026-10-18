@@ -15,7 +15,7 @@ struct WebSettingsView: View {
     @State private var profileHovering = false
     @State private var closeHovering = false
 
-    private enum Category: Hashable { case account, organization, appearance, remote, features, plugins, terminal, integrations, orchestration, multiagent, about }
+    private enum Category: String, Hashable { case account, organization, appearance, remote, features, plugins, terminal, integrations, orchestration, multiagent, about }
     private struct Destination: Identifiable {
         let id: Category
         let title: LocalizedStringKey
@@ -202,6 +202,7 @@ struct WebSettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.web.category.\(destination.id.rawValue)")
                     .foregroundStyle(theme[destination.id == selection || hovering == destination.id ? .fg : .fgMuted])
                     .background(theme[destination.id == selection ? .bgSunken : .panelHover].opacity(destination.id == selection || hovering == destination.id ? 1 : 0), in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
                     .onHover { hovering = $0 ? destination.id : nil }

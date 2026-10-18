@@ -20,6 +20,36 @@ final class ToolbarSettingsTests: XCTestCase {
         XCTAssertTrue(element(app, "settings.toolbar.memory").waitForExistence(timeout: 5))
     }
 
+    func testWebNestedProfileAndToolbarDialogs() {
+        let (app, _) = launchAlethe(arguments: ["-interfaceStyle", "web"])
+        XCTAssertTrue(element(app, "workspace.empty").waitForExistence(timeout: 5))
+        app.typeKey(",", modifierFlags: .command)
+        let manage = app.buttons["settings.profiles.manage"].firstMatch
+        XCTAssertTrue(manage.waitForExistence(timeout: 5))
+        let profileScroll = app.scrollViews.containing(.button, identifier: "settings.profiles.manage").firstMatch
+        for _ in 0..<8 where !manage.isHittable { profileScroll.scroll(byDeltaX: 0, deltaY: -300) }
+        manage.click()
+        XCTAssertTrue(element(app, "settings.profiles.newName").waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(eventually { !self.element(app, "settings.profiles.newName").exists })
+        app.buttons["settings.web.category.appearance"].firstMatch.click()
+        let toolbar = app.buttons["settings.toolbar.open"].firstMatch
+        XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
+        let appearanceScroll = app.scrollViews.containing(.button, identifier: "settings.toolbar.open").firstMatch
+        for _ in 0..<12 where !toolbar.isHittable { appearanceScroll.scroll(byDeltaX: 0, deltaY: -300) }
+        XCTAssertTrue(toolbar.isHittable)
+        toolbar.click()
+        let memory = element(app, "settings.toolbar.memory")
+        XCTAssertTrue(memory.waitForExistence(timeout: 5))
+        let old = memory.value as? Int
+        memory.click()
+        XCTAssertTrue(eventually { (memory.value as? Int) != old })
+        app.buttons["settingsSubdialog.done"].firstMatch.click()
+        XCTAssertTrue(eventually { !memory.exists })
+        XCTAssertTrue(toolbar.exists, "the parent Settings page remains open")
+        app.terminate()
+    }
+
     func testHidingAndRestoringAnItem() {
         let (app, root) = launchAlethe()
         XCTAssertTrue(element(app, "workspace.empty").waitForExistence(timeout: 5))

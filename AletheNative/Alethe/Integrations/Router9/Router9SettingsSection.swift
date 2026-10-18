@@ -53,7 +53,7 @@ struct Router9SettingsSection: View {
             footer
         }
         .task { await controller.watch() }
-        .sheet(item: $installAction) { action in
+        .gitWebSheet(item: $installAction, width: 640) { action in
             Router9InstallSheet(action: action)
                 .environment(environment)
                 .environment(\.theme, theme)

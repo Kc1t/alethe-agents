@@ -13,7 +13,11 @@ struct TodosSettingsSheet: View {
     let store: TodoStore
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
-    @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var nativeDismiss
+    @Environment(\.modalsM2Close) private var closeOverlay
+    private func dismiss() {
+        if let closeOverlay { closeOverlay() } else { nativeDismiss() }
+    }
     @State private var path = ""
     @State private var choosingFolder = false
     @State private var confirming: Confirmation?
@@ -27,6 +31,55 @@ struct TodosSettingsSheet: View {
     }
 
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: dismiss) {
+            Text("todos.settings.title")
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.size(14)) {
+                Text("todos.settings.template").font(metrics.font(size: 13, weight: .semibold))
+                TextField("todos.settings.folder.placeholder", text: $path)
+                    .modifier(ProjectGroupWebInput(mono: true))
+                    .onSubmit { Task { await savePath() } }.accessibilityIdentifier("todos.settings.folder")
+                HStack {
+                    Button("todos.settings.choose") { choosingFolder = true }
+                    Button("todos.settings.clear") { path = ""; Task { await savePath() } }.disabled(path.isEmpty)
+                }
+                if let url = store.templateURL {
+                    Text(verbatim: url.path).font(metrics.monoFont(size: 11)).foregroundStyle(theme[.fgMuted])
+                        .textSelection(.enabled)
+                }
+                HStack {
+                    Button("todos.settings.open") { Task { await openTemplate() } }
+                    Button("todos.settings.import") { confirming = .importTemplate }
+                    Button("todos.settings.export") { confirming = .exportTemplate }
+                }.disabled(store.templateURL == nil || busy)
+                Button("todos.settings.reset", role: .destructive) { confirming = .reset }
+                    .accessibilityIdentifier("todos.settings.reset")
+                if let message { Text(verbatim: message).foregroundStyle(theme[.statusActive]) }
+                if let error { Text(verbatim: error).foregroundStyle(theme[.statusStopped]).textSelection(.enabled) }
+            }
+        } footer: {
+            if busy { ProgressView().controlSize(.small) }
+            Spacer()
+            Button("todos.settings.done") { Task { await close() } }
+                .keyboardShortcut(.defaultAction).accessibilityIdentifier("todos.settings.done")
+        }
+        .onAppear { path = store.settings.storagePath }
+        .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
+            if case .success(let url) = result { path = url.path; Task { await savePath() } }
+        }
+        .gitWebSheet(item: $confirming, width: 440) { action in
+            WebConfirmationModal(title: Text(confirmationTitle), message: Text(confirmationMessage(action)),
+                confirm: confirmationButton(action)) { Task { await perform(action) } }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("todos.settings.sheet")
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             Text("todos.settings.title").font(.headline)
             Form {

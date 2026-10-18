@@ -164,3 +164,52 @@ struct ModalsM2InstallLog: View {
 extension EnvironmentValues {
     @Entry var modalsM2Close: (() -> Void)? = nil
 }
+
+/// Scrollable settings content embedded in a modal uses a bounded viewport at every interface zoom.
+struct WebSettingsSubdialog<Content: View>: View {
+    let title: LocalizedStringKey
+    @ViewBuilder let content: () -> Content
+    @Environment(\.modalsM2Close) private var closeOverlay
+    @Environment(\.newTerminalModalHeight) private var maximumHeight
+    @Environment(\.metrics) private var metrics
+
+    var body: some View {
+        GitWebModal(close: { closeOverlay?() }) {
+            Text(title)
+        } content: {
+            content()
+                .frame(height: max(metrics.size(100), min(metrics.size(420), maximumHeight - metrics.size(140))))
+        } footer: {
+            Spacer()
+            Button("agentInstall.done") { closeOverlay?() }
+                .accessibilityIdentifier("settingsSubdialog.done")
+        }
+    }
+}
+
+/// Destructive actions keep an explicit confirmation while using the active theme and window layer.
+struct WebConfirmationModal: View {
+    let title: Text
+    let message: Text
+    let confirm: LocalizedStringKey
+    var destructive = true
+    var confirmIdentifier = "webConfirmation.confirm"
+    let action: () -> Void
+    @Environment(\.modalsM2Close) private var closeOverlay
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        GitWebModal(close: { closeOverlay?() }) {
+            title
+        } content: {
+            message.font(metrics.font(size: 12)).foregroundStyle(theme[.fgMuted])
+        } footer: {
+            Spacer()
+            Button("editor.cancel") { closeOverlay?() }
+            Button(confirm) { action(); closeOverlay?() }
+                .buttonStyle(AletheButtonStyle(destructive ? .danger : .primary))
+                .accessibilityIdentifier(confirmIdentifier)
+        }
+    }
+}

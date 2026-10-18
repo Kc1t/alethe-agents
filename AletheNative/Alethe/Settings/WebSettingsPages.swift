@@ -69,11 +69,13 @@ struct WebAccountSettings: View {
             Section {
                 Button { managing = true } label: {
                     Label("settings.web.reference.profile.manageAccounts", systemImage: "person")
-                }
+                }.accessibilityIdentifier("settings.profiles.manage")
             } header: { Text("settings.web.reference.prefs.localAccounts") }
               footer: { Text("settings.web.reference.prefs.localAccountsDesc") }
         }
-        .sheet(isPresented: $managing) { ProfileSettings().frame(width: metrics.size(700), height: metrics.size(550)) }
+        .gitWebSheet(isPresented: $managing, width: 700) {
+            WebSettingsSubdialog(title: "settings.profiles.tab") { ProfileSettings() }
+        }
         .onAppear {
             name = environment.activeProfileName
             let values = (try? JSONDecoder().decode([String: String].self, from: Data(avatars.utf8))) ?? [:]

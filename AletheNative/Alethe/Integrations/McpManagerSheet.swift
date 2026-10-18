@@ -79,37 +79,20 @@ private struct McpManagerContent: View {
             await model.refresh()
         }
         .onDisappear { model.close() }
-        .sheet(isPresented: Binding(get: { !metrics.isWebInterface && adding }, set: { adding = $0 })) {
+        .gitWebSheet(isPresented: $adding, width: 620) {
             McpServerEditor(model: model, editing: nil)
         }
-        .sheet(item: Binding(get: { metrics.isWebInterface ? nil : editing }, set: { editing = $0 })) { target in
+        .gitWebSheet(item: $editing, width: 620) { target in
             McpServerEditor(model: model, editing: target.record)
         }
-        .sheet(item: $backupsFor) { target in
+        .gitWebSheet(item: $backupsFor, width: 520) { target in
             McpBackupsSheet(model: model, record: target.record)
         }
-        .overlay {
-            if metrics.isWebInterface && adding {
-                NewTerminalWebOverlay(onClose: { adding = false }, defaultWidth: 620) { close in
-                    McpServerEditor(model: model, editing: nil).environment(\.modalsM2Close, close)
-                }
-            }
-            if metrics.isWebInterface, let editing {
-                NewTerminalWebOverlay(onClose: { self.editing = nil }, defaultWidth: 620) { close in
-                    McpServerEditor(model: model, editing: editing.record).environment(\.modalsM2Close, close)
-                }
-            }
-            if metrics.isWebInterface, let records = removal {
-                NewTerminalWebOverlay(onClose: { removal = nil }, defaultWidth: 420, minimumWidth: 320) { close in
-                    ModalsM2WebModal(title: Text("mcp.remove.title"), close: close, width: 420) {
-                        Text(verbatim: removalMessage(records)).font(metrics.font(size: 12)).foregroundStyle(theme[.fgFaint])
-                    } footer: {
-                        Spacer()
-                        Button("editor.cancel", action: close)
-                        Button("mcp.remove.action") { close(); Task { await model.remove(records) } }
-                            .buttonStyle(AletheButtonStyle(.danger)).accessibilityIdentifier("mcp.remove.confirm")
-                    }
-                }
+        .gitWebSheet(isPresented: Binding(get: { metrics.isWebInterface && removal != nil },
+            set: { if !$0 { removal = nil } }), width: 420) {
+            if let records = removal {
+                WebConfirmationModal(title: Text("mcp.remove.title"), message: Text(verbatim: removalMessage(records)),
+                    confirm: "mcp.remove.action", confirmIdentifier: "mcp.remove.confirm") { Task { await model.remove(records) } }
             }
         }
         .confirmationDialog(Text("mcp.remove.title"), isPresented: Binding {
@@ -638,7 +621,66 @@ private struct McpBackupsSheet: View {
     @State private var backups: [ConfigBackup]?
     @State private var restoring: ConfigBackup?
 
+    private func closeWeb() {
+        if let closeOverlay { closeOverlay() } else { dismiss() }
+    }
+
     var body: some View {
+        if metrics.isWebInterface { webBody } else { nativeBody }
+    }
+
+    private var webBody: some View {
+        GitWebModal(close: closeWeb) {
+            Text("mcp.backups.title")
+        } content: {
+            VStack(alignment: .leading, spacing: metrics.size(12)) {
+                Text(verbatim: record.sourceURL.path(percentEncoded: false))
+                    .font(metrics.monoFont(size: 11)).foregroundStyle(theme[.fgMuted])
+                    .lineLimit(2).textSelection(.enabled)
+                if let backups {
+                    if backups.isEmpty {
+                        Text("mcp.backups.empty").foregroundStyle(theme[.fgMuted])
+                            .frame(maxWidth: .infinity, minHeight: metrics.size(120))
+                            .accessibilityIdentifier("mcp.backups.empty")
+                    } else {
+                        LazyVStack(spacing: metrics.size(8)) {
+                            ForEach(Array(backups.enumerated()), id: \.element.id) { index, backup in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: metrics.size(3)) {
+                                        Text(verbatim: backup.createdAt.formatted(date: .abbreviated, time: .standard))
+                                        Text(verbatim: ByteCountFormatter.string(fromByteCount: Int64(backup.size), countStyle: .file))
+                                            .font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                                    }
+                                    Spacer()
+                                    Button("mcp.backups.restore") { restoring = backup }
+                                        .disabled(model.busy).accessibilityIdentifier("mcp.backups.restore.\(index)")
+                                }.padding(metrics.size(10))
+                                .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                            }
+                        }.accessibilityIdentifier("mcp.backups.list")
+                    }
+                } else { ProgressView().frame(maxWidth: .infinity, minHeight: metrics.size(120)) }
+                Text("mcp.backups.note").font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint])
+            }
+        } footer: {
+            Spacer()
+            Button("agentInstall.done", action: closeWeb).accessibilityIdentifier("mcp.backups.done")
+        }
+        .task { backups = await model.backups(for: record) }
+        .gitWebSheet(isPresented: Binding(get: { restoring != nil }, set: { if !$0 { restoring = nil } }), width: 440) {
+            if let backup = restoring {
+                WebConfirmationModal(title: Text("mcp.backups.confirmTitle"),
+                    message: Text(verbatim: format("mcp.backups.confirmMessage", record.sourceURL.lastPathComponent,
+                        backup.createdAt.formatted(date: .abbreviated, time: .standard))), confirm: "mcp.backups.restore", confirmIdentifier: "mcp.backups.confirm") {
+                    Task { await model.restore(backup, for: record); closeWeb() }
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("mcp.backups")
+    }
+
+    private var nativeBody: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             Text("mcp.backups.title").font(metrics.font(.title3))
             Text(verbatim: record.sourceURL.path(percentEncoded: false))

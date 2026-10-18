@@ -114,9 +114,12 @@ private struct GitWebSheet<Sheet: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         if metrics.isWebInterface && hasLayer {
-            content.preference(key: GitWebPresentationKey.self, value: isPresented ? [
-                GitWebPresentation(width: width, close: { isPresented = false }, content: { AnyView(sheet()) })
-            ] : [])
+            content.transformPreference(GitWebPresentationKey.self) { requests in
+                if isPresented {
+                    requests.append(GitWebPresentation(width: width, close: { isPresented = false },
+                        content: { AnyView(sheet()) }))
+                }
+            }
         } else {
             content.sheet(isPresented: $isPresented) {
                 if metrics.isWebInterface {
@@ -136,4 +139,41 @@ extension View {
 
     /// Install once on the window content, alongside the editor overlay.
     func gitWebModalLayer() -> some View { modifier(GitWebPresentationLayer()) }
+}
+
+/// Identifiable settings/configuration editors use the same window layer as Boolean presentations.
+private struct GitWebItemSheet<Item: Identifiable, Sheet: View>: ViewModifier {
+    @Binding var item: Item?
+    let width: CGFloat
+    let onDismiss: (() -> Void)?
+    @ViewBuilder let sheet: (Item) -> Sheet
+    @Environment(\.metrics) private var metrics
+    @Environment(\.gitWebHasPresentationLayer) private var hasLayer
+
+    func body(content: Content) -> some View {
+        if metrics.isWebInterface && hasLayer {
+            content.transformPreference(GitWebPresentationKey.self) { requests in
+                if let value = item {
+                    requests.append(GitWebPresentation(width: width, close: { item = nil },
+                        content: { AnyView(sheet(value)) }))
+                }
+            }
+            .onChange(of: item?.id) { old, current in
+                if old != nil && current == nil { onDismiss?() }
+            }
+        } else {
+            content.sheet(item: $item, onDismiss: onDismiss) { value in
+                sheet(value)
+                    .environment(\.gitModalClose, metrics.isWebInterface ? { item = nil } : nil)
+                    .environment(\.modalsM2Close, metrics.isWebInterface ? { item = nil } : nil)
+            }
+        }
+    }
+}
+
+extension View {
+    func gitWebSheet<Item: Identifiable, Sheet: View>(item: Binding<Item?>, width: CGFloat,
+        onDismiss: (() -> Void)? = nil, @ViewBuilder content: @escaping (Item) -> Sheet) -> some View {
+        modifier(GitWebItemSheet(item: item, width: width, onDismiss: onDismiss, sheet: content))
+    }
 }

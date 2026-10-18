@@ -242,6 +242,7 @@ struct AppearanceSettings: View {
               footer: { Text("settings.web.reference.prefs.uiZoomDesc") }
             Section {
                 Button("settings.toolbar") { showingToolbar = true }
+                    .accessibilityIdentifier("settings.toolbar.open")
                 AletheSelect(selection: Binding { environment.interfaceStyle } set: { environment.interfaceStyle = $0 }, options: InterfaceStyle.allCases) { style in
                     Text(style.title)
                 }
@@ -258,8 +259,8 @@ struct AppearanceSettings: View {
 
         }
         .disabled(environment.preferences == nil)
-        .sheet(isPresented: $showingToolbar) {
-            ToolbarSettings().frame(width: metrics.size(700), height: metrics.size(600))
+        .gitWebSheet(isPresented: $showingToolbar, width: 700) {
+            WebSettingsSubdialog(title: "settings.toolbar") { ToolbarSettings() }
         }
     }
 

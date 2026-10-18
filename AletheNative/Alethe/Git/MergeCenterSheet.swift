@@ -108,7 +108,7 @@ struct MergeCenterSheet: View {
         .confirmationDialog("merge.cleanup.confirm", isPresented: $confirmCleanup) {
             Button("merge.cleanup", role: .destructive) { model.forceCleanup() }
         }
-        .sheet(isPresented: $testingBranch) {
+        .gitWebSheet(isPresented: $testingBranch, width: 560) {
             BranchTestingSheet(folder: model.folder, initialBranch: model.source)
         }
     }

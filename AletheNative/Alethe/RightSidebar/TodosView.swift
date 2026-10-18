@@ -60,7 +60,7 @@ struct TodosView: View {
                 }
             }
             .onChange(of: environment.newTodoRequest) { focus = .draft }
-            .sheet(isPresented: $showingSettings) { TodosSettingsSheet(store: store) }
+            .gitWebSheet(isPresented: $showingSettings, width: 520) { TodosSettingsSheet(store: store) }
         } else {
             ContentUnavailableView("todos.disabled", systemImage: "checklist")
         }

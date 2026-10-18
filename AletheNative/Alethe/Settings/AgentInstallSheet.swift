@@ -172,7 +172,7 @@ struct AgentInstallSheet: View {
                 } else {
                     Button(isThisRun ? "agentInstall.done" : "editor.cancel") {
                         installer.reset()
-                        dismiss()
+                        closeWeb()
                     }
                     .keyboardShortcut(.cancelAction)
                     if !isThisRun || installer.status == .failed {

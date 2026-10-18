@@ -58,7 +58,9 @@ struct McpServerEditor: View {
                     ModalsM2Segments(selection: $source, options: [(.registry, "mcp.add.registry"), (.manual, "mcp.add.manual")])
                         .accessibilityIdentifier("mcp.add.source")
                 }
-                if source == .registry && editing == nil { registry } else {
+                if source == .registry && editing == nil {
+                    ScrollView { registry }.frame(height: metrics.size(360)).webScrollStyle()
+                } else {
                     form
                     if editing == nil { targetList }
                 }

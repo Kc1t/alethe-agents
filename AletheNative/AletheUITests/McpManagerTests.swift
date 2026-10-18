@@ -81,10 +81,10 @@ final class McpManagerTests: XCTestCase {
 
     func testAddingAServerManuallyThenUndo() {
         let app = launchWithMcp()
-        openPanel(app)
-        element(app, "mcp.panel.add").click()
+        openManager(app, server: "alpha")
+        element(app, "mcp.manager.add").click()
         XCTAssertTrue(element(app, "mcp.editor").waitForExistence(timeout: 5))
-        element(app, "mcp.add.source").radioButtons["Manual"].click()
+        app.buttons["Manual"].firstMatch.click()
 
         element(app, "mcp.field.name").click()
         paste("gamma", into: app)
@@ -148,7 +148,7 @@ final class McpManagerTests: XCTestCase {
         // Codex's file still exists; restore its backup through another server's record.
         element(app, "mcp.manager.add").click()
         XCTAssertTrue(element(app, "mcp.editor").waitForExistence(timeout: 5))
-        element(app, "mcp.add.source").radioButtons["Manual"].click()
+        app.buttons["Manual"].firstMatch.click()
         element(app, "mcp.field.name").click()
         paste("delta", into: app)
         element(app, "mcp.field.command").click()
