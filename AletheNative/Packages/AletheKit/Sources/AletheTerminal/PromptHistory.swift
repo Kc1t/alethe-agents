@@ -24,13 +24,22 @@ public struct PromptHistory: Equatable, Sendable {
     }
 
     public init(entries: [String] = []) {
-        self.entries = Array(entries.suffix(Self.maxEntries))
+        var clean: [String] = []
+        for entry in entries {
+            let line = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard (2...Self.maxTrackedPromptLength).contains(line.utf16.count),
+                  !line.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }),
+                  clean.last != line else { continue }
+            clean.append(line)
+            if clean.count > Self.maxEntries { clean.removeFirst() }
+        }
+        self.entries = clean
     }
 
     /// Feeds keyboard input; true when `entries` changed.
     @discardableResult
     public mutating func record(_ data: String) -> Bool {
-        if data.count > Self.maxTrackedPromptLength {
+        if data.utf16.count > Self.maxTrackedPromptLength {
             currentLine = ""
             overflow = !data.hasSuffix("\r") && !data.hasSuffix("\n")
             return false
@@ -45,18 +54,19 @@ public struct PromptHistory: Equatable, Sendable {
                 currentLine = ""
                 overflow = false
                 cursor = nil
-                guard line.count >= 2, entries.last != line else { continue }
+                guard line.utf16.count >= 2, entries.last != line else { continue }
                 entries.append(line)
                 if entries.count > Self.maxEntries { entries.removeFirst() }
                 changed = true
             case "\u{8}", "\u{7f}":
                 if !overflow, !currentLine.isEmpty { currentLine.removeLast() }
-            case "\u{15}":
+            case "\u{3}", "\u{15}":
                 currentLine = ""
                 overflow = false
+                cursor = nil
             default:
                 guard !overflow, let scalar = character.unicodeScalars.first, scalar.value >= 0x20 else { continue }
-                if currentLine.count < Self.maxTrackedPromptLength {
+                if currentLine.utf16.count + String(character).utf16.count <= Self.maxTrackedPromptLength {
                     currentLine.append(character)
                 } else {
                     currentLine = ""
@@ -101,6 +111,17 @@ public struct PromptHistory: Equatable, Sendable {
         currentLine = entry
         overflow = false
         return entry
+    }
+
+    /// Repeated reverse search continues before the previous hit (Ctrl+R). Matching is literal,
+    /// so shell syntax and regex metacharacters remain ordinary prompt text.
+    public mutating func reverseSearch(_ query: String) -> String? {
+        let end = min(cursor ?? entries.count, entries.count)
+        guard end > 0, let index = entries[..<end].lastIndex(where: { $0.contains(query) }) else { return nil }
+        cursor = index
+        currentLine = entries[index]
+        overflow = false
+        return currentLine
     }
 
     /// What recalling writes to the terminal: ⌃U clears the line, then the entry is typed.

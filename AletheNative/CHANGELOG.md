@@ -26,6 +26,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Existing Todos lists and template settings continue to load, ignoring legacy timer fields.
 
 ### Fixed
+- Terminal scrollback compaction preserves UTF-8 and ANSI sequence boundaries, bounds pending output,
+  and retains pending bytes after disk-write failures. Prompt history sanitizes restored entries and
+  applies the web's Unicode length limit.
+- Running shell panes persist their reported working directory, with process-directory fallback.
+  Unambiguous agent session-file changes continue to update the saved conversation after initial
+  discovery; pane-specific Claude hooks remain authoritative when multiple panes share a directory.
 - In full screen the window buttons are handed back to the system title bar, so the menu-bar reveal shows exit full screen and minimize again.
 - The Projects tab icon in the sidebar is no longer highlighted while Home is showing.
 - Web-style Settings follows the web category order from Account through About, with separate

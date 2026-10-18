@@ -93,3 +93,55 @@ struct ReplayResetTests {
         #expect(ScrollbackFile.withoutQueries(input) == Data(kept.utf8))
     }
 }
+
+struct ScrollbackBoundaryTests {
+    @Test func truncationSkipsUTF8ContinuationBytesAndANSIParameters() {
+        #expect(ScrollbackFile.safeTail(Data("old😀tail".utf8), capacity: 7) == Data("tail".utf8))
+        #expect(ScrollbackFile.safeTail(Data("old\u{1b}[38;2;100;200;255mtext".utf8), capacity: 10) == Data("text".utf8))
+        for sequence in ["\u{1b}]0;private title\u{7}", "\u{1b}Pprivate payload\u{1b}\\"] {
+            #expect(ScrollbackFile.safeTail(Data(("old" + sequence + "tail").utf8), capacity: 10) == Data("tail".utf8))
+        }
+    }
+
+    @Test func interruptedControlStringDoesNotLeakItsPayload() {
+        #expect(ScrollbackFile.safeTail(Data("old\u{1b}]0;unfinished title".utf8), capacity: 8).isEmpty)
+    }
+
+    @Test func compactionAndReopenKeepTheSameSafeTail() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "pane.bin")
+        let file = ScrollbackFile(url: url, cap: 10)
+        file.append(Data("old\u{1b}]0;a long private title\u{7}tail".utf8))
+        file.flush()
+        #expect(file.load() == Data("tail".utf8))
+        #expect(ScrollbackFile(url: url, cap: 10).load() == Data("tail".utf8))
+        #expect(try Data(contentsOf: url).count <= 20)
+    }
+}
+
+struct ScrollbackFailureTests {
+    @Test func failedWriteRetainsPendingBytesUntilDiskRecovers() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        // A regular file blocks creation of the scrollback's parent directory.
+        try Data().write(to: directory)
+        let file = ScrollbackFile(url: directory.appending(path: "pane.bin"), flushInterval: .seconds(60))
+        file.append(Data("first".utf8))
+        file.flush()
+        try FileManager.default.removeItem(at: directory)
+        file.append(Data("second".utf8))
+        file.flush()
+        #expect(file.load() == Data("firstsecond".utf8))
+    }
+}
+
+struct InterruptedReplayTests {
+    @Test func dropsIncompleteFinalEscapeSequencesButKeepsFinishedOnes() {
+        for fragment in ["\u{1b}", "\u{1b}[38;2;", "\u{1b}]0;unfinished", "\u{1b}Punfinished\u{1b}"] {
+            #expect(ScrollbackFile.withoutQueries(Data(("kept" + fragment).utf8)) == Data("kept".utf8))
+        }
+        let complete = Data("kept\u{1b}[32mgreen\u{1b}[0m".utf8)
+        #expect(ScrollbackFile.withoutQueries(complete) == complete)
+    }
+}

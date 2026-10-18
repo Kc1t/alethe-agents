@@ -68,3 +68,38 @@ import Testing
         #expect(PromptHistory.recallInput("ls") == "\u{15}ls")
     }
 }
+
+struct PromptHistoryCleanupTests {
+    @Test func persistedHistoryIsBoundedAndUntrustedEntriesAreDropped() {
+        let history = PromptHistory(entries: ["ok", "ok", "x", "  ", "bad\u{1b}[A", String(repeating: "x", count: 4097), " end "])
+        #expect(history.entries == ["ok", "end"])
+    }
+
+    @Test func canceledInputIsNeverCombinedWithTheNextCommand() {
+        var history = PromptHistory()
+        history.record("discard\u{3}keep\r")
+        #expect(history.entries == ["keep"])
+    }
+
+    @Test func reverseSearchFindsRepeatedLiteralMatchesWithoutWrapping() {
+        var history = PromptHistory(entries: ["echo [a]", "other", "git [a]"])
+        let first = history.reverseSearch("[a]")
+        let second = history.reverseSearch("[a]")
+        let exhausted = history.reverseSearch("[a]")
+        #expect(first == "git [a]")
+        #expect(second == "echo [a]")
+        #expect(exhausted == nil)
+        #expect(history.currentLine == "echo [a]")
+    }
+}
+
+struct PromptHistoryUnicodeLimitTests {
+    @Test func limitUsesWebUTF16LengthIncludingCombinedCharacters() {
+        var history = PromptHistory()
+        let pasted = String(repeating: "\u{301}", count: 4097)
+        history.record(pasted)
+        #expect(history.overflow)
+        history.record("\rnext\r")
+        #expect(history.entries == ["next"])
+    }
+}
