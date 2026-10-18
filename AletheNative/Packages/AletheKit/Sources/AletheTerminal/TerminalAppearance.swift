@@ -5,10 +5,13 @@ import GhosttyTerminal
 public enum TerminalAppearance {
     public static let defaultFontSize: Float = 13
 
+    /// User-chosen font family (web `terminalFontFamily`); nil uses the bundled terminal font.
+    public nonisolated(unsafe) static var fontFamilyOverride: String?
+
     public static func configuration(for theme: Theme, fontSize: Float = defaultFontSize) -> TerminalConfiguration {
         let palette = theme.terminal
         var configuration = TerminalConfiguration()
-            .fontFamily(AletheFonts.terminalFamily)
+            .fontFamily(fontFamilyOverride ?? AletheFonts.terminalFamily)
             .fontSize(fontSize)
             // The wrapper's base config thickens glyphs; Ghostty.app does not by default.
             .fontThicken(false)

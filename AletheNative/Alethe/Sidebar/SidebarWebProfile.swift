@@ -28,11 +28,11 @@ struct SidebarWebProfile: View {
                     .fixedSize()
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(verbatim: environment.activeProfileName)
+                    Text(verbatim: environment.webDisplayName)
                         .font(metrics.font(size: metrics.style == .clean ? 11 : 13, weight: .semibold))
                         .foregroundStyle(theme[.fg])
                     Text(verbatim: String(format: String(localized: "leftSidebar.localAccount"),
-                                         environment.activeProfileName))
+                                         environment.webDisplayName))
                         .font(metrics.font(size: metrics.style == .clean ? 10 : 11))
                         .foregroundStyle(theme[.fgFaint])
                 }
@@ -67,7 +67,7 @@ struct SidebarWebProfile: View {
         .overlay(alignment: .top) {
             Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
         }
-        .help(Text(verbatim: String(format: String(localized: "profiles.menu.help"), environment.activeProfileName)))
+        .help(Text(verbatim: String(format: String(localized: "profiles.menu.help"), environment.webDisplayName)))
         .accessibilityIdentifier("leftSidebar.profile")
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
         .webTitleBarPopover(isPresented: Binding(get: { metrics.isWebInterface && showingMenu },
@@ -100,7 +100,7 @@ struct SidebarWebProfile: View {
                     .overlay(Circle().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(verbatim: environment.activeProfileName)
+                    Text(verbatim: environment.webDisplayName)
                         .font(metrics.font(size: metrics.style == .clean ? 12 : 13, weight: .semibold))
                     Text("profile.web.localAccount")
                         .font(metrics.font(size: metrics.style == .clean ? 10 : 11))
@@ -153,10 +153,10 @@ struct SidebarWebProfile: View {
                     .overlay(Circle().strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(verbatim: environment.activeProfileName)
+                    Text(verbatim: environment.webDisplayName)
                         .font(metrics.font(size: metrics.style == .clean ? 12 : 13, weight: .semibold))
                     Text(verbatim: String(format: String(localized: "leftSidebar.localAccount"),
-                                         environment.activeProfileName))
+                                         environment.webDisplayName))
                         .font(metrics.font(size: metrics.style == .clean ? 10 : 11))
                         .foregroundStyle(theme[.fgMuted])
                 }

@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsPageForm<Content: View>: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
+    @Environment(\.settingsSearchTarget) private var searchTarget
     private let content: () -> Content
     private let pageID: String
 
@@ -16,6 +17,7 @@ struct SettingsPageForm<Content: View>: View {
     var body: some View {
         if metrics.isWebInterface {
             GeometryReader { geometry in
+                ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         Group(sections: content()) { sections in
@@ -37,6 +39,7 @@ struct SettingsPageForm<Content: View>: View {
                                     }
                                 }
                             }
+                            .id(pageID + "." + String(index))
                         }
                         }
                     }
@@ -45,6 +48,12 @@ struct SettingsPageForm<Content: View>: View {
                     .padding(.bottom, metrics.size(28))
                 }
                 .webScrollStyle()
+                .task(id: searchTarget) {
+                    guard !searchTarget.isEmpty else { return }
+                    await Task.yield()
+                    proxy.scrollTo(searchTarget, anchor: .top)
+                }
+                }
             }
             .font(metrics.font(size: 12))
             .foregroundStyle(theme[.fg])
