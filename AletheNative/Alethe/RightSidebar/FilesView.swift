@@ -5,6 +5,8 @@ import AletheGit
 import AletheModel
 import AlethePluginKit
 import AppKit
+import AVKit
+import PDFKit
 import Quartz
 import SwiftUI
 
@@ -45,6 +47,7 @@ private struct FileTreeList: View {
     @State private var draftName = ""
     @State private var pendingDelete: URL?
     @State private var errorMessage: String? { didSet { if errorMessage != oldValue { AppLog.shown(errorMessage, .app) } } }
+    @State private var previewURL: URL?
     @State private var selection: URL?
     @FocusState private var renameFocused: Bool
 
@@ -67,12 +70,20 @@ private struct FileTreeList: View {
         .contextMenu { createMenu(in: tree.root) }
         .onKeyPress(.space) {
             guard renaming == nil, let selection else { return .ignored }
-            QuickLook.shared.show(selection)
+            preview(selection)
             return .handled
         }
         .overlay {
             if tree.rootNodes.isEmpty { ContentUnavailableView("files.empty", systemImage: "folder") }
         }
+            }
+        }
+        .gitWebSheet(isPresented: Binding(get: { previewURL != nil }, set: { if !$0 { previewURL = nil } }), width: 760) {
+            if let url = previewURL {
+                SidebarFilePreview(url: url, close: { previewURL = nil }, add: {
+                    if let node = tree.visibleRows().first(where: { $0.node.url == url })?.node { open(node) }
+                    previewURL = nil
+                }, markdown: { openMarkdown(url); previewURL = nil })
             }
         }
         .task { await follow() }
@@ -148,7 +159,7 @@ private struct FileTreeList: View {
         }
         .onKeyPress(.space) {
             guard renaming == nil, let selection else { return .ignored }
-            QuickLook.shared.show(selection); return .handled
+            preview(selection); return .handled
         }
     }
 
@@ -190,7 +201,7 @@ private struct FileTreeList: View {
                     Button { open(node) } label: {
                         Label("rightSidebar.files.addToGrid", systemImage: "square.grid.2x2").font(metrics.font(size: 12))
                     }.help(Text("rightSidebar.files.addToGrid"))
-                    Button { QuickLook.shared.show(node.url) } label: {
+                    Button { preview(node.url) } label: {
                         Label("rightSidebar.files.preview", systemImage: "eye").font(metrics.font(size: 12))
                     }.help(Text("rightSidebar.files.preview"))
                     if ["md", "markdown"].contains(node.url.pathExtension.lowercased()) {
@@ -219,11 +230,16 @@ private struct FileTreeList: View {
         .onTapGesture {
             selection = node.url
             if node.isDirectory { attempt { try tree.toggle(node.url) } }
-            else { QuickLook.shared.show(node.url) }
+            else { preview(node.url) }
         }
         .modifier(WebFileDrag(url: node.url, enabled: !node.isDirectory))
         .onHover { hoveredFile = $0 ? node.url : hoveredFile == node.url ? nil : hoveredFile }
         .help(node.url.path)
+    }
+
+    private func preview(_ url: URL) {
+        if metrics.isWebInterface { previewURL = url }
+        else { QuickLook.shared.show(url) }
     }
 
     private func openMarkdown(_ url: URL) {
@@ -245,7 +261,7 @@ private struct FileTreeList: View {
     @ViewBuilder private func webMenu(for node: FileNode) -> some View {
         if !node.isDirectory {
             Button { open(node) } label: { Label("rightSidebar.files.addToGrid", systemImage: "square.grid.2x2") }
-            Button { QuickLook.shared.show(node.url) } label: { Label("rightSidebar.files.preview", systemImage: "eye") }
+            Button { preview(node.url) } label: { Label("rightSidebar.files.preview", systemImage: "eye") }
             if ["md", "markdown"].contains(node.url.pathExtension.lowercased()) {
                 Button {
                     openMarkdown(node.url)
@@ -319,7 +335,7 @@ private struct FileTreeList: View {
             Button("files.open") { open(node) }
             Button("files.openWithDefaultApp") { NSWorkspace.shared.open(node.url) }
         }
-        Button("files.quickLook") { QuickLook.shared.show(node.url) }
+        Button("files.quickLook") { preview(node.url) }
         Button("files.revealInFinder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
         Divider()
         Button("files.rename") {
@@ -530,4 +546,101 @@ private struct WebFileDrag: ViewModifier {
     func body(content: Content) -> some View {
         if enabled { content.draggable(url) } else { content }
     }
+}
+
+/// FileExplorer.module.css preview: original media, source text and the same 2 MiB text gate.
+private struct SidebarFilePreview: View {
+    let url: URL
+    let close: () -> Void
+    let add: () -> Void
+    let markdown: () -> Void
+    @Environment(\.metrics) private var metrics
+    @Environment(\.theme) private var theme
+    @Environment(\.newTerminalModalHeight) private var maximumHeight
+    @State private var image: NSImage?
+    @State private var player: AVPlayer?
+    @State private var text: String?
+    @State private var failure: String?
+    private var ext: String { url.pathExtension.lowercased() }
+    private var isImage: Bool { ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico", "avif"].contains(ext) }
+    private var isVideo: Bool { ["mp4", "webm", "mov", "m4v", "mkv", "avi"].contains(ext) }
+
+    var body: some View {
+        GitWebModal(close: close) {
+            Text(verbatim: url.lastPathComponent).lineLimit(1)
+        } content: {
+            VStack(spacing: metrics.size(10)) {
+                Text(verbatim: url.path).font(metrics.monoFont(size: 10)).foregroundStyle(theme[.fgFaint])
+                    .lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
+                previewContent.frame(height: max(metrics.size(120), min(metrics.size(440), maximumHeight - metrics.size(150))))
+            }
+        } footer: {
+            Button(action: add) { Label("rightSidebar.files.addToGrid", systemImage: "square.grid.2x2") }
+                .buttonStyle(AletheButtonStyle(.primary))
+            if ["md", "markdown"].contains(ext) {
+                Button(action: markdown) { Label("rightSidebar.files.openMarkdown", systemImage: "sidebar.right") }
+                    .buttonStyle(AletheButtonStyle(.primary))
+            }
+        }
+        .task(id: url) { await load() }
+        .onDisappear { player?.pause() }
+        .accessibilityIdentifier("files.preview")
+    }
+
+    @ViewBuilder private var previewContent: some View {
+        if let failure { Text(verbatim: failure).foregroundStyle(theme[.fgMuted]).frame(maxWidth: .infinity) }
+        else if isImage, let image {
+            GeometryReader { proxy in
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+            }.background(theme[.bgSunken])
+        } else if isVideo, let player { VideoPlayer(player: player).background(theme[.bgSunken]) }
+        else if ext == "pdf" { SidebarPDFPreview(url: url) }
+        else if let text {
+            ScrollView([.horizontal, .vertical]) {
+                Text(verbatim: text).font(metrics.monoFont(size: 11)).textSelection(.enabled)
+                    .padding(metrics.size(12)).frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+        } else { Text("files.loadingPreview").foregroundStyle(theme[.fgMuted]) }
+    }
+
+    private func load() async {
+        if isVideo { player = AVPlayer(url: url); return }
+        if ext == "pdf" { return }
+        let source = url
+        let media = isImage
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<Data, any Error> in
+            Result {
+                let size = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                if !media && size > 2 * 1024 * 1024 { throw PreviewError.tooLarge }
+                return try Data(contentsOf: source)
+            }
+        }.value
+        guard !Task.isCancelled else { return }
+        switch result {
+        case .success(let data):
+            if media {
+                image = NSImage(data: data)
+                if image == nil { failure = String(localized: "linkPreview.unavailable") }
+            } else if let content = String(data: data, encoding: .utf8) { text = content }
+            else { failure = String(localized: "linkPreview.unavailable") }
+        case .failure(PreviewError.tooLarge): failure = String(localized: "files.previewTooLarge")
+        case .failure(let error): failure = error.localizedDescription
+        }
+    }
+
+    private enum PreviewError: Error { case tooLarge }
+}
+
+private struct SidebarPDFPreview: NSViewRepresentable {
+    let url: URL
+    func makeNSView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.document = PDFDocument(url: url)
+        return view
+    }
+    func updateNSView(_ view: PDFView, context: Context) {}
 }

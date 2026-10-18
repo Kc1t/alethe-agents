@@ -18,6 +18,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   including while a text field is focused.
 
 ### Added
+- Web-style keyboard shortcuts (⌘B, ⌘P, ⇧⌘G, ⇧⌘P, ⌘W, ⌘1–9, terminal cycling, R), the full hamburger menu, group archive/quick-rename/move menu items and a web-style file preview overlay.
 - Debug main-menu action to redo onboarding, plus profile backup/import/reset, data and log shortcuts.
 - Debug builds include Debug → Load sample data and the `ALETHE_SAMPLE_DATA=1` launch option:
   25 varied global/project todos and an editable four-file Markdown sample project with its README
