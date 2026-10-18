@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Plugin marketplace and local registration
+- Web interface: browse the plugin catalog from Settings or the Plugins sidebar, search and filter
+  by capabilities, source and state, sort, inspect details, refresh, and use cached results offline.
+- Import plugin manifests from folders, ZIPs or pasted JSON; rescan, open the plugins folder,
+  update/reinstall pinned catalog manifests, and uninstall local registrations. Web plugins are
+  labeled unavailable on macOS and remain metadata only; native plugin enablement and extension
+  consent continue through the existing hosts. The macOS interface is unchanged.
+
 ### Fixed
 - Terminal content now always resizes with its pane (window resize, splitter drag, sidebars, grid
   change, focus mode, tab switch): the surface is pinned to the pane by frame and refit, with the PTY
