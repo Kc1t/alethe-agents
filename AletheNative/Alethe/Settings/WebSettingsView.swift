@@ -99,6 +99,7 @@ struct WebSettingsView: View {
             .background(theme[.bgElevated])
         }
         .frame(minWidth: metrics.size(500), idealWidth: metrics.size(1180), minHeight: metrics.size(300), idealHeight: metrics.size(780))
+        .background(SettingsWindowSizer(size: CGSize(width: metrics.size(1180), height: metrics.size(780))))
         .onChange(of: environment.settingsTab) { _, _ in extra = nil }
         .onChange(of: environment.features.isOn(.orchestrator)) { _, enabled in
             if !enabled, environment.settingsTab == .multiagent { environment.settingsTab = .general }
