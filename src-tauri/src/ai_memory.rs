@@ -8,7 +8,7 @@
 //! The newer one manages the service itself — which release to fetch for this machine, and the
 //! `serve` child — shaped after `router9.rs`, which does the same job for 9router.
 
-pub const AI_MEMORY_VERSION: &str = "2.4.0";
+pub const AI_MEMORY_VERSION: &str = "3.1.1";
 const RELEASES: &str = "https://github.com/akitaonrails/ai-memory/releases/download";
 
 /// Sized for what ai-memory actually is: a ~46 MB binary plus hook scripts, with room to grow.
@@ -127,32 +127,167 @@ fn mcp_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}/mcp")
 }
 
-/// Claude's MCP registration for ai-memory: the loopback HTTP endpoint `serve` binds, not a `mcp`
-/// subcommand — there isn't one. Upstream's CLI (`crates/ai-memory-cli/src/cli.rs`) offers `serve`,
-/// `install-mcp` and `mcp-bridge`; the only other `Mcp` token is a value of `uninstall --only`. This
-/// mirrors what `install-mcp` itself recommends, and only answers once `ai-memory serve` is actually
-/// running — before that, an agent reaching for it sees a connection refused, the same as any other
-/// MCP server pointed at a port nothing is listening on yet.
-fn mcp_server_spec(port: u16) -> Value {
-    serde_json::json!({
-        "type": "http",
-        "url": mcp_url(port),
-    })
+/// How an agent reaches ai-memory's MCP server, which depends on the release installed.
+///
+/// 2.x serves `/mcp` on loopback with no auth and has no bridge, so agents get the URL. 3.x puts a
+/// bearer token in front of that endpoint once `ai-memory init` (or `setup`) has run, and ships
+/// `mcp-bridge`, a stdio shim that reads the token from the data directory. Its own `install-mcp`
+/// registers Claude Code and OpenCode through that bridge, so Alethe does the same for all three
+/// agents rather than handling the token itself.
+#[derive(Debug, Clone, PartialEq)]
+enum McpTransport {
+    Http,
+    Bridge {
+        command: String,
+        /// Only for a copy Alethe installed: the bridge must read the token of the store that copy
+        /// serves, not the default one.
+        data_dir: Option<String>,
+    },
 }
 
-/// OpenCode's shape for the same HTTP registration: a "remote" server entry, not a spawned command.
-fn opencode_mcp_entry(port: u16) -> Value {
-    serde_json::json!({
-        "type": "remote",
-        "url": mcp_url(port),
-        "enabled": true,
-    })
+/// The major version in `ai-memory --version`'s output (`ai-memory 3.1.1`).
+fn parse_major(version_output: &str) -> Option<u32> {
+    let version = version_output.split_whitespace().find(|word| {
+        word.trim_start_matches('v')
+            .starts_with(|c: char| c.is_ascii_digit())
+    })?;
+    version
+        .trim_start_matches('v')
+        .split('.')
+        .next()?
+        .parse()
+        .ok()
 }
 
-/// Codex's `[mcp_servers.<name>]` block for the same HTTP registration: a bare `url`, no `command`
-/// or `args` to spawn.
-fn codex_mcp_block(port: u16) -> String {
-    format!("[mcp_servers.{MCP_KEY}]\nurl = \"{}\"\n", mcp_url(port))
+/// The `--version` answer per command. A terminal launch writes the MCP config every time, and the
+/// binary does not change between launches, so it is asked once. `ai_memory_detect` refreshes the
+/// entry and an install clears the map (`invalidate_hook_config_cache`).
+fn version_cache() -> &'static Mutex<HashMap<String, Option<u32>>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Option<u32>>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn probe_version(cmd: &str) -> Option<String> {
+    let mut probe = Command::new(cmd);
+    probe.arg("--version");
+    hide_console(&mut probe);
+    let output = probe.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!version.is_empty()).then_some(version)
+}
+
+fn remember_major(cmd: &str, version: Option<&str>) -> Option<u32> {
+    let major = version.and_then(parse_major);
+    if let Ok(mut cache) = version_cache().lock() {
+        cache.insert(cmd.to_string(), major);
+    }
+    major
+}
+
+fn major_version(cmd: &str) -> Option<u32> {
+    if let Some(cached) = version_cache()
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(cmd).copied())
+    {
+        return cached;
+    }
+    remember_major(cmd, probe_version(cmd).as_deref())
+}
+
+/// The transport for a release: the bridge from 3.0 on, the URL before it or when the version
+/// cannot be read (the behaviour every release before 3.0 needs).
+fn transport_for(major: Option<u32>, command: String, data_dir: Option<String>) -> McpTransport {
+    match major {
+        Some(major) if major >= 3 => McpTransport::Bridge { command, data_dir },
+        _ => McpTransport::Http,
+    }
+}
+
+fn mcp_transport(app: &AppHandle) -> McpTransport {
+    let (cmd, data_dir) = command_for(app, None);
+    transport_for(major_version(&cmd), cmd, data_dir)
+}
+
+/// `[--data-dir <dir>] mcp-bridge [extra…] --server-url <url>`: the data directory is a global
+/// flag, so it goes before the subcommand, as in `base_command`.
+fn bridge_args(data_dir: Option<&str>, port: u16, extra: &[&str]) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(dir) = data_dir {
+        args.push("--data-dir".to_string());
+        args.push(dir.to_string());
+    }
+    args.push("mcp-bridge".to_string());
+    args.extend(extra.iter().map(|arg| arg.to_string()));
+    args.push("--server-url".to_string());
+    args.push(mcp_url(port));
+    args
+}
+
+/// Claude's MCP registration for ai-memory, as `install-mcp --client claude-code` prints it for
+/// each release: the loopback HTTP endpoint `serve` binds on 2.x, the stdio bridge on 3.x. Neither
+/// is a `mcp` subcommand — there isn't one. It only answers once `ai-memory serve` is running;
+/// before that, an agent reaching for it sees a connection refused, the same as any other MCP
+/// server pointed at a port nothing is listening on yet.
+fn mcp_server_spec(port: u16, transport: &McpTransport) -> Value {
+    match transport {
+        McpTransport::Http => serde_json::json!({
+            "type": "http",
+            "url": mcp_url(port),
+        }),
+        McpTransport::Bridge { command, data_dir } => serde_json::json!({
+            "type": "stdio",
+            "command": command,
+            "args": bridge_args(data_dir.as_deref(), port, &[]),
+        }),
+    }
+}
+
+/// OpenCode's shape for the same registration: a "remote" entry on 2.x, and on 3.x a "local"
+/// command with `--no-session-id`, which `install-mcp --client open-code` adds for OpenCode.
+fn opencode_mcp_entry(port: u16, transport: &McpTransport) -> Value {
+    match transport {
+        McpTransport::Http => serde_json::json!({
+            "type": "remote",
+            "url": mcp_url(port),
+            "enabled": true,
+        }),
+        McpTransport::Bridge { command, data_dir } => {
+            let mut argv = vec![command.clone()];
+            argv.extend(bridge_args(data_dir.as_deref(), port, &["--no-session-id"]));
+            serde_json::json!({
+                "type": "local",
+                "command": argv,
+                "enabled": true,
+            })
+        }
+    }
+}
+
+fn toml_string(value: &str) -> String {
+    toml_edit::Value::from(value).to_string()
+}
+
+/// Codex's `[mcp_servers.<name>]` block: a bare `url` on 2.x; on 3.x the bridge as `command` and
+/// `args`, so the token stays with ai-memory instead of an environment variable Codex would need.
+fn codex_mcp_block(port: u16, transport: &McpTransport) -> String {
+    match transport {
+        McpTransport::Http => format!("[mcp_servers.{MCP_KEY}]\nurl = \"{}\"\n", mcp_url(port)),
+        McpTransport::Bridge { command, data_dir } => {
+            let args = bridge_args(data_dir.as_deref(), port, &[])
+                .iter()
+                .map(|arg| toml_string(arg))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "[mcp_servers.{MCP_KEY}]\ncommand = {}\nargs = [{args}]\n",
+                toml_string(command)
+            )
+        }
+    }
 }
 
 /// Detects whether ai-memory is installed and reachable, and what kind of copy it is.
@@ -179,6 +314,8 @@ pub fn ai_memory_detect(
         }
         _ => (false, None),
     };
+    // A copy upgraded outside Alethe is picked up the next time Preferences looks.
+    remember_major(&cmd, version.as_deref());
 
     let running = endpoint_alive(DEFAULT_ENDPOINT);
     // Same aliveness check `ai_memory_start` uses to decide a tracked child is still running. A
@@ -209,10 +346,10 @@ fn endpoint_alive(endpoint: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn ai_memory_mcp_config_path(repo: String) -> Result<String, String> {
+pub fn ai_memory_mcp_config_path(app: AppHandle, repo: String) -> Result<String, String> {
     let root = repository_root(&repo)?;
     let config = serde_json::json!({
-        "mcpServers": { (MCP_KEY): mcp_server_spec(DEFAULT_PORT) }
+        "mcpServers": { (MCP_KEY): mcp_server_spec(DEFAULT_PORT, &mcp_transport(&app)) }
     });
     let file_name = format!(
         "alethe-ai-memory-mcp-{}.json",
@@ -225,7 +362,7 @@ pub fn ai_memory_mcp_config_path(repo: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn ai_memory_opencode_config_write(repo: String) -> Result<(), String> {
+pub fn ai_memory_opencode_config_write(app: AppHandle, repo: String) -> Result<(), String> {
     let _guard = crate::provider_common::opencode_json_lock()
         .lock()
         .map_err(|_| "opencode.json lock poisoned".to_string())?;
@@ -252,7 +389,10 @@ pub fn ai_memory_opencode_config_write(repo: String) -> Result<(), String> {
         .entry("mcp".to_string())
         .or_insert_with(|| Value::Object(serde_json::Map::new()));
     if let Value::Object(mcp_map) = mcp {
-        mcp_map.insert(MCP_KEY.to_string(), opencode_mcp_entry(DEFAULT_PORT));
+        mcp_map.insert(
+            MCP_KEY.to_string(),
+            opencode_mcp_entry(DEFAULT_PORT, &mcp_transport(&app)),
+        );
     }
 
     let body = serde_json::to_string_pretty(&Value::Object(config)).map_err(|e| e.to_string())?;
@@ -260,7 +400,7 @@ pub fn ai_memory_opencode_config_write(repo: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn ai_memory_codex_config_write(repo: String) -> Result<(), String> {
+pub fn ai_memory_codex_config_write(app: AppHandle, repo: String) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let codex_dir = root.join(".codex");
     std::fs::create_dir_all(&codex_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
@@ -299,7 +439,7 @@ pub fn ai_memory_codex_config_write(repo: String) -> Result<(), String> {
     }
 
     body.push('\n');
-    body.push_str(&codex_mcp_block(DEFAULT_PORT));
+    body.push_str(&codex_mcp_block(DEFAULT_PORT, &mcp_transport(&app)));
 
     std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
 }
@@ -315,6 +455,13 @@ use crate::plugin_package::safe_entry_path;
 /// internet does not choose where its files land.
 pub fn extract_tar_gz(bytes: &[u8], destination: &Path) -> Result<(), String> {
     extract_tar_gz_bounded(bytes, destination, MAX_ENTRIES, MAX_UNPACKED_BYTES)
+}
+
+/// True for `./`, `.` and the like: names of the archive's own root, not of an entry in it.
+fn is_archive_root(name: &str) -> bool {
+    name.replace('\\', "/")
+        .split('/')
+        .all(|part| part.is_empty() || part == ".")
 }
 
 /// Bounded variant of extract_tar_gz, with configurable limits for different callers.
@@ -338,7 +485,12 @@ pub fn extract_tar_gz_bounded(
         }
         let mut entry = entry.map_err(|e| format!("tar_read_failed:{e}"))?;
         let name = entry.path().map_err(|e| format!("tar_read_failed:{e}"))?;
-        let target = destination.join(safe_entry_path(&name.to_string_lossy())?);
+        let name = name.to_string_lossy();
+        // `tar -C dir .` stores the folder itself as `./`, which is `destination` already.
+        if entry.header().entry_type().is_dir() && is_archive_root(&name) {
+            continue;
+        }
+        let target = destination.join(safe_entry_path(&name)?);
         if entry.header().entry_type().is_dir() {
             std::fs::create_dir_all(&target).map_err(|e| format!("mkdir_failed:{e}"))?;
             continue;
@@ -469,6 +621,10 @@ fn hook_config_cache() -> &'static Mutex<HashMap<HookConfigKey, Value>> {
 /// stale regardless of which key it was stored under.
 pub(crate) fn invalidate_hook_config_cache() {
     if let Ok(mut cache) = hook_config_cache().lock() {
+        cache.clear();
+    }
+    // The same install may swap a 2.x copy for a 3.x one, which registers MCP differently.
+    if let Ok(mut cache) = version_cache().lock() {
         cache.clear();
     }
 }
@@ -735,7 +891,7 @@ mod tests {
 
     #[test]
     fn claude_gets_the_http_endpoint_not_a_nonexistent_mcp_subcommand() {
-        let spec = mcp_server_spec(49374);
+        let spec = mcp_server_spec(49374, &McpTransport::Http);
         assert_eq!(spec["type"], "http");
         assert_eq!(spec["url"], "http://127.0.0.1:49374/mcp");
         assert!(
@@ -747,7 +903,7 @@ mod tests {
 
     #[test]
     fn opencode_gets_a_remote_url_entry_not_a_command_array() {
-        let entry = opencode_mcp_entry(49374);
+        let entry = opencode_mcp_entry(49374, &McpTransport::Http);
         assert_eq!(entry["type"], "remote");
         assert_eq!(entry["url"], "http://127.0.0.1:49374/mcp");
         assert_eq!(entry["enabled"], true);
@@ -756,11 +912,161 @@ mod tests {
 
     #[test]
     fn codex_gets_a_bare_url_under_its_own_unquoted_table_header() {
-        let block = codex_mcp_block(49374);
+        let block = codex_mcp_block(49374, &McpTransport::Http);
         assert!(block.contains("[mcp_servers.ai-memory]"), "{block}");
         assert!(block.contains("url = \"http://127.0.0.1:49374/mcp\""), "{block}");
         assert!(!block.contains("command"), "{block}");
         assert!(!block.contains("args"), "{block}");
+    }
+
+    fn bridge(data_dir: Option<&str>) -> McpTransport {
+        McpTransport::Bridge {
+            command: "/opt/bin/ai-memory".into(),
+            data_dir: data_dir.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn the_major_version_comes_from_the_version_line() {
+        assert_eq!(parse_major("ai-memory 3.1.1"), Some(3));
+        assert_eq!(parse_major("ai-memory 2.4.0\n"), Some(2));
+        assert_eq!(parse_major("ai-memory v10.0.0-rc1"), Some(10));
+        assert_eq!(parse_major("ai-memory"), None);
+        assert_eq!(parse_major(""), None);
+    }
+
+    #[test]
+    fn releases_from_3_use_the_bridge_and_older_or_unknown_ones_the_url() {
+        let cmd = || "ai-memory".to_string();
+        assert_eq!(transport_for(Some(2), cmd(), None), McpTransport::Http);
+        assert_eq!(transport_for(None, cmd(), None), McpTransport::Http);
+        assert_eq!(
+            transport_for(Some(3), cmd(), Some("/data".into())),
+            McpTransport::Bridge {
+                command: cmd(),
+                data_dir: Some("/data".into())
+            }
+        );
+    }
+
+    // What `install-mcp --client claude-code` prints for 3.1.1: the HTTP endpoint answers 401
+    // without the bearer token, which the bridge reads from the data directory.
+    #[test]
+    fn claude_gets_the_stdio_bridge_on_3x() {
+        let spec = mcp_server_spec(49374, &bridge(None));
+        assert_eq!(spec["type"], "stdio");
+        assert_eq!(spec["command"], "/opt/bin/ai-memory");
+        assert_eq!(
+            spec["args"],
+            serde_json::json!(["mcp-bridge", "--server-url", "http://127.0.0.1:49374/mcp"])
+        );
+        assert!(spec.get("url").is_none(), "{spec}");
+    }
+
+    #[test]
+    fn a_managed_copy_points_the_bridge_at_its_own_store() {
+        let spec = mcp_server_spec(49374, &bridge(Some("/profile/ai-memory-data")));
+        assert_eq!(
+            spec["args"],
+            serde_json::json!([
+                "--data-dir",
+                "/profile/ai-memory-data",
+                "mcp-bridge",
+                "--server-url",
+                "http://127.0.0.1:49374/mcp"
+            ])
+        );
+    }
+
+    #[test]
+    fn opencode_gets_a_local_bridge_command_on_3x() {
+        let entry = opencode_mcp_entry(49374, &bridge(None));
+        assert_eq!(entry["type"], "local");
+        assert_eq!(entry["enabled"], true);
+        assert_eq!(
+            entry["command"],
+            serde_json::json!([
+                "/opt/bin/ai-memory",
+                "mcp-bridge",
+                "--no-session-id",
+                "--server-url",
+                "http://127.0.0.1:49374/mcp"
+            ])
+        );
+        assert!(entry.get("url").is_none(), "{entry}");
+    }
+
+    #[test]
+    fn codex_gets_the_bridge_as_command_and_args_on_3x() {
+        let block = codex_mcp_block(49374, &bridge(None));
+        let parsed: toml_edit::DocumentMut = block.parse().expect("valid TOML");
+        let server = &parsed["mcp_servers"]["ai-memory"];
+        assert_eq!(server["command"].as_str(), Some("/opt/bin/ai-memory"));
+        let args: Vec<&str> = server["args"]
+            .as_array()
+            .expect("args array")
+            .iter()
+            .filter_map(|arg| arg.as_str())
+            .collect();
+        assert_eq!(
+            args,
+            ["mcp-bridge", "--server-url", "http://127.0.0.1:49374/mcp"]
+        );
+        assert!(!block.contains("url = "), "{block}");
+    }
+
+    #[test]
+    fn codex_escapes_a_windows_bridge_path() {
+        let transport = McpTransport::Bridge {
+            command: r"C:\Users\me\ai-memory.exe".into(),
+            data_dir: None,
+        };
+        let parsed: toml_edit::DocumentMut = codex_mcp_block(49374, &transport)
+            .parse()
+            .expect("valid TOML");
+        assert_eq!(
+            parsed["mcp_servers"]["ai-memory"]["command"].as_str(),
+            Some(r"C:\Users\me\ai-memory.exe")
+        );
+    }
+
+    // ai-memory's releases are packed with `tar -C dir .`, so the first entry is `./`. Refusing it
+    // as an empty name made every install from Preferences fail on macOS and Linux.
+    #[test]
+    fn an_archive_that_starts_with_its_own_root_unpacks() {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::default(),
+        ));
+        let mut dir = tar::Header::new_gnu();
+        dir.set_entry_type(tar::EntryType::Directory);
+        dir.set_mode(0o755);
+        dir.set_size(0);
+        builder
+            .append_data(&mut dir, "./", std::io::empty())
+            .unwrap();
+        let body = b"#!/bin/sh\n";
+        let mut file = tar::Header::new_gnu();
+        file.set_mode(0o755);
+        file.set_size(body.len() as u64);
+        builder
+            .append_data(&mut file, "./ai-memory", &body[..])
+            .unwrap();
+        let bytes = builder.into_inner().unwrap().finish().unwrap();
+
+        let destination =
+            std::env::temp_dir().join(format!("alethe-ai-memory-{}", nanoid::nanoid!(8)));
+        extract_tar_gz(&bytes, &destination).expect("the root entry is skipped, not refused");
+        assert_eq!(std::fs::read(destination.join("ai-memory")).unwrap(), body);
+        let _ = std::fs::remove_dir_all(&destination);
+    }
+
+    #[test]
+    fn only_root_names_count_as_the_archive_root() {
+        assert!(is_archive_root("./"));
+        assert!(is_archive_root("."));
+        assert!(!is_archive_root("./hooks/"));
+        assert!(!is_archive_root("ai-memory"));
     }
 
     #[test]

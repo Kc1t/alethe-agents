@@ -36,6 +36,10 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `backend` · feat(ai-memory): support ai-memory 3.x and install 3.1.1
+  - Files: `src-tauri/src/ai_memory.rs`
+  - Contract: MCP registration per release: 2.x gets the HTTP `url`; 3.x gets the stdio command
+    `ai-memory [--data-dir <dir>] mcp-bridge --server-url <url>` (OpenCode adds `--no-session-id`)
 - `pending` · `contract` · MCP servers and skills saved per account and per project, carried by sync
   - Files: `src/lib/toolingManifest.ts`, `src/lib/toolingNotice.ts`, `src/components/ToolingManifestPanel/`
   - Contract: new tooling manifest in the synced payload; secret env and header values are never stored
