@@ -26,17 +26,6 @@ struct SubTabsLane: View {
     private var webLane: some View {
         ScrollView(.vertical) {
             VStack(spacing: metrics.size(5)) {
-                if canDragPane {
-                Image(systemName: "circle.grid.2x3.fill")
-                    .font(metrics.font(size: 12))
-                    .foregroundStyle(theme[.fgFaint]).opacity(0.55)
-                    .frame(width: metrics.size(26), height: metrics.size(26))
-                    .overlay(alignment: .bottom) { theme[.shapeTabsLaneBorder].frame(height: metrics.size(1)) }
-                    .padding(.bottom, metrics.size(1))
-                    .contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
-                        .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
-                }
                 ForEach(pane.tabs) { tab in
                     SubTabItem(tab: tab, isActive: tab.id == pane.activeTab?.id, isFocused: isFocused,
                                canClose: pane.tabs.count > 1,
@@ -68,6 +57,14 @@ struct SubTabsLane: View {
         .scrollIndicators(.never)
         .frame(width: metrics.size(36))
         .background(theme[.shapeTabsLaneBg])
+        // No visible grip (it left an empty slot): the lane's free area drags the pane.
+        .background {
+            if canDragPane {
+                Color.clear.contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
+                        .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
+            }
+        }
         .overlay(alignment: .trailing) { theme[.shapeTabsLaneBorder].frame(width: metrics.size(1)) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("subtabs.lane")

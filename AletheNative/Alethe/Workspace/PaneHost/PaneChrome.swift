@@ -314,7 +314,6 @@ struct PaneHeader: View {
         HStack(spacing: metrics.size(8)) {
             if !isShell || topbarPinned {
                 HStack(spacing: metrics.size(6)) {
-                    if canDragPane && !isLaneVisible { webGrip }
                     AgentLogo(agent: tab.agent, size: 16,
                               templateColor: theme[AgentTokens.accent(for: tab.agent)])
                         .frame(width: metrics.size(18), height: metrics.size(18))
@@ -347,15 +346,17 @@ struct PaneHeader: View {
                     .font(metrics.font(size: 12, weight: .medium))
                     .foregroundStyle(theme[.fg])
                 }
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                // Pinned: flat full-width bar. Floating: a pill that fits its content (web `.headLeft`).
+                .frame(minWidth: 0, maxWidth: topbarPinned ? .infinity : metrics.size(320), alignment: .leading)
                 .clipped()
                 .padding(.horizontal, metrics.size(topbarPinned ? 0 : 6))
                 .frame(height: metrics.size(26))
                 .background(theme[.bgElevated].opacity(topbarPinned ? 0 : 0.92), in: RoundedRectangle(cornerRadius: metrics.size(4)))
+                .overlay { if !topbarPinned { RoundedRectangle(cornerRadius: metrics.size(4)).strokeBorder(theme[.border], lineWidth: metrics.size(1)) } }
                 .onTapGesture(count: 2, perform: onToggleFocus)
+                if !topbarPinned { Spacer(minLength: 0) }
             } else { Spacer(minLength: 0) }
             HStack(spacing: metrics.size(2)) {
-                if canDragPane && isShell && !topbarPinned && !isLaneVisible { webGrip }
                 webAction(topbarPinned ? "pin.slash" : "pin", topbarPinned ? "pane.web.unpinTopbar" : "pane.web.pinTopbar", active: topbarPinned, action: onToggleTopbar)
                 webAction(isLaneVisible ? "sidebar.left" : "sidebar.leading", isLaneVisible ? "pane.web.hideTabsLane" : "pane.web.showTabsLane", action: onToggleLane)
                     .disabled(!canHideLane)
@@ -401,6 +402,14 @@ struct PaneHeader: View {
         .overlay(alignment: .bottom) {
             if topbarPinned { theme[.shapeTabsLaneBorder].frame(height: metrics.size(1)) }
         }
+        // No visible grip (it left an empty slot beside the logo): the bar itself drags the pane.
+        .background {
+            if canDragPane && !isLaneVisible {
+                Color.clear.contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
+                        .onChanged { onDrag($0.translation) }.onEnded { _ in onDrag(nil) })
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("pane.header.\(tab.title ?? tab.agent)")
     }
@@ -408,7 +417,7 @@ struct PaneHeader: View {
     private var webGrip: some View {
         Image(systemName: "circle.grid.2x3.fill")
             .font(metrics.font(size: 12))
-            .foregroundStyle(theme[.fgFaint]).opacity(0.55)
+            .foregroundStyle(theme[.fgMuted]).opacity(0.7)
             .frame(width: metrics.size(topbarPinned ? 22 : 20), height: metrics.size(topbarPinned ? 22 : 20))
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: metrics.size(4), coordinateSpace: .global)
@@ -419,7 +428,17 @@ struct PaneHeader: View {
 
     private func webAction(_ symbol: String, _ label: LocalizedStringKey, active: Bool = false,
                            action: @escaping () -> Void) -> some View {
-        Button(action: action) { Label(label, systemImage: symbol) }
+        Button(action: action) {
+            if symbol == "chevron.left.forwardslash.chevron.right" {
+                // The VS Code logo, as in the web header.
+                Label { Text(label) } icon: {
+                    Image("BrandLogo-vscode").resizable().interpolation(.high).scaledToFit()
+                        .frame(width: metrics.size(13), height: metrics.size(13))
+                }
+            } else {
+                Label(label, systemImage: symbol)
+            }
+        }
             .buttonStyle(AletheTerminalHeaderActionStyle(pinned: topbarPinned, active: active, danger: symbol == "trash"))
             .help(Text(label)).accessibilityLabel(Text(label))
             .accessibilityAddTraits(active ? .isSelected : [])

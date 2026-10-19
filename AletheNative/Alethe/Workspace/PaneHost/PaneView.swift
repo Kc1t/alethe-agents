@@ -424,7 +424,9 @@ final class PaneView: NSView {
         let floating = web && !webTopbarPinned
         header.frame = CGRect(x: 0, y: floating ? context?.metrics.size(4) ?? 4 : 0,
                               width: bounds.width, height: floating ? context?.metrics.size(26) ?? 26 : headerHeight)
-        let body = CGRect(x: 0, y: headerHeight, width: bounds.width, height: max(0, bounds.height - headerHeight))
+        // A floating (unpinned) web header overlays the terminal and reserves no strip.
+        let top = floating ? 0 : headerHeight
+        let body = CGRect(x: 0, y: top, width: bounds.width, height: max(0, bounds.height - top))
         let leading = lane == nil ? 0 : min(laneWidth, body.width)
         lane?.frame = CGRect(x: 0, y: body.minY, width: leading, height: body.height)
         let padding = context?.metrics

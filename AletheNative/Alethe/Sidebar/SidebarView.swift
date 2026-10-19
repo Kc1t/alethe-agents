@@ -625,7 +625,7 @@ private struct SidebarTerminalRow: View {
                                         in: RoundedRectangle(cornerRadius: metrics.size(5)))
                     } else { AletheCountPill(pane.tabs.count) }
                 }
-                Spacer(minLength: metrics.space(.xxs))
+                if !metrics.isWebInterface { Spacer(minLength: metrics.space(.xxs)) }
                 if metrics.isWebInterface {
                     SidebarRowEndSlot(active: environment.terminals.activity[statusTab.id] == .working
                         || environment.terminals.unread.contains(statusTab.id), hovering: hovering) {

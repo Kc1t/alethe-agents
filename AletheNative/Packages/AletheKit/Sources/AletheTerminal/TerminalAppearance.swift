@@ -19,7 +19,7 @@ public enum TerminalAppearance {
             .foreground(opaqueHex(palette.foreground, over: palette.background))
             .cursorColor(opaqueHex(palette.cursor, over: palette.background))
             // Ghostty takes opaque colors: blend the translucent selection over the background.
-            .selectionBackground(opaqueHex(palette.selection, over: palette.background))
+            .selectionBackground(opaqueHex(palette.selection, over: palette.background, maxAlpha: 0.3))
             .windowPaddingX(8)
             .windowPaddingY(6)
             // ADR-10: no terminal-level shortcuts. Ghostty's defaults bind ⌘W, ⌘T, ⌘N, ⌘K, ⌘F, ⌘±…
@@ -43,9 +43,10 @@ public enum TerminalAppearance {
     }
 
     /// `#rrggbb` of `color` composited over `background`.
-    static func opaqueHex(_ color: ThemeColor, over background: ThemeColor) -> String {
+    static func opaqueHex(_ color: ThemeColor, over background: ThemeColor, maxAlpha: Double = 1) -> String {
+        let alpha = min(color.alpha, maxAlpha)
         func channel(_ top: Double, _ bottom: Double) -> Int {
-            Int(((top * color.alpha + bottom * (1 - color.alpha)) * 255).rounded())
+            Int(((top * alpha + bottom * (1 - alpha)) * 255).rounded())
         }
         let rgb = [
             channel(color.red, background.red),
