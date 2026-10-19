@@ -686,6 +686,7 @@ struct NewTerminalSheet: View {
         } else {
             let grid = gridID
             let orchestration = orchestrating
+            let web = metrics.isWebInterface
             // The planner's launch reads the feature (its MCP wiring): turn it on before the tab exists.
             if orchestration, environment.features.isOn(.orchestrator) == false {
                 environment.preferences?.update { $0.features.set(.orchestrator, on: true) }
@@ -695,10 +696,15 @@ struct NewTerminalSheet: View {
                 // New panes join the shown grid: show the chosen one first.
                 if grid != $0.project(project.id)?.shownGridID { $0.activateGrid(grid, in: project.id) }
                 let planner = $0.addPane(to: project.id, tab: tab)
-                // No pane groups here (upstream stacks the two): the board goes right after the
-                // planner, beside it in the layout, and the planner keeps the keyboard.
+                // Mac: the board goes right after the planner, beside it, and the planner keeps the keyboard.
                 if orchestration, let planner {
-                    $0.addPane(to: project.id, content: .orchestrator)
+                    let board = $0.addPane(to: project.id, content: .orchestrator)
+                    // Web: terminal and board form one "Orchestration" stack (upstream `groupPanes`).
+                    if web, let board {
+                        $0.updateProject(project.id) {
+                            $0.groupPanes([planner, board], kind: "orchestration", plannerId: planner)
+                        }
+                    }
                     $0.workspace.focusedPaneID = planner
                 }
             }
