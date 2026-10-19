@@ -42,6 +42,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Voice success toast.** Commands that run now confirm with an ephemeral toast, matching the
   existing failure toast.
 
+- **OpenRouter credit usage.** OpenRouter joins the AI usage panel, the topbar and the usage
+  reading switches (off until turned on). With the OpenRouter API key from voice it shows that
+  key's spend today, this week and this month, its limit and the budget that blocks it first. An
+  optional management key, checked with OpenRouter and kept in the system keychain, adds the
+  account balance (credits bought, used and left), 30-day activity and the most expensive models.
+  The card leads with the percentage used of the tightest cap and estimates how many days the
+  balance lasts at the last week's pace; the topbar pill shows the dollars left. Alethe warns once
+  at 80% used or 3 days left, again at 95% or 1 day left, and when the balance is used up, with a
+  system notification while the window is in the background.
 - **Cleaner Markdown viewer tabs.** The right-sidebar document tabs now use a compact strip with a
   clearer active state, hidden scrollbar chrome, and a less prominent file path row.
 - **Easier hands-free voice sending.** Short Portuguese send phrases such as “manda”, “envia” and
@@ -54,6 +63,126 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   sentence with a send phrase such as "thanks Jev" or "send it" and it fires as soon as
   the phrase is recognised, and a pause of about two seconds sends by itself. Releasing
   F9 or clicking the stop button still works.
+
+- **Choose what narration speaks.** Preferences → Voice → Narration has a toggle for each kind of
+  thing voice can say: text between steps, the agent's thinking, the actions it runs ("Running the
+  tests.", "Editing auth.ts."), a status after a silence, the final answer, permission requests and
+  questions the agent asks you. Silent, Final answer only, Normal and Detailed stay as presets that
+  set the toggles, and any other mix shows as Custom; your current choice carries over unchanged.
+  Thinking is spoken only where the agent writes it down (Claude Code with thinking on, Codex's
+  reasoning summaries). Codex turns are now narrated with their actions and the status after a
+  silence too, not only their answer.
+- **Move the voice panel.** While Alethe is in front, the voice panel has the same drag strip as
+  the floating HUD: drag it anywhere inside the window. It comes back to that spot, stays inside
+  the window when the window is resized, and Preferences → Voice → Conversation → Panel position
+  puts it back at the bottom center.
+- **Voice conversation with every agent.** Voice now talks to any agent Alethe runs in a pane —
+  Codex, OpenCode, Cursor, Kiro, Kimi, Grok, the other built-ins and custom agents — not only
+  Claude Code. The session picker lists them all with the agent's name. Claude Code keeps its full
+  narration and voice approvals; Codex is narrated from its session transcript; any other agent's
+  turn ends when its output goes quiet, and its reply is read off the terminal. When an agent stops
+  on its own approval menu, voice says it is asking in the terminal. Agent panes other than Claude,
+  Codex and OpenCode now also show the working indicator and the "agent done" notification.
+- **Read terminal text aloud.** With voice conversation on, right-clicking a terminal opens a menu:
+  with a selection, **Read aloud** and **Copy**; without one, **Read copied text aloud** and
+  **Paste**. Ctrl+Shift+L (⌘⇧L on macOS, changeable in Preferences → Voice conversation) reads
+  the focused terminal's selection, or the clipboard when nothing is selected. Agents that draw their own selection (Claude Code in full screen,
+  OpenCode) work too: what they copy is read, and Option+drag (Shift+drag on Windows and Linux)
+  still makes a terminal selection over them. Text is spoken with the narration voice and shown on
+  the voice panel or the HUD with its narration controls. With voice conversation off, right-click
+  keeps copying or pasting at once.
+- **Terminal clipboard writes (OSC 52).** Text an app in the terminal copies with OSC 52 now reaches
+  the system clipboard; clipboard reads by apps are never answered.
+- **Hugging Face model search.** Search Hugging Face from Preferences → Voice → Local models and
+  download more offline voices (Piper, Kokoro, Kitten) and speech recognition models (Whisper,
+  SenseVoice, Paraformer, Zipformer, Parakeet, NeMo CTC, Moonshine, Dolphin), with the same
+  comparison table, details and pausable downloads as built-in models. A model that is no longer
+  available or never finished downloading can be removed from its row.
+- **Speaker picker for local voices.** Pick the speaker of multi-voice local models (Kokoro, Kitten,
+  multi-speaker Piper) for narration. Kokoro speaks with the pronunciation of the chosen speaker's
+  language.
+
+- **Spoken-word highlight.** While narration plays, the voice panel and the HUD highlight the word
+  being spoken and dim what was already said, scrolling to keep it in view. It follows cloud voices
+  and Piper exactly and estimates the system voice; it stops moving while paused and respects
+  reduced motion.
+- **Restart Claude sessions for voice.** A Claude started while voice conversation was off now
+  shows in the session picker as needing a restart, with a **Restart** action that resumes the same
+  conversation with voice. Turning voice on offers to restart every such session at once.
+
+- **Narration controls.** The voice panel and the floating HUD have three buttons next to the speed
+  steps: **Mute** keeps the narration going at the same pace with no sound (for the rest of the
+  session), **Pause** holds it where it is and queues anything new until **Resume**, and **Stop**
+  drops the rest. With the system voice, resume starts again from the sentence it had reached. The HUD
+  no longer turns into an empty gray box after narration stops: it always shows the status, the
+  session picker, the last narration and the shortcut hint. A quick tap of the voice shortcut now
+  says to hold it while speaking instead of reporting an error. While narration is paused, the
+  **Test voice** buttons in Preferences are disabled and say why.
+
+- **Clearer voice settings.** Preferences → Voice opens with an **In use** summary of what each
+  feature runs on right now, and warns when something cannot work (model not downloaded, still
+  downloading or paused, missing or invalid key, no Apple language or one not installed). A chosen
+  local model that is not downloaded is flagged on its card instead of showing as in use. The
+  providers grid is now **Accounts and models**. Local models are a comparison table — languages,
+  speed and accuracy tiers (quality for voices, curated from published benchmarks), size, status
+  (including time left while downloading, paused, verifying and unpacking), where each is used and
+  selected — whose rows expand into what the model is good for, its limits, every language it
+  speaks and **Use for …** buttons; the recommended voice follows the app language, and each use tab
+  has **Compare models**. Removing a model that is in use switches that use to another downloaded
+  model of the same kind, or to its default. Cloud provider pages list their models in the same
+  table, with voices by language and OpenRouter's input / output prices per million units, as its
+  site shows them (e.g. "$0.50 / $6 per 1M"). The Apple Speech page shows the recognition permission and splits installed languages
+  from those available to install; the system voice page lists voices per language and has a single
+  **Test** button.
+- **Pause and resume model downloads.** A download can be paused and resumed later, even after
+  closing Alethe, or cancelled to delete the whole partial model. One download runs at a time, and a
+  download that stalls for 30 seconds stops and can be resumed.
+
+- **Voice providers.** Preferences has a new **Voice** page. Dictation, voice conversation and
+  narration each pick their own provider: models on this device (Parakeet, Zipformer, Whisper,
+  Moonshine, Piper voices, Apple Speech, the system voice) or a cloud API with your own key (OpenAI,
+  ElevenLabs, Google Gemini, OpenRouter). Keys are kept in the system keychain per profile. A
+  provider grid shows what is connected, a provider page saves, tests and removes keys and manages
+  downloaded models, and **Test voice** previews narration. Each use tab shows the same provider
+  cards, with the one in use marked; OpenRouter lists all of its live speech models and their
+  voices, and narration voices are grouped by language, app language first. If a cloud provider
+  fails, Alethe uses a local engine for that turn and says why. Local stays the default; audio or
+  text only leaves the device for a use you set to a cloud provider.
+
+- **Voice conversation from any app, with a floating HUD.** The voice shortcut now works even when
+  Alethe is not in front. In that case a small floating HUD shows the conversation (waveform,
+  transcript, narration and permission card) at the bottom center of the screen under the mouse, and
+  hides 4 seconds after the turn; its close button hides it until the next press. When Alethe is
+  focused, the panel is used instead. On macOS the HUD never steals focus: answering a permission on
+  it keeps your other app in front, and it shows over full-screen apps. Preferences offers six
+  positions, you can drag the HUD anywhere (it remembers the spot, and falls back if the monitor goes
+  away), and a reset button. The shortcut is now recorded by pressing it: Esc cancels, it needs ⌘ or
+  Ctrl (Shift alone works only with F1–F24), one the OS or another app already uses is refused, and
+  Alethe's own shortcuts are paused while recording.
+  Narration speed goes from 1x to 2x, adjustable from the panel and the HUD.
+
+- **Pick which Claude session voice talks to.** The voice panel and HUD header is now a picker
+  listing every running Claude session of the projects in your sidebar, in any tab, in sidebar
+  order. Picking one sends what you say there and brings it to front in Alethe; *Follow active pane*
+  goes back to the default.
+
+- **Apple's own speech recognition on the Mac.** Preferences → Voice now has
+  a model picker: on a Mac, *Apple (native)* is offered next to Parakeet and Zipformer, needs no
+  download, and runs on the device (macOS 26 uses Apple's newest recognizer; macOS 12 to 15 use the
+  on-device dictation engine; it is not offered before macOS 12). Pick its language once; a language that needs it can be installed
+  right there. Dictation, the Jev voice bar and voice conversation all use the chosen model. Audio
+  never goes to Apple's servers — languages without on-device support are simply not offered.
+- **Talk to Claude and hear it work.** Turn on *Voice conversation* in Preferences → Integrations (it
+  uses the dictation model and microphone), then hold Ctrl+Shift+Space (⌘⇧Space on macOS) in Alethe and
+  speak, or press it once to start and again to stop. What you say, transcribed on your machine, goes to
+  the active Claude pane. A panel at the bottom of the window shows the waveform, transcript and
+  narration. Final answer only speaks Claude's reply; Normal and Detailed also speak its text as it works and
+  say what it is doing after a silence; Silent speaks none of it. Permission requests appear on the panel
+  and can be answered by voice in English or Portuguese ("no, use pnpm" sends the reason back) or with a
+  click; destructive commands such as `rm -rf` need the click. Start with "stop" to interrupt Claude
+  first, or with "Alethe, …" (or add Alt) to send the request to Jev. It applies to Claude panes opened
+  after you turn it on.
+
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with
@@ -263,14 +392,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Memory-aware terminal startup feedback.** When system memory is below the safe spawn
   threshold, terminal panes now show the available memory and elapsed wait instead of an opaque
   loading state; the wait is also recorded separately in diagnostics.
-- **Voice commands into the workspace.** `Ctrl+Shift+Space` opens a command bar where you say or
+- **Voice commands into the workspace.** `Ctrl+Shift+J` (⌘⇧J on macOS, changeable in Preferences →
+  Voice → Conversation) opens a command bar where you say or
   type what you want, and Alethe routes it into a real action: launching one or more agents in a
   project, handing the task to a terminal that is already open, bringing one up, or stopping one.
   Routing runs on TypeSafe Jev, a model that only picks between options built from live workspace
   state, so the prompt handed over is a verbatim span of what you said, never text the model wrote.
   The plan, its confidences, latency and cost are shown before anything runs, and nothing runs
-  without confirmation. The first time the bar opens it asks for a decisions API key and remembers
-  it. A mic button starts and stops recording by click, F9 still works as push to talk, and a live
+  without confirmation. The first time the bar opens it asks for an OpenRouter API key and keeps it
+  in the system keychain, shared with OpenRouter voices. A mic button starts and stops recording by click, F9 still works as push to talk, and a live
   spectrum shows the audio actually coming in, so a dead microphone is visible immediately rather
   than after the fact. Plans now run the moment they are decided; the bar only stops to ask when the
   request looks destructive, when it would stop a running agent, or when the task would be handed to
@@ -308,13 +438,47 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   panel now list each model-scoped weekly limit, such as Fable, below the Opus row, and the
   orchestrator counts them when it checks Claude's remaining quota
   ([#208](https://github.com/Kc1t/alethe-agents/issues/208)).
+- **Local voice servers for narration.** Narration can speak through a text-to-speech server you
+  run yourself — OpenAI-compatible (Chatterbox, Kokoro-FastAPI, openedai-speech, LocalAI) or Fish
+  Speech — on this computer or your local network. Add servers in Preferences → Voice → Local
+  servers; keys stay in the system keychain, public addresses are refused, and the system voice
+  takes over when a server is unavailable.
 
 ### Changed
 
+- **OpenRouter transcription and the Jev key moved into Preferences → Voice.** GPT Audio Mini and
+  Gemini 3.1 Flash Lite are listed with OpenRouter's other speech-to-text models and can be picked
+  for dictation or conversation (the Jev bar uses the conversation choice); a choice made in the
+  old **Transcriber** setting carries over. Jev uses the OpenRouter key saved on the OpenRouter
+  account page, in the system keychain, instead of a plain-text field. Hands-free sending (send
+  phrases and the pause) works with any local model.
 - Plugin Market profiles now open in a modal without adding workspace panes or requiring a project.
   The sidebar and preferences catalogue share status/source filters, sorting, result counts, and
   accent-insensitive multiword search across names, authors, descriptions, repositories, and permissions.
   Installed local plugins can be uninstalled from their profile; bundled plugins explain how to disable them.
+- **Jev has its own shortcut and no longer asks for a key it already has.**
+  - The command bar opens with `Ctrl+Shift+J` (⌘⇧J), which can be changed under Preferences →
+    Voice → Conversation even with voice conversation off. `Ctrl+Shift+Space` belongs to voice
+    conversation; while conversation is off, that shortcut now says so and points to the setting,
+    instead of opening the bar.
+  - Jev uses the OpenRouter key from the system keychain, the same one OpenRouter voices use. A key
+    saved by an earlier build in plain preferences moves to the keychain on the next start, unless
+    the keychain already holds an OpenRouter key.
+  - A task Jev hands to an open agent goes through the same guarded send as voice conversation.
+    It is refused while the agent shows its own approval menu, where the Enter would have approved
+    it.
+  - The bar's microphone works when either dictation or voice conversation is on.
+- **Barge-in pauses narration instead of dropping it.** Pressing the voice shortcut pauses what
+  is being read; it is discarded only when what you said is sent. After a stray tap, silence or a
+  failed transcription the narration stays paused and the resume button continues it.
+- Voice dictation and voice conversation settings moved from Preferences → Integrations to
+  Preferences → Voice. Existing model, language, voice and speed choices carry over.
+
+- **The speech model download shows what it is doing.** Preferences → Voice now draws a progress bar with the megabytes received, the current file, the
+  download
+  speed and the time left, and says when it is checking the downloaded file instead of sitting at
+  100%. An interrupted download continues where it stopped instead of starting over, and progress
+  updates no longer flood the app while the ~670 MB Parakeet model comes down.
 
 - **Preferences sections fold away.** Every section on a Preferences page now has a clickable
   heading, so a long page reads as a list of subjects instead of one wall of settings. Alethe
@@ -421,6 +585,26 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   keyboard input path. Failed or slow paste writes no longer automatically restart the live agent session,
   and read-only terminals reject clipboard input.
 
+- **Voice HUD on macOS: drag it while Alethe is active, and keep its round corners.** The HUD can
+  now be moved by its top strip while Alethe is the app in front, not only while another app is.
+  Its corners stay rounded whether Alethe is active or not.
+- **Smoother cloud narration.** With a cloud voice (OpenAI, ElevenLabs, Gemini, OpenRouter) the
+  next narration item is prepared while the current one plays, so there is no pause between
+  them; speech starts sooner (a short first chunk) and the highlighted word stays on the voice
+  (shorter chunks, silence around each chunk trimmed). A slow voice is no longer cut off mid-text
+  by the next item, and a chunk that fails mid-text is retried once and otherwise skipped instead
+  of ending the narration.
+- **OpenRouter provisioning keys are refused with a clear message.** Testing or saving an
+  OpenRouter key now says when it is a provisioning key, which manages keys but cannot use models,
+  instead of accepting it and failing every narration.
+- **Google Gemini voices through OpenRouter narrate again.** They only answer in PCM, so asking for
+  MP3 failed and narration fell back to the system voice. Alethe now asks them for PCM, plays it at
+  the rate the reply declares, and applies the narration speed itself, since they ignore it.
+- **A keychain password prompt no longer freezes the Voice settings.** Cloud voice API keys are read
+  only when a cloud voice is actually used (at most once per run), never at launch or to list
+  OpenRouter's models, and a voice model list that cannot be read shows **Retry** instead of
+  loading forever. A cloud provider whose key is missing on this computer is shown as not connected
+  the first time it is used, and its uses go back to their defaults.
 - **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
   server or watcher it already has running on the board (for example after reopening the app, or
   from a new planner terminal) now reuses that running shell and adopts it under the new planner,

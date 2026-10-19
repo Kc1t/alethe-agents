@@ -13,7 +13,6 @@ import controls from '../controls.module.css'
 import { UsageAccessStep } from '../onboarding/UsageAccessStep'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
-import { VoiceDictationSection } from './VoiceDictationSection'
 
 function TerminalCommandSection() {
   const t = useT()
@@ -172,8 +171,6 @@ export function IntegrationsPage() {
           </button>
         </div>
       </SettingsSection>
-
-      <VoiceDictationSection />
     </>
   )
 }

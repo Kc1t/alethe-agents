@@ -1,7 +1,6 @@
 import { useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 import { getLocale, translate } from './i18n'
-import { AGENT_TYPE_LABELS } from './types'
 import { USAGE_PROVIDERS } from './usageProviders'
 
 /** The orchestrator warns and picks roles from the quota of these two. */
@@ -33,7 +32,7 @@ export function enableOrchestratorFeature(): void {
   useUiStore.getState().pushToast({
     title: translate(locale, 'usageAccess.orchestratorToastTitle'),
     body: translate(locale, 'usageAccess.orchestratorToastBody', {
-      providers: turnedOn.map((provider) => AGENT_TYPE_LABELS[provider.agentType]).join(', '),
+      providers: turnedOn.map((provider) => provider.label).join(', '),
     }),
   })
 }

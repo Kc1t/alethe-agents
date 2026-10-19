@@ -15,16 +15,16 @@ name = "alethe_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [lints.rust]
-# ghostty_linked é um cfg custom (ligado só quando o backend nativo Ghostty é
-# linkado no build, ver build.rs) — sem isso o compilador avisa "unexpected
-# cfg" toda vez que aparece em #[cfg(...)] (lib.rs, ghostty_bridge.rs).
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(ghostty_linked)"] }
+# ghostty_linked and apple_speech_linked are custom cfgs set by build.rs when the native Ghostty
+# backend / the Apple speech bridge are linked. Declaring them avoids "unexpected cfg" warnings.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(ghostty_linked)", "cfg(apple_speech_linked)"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [target.'cfg(target_os = "macos")'.build-dependencies]
 cc = "1"
+serde_json = "1"
 
 [dependencies]
 nanoid = "0.4"
@@ -33,8 +33,10 @@ serde = { version = "1", features = ["derive"] }
 # preserve_order keeps a round-tripped Value in file order. Without it, rewriting one
 # key of ~/.claude.json would alphabetise its other 80+ top-level keys.
 serde_json = { version = "1", features = ["preserve_order"] }
-tauri = { version = "2", features = ["image-png", "unstable"] }
+tauri = { version = "2", features = ["image-png", "macos-private-api", "unstable"] }
 tauri-plugin-dialog = "2"
+# ~2.3: 2.4 needs Tauri 2.12 and rustc 1.90.
+tauri-plugin-global-shortcut = "~2.3"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
@@ -46,18 +48,26 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 which = "6"
 zip = "0.6"
 tar = "0.4"
+bzip2 = "0.4"
 flate2 = "1"
 sha2 = "0.10"
+sha1 = "0.10"
 sysinfo = "0.31"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 hex = "0.4"
 cpal = "0.15"
+# Decodes compressed speech replies: OpenRouter MP3 (its PCM rate is model-dependent and
+# undocumented) and local voice servers (MP3 or WAV).
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "wav", "pcm"] }
 # On-device STT (Parakeet / Whisper / …). Build script downloads prebuilt libs when unset.
 sherpa-onnx = "1.13.6"
+# Narration for voice conversation: AVSpeechSynthesizer (macOS), WinRT (Windows),
+# speech-dispatcher (Linux, needs libspeechd-dev at build time).
+tts = "0.26.3"
 tiny_http = "0.12"
-# keyring v3 não habilita NENHUM backend de plataforma por padrão — sem uma
-# feature explícita ele usa um store mock e todo get_password() falha. Os
-# backends nativos são declarados por plataforma abaixo (macos/windows/linux).
+# keyring v3 enables NO platform backend by default: without an explicit
+# feature it uses a mock store and every get_password() fails. The native
+# backends are declared per platform below (macos/windows/linux).
 keyring = { version = "3", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 dirs-next = "2"
@@ -74,27 +84,29 @@ regex = "1"
 # without rewriting the credentials, hooks and project tables around it.
 toml_edit = "0.22"
 
-# Impede execuções paralelas do Alethe (pré-requisito da guarda de
-# monotonicidade de `save_projects` em projects.rs). Só compila em desktop —
-# a crate não suporta mobile.
+# Prevents parallel Alethe instances (a prerequisite of the `save_projects`
+# monotonicity guard in projects.rs). Desktop only: the crate does not support
+# mobile.
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
 
-# Dependências só-macOS para o bridge nativo do Ghostty (embutir surfaces de
-# terminal numa NSView sobre a WebView do Tauri). Versões alinhadas com as que
-# o Tauri 2.11 já traz na árvore, pra não duplicar.
+# macOS-only dependencies for the native Ghostty bridge (embedding terminal
+# surfaces in an NSView over the Tauri WebView). Versions match the ones
+# Tauri 2.11 already brings into the tree, so they are not duplicated.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
-# Backend do Keychain (onde o Claude Code guarda o token OAuth no macOS).
+# Turns the voice HUD into a non-activating NSPanel (enables Tauri's macos-private-api).
+tauri-nspanel = "2.1"
+# Keychain backend (where Claude Code stores its OAuth token on macOS).
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
 
-# Dependências só-Windows (registro + Win32). Em Linux/macOS o `winreg` nem
-# compila, então ficam atrás de `cfg(windows)`; o código que as usa já é gated.
+# Windows-only dependencies (registry + Win32). `winreg` does not even compile on
+# Linux/macOS, so they sit behind `cfg(windows)`; the code that uses them is gated too.
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-# Backend do Windows Credential Manager.
+# Windows Credential Manager backend.
 keyring = { version = "3", default-features = false, features = ["windows-native"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
@@ -108,9 +120,9 @@ windows-sys = { version = "0.61", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 
-# Backend do Secret Service (GNOME Keyring / KWallet) no Linux. A variante
-# `sync-secret-service` + `crypto-rust` não precisa de tokio nem de libs de
-# sistema pra criptografia da sessão D-Bus.
+# Secret Service backend (GNOME Keyring / KWallet) on Linux. The
+# `sync-secret-service` + `crypto-rust` variant needs neither tokio nor system
+# libraries for the D-Bus session encryption.
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 # Match the webkit2gtk version Tauri already pulls so we can enable media-stream
@@ -125,8 +137,8 @@ zbus = "5"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
-# app inteiro durante uma sessão de HMR. Release segue abort (binário menor).
+# In dev, unwind lets a command panic become an Err instead of taking the whole
+# app down during an HMR session. Release keeps abort (smaller binary).
 [profile.dev]
 panic = "unwind"
 

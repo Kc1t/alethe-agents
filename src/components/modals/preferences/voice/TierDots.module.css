@@ -1,0 +1,26 @@
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.dot[data-filled='true'] {
+  background: var(--accent);
+}
+
+.none {
+  color: var(--fg-faint);
+}
+
+.estimate {
+  color: var(--fg-muted);
+  margin-right: 2px;
+  line-height: 1;
+}

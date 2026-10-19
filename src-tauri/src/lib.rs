@@ -6,6 +6,7 @@ mod ai_memory;
 mod ai_memory_hooks;
 mod antigravity_sessions;
 mod antigravity_usage;
+mod audio_out;
 mod backup;
 mod browser_pane;
 mod browser_session;
@@ -51,6 +52,7 @@ mod merge_analyzer;
 mod opencode_bridge;
 mod opencode_gsd_plugin;
 mod opencode_sessions;
+mod openrouter_usage;
 pub mod orchestrator;
 pub mod orchestrator_core;
 mod orchestrator_shell_host;
@@ -79,14 +81,23 @@ mod session_watcher;
 mod single_instance_probe;
 mod skills;
 mod speech;
+mod speech_layout;
+mod speech_hub;
+mod speech_apple;
 mod speech_capture;
+mod speech_download;
 mod speech_cloud;
 mod speech_vad;
 mod spotify;
 mod stats;
 mod supervisor;
 mod telemetry;
+mod tts;
+mod tts_local;
+mod voice_providers;
+mod voice_servers;
 mod validation;
+mod voice_hud;
 mod webview_media;
 mod window_style;
 #[cfg(windows)]
@@ -224,10 +235,19 @@ pub fn run() {
         .manage(router9::Router9Process::default())
         .manage(ai_memory::AiMemoryProcess::default())
         .manage(speech::SpeechState::default())
+        .manage(speech_hub::HubState::default())
+        .manage(voice_hud::StateStore::default())
+        .manage(voice_hud::ShortcutState::default())
+        .manage(voice_hud::HudWindowState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(voice_hud::on_shortcut)
+                .build(),
+        )
         .register_uri_scheme_protocol("alethe-plugin", |ctx, request| {
             plugin_assets::serve(ctx.app_handle(), &request)
         });
@@ -237,6 +257,11 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             cli_launch::handle_second_instance(app, argv, cwd);
         }));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_nspanel::init());
     }
 
     builder
@@ -254,10 +279,10 @@ pub fn run() {
                         let (width, height) = rgba.dimensions();
                         let icon = tauri::image::Image::new_owned(rgba.into_raw(), width, height);
                         if let Err(error) = window.set_icon(icon) {
-                            eprintln!("[icon] falha ao aplicar ícone da janela: {error}");
+                            eprintln!("[icon] could not set the window icon: {error}");
                         }
                     }
-                    Err(error) => eprintln!("[icon] falha ao decodificar ícone embutido: {error}"),
+                    Err(error) => eprintln!("[icon] could not decode the embedded icon: {error}"),
                 }
                 // Required for getUserMedia / voice dictation on WebKitGTK.
                 webview_media::grant_media_permissions(&window);
@@ -307,6 +332,13 @@ pub fn run() {
             // Resource Manager (memory pressure, policy engine, task scheduler)
             resource_manager::start(app.handle().clone());
 
+            let hud_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = voice_hud::create_hud(hud_handle).await {
+                    eprintln!("[voice_hud] HUD unavailable: {e}");
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -317,6 +349,16 @@ pub fn run() {
             agent_events::agent_hooks_token,
             agent_events::set_agent_canvas_mirror,
             agent_events::agent_canvas_mirror,
+            agent_events::agent_permission_decide,
+            agent_events::voice_set_targets,
+            agent_events::agent_voice_hooked_ptys,
+            voice_hud::voice_hud_show,
+            voice_hud::voice_hud_hide,
+            voice_hud::voice_hud_publish,
+            voice_hud::voice_hud_snapshot,
+            voice_hud::voice_hud_action,
+            voice_hud::voice_hud_moved,
+            voice_hud::voice_shortcut_set,
             orchestrator::orchestrator_mcp_config_path,
             orchestrator::orchestrator_jobs,
             orchestrator::orchestrator_set_concurrency,
@@ -513,6 +555,7 @@ pub fn run() {
             handoff::prepare_agent_handoff,
             handoff::materialize_agent_handoff,
             handoff::complete_agent_handoff,
+            handoff::agent_transcript_snapshot,
             antigravity_sessions::snapshot_antigravity_sessions,
             cursor_sessions::create_cursor_chat,
             claude_usage::get_claude_usage,
@@ -520,6 +563,9 @@ pub fn run() {
             codex_usage::consume_codex_reset_credit,
             antigravity_usage::get_antigravity_usage,
             kimi_usage::get_kimi_usage,
+            openrouter_usage::get_openrouter_usage,
+            openrouter_usage::openrouter_set_management_key,
+            openrouter_usage::openrouter_delete_management_key,
             agent_cost::get_session_cost,
             agent_cost::get_transcript_cost,
             agent_cost::get_model_pricing,
@@ -532,6 +578,8 @@ pub fn run() {
             speech::speech_list_input_devices,
             speech::speech_model_states,
             speech::speech_download_model,
+            speech::speech_pause_download,
+            speech::speech_cancel_download,
             speech::speech_delete_model,
             speech::speech_start_capture,
             speech::speech_capture_level,
@@ -542,7 +590,25 @@ pub fn run() {
             speech::speech_stop_and_transcribe,
             speech::speech_transcribe_partial,
             speech::speech_transcribe,
-            speech_cloud::speech_stop_and_transcribe_cloud,
+            speech::speech_native_locales,
+            speech_hub::speech_hub_search,
+            speech_hub::speech_hub_resolve,
+            tts::tts_speak,
+            tts::tts_prefetch,
+            tts::tts_stop,
+            tts::tts_pause,
+            tts::tts_resume,
+            tts::tts_set_muted,
+            tts::tts_voices,
+            voice_providers::keys::voice_provider_set_key,
+            voice_providers::keys::voice_provider_delete_key,
+            voice_providers::keys::voice_provider_test,
+            voice_providers::catalog::voice_provider_catalog,
+            voice_providers::openrouter::voice_openrouter_models,
+            voice_servers::commands::voice_servers_list,
+            voice_servers::commands::voice_servers_save,
+            voice_servers::commands::voice_servers_delete,
+            voice_servers::commands::voice_servers_test,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,
@@ -644,9 +710,22 @@ pub fn run() {
         .build(context)
         .expect("error while building alethe")
         .run(move |_app_handle, event| {
-            // emitir `Exit`; esperar esse evento deixa shells/agentes vivos
+            // Teardown runs on `ExitRequested`: the runtime does not always emit `Exit`, and
+            // waiting for it would leave shells and agents alive.
+
+            // The close fallback destroys only the main window; the hidden voice HUD (and any
+            // detached board) would keep the process alive without it.
+            if let tauri::RunEvent::WindowEvent { label, event: window_event, .. } = &event {
+                if exits_with_window(label, window_event)
+                    && !EXIT_REQUESTED.load(std::sync::atomic::Ordering::SeqCst)
+                {
+                    _app_handle.exit(0);
+                }
+            }
 
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                EXIT_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
+                agent_events::release_all_permissions(_app_handle);
                 pty::kill_all_sessions_background(&sessions_for_exit);
                 browser_session::kill_running_session(
                     &_app_handle.state::<browser_session::BrowserSessionState>(),
@@ -659,6 +738,14 @@ pub fn run() {
                 crash_watch::mark_clean_exit();
             }
         });
+}
+
+/// Set once the app is exiting, so a window destroyed during the exit does not ask again.
+static EXIT_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The app has no use without its main window.
+fn exits_with_window(label: &str, event: &tauri::WindowEvent) -> bool {
+    label == "main" && matches!(event, tauri::WindowEvent::Destroyed)
 }
 
 #[tauri::command]
@@ -691,6 +778,14 @@ fn ping() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_destroying_the_main_window_exits() {
+        assert!(exits_with_window("main", &tauri::WindowEvent::Destroyed));
+        assert!(!exits_with_window("voice-hud", &tauri::WindowEvent::Destroyed));
+        assert!(!exits_with_window("orchestration-x", &tauri::WindowEvent::Destroyed));
+        assert!(!exits_with_window("main", &tauri::WindowEvent::Focused(false)));
+    }
 
     #[test]
     fn rebuilt_path_is_non_empty_on_windows() {

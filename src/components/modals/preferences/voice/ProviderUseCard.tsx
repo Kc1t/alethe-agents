@@ -1,0 +1,93 @@
+import type { LucideIcon } from 'lucide-react'
+import { type ReactNode, useId } from 'react'
+
+import { useT } from '../../../../lib/i18n'
+import type { ProviderStatus } from './ProviderCard'
+import styles from './ProviderUseCard.module.css'
+
+/** `notReady`: chosen but cannot run yet (a local model not downloaded); never shown as in use. */
+export type ProviderUseStatus = 'inUse' | 'notReady' | ProviderStatus
+
+const STATUS_KEY = {
+  inUse: 'prefs.voiceStatusInUse',
+  connected: 'prefs.voiceStatusConnected',
+  disconnected: 'prefs.voiceStatusDisconnected',
+  invalid: 'prefs.voiceStatusInvalid',
+  notReady: 'prefs.voiceStatusNotReady',
+} as const
+
+/**
+ * A provider as a choice for one voice use. Same anatomy as `ProviderCard`; the title is a radio
+ * button stretched over the card, so the whole card selects it while the footer controls stay
+ * independent.
+ */
+export function ProviderUseCard({
+  icon: Icon,
+  title,
+  description,
+  status,
+  selected,
+  onSelect,
+  disabled = false,
+  footer,
+  summary,
+  note,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+  status: ProviderUseStatus
+  selected: boolean
+  onSelect: () => void
+  disabled?: boolean
+  footer?: ReactNode
+  /** One line under the footer describing the chosen model, e.g. languages and tiers. */
+  summary?: ReactNode
+  /** Muted line under the footer, e.g. where a cloud provider sends data. */
+  note?: string
+}) {
+  const t = useT()
+  const titleId = useId()
+  // A warning (invalid key, model not ready) stays even on the chosen card; the border shows the
+  // selection.
+  const warns = status === 'invalid' || status === 'notReady'
+  const badge: ProviderUseStatus = selected && !warns ? 'inUse' : status
+  return (
+    <article
+      className={styles.card}
+      aria-labelledby={titleId}
+      data-selected={selected ? '' : undefined}
+      data-disabled={disabled ? '' : undefined}
+    >
+      <div className={styles.top}>
+        <span className={styles.icon} aria-hidden="true">
+          <Icon size={18} />
+        </span>
+        <span className={styles.badge} data-status={badge}>
+          <span className={styles.dot} aria-hidden="true" />
+          {t(STATUS_KEY[badge])}
+        </span>
+      </div>
+      <h3 id={titleId} className={styles.title}>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={selected}
+          disabled={disabled}
+          className={styles.select}
+          onClick={onSelect}
+        >
+          {title}
+        </button>
+      </h3>
+      <p className={styles.description}>{description}</p>
+      {footer || summary || note ? (
+        <div className={styles.footer}>
+          {footer}
+          {summary}
+          {note ? <p className={styles.note}>{note}</p> : null}
+        </div>
+      ) : null}
+    </article>
+  )
+}

@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,6 +13,15 @@ const PROFILES_REGISTRY_FILE: &str = "profiles.json";
 const DEFAULT_PROFILE_ID: &str = "default";
 
 const WEBVIEW_CACHE_DIR: &str = "EBWebView";
+
+/// Serializes read-modify-write of `profiles.json` (they share one temp file). Profile deletion runs
+/// off the main thread, so it can overlap with switching, creating or renaming. Never held across a
+/// keychain call, and not taken by `ensure_profiles_index` (the lock is not re-entrant).
+static INDEX_LOCK: Mutex<()> = Mutex::new(());
+
+fn index_lock() -> MutexGuard<'static, ()> {
+    INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ProfileMeta {
@@ -386,6 +396,7 @@ pub fn list_profiles_state(app: &AppHandle) -> Result<ProfilesState, String> {
 }
 
 pub fn set_active_profile_id(app: &AppHandle, profile_id: &str) -> Result<ProfilesState, String> {
+    let _index = index_lock();
     let root = root_data_dir(app)?;
     let mut index = ensure_profiles_index(app)?;
     if !index
@@ -411,6 +422,7 @@ pub fn create_profile_state(
     app: &AppHandle,
     name: Option<String>,
 ) -> Result<ProfilesState, String> {
+    let _index = index_lock();
     let root = root_data_dir(app)?;
     let mut index = ensure_profiles_index(app)?;
     let id = nanoid::nanoid!(10);
@@ -440,6 +452,7 @@ pub fn rename_profile_state(
     profile_id: &str,
     name: String,
 ) -> Result<ProfilesState, String> {
+    let _index = index_lock();
     let root = root_data_dir(app)?;
     let mut index = ensure_profiles_index(app)?;
     let updated = normalize_profile_name(Some(&name));
@@ -466,27 +479,25 @@ pub fn rename_profile_state(
     Ok(profiles_state_from(&index))
 }
 
-pub fn delete_profile_state(app: &AppHandle, profile_id: &str) -> Result<ProfilesState, String> {
-    let root = root_data_dir(app)?;
-    let mut index = ensure_profiles_index(app)?;
-    if index.profiles.len() <= 1 {
-        return Err("cannot delete the last local profile".to_string());
-    }
-    let target = index
+/// The profile to remove: `None` when it is already gone, an error when it is the last one.
+fn removal_target(index: &ProfilesIndex, profile_id: &str) -> Result<Option<ProfileMeta>, String> {
+    let Some(target) = index
         .profiles
         .iter()
         .find(|profile| profile.id == profile_id)
         .cloned()
-        .ok_or_else(|| format!("profile not found: {profile_id}"))?;
-    let target_dir = profile_dir(&root, &target.id);
-    if target_dir.join("github_sync.json").is_file() {
-        crate::secure_store::delete_github_sync_token(&target.id)?;
+    else {
+        return Ok(None);
+    };
+    if index.profiles.len() <= 1 {
+        return Err("cannot delete the last local profile".to_string());
     }
-    crate::spotify::delete_profile_secrets(&target.id)?;
-    if target_dir.exists() {
-        fs::remove_dir_all(&target_dir).map_err(|error| error.to_string())?;
-    }
+    Ok(Some(target))
+}
 
+/// Drops a profile from the index; when it was active, the default profile (or the first left)
+/// becomes active and is marked as used.
+fn remove_from_index(index: &mut ProfilesIndex, profile_id: &str) -> Result<(), String> {
     index.profiles.retain(|profile| profile.id != profile_id);
     if index.active_profile_id == profile_id {
         let fallback = index
@@ -503,6 +514,38 @@ pub fn delete_profile_state(app: &AppHandle, profile_id: &str) -> Result<Profile
             }
         }
     }
+    Ok(())
+}
+
+/// Deletes a profile in two phases: its keychain secrets first, without the index lock (a keychain
+/// call can wait on a password prompt), then, under the lock, its folder and its index entry,
+/// re-checked against the index as it is now.
+pub fn delete_profile_state(app: &AppHandle, profile_id: &str) -> Result<ProfilesState, String> {
+    let root = root_data_dir(app)?;
+    let target = removal_target(&ensure_profiles_index(app)?, profile_id)?
+        .ok_or_else(|| format!("profile not found: {profile_id}"))?;
+    let target_dir = profile_dir(&root, &target.id);
+    if target_dir.join("github_sync.json").is_file() {
+        crate::secure_store::delete_github_sync_token(&target.id)?;
+    }
+    crate::spotify::delete_profile_secrets(&target.id)?;
+    crate::voice_providers::keys::delete_profile_keys(&target.id)?;
+    crate::voice_providers::keys::delete_secret(
+        &target.id,
+        crate::secure_store::SecretKind::OpenrouterManagementKey,
+    )?;
+    crate::voice_servers::delete_profile_keys(&target.id, &target_dir)?;
+
+    let _index = index_lock();
+    let mut index = ensure_profiles_index(app)?;
+    if removal_target(&index, profile_id)?.is_none() {
+        // Removed meanwhile by another delete.
+        return Ok(profiles_state_from(&index));
+    }
+    if target_dir.exists() {
+        fs::remove_dir_all(&target_dir).map_err(|error| error.to_string())?;
+    }
+    remove_from_index(&mut index, profile_id)?;
     ensure_profile_dirs(&root, &index)?;
     write_profiles_index(&root, &index)?;
     Ok(profiles_state_from(&index))
@@ -552,9 +595,12 @@ pub fn rename_profile(
     rename_profile_state(&app, &profile_id, name)
 }
 
+/// Deleting a profile removes its keychain secrets, and a keychain call can wait on a password
+/// prompt (or on a pending voice key read), so it runs on the blocking pool instead of the main
+/// thread that sync commands use.
 #[tauri::command]
-pub fn delete_profile(app: AppHandle, profile_id: String) -> Result<ProfilesState, String> {
-    delete_profile_state(&app, &profile_id)
+pub async fn delete_profile(app: AppHandle, profile_id: String) -> Result<ProfilesState, String> {
+    crate::voice_providers::keys::blocking(move || delete_profile_state(&app, &profile_id)).await
 }
 
 fn normalize_profile_name(name: Option<&str>) -> String {
@@ -563,5 +609,82 @@ fn normalize_profile_name(name: Option<&str>) -> String {
         "Untitled profile".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn meta(id: &str) -> ProfileMeta {
+        ProfileMeta {
+            id: id.to_string(),
+            name: id.to_string(),
+            created_at_ms: 1,
+            last_used_at_ms: 1,
+        }
+    }
+
+    fn index(active: &str, ids: &[&str]) -> ProfilesIndex {
+        ProfilesIndex {
+            version: 1,
+            active_profile_id: active.to_string(),
+            profiles: ids.iter().map(|id| meta(id)).collect(),
+        }
+    }
+
+    #[test]
+    fn a_profile_can_be_removed_only_while_another_one_remains() {
+        let two = index("a", &[DEFAULT_PROFILE_ID, "a"]);
+        assert_eq!(
+            removal_target(&two, "a").unwrap().map(|p| p.id),
+            Some("a".into())
+        );
+        assert_eq!(removal_target(&two, "gone").unwrap().map(|p| p.id), None);
+        let one = index("a", &["a"]);
+        assert!(removal_target(&one, "a").is_err());
+    }
+
+    #[test]
+    fn removing_the_active_profile_falls_back_to_default() {
+        let mut idx = index("a", &["b", DEFAULT_PROFILE_ID, "a"]);
+        remove_from_index(&mut idx, "a").unwrap();
+        assert_eq!(idx.active_profile_id, DEFAULT_PROFILE_ID);
+        assert_eq!(idx.profiles.len(), 2);
+        assert!(idx.profiles.iter().all(|p| p.id != "a"));
+        let fallback = idx
+            .profiles
+            .iter()
+            .find(|p| p.id == DEFAULT_PROFILE_ID)
+            .unwrap();
+        assert!(
+            fallback.last_used_at_ms > 1,
+            "the fallback is marked as used"
+        );
+    }
+
+    #[test]
+    fn removing_the_active_profile_without_default_picks_the_first() {
+        let mut idx = index("a", &["b", "a"]);
+        remove_from_index(&mut idx, "a").unwrap();
+        assert_eq!(idx.active_profile_id, "b");
+    }
+
+    #[test]
+    fn removing_another_profile_keeps_the_active_one() {
+        let mut idx = index("b", &["b", "a"]);
+        remove_from_index(&mut idx, "a").unwrap();
+        assert_eq!(idx.active_profile_id, "b");
+        assert_eq!(idx.profiles[0].last_used_at_ms, 1);
+    }
+
+    #[test]
+    fn the_index_lock_survives_a_panic_while_held() {
+        let _ = std::thread::spawn(|| {
+            let _guard = index_lock();
+            panic!("poison the lock");
+        })
+        .join();
+        drop(index_lock());
     }
 }

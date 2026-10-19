@@ -17,7 +17,7 @@ export function useAgentHookBridge(): void {
     void listen<AgentHookPayload>('agent-hook', (event) => {
       if (cancelled) return
       trackClaudeSessionHook(event.payload)
-      useAgentCanvasStore.getState().ingest(event.payload)
+      if (!event.payload.voiceOnly) useAgentCanvasStore.getState().ingest(event.payload)
     }).then((off) => {
       if (cancelled) off()
       else unlisten = off

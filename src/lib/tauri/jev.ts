@@ -65,11 +65,11 @@ export type JevContext = {
   focusedTerminal: string | null
 }
 
+/** Uses the OpenRouter key saved in the OS keychain; the frontend never holds it. */
 export async function jevDecide(
   spoken: string,
   context: JevContext,
-  apiKey: string,
   model?: string,
 ): Promise<JevDecision> {
-  return invoke<JevDecision>('jev_decide', { spoken, context, apiKey, native: false, model })
+  return invoke<JevDecision>('jev_decide', { spoken, context, native: false, model })
 }

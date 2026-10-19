@@ -1162,6 +1162,12 @@
   background: var(--agent-kimi-soft);
   border-color: color-mix(in srgb, var(--agent-kimi) 28%, transparent);
 }
+
+.badgeOpenRouter {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
 .badgeActivity {
   color: var(--status-working);
   background: color-mix(in srgb, var(--status-working) 14%, transparent);
@@ -1487,6 +1493,65 @@
 .usageEmptyAction {
   composes: resetCreditButton;
   margin-top: 6px;
+}
+
+/* ---- OpenRouter management key ---- */
+
+.orKeyForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 13px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.orKeyHint {
+  color: var(--fg-faint);
+  font: 10px var(--font-sans);
+}
+
+.orKeyRow {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.orKeyInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  font: 11px var(--font-mono);
+}
+
+.orKeyInput:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.orKeyError {
+  color: var(--status-offline);
+  font: 10px var(--font-sans);
+}
+
+.orKeyToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.orKeyToggle:hover {
+  color: var(--fg);
 }
 
 /* ---- heatmap wrapper ---- */

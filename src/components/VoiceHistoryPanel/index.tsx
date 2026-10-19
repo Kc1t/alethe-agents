@@ -2,7 +2,9 @@ import { Check, Mic, Trash2 } from 'lucide-react'
 
 import { agentLabel } from '../../lib/agentProviders'
 import { type MessageKey, useT } from '../../lib/i18n'
+import { acceleratorLabel } from '../../lib/voice/shortcut'
 import { WARNINGS } from '../../lib/voiceCommand'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useVoiceHistoryStore, type VoiceHistoryStatus } from '../../stores/voiceHistoryStore'
 import styles from './VoiceHistoryPanel.module.css'
 
@@ -22,6 +24,7 @@ export function VoiceHistoryPanel() {
   const t = useT()
   const entries = useVoiceHistoryStore((state) => state.entries)
   const clear = useVoiceHistoryStore((state) => state.clear)
+  const commandShortcut = useProjectsStore((state) => state.preferences.voiceCommandShortcut)
 
   return (
     <section className={styles.sidebar}>
@@ -49,7 +52,9 @@ export function VoiceHistoryPanel() {
               <Mic size={18} />
             </span>
             <strong>{t('voice.history.emptyTitle')}</strong>
-            <span>{t('voice.history.emptyBody')}</span>
+            <span>
+              {t('voice.history.emptyBody', { shortcut: acceleratorLabel(commandShortcut) })}
+            </span>
           </div>
         ) : (
           <ol className={styles.list}>

@@ -378,6 +378,7 @@ fn handle_api(
             tab.session_id.as_deref(),
             since,
             MAX_TRANSCRIPT_EVENTS,
+            false,
         ) {
             Ok(snapshot) => {
                 let mut payload = serde_json::to_value(snapshot).map_err(|e| e.to_string())?;

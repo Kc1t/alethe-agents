@@ -104,6 +104,8 @@ Versioned in this repo:
 - [`docs/PLUGINS.md`](docs/PLUGINS.md) — plugin system: manifest, capabilities, lifecycle, and how
   to add a bundled plugin.
 - [`docs/THEMES.md`](docs/THEMES.md) — adding a theme, as a plugin or as a built-in.
+- [`docs/VOICE.md`](docs/VOICE.md) — voice conversation, HUD, speech engines and voice providers:
+  architecture, security, preferences, and how to review it.
 - [`docs/DIAGNOSTICO_MATURIDADE_TECNICA.md`](docs/DIAGNOSTICO_MATURIDADE_TECNICA.md) — diagnostic of
   code organization, duplication, and performance, with prioritized recommendations.
 

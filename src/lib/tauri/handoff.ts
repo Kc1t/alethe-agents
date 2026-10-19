@@ -40,3 +40,42 @@ export function materializeAgentHandoff(content: string): Promise<HandoffArtifac
 export function completeAgentHandoff(handoffId: string): Promise<void> {
   return invoke('complete_agent_handoff', { handoffId })
 }
+
+/** A tool call's name and the parts of its input the narrator says. */
+export type TranscriptToolSummary = {
+  name: string
+  command?: string
+  path?: string
+  description?: string
+}
+
+export type TranscriptEvent = {
+  /** `thinking`: the agent's reasoning, when its transcript keeps it (Claude thinking, Codex summaries). */
+  role: 'user' | 'assistant' | 'thinking' | 'tool' | 'tool-result' | 'question'
+  text: string
+  /** On `tool` events. */
+  tool?: TranscriptToolSummary
+}
+
+export type TranscriptSnapshot = {
+  sessionId: string | null
+  revision: number
+  unchanged: boolean
+  /** Absolute index of `messages[0]` among every event of the transcript. */
+  firstIndex: number
+  messages: TranscriptEvent[]
+}
+
+export function agentTranscriptSnapshot(
+  provider: 'claude' | 'codex',
+  cwd: string,
+  sessionId: string | null,
+  since: number | null,
+): Promise<TranscriptSnapshot> {
+  return invoke<TranscriptSnapshot>('agent_transcript_snapshot', {
+    provider,
+    cwd,
+    sessionId,
+    since,
+  })
+}
