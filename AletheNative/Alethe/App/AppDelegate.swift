@@ -30,7 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor func applicationDidFinishLaunching(_ notification: Notification) {
-        ImagePasteMonitor.install()
+        ImagePasteMonitor.install { [weak self] in self?.environment?.metrics }
     }
 
     /// Folders (or files) opened with the app: `alethe` runs `open -a Alethe <folder>`, and Finder's

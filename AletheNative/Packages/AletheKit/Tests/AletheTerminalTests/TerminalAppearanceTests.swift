@@ -12,8 +12,9 @@ import Testing
         #expect(rendered.contains("font-size = 21"))
         #expect(rendered.contains("window-padding-x = 0"))
         #expect(rendered.contains("window-padding-y = 0"))
+        // The host padding comes from the pane layout, so the surface fills its host.
         #expect(TerminalAppearance.surfaceFrame(in: CGRect(x: 0, y: 0, width: 200, height: 100), metrics: metrics)
-                == CGRect(x: 12, y: 3, width: 179, height: 91))
+                == CGRect(x: 0, y: 0, width: 200, height: 100))
         #expect(TerminalAppearance.surfaceFrame(in: .zero, metrics: metrics).size == .zero)
     }
 
