@@ -36,6 +36,14 @@ struct SidebarWebDrop: ViewModifier {
                             .allowsHitTesting(false)
                     }
                 }
+                .task(id: edge != nil) {
+                    // A cancelled or ended drag does not always report `dropExited`: once the button
+                    // is up the indicator must go, or the row stays marked.
+                    while edge != nil {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        if NSEvent.pressedMouseButtons == 0 { edge = nil }
+                    }
+                }
                 .background(GeometryReader { geometry in
                     Color.clear.preference(key: SidebarDropHeight.self, value: geometry.size.height)
                 })
