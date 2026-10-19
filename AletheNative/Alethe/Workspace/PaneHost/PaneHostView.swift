@@ -126,7 +126,11 @@ final class PaneHostView: NSView {
         needsLayout = true
     }
 
-    private var gap: CGFloat { context.map { $0.metrics.isWebInterface ? $0.metrics.size(10) : $0.metrics.space(.s) } ?? 6 }
+    private var gap: CGFloat {
+        guard let context else { return 6 }
+        guard context.metrics.isWebInterface else { return context.metrics.space(.s) }
+        return context.metrics.size(containerGrid != nil || context.metrics.style == .clean ? 0 : 10)
+    }
     private var minimumContainer: CGFloat { context?.metrics.size(260) ?? 260 }
     private var collapsedWidth: CGFloat { context.map { $0.metrics.size($0.metrics.isWebInterface ? 36 : 40) } ?? 40 }
     private var area: CGRect { context?.metrics.isWebInterface == true ? bounds : bounds.insetBy(dx: gap, dy: gap) }
@@ -181,7 +185,7 @@ final class PaneHostView: NSView {
         animateNextLayout = false
         for (id, frame) in frames {
             guard let view = containers[id], containerDrag?.project != id else { continue }
-            animator.set(view, frame: frame.integral, animated: animated)
+            animator.set(view, frame: context?.metrics.isWebInterface == true ? frame : frame.integral, animated: animated)
         }
         layoutDividers(frames)
         layoutFocusMode(frames)
@@ -268,6 +272,7 @@ final class PaneHostView: NSView {
         let handle = max(gap, context?.metrics.size(8) ?? 8)
         for (index, view) in dividers.enumerated() {
             guard let left = frames[pairs[index].0] else { continue }
+            view.configure(context: context)
             // Right after the left container (a collapsed strip may follow before the next one).
             let center = left.maxX + gap / 2
             view.frame = CGRect(x: center - handle / 2, y: area.minY, width: handle, height: area.height)

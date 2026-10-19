@@ -190,7 +190,12 @@ final class ContainerView: NSView {
     }
 
     private var headerHeight: CGFloat { showsHeader ? context?.metrics.size(context?.metrics.isWebInterface == true ? 32 : 30) ?? 30 : 0 }
-    private var gap: CGFloat { context.map { $0.metrics.isWebInterface ? $0.metrics.size(10) : $0.metrics.space(.s) } ?? 6 }
+    private var gap: CGFloat {
+        guard let context else { return 6 }
+        guard context.metrics.isWebInterface else { return context.metrics.space(.s) }
+        // Custom grids are flush in both styles; split panels are flush only in Clean.
+        return context.metrics.size(lastProject?.layout == .grid || context.metrics.style == .clean ? 0 : 10)
+    }
     private var minimumPane: CGSize {
         CGSize(width: context?.metrics.size(160) ?? 160, height: context?.metrics.size(100) ?? 100)
     }
@@ -217,7 +222,8 @@ final class ContainerView: NSView {
         let mode = lastProject?.layout ?? .auto
         return PaneGridGeometry(count: order.count, in: paneArea, weights: current, gap: gap,
                                 handle: max(gap, context?.metrics.size(8) ?? 8), mode: mode,
-                                grid: mode == .grid ? lastProject?.effectiveGrid : nil, ids: order.map(\.rawValue))
+                                grid: mode == .grid ? lastProject?.effectiveGrid : nil, ids: order.map(\.rawValue),
+                                handlesInsideLeadingCell: context?.metrics.isWebInterface == true)
     }
 
     override func layout() {
@@ -287,7 +293,7 @@ final class ContainerView: NSView {
                     animator.set(child, frame: target.integral, animated: animated)
                 }
             } else {
-                animator.set(view, frame: frame.integral, animated: animated)
+                animator.set(view, frame: context?.metrics.isWebInterface == true ? frame : frame.integral, animated: animated)
             }
         }
         layoutDividers(geometry)
@@ -354,7 +360,7 @@ final class ContainerView: NSView {
         }
         for (kind, rect) in geometry.dividers {
             let view = dividers[kind] ?? makeDivider(kind)
-            view.configure(context: context)
+            view.configure(context: context, gridHandle: lastProject?.layout == .grid)
             view.frame = rect
         }
     }
@@ -373,22 +379,66 @@ final class ContainerView: NSView {
         }
         view.onDrag = { [weak self] delta in self?.resize(kind, delta: delta) }
         view.onEnd = { [weak self] in self?.endResize(kind) }
+        view.onDoubleClick = { [weak self, weak view] point in
+            guard let self, let view, self.lastProject?.layout == .grid,
+                  self.context?.metrics.isWebInterface == true else { return }
+            let point = self.convert(point, from: view)
+            let geometry = self.geometry()
+            if let index = geometry.paneFrames.firstIndex(where: { $0.contains(point) }), self.order.indices.contains(index) {
+                self.context?.fillFreeSpace(self.order[index])
+            }
+        }
         addSubview(view)
         dividers[kind] = view
         return view
     }
 
+    private func draggedSizes(_ kind: PaneGridGeometry.Divider, delta: CGFloat) -> [CGFloat] {
+        let column: Bool
+        let index: Int
+        switch kind.track {
+        case .column(let boundary): column = true; index = boundary
+        case .row(let boundary): column = false; index = boundary
+        }
+        if context?.metrics.isWebInterface == true, lastProject?.layout != .grid,
+           resizeBase.indices.contains(index + 1) {
+            let total = column ? paneArea.width : paneArea.height
+            let mode = lastProject?.layout ?? .auto
+            let fractions: (CGFloat, CGFloat)
+            if column && mode == .spotlight { fractions = (0.25, 0.15) }
+            else if column && mode == .sidebar { fractions = (0.15, 0.40) }
+            else if column && order.count == 2 { fractions = (0.15, 0.15) }
+            else { fractions = (0.10, 0.10) }
+            let pair = resizeBase[index] + resizeBase[index + 1]
+            let leading = min(total * fractions.0, pair / 2)
+            let trailing = min(total * fractions.1, pair / 2)
+            var result = resizeBase
+            result[index] = min(max(resizeBase[index] + delta, leading), pair - trailing)
+            result[index + 1] = pair - result[index]
+            return result
+        }
+        if context?.metrics.isWebInterface == true, let grid = lastProject?.effectiveGrid {
+            let stored = column ? grid.colSizes : grid.rowSizes
+            let count = column ? grid.cols : grid.rows
+            let totalFractions = stored?.reduce(0, +) ?? Double(count)
+            let extent = column ? paneArea.width : paneArea.height
+            return TrackMath.drag(resizeBase, divider: index, delta: delta,
+                                  minimum: extent * CGFloat(0.1 / max(0.1, totalFractions)))
+        }
+        return TrackMath.drag(resizeBase, divider: index, delta: delta,
+                              minimum: column ? minimumPane.width : minimumPane.height,
+                              rubberBand: { Motion.rubberBand(overshoot: $0, dimension: $1) })
+    }
+
     private func resize(_ kind: PaneGridGeometry.Divider, delta: CGFloat) {
         let geometry = geometry()
         switch kind.track {
-        case .column(let index):
+        case .column:
             if liveColumns == nil { resizeBase = geometry.columnSizes }
-            liveColumns = TrackMath.drag(resizeBase, divider: index, delta: delta, minimum: minimumPane.width,
-                                         rubberBand: { Motion.rubberBand(overshoot: $0, dimension: $1) })
-        case .row(let index):
+            liveColumns = draggedSizes(kind, delta: delta)
+        case .row:
             if liveRows == nil { resizeBase = geometry.rowSizes }
-            liveRows = TrackMath.drag(resizeBase, divider: index, delta: delta, minimum: minimumPane.height,
-                                      rubberBand: { Motion.rubberBand(overshoot: $0, dimension: $1) })
+            liveRows = draggedSizes(kind, delta: delta)
         }
         resizeDelta = delta
         needsLayout = true
@@ -399,10 +449,12 @@ final class ContainerView: NSView {
     private func endResize(_ kind: PaneGridGeometry.Divider) {
         switch kind.track {
         case .column(let index):
-            let settled = TrackMath.drag(resizeBase, divider: index, delta: resizeDelta, minimum: minimumPane.width)
+            let settled = context?.metrics.isWebInterface == true ? draggedSizes(kind, delta: resizeDelta)
+                : TrackMath.drag(resizeBase, divider: index, delta: resizeDelta, minimum: minimumPane.width)
             weights.columns = TrackMath.weights(settled)
         case .row(let index):
-            let settled = TrackMath.drag(resizeBase, divider: index, delta: resizeDelta, minimum: minimumPane.height)
+            let settled = context?.metrics.isWebInterface == true ? draggedSizes(kind, delta: resizeDelta)
+                : TrackMath.drag(resizeBase, divider: index, delta: resizeDelta, minimum: minimumPane.height)
             weights.rows = TrackMath.weights(settled)
         }
         liveColumns = nil

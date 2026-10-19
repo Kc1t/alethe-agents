@@ -181,3 +181,51 @@ fields, recent cards and tab icons already implement this path, including macOS 
 extensions and loading/error fallbacks. No Change image context action appears in the inspected
 web sidebar menu. Existing `ProjectImageTests` cover serialization, validation and imports; they
 also await reviewer execution. Cover rendering for SVG/animated GIF remains a renderer check.
+
+
+## Terminal dividers follow-up (dv, 2026-10-19)
+
+Task state / memory: changes remain unstaged; no build, commit, push, app restart or dev-server
+restart. No ai-memory skill or memory write tool is available in this session; this existing
+versioned review record captures the decision, validation and remaining work.
+
+Source of truth read with `git show origin/main:<path>`:
+
+- `src/components/WorkspaceView/WorkspaceView.module.css`: Normal split separators occupy 10px,
+  show a 1px border-strong line at 0.7 opacity (2px radius), and use accent-soft on hover. Clean
+  separators occupy zero layout space with an 8px hit area centered across the edge (−4px margins),
+  no center line or hover fill. Both use a 3×36px accent grip (3px radius), opacity 0→1 on hover
+  or active drag, with 120ms CSS ease. Native uses metrics for every spatial value and the CSS ease
+  control points (0.25, 0.1, 0.25, 1); Reduce Motion disables the transition.
+- `PaneArea.tsx` / `PersistentPanelGroup.tsx`: split minimums are 15% for two-pane Auto columns,
+  10% for multi-row Auto columns/rows and stack rows, 25%/15% for Spotlight columns and 15%/40%
+  for Sidebar columns. Native web splits clamp without rubber banding; macOS retains its existing
+  minimums and rubber banding. Split panes do not install a double-click reset handler.
+- `src/lib/gridLayout.ts` (`gridContainerStyle`): custom grids have zero gap in both styles.
+- `src/components/GridCellHandles/{index.tsx,GridCellHandles.module.css}` and
+  `src/hooks/useGridCellDrag.ts`: grid handles sit inside right/bottom edges, are 8px thick with
+  accent-soft hover fill and a 3×36px accent grip, and double-click fills reachable free space
+  rather than resetting weights. Native now positions its grid handles inside the leading cell,
+  uses the grid hover treatment in both styles, and calls the existing fill-free-space operation
+  on double-click. Track minimum uses the web hook's 0.1fr floor.
+- `src/components/TerminalPane/TerminalPane.module.css`: terminal panes have a 1px border and zero
+  radius in both styles. Existing native web borders, Clean focus color and inset ring are already
+  consistent and were retained. Orchestration group interiors intentionally retain 6px gaps and
+  6px padding (`WorkspaceView.module.css`); this change only removes external pane/grid gaps.
+
+Fractional web pane/container frames are retained instead of rounding each frame outward, avoiding
+an overlapping pixel at odd-size boundaries. `PaneView.layout()` still calls `syncSurfaceSize()`
+after laying out content; neither the terminal lifecycle nor accessibility identifiers changed.
+Clicking a web separator without dragging no longer commits stale resize weights.
+
+Validation: `python3 AletheNative/Scripts/check-strings.py` passed; `git diff --check` passed.
+Added unexecuted geometry tests for flush Auto/Spotlight/Sidebar, 8px hit widths, fractional bounds,
+and custom-grid spans/free slots with inside-edge handles. Sandbox restrictions prohibit builds,
+Swift unit-test execution and the UI harness; reviewer must run these outside the sandbox.
+
+Remaining difference: the pre-existing custom-grid drag changes track weights; the web hook can
+also snap a cell span into adjacent empty slots. This geometry task preserves that drag behavior
+and existing reorder/fill controls; double-click now exposes the web fill operation. Grid handle
+segments still follow native occupancy boundaries, including boundaries with a leading free slot.
+Reviewer should verify hover/active feedback, terminal resizing, zoom, odd window sizes, custom
+spans and orchestration stacks on macOS 26.6 before accepting visual parity.

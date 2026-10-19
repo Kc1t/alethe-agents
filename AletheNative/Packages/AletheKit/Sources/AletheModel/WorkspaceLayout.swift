@@ -118,10 +118,22 @@ public struct PaneGridGeometry: Equatable, Sendable {
     public var freeSlots: [Slot] = []
 
     /// - Parameter handle: thickness of a divider's hit area, centered on its gap.
+    /// - Parameter handlesInsideLeadingCell: places custom-grid handles inside right/bottom cell edges.
     public init(count: Int, in rect: CGRect, weights: GridWeights, gap: CGFloat, handle: CGFloat,
-                mode: PaneLayoutMode = .auto, grid: CustomGrid? = nil, ids: [String] = []) {
+                mode: PaneLayoutMode = .auto, grid: CustomGrid? = nil, ids: [String] = [],
+                handlesInsideLeadingCell: Bool = false) {
         if mode == .grid, let grid, count > 1 {
             self = Self.custom(grid: grid, ids: ids, in: rect, weights: weights, gap: gap, handle: handle)
+            if handlesInsideLeadingCell {
+                // Web GridCellHandles lives inside the right/bottom edge of the leading cell.
+                for (divider, frame) in dividers {
+                    switch divider {
+                    case .gridColumn: dividers[divider] = frame.offsetBy(dx: -(handle + gap) / 2, dy: 0)
+                    case .gridRow: dividers[divider] = frame.offsetBy(dx: 0, dy: -(handle + gap) / 2)
+                    default: break
+                    }
+                }
+            }
             return
         }
         paneFrames = []

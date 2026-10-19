@@ -11,6 +11,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Move terminal and file panes onto another project without replacing their tabs or sessions;
   import Finder folders into the group under the pointer. Drops show insertion lines or target
   highlights, a compact themed drag preview, edge scrolling, and support undo.
+### Terminal pane dividers (dv)
+- Web interface: Clean split panes now touch with invisible resize handles; Normal retains its
+  separator spacing and center line. Custom grids have no gaps in either style, with handles inside
+  cell edges, hover grips, and double-click to fill free space. The macOS interface is unchanged.
 
 ### Web-styled settings controls
 - Web interface: Integrations (9router, Playwright, usage), Plugins, Custom agents, Multiagent, CLI tool,
