@@ -4,6 +4,13 @@ import Testing
 @testable import AletheTerminal
 
 @Suite struct SmartPasteTests {
+    /// Port of `terminalInput.test.ts`'s clipboard newline regression.
+    @Test func clipboardNewlinesBecomePTYCarriageReturns() {
+        #expect(SmartPaste.normalizeText("one\r\ntwo\nthree\r") == "one\rtwo\rthree\r")
+        #expect(SmartPaste.normalizeText("ação 🚀\r\n\r\nend") == "ação 🚀\r\rend")
+        #expect(SmartPaste.normalizeText("") == "")
+    }
+
     private func pasteboard() -> NSPasteboard {
         let board = NSPasteboard(name: NSPasteboard.Name("alethe-test-\(UUID().uuidString)"))
         board.clearContents()

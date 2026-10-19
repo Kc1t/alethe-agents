@@ -31,6 +31,18 @@ public final class TerminalSearch {
         return .count(total)
     }
 
+    /// A changed web query starts counting again; never show the previous query's result count.
+    /// Native callers retain their existing progress behavior until Ghostty reports an update.
+    func setNeedle(_ text: String, resetProgress: Bool) -> String {
+        let next = Self.bindingNeedle(text)
+        if next.isEmpty || (resetProgress && next != needle) {
+            total = nil
+            selected = nil
+        }
+        needle = next
+        return next
+    }
+
     /// Ghostty's `search:` binding argument: one line, no control characters.
     nonisolated static func bindingNeedle(_ text: String) -> String {
         String(text.prefix { !$0.isNewline }.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })

@@ -3,6 +3,23 @@ import Testing
 @testable import AletheTerminal
 
 @Suite struct TerminalLinkTests {
+    /// Port of `terminalLinks.test.ts`'s bare deployment domains and escaped spaces.
+    @Test func webTargetsNormalizeDomainsAndLocalhost() {
+        func web(_ text: String) -> TerminalLink {
+            TerminalLink.resolveWeb(text, cwd: "/repo", home: "/Users/me", fileKind: kind)
+        }
+        #expect(web("verzel-elite-dev-painel.vercel.app") == .web(URL(string: "https://verzel-elite-dev-painel.vercel.app")!))
+        #expect(web("(Https://example.com/docs).") == .web(URL(string: "https://example.com/docs")!))
+        #expect(web("localhost:5173/dashboard") == .web(URL(string: "http://localhost:5173/dashboard")!))
+        #expect(web("localhost") == .web(URL(string: "http://localhost")!))
+        #expect(web("localhost.app") == .web(URL(string: "https://localhost.app")!))
+        #expect(web("user@example.com") == .none)
+        #expect(web(#"/repo/my\ file.md"#) == .file(path: "/repo/my file.md", line: nil))
+        #expect(web("src/main.swift:42:7") == .file(path: "/repo/src/main.swift", line: 42))
+        // The macOS profile continues to treat bare domains as paths.
+        #expect(resolve("example.com") == .none)
+    }
+
     /// /repo is a directory holding README.md and src/main.swift.
     private func kind(_ path: String) -> Bool? {
         switch path {

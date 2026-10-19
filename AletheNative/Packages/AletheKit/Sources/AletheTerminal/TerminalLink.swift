@@ -14,6 +14,28 @@ public enum TerminalLink: Equatable, Sendable {
     /// Nothing that exists or can be opened.
     case none
 
+    /// Web `terminalLinks.ts`: bare localhost uses HTTP; deployment domains use HTTPS. Keep this
+    /// separate from `resolve` so the macOS profile's existing routing does not change.
+    public static func resolveWeb(_ raw: String, cwd: String?, home: String = NSHomeDirectory(),
+                                  fileKind: (String) -> Bool? = TerminalLink.fileKind) -> TerminalLink {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let first = text.first, "([{'\"`".contains(first) { text.removeFirst() }
+        while let last = text.last, ".,;:)]}'\"`".contains(last) { text.removeLast() }
+        let bare = #"^(?:localhost(?::\d{1,5})?|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:app|ai|biz|br|ca|cloud|co|com|de|dev|edu|fr|gg|gov|info|io|jp|live|me|net|online|org|page|sh|site|tech|tools|tv|uk|xyz))(?::\d{1,5})?(?:/[^\s<>\"'`|]*)?$"#
+        if text.range(of: bare, options: [.regularExpression, .caseInsensitive]) != nil {
+            let local = text.range(of: #"^localhost(?::|/|$)"#, options: [.regularExpression, .caseInsensitive]) != nil
+            let scheme = local ? "http" : "https"
+            return resolve("\(scheme)://\(text)", cwd: cwd, home: home, fileKind: fileKind)
+        }
+        if text.lowercased().hasPrefix("http://") || text.lowercased().hasPrefix("https://"),
+           let colon = text.firstIndex(of: ":") {
+            text = text[..<colon].lowercased() + text[colon...]
+        } else {
+            text = text.replacingOccurrences(of: "\\ ", with: " ")
+        }
+        return resolve(text, cwd: cwd, home: home, fileKind: fileKind)
+    }
+
     /// - Parameters:
     ///   - raw: the text Ghostty reports for the link.
     ///   - cwd: the terminal's working directory, for relative paths.

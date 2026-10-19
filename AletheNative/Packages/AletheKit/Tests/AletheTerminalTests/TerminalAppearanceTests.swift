@@ -1,9 +1,33 @@
 import AletheDesign
+import CoreGraphics
 import GhosttyTerminal
 import Testing
 @testable import AletheTerminal
 
 @Suite struct TerminalAppearanceTests {
+    @Test func webUsesFourteenPointFontAndAsymmetricHostPadding() {
+        let metrics = Metrics(scale: 1.5)
+        let rendered = TerminalAppearance.configuration(for: ThemeCatalog.builtin.defaultTheme,
+                                                        metrics: metrics).rendered
+        #expect(rendered.contains("font-size = 21"))
+        #expect(rendered.contains("window-padding-x = 0"))
+        #expect(rendered.contains("window-padding-y = 0"))
+        #expect(TerminalAppearance.surfaceFrame(in: CGRect(x: 0, y: 0, width: 200, height: 100), metrics: metrics)
+                == CGRect(x: 12, y: 3, width: 179, height: 91))
+        #expect(TerminalAppearance.surfaceFrame(in: .zero, metrics: metrics).size == .zero)
+    }
+
+    @Test func macKeepsItsExistingFontAndPadding() {
+        let metrics = Metrics(scale: 1.5, interface: .mac)
+        let rendered = TerminalAppearance.configuration(for: ThemeCatalog.builtin.defaultTheme,
+                                                        fontSize: 19.5, metrics: metrics).rendered
+        #expect(rendered.contains("font-size = 19.5"))
+        #expect(rendered.contains("window-padding-x = 8"))
+        #expect(rendered.contains("window-padding-y = 6"))
+        let bounds = CGRect(x: 0, y: 0, width: 200, height: 100)
+        #expect(TerminalAppearance.surfaceFrame(in: bounds, metrics: metrics) == bounds)
+    }
+
     @Test func blendsTranslucentColorsOverTheBackground() throws {
         let background = try #require(ThemeColor(hex: "#000000"))
         let halfWhite = try #require(ThemeColor(hex: "#ffffff80"))

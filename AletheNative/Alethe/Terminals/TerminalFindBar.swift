@@ -35,7 +35,7 @@ struct TerminalFindBar: View {
                     return .handled
                 }
                 .onChange(of: text) { _, value in
-                    if value != search.needle { terminal.updateSearch(value) }
+                    if value != search.needle { terminal.updateSearch(value, resetProgress: metrics.isWebInterface) }
                 }
                 .accessibilityIdentifier("find.field")
             Text(verbatim: statusText)

@@ -6,6 +6,13 @@ import UniformTypeIdentifiers
 /// their paths, an image with no file behind it is saved as a PNG and pasted as that file's path, so
 /// an agent can open it. Text keeps going through Ghostty's own paste (bracketed paste, newlines).
 public enum SmartPaste {
+    /// `terminalInput.ts`: CRLF, LF and CR all become a single PTY carriage return.
+    public static func normalizeText(_ text: String) -> String {
+        text.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\n", with: "\r")
+    }
+
     /// What a pasteboard hands a terminal, in upstream's priority: files, then image, then text.
     public enum Payload: Equatable, Sendable {
         case paths([String])
