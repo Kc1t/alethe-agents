@@ -3,6 +3,31 @@ import Testing
 
 @MainActor
 @Suite struct TerminalSearchTests {
+    @Test func webQueryChangesDiscardStaleProgress() {
+        let search = TerminalSearch()
+        _ = search.setNeedle("alpha", resetProgress: true)
+        search.total = 12
+        search.selected = 2
+        _ = search.setNeedle("alpha", resetProgress: true)
+        #expect(search.status == .match(position: 3, total: 12))
+        #expect(search.setNeedle("beta\nignored", resetProgress: true) == "beta")
+        #expect(search.status == .none)
+        #expect(search.total == nil)
+        #expect(search.selected == nil)
+    }
+
+    @Test func nativeProgressBehaviorIsPreserved() {
+        let search = TerminalSearch()
+        _ = search.setNeedle("alpha", resetProgress: false)
+        search.total = 12
+        search.selected = 2
+        _ = search.setNeedle("beta", resetProgress: false)
+        #expect(search.status == .match(position: 3, total: 12))
+        _ = search.setNeedle("", resetProgress: false)
+        #expect(search.total == nil)
+        #expect(search.selected == nil)
+    }
+
     @Test func statusFollowsGhosttyProgress() {
         let search = TerminalSearch()
         #expect(search.status == .none)

@@ -10,6 +10,8 @@ import Synchronization
 /// tapped (remote control, orchestrator) and replayed into a new view.
 @MainActor
 public final class TerminalPaneView: NSView {
+    /// Live UI metrics supplied by the application, including interface changes and UI zoom.
+    public static var inputMetrics: @MainActor () -> Metrics? = { nil }
     public let terminalView: TerminalView
     private let controller: TerminalController
     private let session: InMemoryTerminalSession
@@ -29,6 +31,8 @@ public final class TerminalPaneView: NSView {
     /// A ⌘-clicked link, as Ghostty detected it (URL, path or OSC 8 target). Once set, Ghostty no
     /// longer opens URLs itself.
     public var onOpenLink: ((String) -> Void)?
+    /// Current Ghostty hyperlink under the pointer, used by explicit context-menu actions.
+    public private(set) var hoveredLink: String?
     /// A local development server address printed in the output, reported once per address.
     public var onLocalServer: ((URL) -> Void)? {
         get { servers.onFound }
@@ -92,7 +96,8 @@ public final class TerminalPaneView: NSView {
                 process.resizeCoalesced(size)
             }
         )
-        controller = TerminalController(theme: TerminalAppearance.terminalTheme(for: theme, fontSize: fontSize))
+        controller = TerminalController(theme: TerminalAppearance.terminalTheme(
+            for: theme, fontSize: fontSize, metrics: Self.inputMetrics()))
         terminalView = TerminalView(frame: .zero)
         super.init(frame: .zero)
 
@@ -172,7 +177,8 @@ public final class TerminalPaneView: NSView {
     /// through the session's resize callback). Safe to call at any time; a zero size is a no-op
     /// until the view regains one.
     public func syncSurfaceSize() {
-        if terminalView.frame != bounds { terminalView.frame = bounds }
+        let frame = TerminalAppearance.surfaceFrame(in: bounds, metrics: Self.inputMetrics())
+        if terminalView.frame != frame { terminalView.frame = frame }
         terminalView.fitToSize()
         scheduleSettle()
     }
@@ -186,7 +192,8 @@ public final class TerminalPaneView: NSView {
         settleWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, window != nil, bounds.width > 0, bounds.height > 0 else { return }
-            if terminalView.frame != bounds { terminalView.frame = bounds }
+            let frame = TerminalAppearance.surfaceFrame(in: bounds, metrics: Self.inputMetrics())
+            if terminalView.frame != frame { terminalView.frame = frame }
             terminalView.fitToSize()
             let size = grid.size
             if size.columns > 0, size.rows > 0 { process.reassertSize(size) }
@@ -200,11 +207,54 @@ public final class TerminalPaneView: NSView {
     }
 
     public func applyTheme(_ theme: Theme, fontSize: Float = TerminalAppearance.defaultFontSize) {
-        _ = controller.setTheme(TerminalAppearance.terminalTheme(for: theme, fontSize: fontSize))
+        _ = controller.setTheme(TerminalAppearance.terminalTheme(
+            for: theme, fontSize: fontSize, metrics: Self.inputMetrics()))
+        syncSurfaceSize()
         dropHighlight = theme.nsColor(.accent)
     }
 
     // MARK: - Smart paste and drop
+
+    public var hasSelection: Bool { terminalView.selectionMenuPoint(at: .zero) != nil }
+
+    @discardableResult
+    public func copySelection() -> Bool {
+        guard terminalView.copySelectedTextToPasteboard() else { return false }
+        terminalView.performBindingAction("clear_selection")
+        return true
+    }
+
+    /// Web copy consumes the selection; without one, the same chord interrupts the foreground
+    /// process. Send a key through Ghostty so the existing I/O tap and double-interrupt policy run.
+    public func copyOrInterrupt() {
+        if !copySelection() {
+            terminalView.sendKey(.c, modifiers: .ctrl)
+        }
+    }
+
+    /// One clipboard resolution and one Ghostty paste, including file and image payloads. Ghostty
+    /// applies bracketed-paste framing according to the application's current terminal mode.
+    @discardableResult
+    public func pasteClipboard(from pasteboard: NSPasteboard = .general) -> Bool {
+        let text: String
+        switch SmartPaste.payload(from: pasteboard) {
+        case .paths(let paths): text = SmartPaste.format(paths: paths)
+        case .image(let data):
+            guard let path = try? SmartPaste.saveImage(data) else { return false }
+            text = SmartPaste.format(paths: [path])
+        case .text(let value): text = SmartPaste.normalizeText(value)
+        case .empty: return false
+        }
+        return terminalView.paste(text: text)
+    }
+
+    /// Upstream's right-click shortcut: copy a selection, otherwise paste. Do not interrupt when
+    /// there is nothing selected (unlike the keyboard's copy chord).
+    public func copyOrPaste() {
+        if !copySelection() {
+            pasteClipboard()
+        }
+    }
 
     private var dropHighlight = NSColor.controlAccentColor
 
@@ -322,17 +372,14 @@ public final class TerminalPaneView: NSView {
     public func showSearch(needle: String? = nil) {
         search.isPresented = true
         search.focusRequest += 1
-        if let needle, !needle.isEmpty { updateSearch(needle) }
+        if let needle, !needle.isEmpty {
+            updateSearch(needle, resetProgress: Self.inputMetrics()?.isWebInterface == true)
+        }
     }
 
     /// Searches as the user types; an empty needle clears the matches but keeps the bar.
-    public func updateSearch(_ text: String) {
-        let needle = TerminalSearch.bindingNeedle(text)
-        search.needle = needle
-        if needle.isEmpty {
-            search.total = nil
-            search.selected = nil
-        }
+    public func updateSearch(_ text: String, resetProgress: Bool = false) {
+        let needle = search.setNeedle(text, resetProgress: resetProgress)
         terminalView.performBindingAction("search:\(needle)")
     }
 
@@ -371,7 +418,11 @@ public final class TerminalPaneView: NSView {
     }
 }
 
-extension TerminalPaneView: TerminalSurfaceOpenURLDelegate, TerminalSurfacePwdDelegate {
+extension TerminalPaneView: TerminalSurfaceOpenURLDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceHoverLinkDelegate {
+    public func terminalDidUpdateHoverLink(_ url: String?) {
+        hoveredLink = url
+    }
+
     public func terminalDidRequestOpenURL(_ url: String, kind: TerminalOpenURLKind) {
         if let onOpenLink {
             onOpenLink(url)

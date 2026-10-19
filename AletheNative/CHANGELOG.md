@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Terminal input parity (x1)
+- Add web-profile terminal input routing for copy-or-interrupt, smart clipboard paste, right-click
+  copy/paste, Ctrl+arrow prompt recall, and explicit Shift+right-click actions with icons.
+- Match web clipboard newline normalization, bare deployment/localhost link targets and escaped
+  file paths; clear stale find counts when the web query changes.
+- Add web-profile 14-point terminal text and 4/6/2/8 host padding, scaled with UI zoom. The macOS
+  profile retains its existing font, padding and input routing.
+- The input/appearance integration requires live metrics at the existing monitor installation;
+  see `upstream-reports/TERMINAL_INPUT_PARITY.md` for the pending bridge and remaining gaps.
+
 ### Web-styled settings controls
 - Web interface: Integrations (9router, Playwright, usage), Plugins, Custom agents, Multiagent, CLI tool,
   Profiles and Terminal settings use the themed dropdown, confirm/prompt dialogs, stepper, spinner and

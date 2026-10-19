@@ -5,6 +5,21 @@ import Testing
 
 // Spawns real processes: a rare intermittent hang must fail the test, not stall the run.
 @Suite(.timeLimit(.minutes(1))) struct PTYProcessTests {
+    /// Clipboard CRLF/LF/CR must submit exactly three lines to a real canonical PTY.
+    @Test func normalizedClipboardLinesReachShellInOrder() async throws {
+        let launch = PTYLaunch(
+            executable: "/bin/sh",
+            arguments: ["sh", "-c", "IFS= read -r a; IFS= read -r b; IFS= read -r c; printf 'received:<%s>|<%s>|<%s>\\n' \"$a\" \"$b\" \"$c\""],
+            environment: ["PATH": "/usr/bin:/bin"],
+            workingDirectory: "/tmp",
+            size: PTYSize(columns: 100, rows: 30)
+        )
+        let input = Data(SmartPaste.normalizeText("one\r\ntwo\nthree\r").utf8)
+        let result = try await run(launch, input: input)
+        #expect(result.code == 0)
+        #expect(result.output.contains("received:<one>|<two>|<three>"))
+    }
+
     private func run(_ launch: PTYLaunch, input: Data? = nil) async throws -> (output: String, code: Int32) {
         let process = try PTYProcess(launch)
         let collected = Collected()
