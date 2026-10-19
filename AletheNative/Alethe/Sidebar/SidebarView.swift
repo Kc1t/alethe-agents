@@ -781,7 +781,10 @@ private struct SidebarFileRow: View {
         .contentShape(Rectangle())
         .onTapGesture {
             if metrics.isWebInterface {
-                actions.workspace.update { $0.focusWebPane(pane.id) }
+                // The orchestration board is worked on alone: one click shows only it, in its own tab.
+                actions.workspace.update {
+                    if pane.content == .orchestrator { $0.openWebPane(pane.id) } else { $0.focusWebPane(pane.id) }
+                }
                 environment.showingHome = false
             } else {
                 actions.select(.project(project.id))
