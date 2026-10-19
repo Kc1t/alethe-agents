@@ -386,6 +386,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **The Claude usage indicator shows up in the top bar again with Orchestration open.** Each
+  Orchestration pane read Claude usage on its own every minute, so the usage service refused the
+  reads and the top bar never got one to show. All readers now share a single request.
+
 - Claude panes reopen on the conversation they were on when the project folder has a space, an
   underscore, an accent or other punctuation in its path. Alethe looked for the saved conversation
   in the wrong directory, treated it as gone and started a new chat on every launch.

@@ -36,6 +36,8 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `ui` · fix(usage): share one Claude usage request with the orchestrator
+  - Files: `src/hooks/useOrchestratorQuotaWarnings.ts`, `src/lib/claudeUsageCache.ts`
 - `pending` · `contract` · MCP servers and skills saved per account and per project, carried by sync
   - Files: `src/lib/toolingManifest.ts`, `src/lib/toolingNotice.ts`, `src/components/ToolingManifestPanel/`
   - Contract: new tooling manifest in the synced payload; secret env and header values are never stored

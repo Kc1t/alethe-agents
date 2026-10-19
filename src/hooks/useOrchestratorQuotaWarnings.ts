@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { type AgentFitness, claudeFitness, codexFitness } from '../lib/agentFitness'
 import { USAGE_FALLBACK_THRESHOLD, USAGE_POLL_MS } from '../lib/agentCanvasConfig'
+import { loadClaudeUsage } from '../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../lib/codexUsageCache'
-import { getClaudeUsage, setAgentFitness } from '../lib/tauri'
+import { setAgentFitness } from '../lib/tauri'
 import { useProjectsStore } from '../stores/projectsStore'
 
 export type QuotaWarning = {
@@ -41,11 +42,12 @@ export function useOrchestratorQuotaWarnings(): QuotaWarning[] {
     const check = async () => {
       const next: QuotaWarning[] = []
       if (claudeAccess) {
-        try {
-          const warning = await report('claude', claudeFitness(await getClaudeUsage()))
+        // Through the shared cache: the usage API rate limits readily, and one request per pane
+        // would keep the top bar from ever getting a reading.
+        const usage = await loadClaudeUsage()
+        if (usage) {
+          const warning = await report('claude', claudeFitness(usage))
           if (warning) next.push(warning)
-        } catch {
-          // ignore
         }
       }
       if (codexAccess) {
