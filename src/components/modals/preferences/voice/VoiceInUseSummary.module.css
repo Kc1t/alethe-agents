@@ -1,0 +1,111 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  container-type: inline-size;
+}
+
+.title {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-card-default);
+  list-style: none;
+}
+
+.list li + li {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  color: var(--fg);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--anim-fast) var(--ease-out-fluid);
+}
+
+.row:hover {
+  background: var(--panel-hover);
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.use {
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+
+.value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--status-waiting);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.marker {
+  grid-column: 4;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Narrow panes: the use label sits above the value, warning and marker. */
+@container (max-width: 480px) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 12px;
+  }
+
+  .use {
+    grid-column: 1 / -1;
+  }
+
+  .warning {
+    grid-row: 3;
+    grid-column: 1 / -1;
+  }
+
+  .marker {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}

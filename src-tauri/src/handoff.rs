@@ -64,6 +64,20 @@ pub(crate) struct HandoffEvent {
     question_set_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     questions: Option<Vec<RemoteQuestion>>,
+    /// What a tool call does, in the few fields the voice narrator says ("Editing auth.ts").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool: Option<ToolSummary>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ToolSummary {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
 }
 
 pub(crate) struct ActiveRemoteQuestions {
@@ -93,6 +107,8 @@ pub(crate) struct TranscriptSnapshot {
     pub session_id: Option<String>,
     pub revision: u64,
     pub unchanged: bool,
+    /// Absolute index of `messages[0]` among every event of the transcript.
+    pub first_index: usize,
     pub messages: Vec<HandoffEvent>,
 }
 
@@ -258,7 +274,82 @@ fn question_text(questions: &[RemoteQuestion]) -> String {
         .join("\n")
 }
 
-fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
+fn thinking_event(text: &str) -> HandoffEvent {
+    HandoffEvent {
+        role: "thinking",
+        text: clipped(text, 5_000),
+        question_set_id: None,
+        questions: None,
+        tool: None,
+    }
+}
+
+/// The name of a tool call and the parts of its input worth saying. Claude passes an object;
+/// Codex a JSON string (`function_call`) or raw text (`custom_tool_call`, such as a patch).
+fn tool_summary(name: &str, input: &Value) -> ToolSummary {
+    let parsed;
+    let input = match input {
+        Value::String(text) => match serde_json::from_str::<Value>(text) {
+            Ok(value @ Value::Object(_)) => {
+                parsed = value;
+                &parsed
+            }
+            _ => input,
+        },
+        _ => input,
+    };
+    let field = |key: &str| {
+        input
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+    };
+    let command = match input.get("command").or_else(|| input.get("cmd")) {
+        Some(Value::String(command)) => Some(command.clone()),
+        // `["bash", "-lc", "npm test"]`: the script is the last part.
+        Some(Value::Array(parts)) => {
+            let parts: Vec<&str> = parts.iter().filter_map(Value::as_str).collect();
+            match parts.as_slice() {
+                [shell, flag, script] if shell.ends_with("sh") && flag.starts_with('-') => {
+                    Some((*script).to_string())
+                }
+                _ => Some(parts.join(" ")),
+            }
+        }
+        _ => None,
+    };
+    // A patch names its files on `*** Update File: …` lines; the first is said.
+    let patch = input
+        .as_str()
+        .or_else(|| field("input"))
+        .or_else(|| field("patch"));
+    let patched = patch.and_then(|patch| {
+        patch.lines().find_map(|line| {
+            ["*** Update File: ", "*** Add File: ", "*** Delete File: "]
+                .iter()
+                .find_map(|prefix| line.strip_prefix(prefix))
+                .map(str::trim)
+                .filter(|path| !path.is_empty())
+        })
+    });
+    let path = field("file_path")
+        .or_else(|| field("notebook_path"))
+        .or_else(|| field("path"))
+        .or(patched);
+    ToolSummary {
+        name: clipped(name, 120),
+        command: command
+            .map(|command| clipped(&command, 300))
+            .filter(|command| !command.is_empty()),
+        path: path.map(|path| clipped(path, 300)),
+        description: field("description").map(|text| clipped(text, 200)),
+    }
+}
+
+/// `reasoning` adds the agent's thinking as `thinking` events (the voice narrator's view only:
+/// handoffs and the remote view never carry it).
+fn claude_events(path: &Path, reasoning: bool) -> Result<Vec<HandoffEvent>, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut reader = BufReader::with_capacity(64 * 1024, file);
     let mut buf = Vec::with_capacity(8 * 1024);
@@ -281,6 +372,18 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
             .get("message")
             .and_then(|message| message.get("content"))
             .unwrap_or(&Value::Null);
+        if reasoning && kind == "assistant" {
+            // Thinking comes before the text it led to; a redacted block has no text to say.
+            for block in content.as_array().into_iter().flatten() {
+                if block.get("type").and_then(Value::as_str) != Some("thinking") {
+                    continue;
+                }
+                let thought = block.get("thinking").and_then(Value::as_str).unwrap_or("");
+                if !thought.trim().is_empty() {
+                    events.push(thinking_event(thought));
+                }
+            }
+        }
         let text = content_text(content);
         if !text.trim().is_empty() {
             events.push(HandoffEvent {
@@ -288,6 +391,7 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                 text: clipped(&text, if kind == "user" { 8_000 } else { 5_000 }),
                 question_set_id: None,
                 questions: None,
+                tool: None,
             });
         }
         let Value::Array(blocks) = content else {
@@ -299,6 +403,7 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                     let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
                     let input = block.get("input").cloned().unwrap_or(Value::Null);
                     let questions = remote_questions(name, &input);
+                    let tool = questions.is_none().then(|| tool_summary(name, &input));
                     let question_set_id = questions.as_ref().map(|_| {
                         clipped(
                             block
@@ -320,6 +425,7 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                             .unwrap_or_else(|| clipped(&format!("{name}: {input}"), 1_200)),
                         question_set_id,
                         questions,
+                        tool,
                     });
                 }
                 "tool_result" => {
@@ -330,6 +436,7 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                             text: clipped(&output, 800),
                             question_set_id: None,
                             questions: None,
+                            tool: None,
                         });
                     }
                 }
@@ -340,7 +447,8 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
     Ok(events)
 }
 
-fn codex_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
+/// `reasoning` adds Codex's reasoning summaries as `thinking` events, as for `claude_events`.
+fn codex_events(path: &Path, reasoning: bool) -> Result<Vec<HandoffEvent>, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut reader = BufReader::with_capacity(64 * 1024, file);
     let mut buf = Vec::with_capacity(8 * 1024);
@@ -371,6 +479,7 @@ fn codex_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                         text: clipped(&text, if role == "user" { 8_000 } else { 5_000 }),
                         question_set_id: None,
                         questions: None,
+                        tool: None,
                     });
                 }
             }
@@ -385,6 +494,7 @@ fn codex_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                     .cloned()
                     .unwrap_or(Value::Null);
                 let questions = remote_questions(name, &input);
+                let tool = questions.is_none().then(|| tool_summary(name, &input));
                 let question_set_id = questions.as_ref().map(|_| {
                     clipped(
                         payload
@@ -407,7 +517,23 @@ fn codex_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                         .unwrap_or_else(|| clipped(&format!("{name}: {input}"), 1_200)),
                     question_set_id,
                     questions,
+                    tool,
                 });
+            }
+            "reasoning" if reasoning => {
+                // The summary Codex shows while it works; `content` holds raw reasoning for the
+                // models that expose it. Encrypted reasoning has neither.
+                let thought = ["summary", "content"]
+                    .iter()
+                    .filter_map(|key| payload.get(*key).and_then(Value::as_array))
+                    .flatten()
+                    .filter_map(|part| part.get("text").and_then(Value::as_str))
+                    .filter(|text| !text.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                if !thought.is_empty() {
+                    events.push(thinking_event(&thought));
+                }
             }
             "custom_tool_call_output" | "function_call_output" => {
                 let output = payload.get("output").map(content_text).unwrap_or_default();
@@ -417,6 +543,7 @@ fn codex_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                         text: clipped(&output, 800),
                         question_set_id: None,
                         questions: None,
+                        tool: None,
                     });
                 }
             }
@@ -528,6 +655,7 @@ pub(crate) fn transcript_snapshot(
     session_id: Option<&str>,
     since: Option<u64>,
     limit: usize,
+    reasoning: bool,
 ) -> Result<TranscriptSnapshot, String> {
     let provider = Provider::parse(provider)?;
     let resolved = resolve_source_file(provider, cwd, session_id)
@@ -537,6 +665,7 @@ pub(crate) fn transcript_snapshot(
             session_id: None,
             revision: 0,
             unchanged: false,
+            first_index: 0,
             messages: Vec::new(),
         });
     };
@@ -551,22 +680,52 @@ pub(crate) fn transcript_snapshot(
             session_id: Some(id),
             revision,
             unchanged: true,
+            first_index: 0,
             messages: Vec::new(),
         });
     }
-    let mut messages = match provider {
-        Provider::Claude => claude_events(&path)?,
-        Provider::Codex => codex_events(&path)?,
+    let events = match provider {
+        Provider::Claude => claude_events(&path, reasoning)?,
+        Provider::Codex => codex_events(&path, reasoning)?,
     };
-    if messages.len() > limit {
-        messages.drain(..messages.len() - limit);
-    }
+    let (first_index, messages) = tail(events, limit);
     Ok(TranscriptSnapshot {
         session_id: Some(id),
         revision,
         unchanged: false,
+        first_index,
         messages,
     })
+}
+
+fn tail<T>(mut items: Vec<T>, limit: usize) -> (usize, Vec<T>) {
+    let dropped = items.len().saturating_sub(limit);
+    items.drain(..dropped);
+    (dropped, items)
+}
+
+const VOICE_TRANSCRIPT_EVENTS: usize = 160;
+
+/// The voice narrator's view of a session transcript. `since` makes an unchanged file cheap.
+#[tauri::command]
+pub async fn agent_transcript_snapshot(
+    provider: String,
+    cwd: String,
+    session_id: Option<String>,
+    since: Option<u64>,
+) -> Result<TranscriptSnapshot, String> {
+    tokio::task::spawn_blocking(move || {
+        transcript_snapshot(
+            &provider,
+            &cwd,
+            session_id.as_deref(),
+            since,
+            VOICE_TRANSCRIPT_EVENTS,
+            true,
+        )
+    })
+    .await
+    .map_err(|error| format!("agent_transcript_snapshot: {error}"))?
 }
 
 pub(crate) fn active_remote_questions(
@@ -578,8 +737,8 @@ pub(crate) fn active_remote_questions(
     let (_, path, _) = resolve_source_file(provider, cwd, session_id)
         .or_else(|_| resolve_source_file(provider, cwd, None))?;
     let events = match provider {
-        Provider::Claude => claude_events(&path)?,
-        Provider::Codex => codex_events(&path)?,
+        Provider::Claude => claude_events(&path, false)?,
+        Provider::Codex => codex_events(&path, false)?,
     };
     Ok(events.last().and_then(|event| {
         event
@@ -816,8 +975,8 @@ pub async fn prepare_agent_handoff(
         let (resolved_id, path, used_fallback) =
             resolve_source_file(source, &cwd, source_session_id.as_deref())?;
         let events = match source {
-            Provider::Claude => claude_events(&path)?,
-            Provider::Codex => codex_events(&path)?,
+            Provider::Claude => claude_events(&path, false)?,
+            Provider::Codex => codex_events(&path, false)?,
         };
         if !events.iter().any(|event| event.role == "user") {
             return Err("the selected session has no transferable user messages".to_string());
@@ -977,6 +1136,7 @@ mod tests {
             text: text.into(),
             question_set_id: None,
             questions: None,
+            tool: None,
         }
     }
 
@@ -1191,8 +1351,8 @@ mod tests {
         )
         .expect("write Claude fixture");
 
-        let codex = codex_events(&codex_path).expect("parse Codex fixture");
-        let claude = claude_events(&claude_path).expect("parse Claude fixture");
+        let codex = codex_events(&codex_path, false).expect("parse Codex fixture");
+        let claude = claude_events(&claude_path, false).expect("parse Claude fixture");
         fs::remove_file(codex_path).expect("remove Codex fixture");
         fs::remove_file(claude_path).expect("remove Claude fixture");
 
@@ -1201,6 +1361,91 @@ mod tests {
             claude[0].question_set_id.as_deref(),
             Some("toolu-claude-42")
         );
+    }
+
+    fn fixture(name: &str, lines: &[&str]) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("alethe-{name}-{suffix}.jsonl"));
+        fs::write(&path, lines.join("\n")).expect("write fixture");
+        path
+    }
+
+    #[test]
+    fn reads_claude_thinking_only_for_the_narrator() {
+        let path = fixture(
+            "claude-thinking",
+            &[
+                r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"The test fails on auth.","signature":"x"},{"type":"text","text":"Running the tests."},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"npm test","description":"Run the tests"}}]}}"#,
+                r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"","signature":"y"},{"type":"redacted_thinking","data":"z"}]}}"#,
+            ],
+        );
+        let narrated = claude_events(&path, true).expect("parse with reasoning");
+        let handed_off = claude_events(&path, false).expect("parse without reasoning");
+        fs::remove_file(path).expect("remove fixture");
+
+        let roles: Vec<&str> = narrated.iter().map(|event| event.role).collect();
+        assert_eq!(roles, ["thinking", "assistant", "tool"]);
+        assert_eq!(narrated[0].text, "The test fails on auth.");
+        assert_eq!(
+            narrated[2].tool,
+            Some(ToolSummary {
+                name: "Bash".into(),
+                command: Some("npm test".into()),
+                path: None,
+                description: Some("Run the tests".into()),
+            })
+        );
+        assert!(handed_off.iter().all(|event| event.role != "thinking"));
+        assert_eq!(handed_off.len(), 2);
+    }
+
+    #[test]
+    fn reads_codex_reasoning_summaries_and_tool_calls() {
+        let path = fixture(
+            "codex-reasoning",
+            &[
+                r#"{"type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"**Checking the build**"}],"content":null,"encrypted_content":"abc"}}"#,
+                r#"{"type":"response_item","payload":{"type":"reasoning","summary":[],"encrypted_content":"def"}}"#,
+                r#"{"type":"response_item","payload":{"type":"function_call","name":"shell","call_id":"c1","arguments":"{\"command\":[\"bash\",\"-lc\",\"cargo test\"],\"workdir\":\"/w\"}"}}"#,
+                r#"{"type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","call_id":"c2","input":"*** Begin Patch\n*** Update File: src/auth.ts\n@@\n-a\n+b\n*** End Patch"}}"#,
+                r#"{"type":"response_item","payload":{"type":"function_call","name":"exec_command","call_id":"c3","arguments":"{\"cmd\":\"ls -la\"}"}}"#,
+            ],
+        );
+        let narrated = codex_events(&path, true).expect("parse with reasoning");
+        let handed_off = codex_events(&path, false).expect("parse without reasoning");
+        fs::remove_file(path).expect("remove fixture");
+
+        let roles: Vec<&str> = narrated.iter().map(|event| event.role).collect();
+        assert_eq!(roles, ["thinking", "tool", "tool", "tool"]);
+        assert_eq!(narrated[0].text, "**Checking the build**");
+        let tool = |index: usize| narrated[index].tool.clone().expect("tool summary");
+        assert_eq!(tool(1).name, "shell");
+        assert_eq!(tool(1).command.as_deref(), Some("cargo test"));
+        assert_eq!(tool(2).name, "apply_patch");
+        assert_eq!(tool(2).path.as_deref(), Some("src/auth.ts"));
+        assert_eq!(tool(3).command.as_deref(), Some("ls -la"));
+        assert_eq!(handed_off.len(), 3);
+        assert!(handed_off.iter().all(|event| event.role != "thinking"));
+    }
+
+    #[test]
+    fn summarizes_tool_inputs_but_not_questions() {
+        let summary = tool_summary("Edit", &serde_json::json!({ "file_path": "/a/b.ts" }));
+        assert_eq!(summary.path.as_deref(), Some("/a/b.ts"));
+        assert_eq!(summary.command, None);
+        let path = fixture(
+            "claude-question-tool",
+            &[
+                r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"q","name":"AskUserQuestion","input":{"questions":[{"header":"Scope","question":"Which scope?","options":[{"label":"Focused"}]}]}}]}}"#,
+            ],
+        );
+        let events = claude_events(&path, true).expect("parse question");
+        fs::remove_file(path).expect("remove fixture");
+        assert_eq!(events[0].role, "question");
+        assert!(events[0].tool.is_none());
     }
 }
 
@@ -1243,5 +1488,22 @@ mod session_scope_tests {
 
         assert!(session_matches_scope(&scope, "/home/dev/projects/app"));
         assert!(!session_matches_scope(&scope, "/home/dev/projects/App"));
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tail_tests {
+    use super::tail;
+
+    #[test]
+    fn a_short_list_starts_at_zero() {
+        assert_eq!(tail(vec![1, 2, 3], 5), (0, vec![1, 2, 3]));
+    }
+
+    // The voice narrator counts events by absolute position, so dropping the head must say how
+    // many were dropped.
+    #[test]
+    fn a_long_list_keeps_its_tail_and_reports_where_it_starts() {
+        assert_eq!(tail(vec![1, 2, 3, 4, 5], 2), (3, vec![4, 5]));
     }
 }

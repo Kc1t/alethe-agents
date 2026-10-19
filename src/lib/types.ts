@@ -626,12 +626,6 @@ export const DEFAULT_ROUTER9_PREFERENCES: Router9Preferences = {
   defaultForNewAgents: false,
 }
 
-export const DICTATION_CLOUD_MODELS = [
-  'openai/gpt-audio-mini',
-  'google/gemini-3.1-flash-lite',
-] as const
-export type DictationCloudModel = (typeof DICTATION_CLOUD_MODELS)[number]
-
 /** A named preset for delegated workers. A delegate call that names it gets exactly these values. */
 export type OrchestrationRole = {
   name: string
@@ -735,6 +729,76 @@ export const DEFAULT_ROUTING_SETTINGS: RoutingSettings = {
   allowOpusOnDeep: true,
   onBothCritical: 'ask',
 }
+
+export type VoiceCaptureMode = 'push-to-talk' | 'toggle'
+/** The narration presets: quick choices that set every `VoiceNarration` toggle. */
+export type VoiceVerbosity = 'silent' | 'final' | 'normal' | 'detailed'
+/**
+ * What narration speaks, per kind of event: `progress` is the agent's text between steps,
+ * `thinking` its reasoning (when the harness exposes it), `tools` each action it starts, `status`
+ * the line spoken after a silence while an action runs, `final` its answer at the end,
+ * `permissions` a permission request (or an approval menu in its terminal) and `questions` a
+ * question it asks you (Claude's AskUserQuestion, Codex's request_user_input).
+ */
+export type VoiceNarrationCategory =
+  'progress' | 'thinking' | 'tools' | 'status' | 'final' | 'permissions' | 'questions'
+export type VoiceNarration = Record<VoiceNarrationCategory, boolean>
+export type HudPreset =
+  'bottom-center' | 'bottom-left' | 'bottom-right' | 'top-center' | 'top-left' | 'top-right'
+export type VoiceHudPosition = HudPreset | 'custom'
+/** A monitor's full position and size in physical pixels. */
+export type MonitorBounds = { x: number; y: number; width: number; height: number }
+/**
+ * Top-left of the HUD as fractions (0-1) of the monitor work area. `bounds` tells identical monitors
+ * (same name) apart; positions saved before it was added have none and match by name.
+ */
+export type VoiceHudCustomPosition = {
+  monitor: string
+  x: number
+  y: number
+  bounds?: MonitorBounds
+}
+
+/**
+ * Top-left of the in-window voice panel as shares (0-1) of the room left in the window once the
+ * panel's size is taken out, so it stays inside the window whatever their sizes.
+ */
+export type VoiceDockPosition = { x: number; y: number }
+
+export type VoiceApprovalChannel = 'both' | 'voice' | 'hud'
+export type VoiceMidTaskDefault = 'queue' | 'interrupt'
+
+export type CloudVoiceProviderId = 'openai' | 'elevenlabs' | 'gemini' | 'openrouter'
+export type SttProviderId = 'local' | 'apple' | CloudVoiceProviderId
+export type TtsProviderId = 'system' | 'local' | 'server' | CloudVoiceProviderId
+export type VoiceUse = 'dictation' | 'conversation'
+export interface SttChoice {
+  provider: SttProviderId
+  model: string
+  locale: string | null
+}
+export interface TtsChoice {
+  provider: TtsProviderId
+  model: string
+  voice: string | null
+  rate: number
+  /** The local voice server's id; set only when `provider` is `'server'`. */
+  server?: string | null
+}
+export type VoiceServerKind = 'openai' | 'fish'
+export interface VoiceServer {
+  id: string
+  name: string
+  kind: VoiceServerKind
+  baseUrl: string
+  model: string | null
+  hasKey: boolean
+}
+export type VoiceServerErrorKind =
+  'policy' | 'network' | 'timeout' | 'auth' | 'badRequest' | 'badAudio' | 'missing' | 'other'
+export type VoiceProviderFlags = Partial<
+  Record<CloudVoiceProviderId, { configured: boolean; invalid: boolean }>
+>
 
 export type Preferences = {
   /** Idioma da UI. Default 'en'. */
@@ -857,18 +921,52 @@ export type Preferences = {
   dictationEnabled: boolean
   /** Toggle = press Ctrl+E to start/stop; Hold = dictate while Ctrl+E is held. */
   dictationMode: 'toggle' | 'hold'
-  /** Selected on-device STT model id (Parakeet TDT v3 by default). */
-  dictationModelId: string
-  dictationProvider: 'local' | 'openrouter'
-  dictationCloudModel: DictationCloudModel
   /** Preferred microphone deviceId, or null for the OS default. */
   dictationMicrophoneId: string | null
   /** Cached microphone label when the preferred device is unplugged. */
   dictationMicrophoneLabel: string | null
-  /** Decisions API key for voice commands. Empty disables the command bar. */
+  /** The one-time switch of a Mac profile to the Apple engine has run. */
+  speechEngineMigrated: boolean
+  /**
+   * Legacy plaintext Jev key. Jev now uses the OpenRouter key in the OS keychain; a value left
+   * here is moved there once at startup and then cleared.
+   */
   voiceCommandApiKey: string
+  /** In-app accelerator that opens the Jev command bar, e.g. `CmdOrCtrl+Shift+J`. */
+  voiceCommandShortcut: string
+  /** Talk to the active Claude pane and hear it narrate. Uses the dictation model and mic. */
+  voiceConversationEnabled: boolean
+  /** Accelerator for voice conversation, e.g. `CmdOrCtrl+Shift+Space`. */
+  voiceShortcut: string
+  /** In-app accelerator that reads the focused terminal's selection (or the clipboard) aloud. */
+  voiceReadAloudShortcut: string
+  voiceCaptureMode: VoiceCaptureMode
+  /** Speech-to-text provider per use. Device-specific; not synced. */
+  voiceStt: Record<VoiceUse, SttChoice>
+  /** Narration provider, voice and speed. Device-specific; not synced. */
+  voiceTts: TtsChoice
+  /** Mirror of which cloud keys exist in the keychain. Never holds a key. */
+  voiceProviders: VoiceProviderFlags
+  /** What narration speaks; the presets in `lib/voice/narration.ts` set these together. */
+  voiceNarration: VoiceNarration
+  /** Silence before a short status is spoken while a tool runs (3–60 s). */
+  voiceFillAfterMs: number
+  voiceApprovalChannel: VoiceApprovalChannel
+  /** Destructive commands need a click on the panel even after a spoken yes. */
+  voiceDestructiveNeedsHud: boolean
+  voiceMidTaskDefault: VoiceMidTaskDefault
+  /** Leading words that interrupt Claude (Esc) before the rest is sent. */
+  voiceInterruptWords: string[]
+  /** Leading word that routes the rest of the transcript to Jev. */
+  voiceJevTrigger: string
+  /** Where the voice HUD appears. Device-specific; not synced. */
+  voiceHudPosition: VoiceHudPosition
+  /** Dragged HUD position; null until the user moves it. */
+  voiceHudCustomPosition: VoiceHudCustomPosition | null
   /** Keep the microphone live between commands until the bar is closed. */
   voiceKeepListening: boolean
+  /** Where the in-window voice panel was dragged; null keeps it at the bottom center. Not synced. */
+  voiceDockPosition: VoiceDockPosition | null
   /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
@@ -1064,13 +1162,41 @@ export const DEFAULT_PREFERENCES: Preferences = {
   notifyOnLimitReset: true,
   dictationEnabled: false,
   dictationMode: 'toggle',
-  dictationModelId: 'parakeet-tdt-0.6b-v3-int8',
-  dictationProvider: 'local',
-  dictationCloudModel: 'openai/gpt-audio-mini',
   dictationMicrophoneId: null,
   dictationMicrophoneLabel: null,
+  speechEngineMigrated: false,
   voiceCommandApiKey: '',
+  voiceCommandShortcut: 'CmdOrCtrl+Shift+J',
+  voiceConversationEnabled: false,
+  voiceShortcut: 'CmdOrCtrl+Shift+Space',
+  voiceReadAloudShortcut: 'CmdOrCtrl+Shift+L',
+  voiceCaptureMode: 'push-to-talk',
+  voiceStt: {
+    dictation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+    conversation: { provider: 'local', model: 'parakeet-tdt-0.6b-v3-int8', locale: null },
+  },
+  voiceTts: { provider: 'system', model: '', voice: null, rate: 1 },
+  voiceProviders: {},
+  // The `normal` preset (NARRATION_PRESETS in lib/voice/narration.ts).
+  voiceNarration: {
+    progress: true,
+    thinking: false,
+    tools: false,
+    status: true,
+    final: true,
+    permissions: true,
+    questions: false,
+  },
+  voiceFillAfterMs: 8000,
+  voiceApprovalChannel: 'both',
+  voiceDestructiveNeedsHud: true,
+  voiceMidTaskDefault: 'queue',
+  voiceInterruptWords: ['stop', 'espera', 'cancela'],
+  voiceJevTrigger: 'alethe',
+  voiceHudPosition: 'bottom-center',
+  voiceHudCustomPosition: null,
   voiceKeepListening: false,
+  voiceDockPosition: null,
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',

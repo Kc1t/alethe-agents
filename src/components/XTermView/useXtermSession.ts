@@ -10,7 +10,16 @@ import { useEffect, useRef } from 'react'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
-import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
+import { registerAgentInput } from '../../lib/agentInputRegistry'
+import {
+  deliverOpenCodePrompt,
+  looksLikeChoicePrompt,
+  PaneHiddenError,
+  pasteAndSubmit,
+  readLiveScreen,
+  readRecentLines,
+  TerminalPromptOpenError,
+} from '../../lib/agentPromptDelivery'
 import { resolveAgentCliCommand, resolveCustomAgentArgs } from '../../lib/agentProviders'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import {
@@ -86,6 +95,8 @@ import {
   isShellAgentType,
   type Theme,
 } from '../../lib/types'
+import { decodeOsc52 } from '../../lib/osc52'
+import { canReadAloud, setFocusedSelection } from '../../lib/voice/readAloud'
 import { wslTargetFor } from '../../lib/wsl'
 import type { AgentHookPayload } from '../../stores/agentCanvasStore'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -125,6 +136,8 @@ import { getXtermTheme, type LinkActionState } from './xtermThemes'
 const EARLY_EXIT_MS = 4000
 
 const PANEL_RESYNC_DEBOUNCE_MS = 80
+/** How much terminal text voice reads for a harness with no transcript (its reply is in there). */
+const VOICE_SCREEN_LINES = 400
 
 function isBrowserInputPending(): boolean {
   const scheduling = (
@@ -146,6 +159,8 @@ function warnAiMemoryMissing(): void {
     body: translate(getLocale(), 'aiMemory.notInstalledBody'),
   })
 }
+
+export type SelectionMenuRequest = { text: string | null; paste: (() => void) | null }
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
 
@@ -195,6 +210,11 @@ export function useXtermSession(params: {
   setRetryKey: Dispatch<SetStateAction<number>>
   setDropActive: Dispatch<SetStateAction<boolean>>
   showLinkActionsMenu: (event: MouseEvent, link: DetectedTerminalLink) => void
+  /**
+   * Right-click while something can read aloud (voice conversation is on): `text` is the
+   * selection (null with none), `paste` pastes the clipboard (null in a read-only pane).
+   */
+  showSelectionMenu: (event: MouseEvent, menu: SelectionMenuRequest) => void
   recordPromptInput: (data: string) => boolean
   navigateHistory: (direction: 'up' | 'down') => void
 }) {
@@ -239,6 +259,7 @@ export function useXtermSession(params: {
     setRetryKey,
     setDropActive,
     showLinkActionsMenu,
+    showSelectionMenu,
     recordPromptInput,
     navigateHistory,
   } = params
@@ -349,6 +370,47 @@ export function useXtermSession(params: {
     let lastRows = 0
     let forceNextResize = false
     let completionMonitor: AgentCompletionMonitor | null = null
+    let unregisterAgentInput: (() => void) | null = null
+    const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms))
+    // Voice conversation submits through this, never through raw writes: it needs the paste mode
+    // and the completion monitor, and it must not send the extra Enters the first prompt uses.
+    const registerVoiceInput = (id: string) => {
+      // An attach that finished after unmount would register an input nothing ever removes.
+      if (disposed) return
+      unregisterAgentInput?.()
+      unregisterAgentInput = registerAgentInput(id, {
+        submit: async (text) => {
+          // The Enter would pick the highlighted option of the agent's own menu, so the screen is
+          // checked before the paste and again right before the Enter (a menu can open between).
+          // A hidden pane gets no output, so its screen cannot be checked at all.
+          // Esc stays unguarded: on that menu it cancels, never approves.
+          const refuseOnChoiceMenu = () => {
+            if (!isPanelVisibleRef.current) throw new PaneHiddenError()
+            if (looksLikeChoicePrompt(readLiveScreen(terminal.buffer.active, terminal.rows))) {
+              throw new TerminalPromptOpenError()
+            }
+          }
+          refuseOnChoiceMenu()
+          await pasteAndSubmit(text, {
+            writeChunked: (value) => writePtyChunked(id, value, terminal.modes.bracketedPasteMode),
+            write: (data) => writePty(id, data),
+            sleep,
+            beforeEnter: () => {
+              refuseOnChoiceMenu()
+              // Armed only once the Enter is certain, so a refused submit leaves the pane idle.
+              completionMonitor?.armForSubmit(text)
+              if (command === 'codex') noteCodexPaneInput(id, text)
+            },
+          })
+        },
+        interrupt: () => writePty(id, '\x1b'),
+        readScreen: () => readRecentLines(terminal.buffer.active, VOICE_SCREEN_LINES),
+      })
+    }
+    const unregisterVoiceInput = () => {
+      unregisterAgentInput?.()
+      unregisterAgentInput = null
+    }
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
     let writeRecoveryPending = false
@@ -382,6 +444,9 @@ export function useXtermSession(params: {
       fontFamily: resolveTerminalFontFamily(preferences.terminalFontFamily),
       fontSize: TERMINAL_FONT_SIZE,
       theme: getXtermTheme(terminalTheme),
+      // TUIs in mouse mode (Claude Code full screen, OpenCode) take plain drags: Option+drag still
+      // selects on macOS, as Shift+drag does elsewhere.
+      macOptionClickForcesSelection: true,
     })
     const fitAddon = new FitAddon()
     const searchAddon = new SearchAddon()
@@ -729,6 +794,56 @@ export function useXtermSession(params: {
     }
     const releasePasteCapture = captureTerminalPaste(container, onPaste)
 
+    const pasteClipboard = () => {
+      void resolveClipboardPaste()
+        .catch(() => navigator.clipboard?.readText() ?? '')
+        .then(pasteText)
+        .catch(() => {
+          terminal.focus()
+        })
+    }
+
+    // A TUI in mouse mode draws its own selection, which xterm never sees; many copy it with
+    // OSC 52. Kept (and put on the clipboard) until the next left click or key, which starts or
+    // drops that selection. Queries (`?`) are never answered: they would hand out the clipboard.
+    let tuiSelection = ''
+    const osc52 = terminal.parser.registerOscHandler(52, (data) => {
+      const text = decodeOsc52(data)
+      if (text === null) return true
+      tuiSelection = text
+      void writeClipboardText(text).catch(() => undefined)
+      return true
+    })
+    const forgetTuiSelection = (event: PointerEvent) => {
+      if (event.button === 0) tuiSelection = ''
+    }
+    container.addEventListener('pointerdown', forgetTuiSelection, true)
+    const forgetTuiSelectionOnKey = terminal.onKey(() => {
+      tuiSelection = ''
+    })
+    const selectedText = () => (terminal.hasSelection() ? terminal.getSelection() : tuiSelection)
+    let releaseFocusedSelection: (() => void) | null = null
+    const onTerminalFocus = () => {
+      releaseFocusedSelection?.()
+      releaseFocusedSelection = setFocusedSelection(selectedText)
+    }
+    container.addEventListener('focusin', onTerminalFocus)
+
+    // Capture phase, ahead of xterm's own contextmenu listener: its right-click word select
+    // (`rightClickSelectsWord`, on by default on macOS) would replace a selected block with the
+    // word under the pointer. Reading writes nothing to the PTY, so a read-only pane offers it too.
+    const onSelectionContextMenu = (event: MouseEvent) => {
+      if (!canReadAloud()) return
+      event.preventDefault()
+      event.stopPropagation()
+      const selected = selectedText()
+      showSelectionMenu(event, {
+        text: selected.trim() ? selected : null,
+        paste: readOnly ? null : pasteClipboard,
+      })
+    }
+    container.addEventListener('contextmenu', onSelectionContextMenu, true)
+
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault()
       event.stopPropagation()
@@ -741,12 +856,7 @@ export function useXtermSession(params: {
           terminal.clearSelection()
         }
       } else {
-        void resolveClipboardPaste()
-          .catch(() => navigator.clipboard?.readText() ?? '')
-          .then(pasteText)
-          .catch(() => {
-            terminal.focus()
-          })
+        pasteClipboard()
       }
     }
     container.addEventListener('contextmenu', onContextMenu)
@@ -940,7 +1050,7 @@ export function useXtermSession(params: {
 
       void setPtyVisible(existingId, isPanelVisibleRef.current).catch(() => {})
 
-      if (command === 'claude' || command === 'codex' || command === 'opencode') {
+      if (command && !isShellAgentType(command)) {
         completionMonitor = new AgentCompletionMonitor({
           ptyId: existingId,
           agent: command,
@@ -949,6 +1059,7 @@ export function useXtermSession(params: {
           onStatusChange: (status) => useTerminalsStore.getState().setStatus(existingId, status),
           onComplete: () => onAgentCompleteRef.current?.(),
         })
+        registerVoiceInput(existingId)
       }
 
       // Defer replay work until the pane is visible.
@@ -974,11 +1085,13 @@ export function useXtermSession(params: {
         if (payload.reason === 'suspended') {
           useTerminalsStore.getState().markSuspended(existingId)
           completionMonitor?.dispose()
+          unregisterVoiceInput()
           completionMonitor = null
           return
         }
         useTerminalsStore.getState().markExited(existingId)
         completionMonitor?.dispose()
+        unregisterVoiceInput()
         completionMonitor = null
         removeSession(sessionPersistenceKey)
         onExitRef.current?.(payload.code)
@@ -1427,7 +1540,7 @@ export function useXtermSession(params: {
           registerSessionClaim(command, cwd, attachedSessionId, response.id)
         }
 
-        if (command === 'claude' || command === 'codex' || command === 'opencode') {
+        if (command && !isShellAgentType(command)) {
           completionMonitor = new AgentCompletionMonitor({
             ptyId: response.id,
             agent: command,
@@ -1436,6 +1549,7 @@ export function useXtermSession(params: {
             onStatusChange: (status) => useTerminalsStore.getState().setStatus(response.id, status),
             onComplete: () => onAgentCompleteRef.current?.(),
           })
+          registerVoiceInput(response.id)
         }
 
         // Preserve the latest identity, including hooks received during spawn.
@@ -1556,6 +1670,7 @@ export function useXtermSession(params: {
           if (payload.reason === 'suspended') {
             useTerminalsStore.getState().markSuspended(response.id)
             completionMonitor?.dispose()
+            unregisterVoiceInput()
             completionMonitor = null
             return
           }
@@ -1575,6 +1690,7 @@ export function useXtermSession(params: {
             )
             useTerminalsStore.getState().markExited(response.id)
             completionMonitor?.dispose()
+            unregisterVoiceInput()
             completionMonitor = null
             recordSessionDrop('early_exit', attachedSessionId)
             removeSession(sessionPersistenceKey)
@@ -1597,6 +1713,7 @@ export function useXtermSession(params: {
           }
           useTerminalsStore.getState().markExited(response.id)
           completionMonitor?.dispose()
+          unregisterVoiceInput()
           completionMonitor = null
 
           removeSession(sessionPersistenceKey)
@@ -1688,10 +1805,14 @@ export function useXtermSession(params: {
                   return
                 }
               } else {
-                await writePtyChunked(response.id, prompt, terminal.modes.bracketedPasteMode)
-                await new Promise((resolve) => window.setTimeout(resolve, 150))
-                if (command === 'codex') noteCodexPaneInput(response.id)
-                await writePty(response.id, '\r')
+                await pasteAndSubmit(prompt, {
+                  writeChunked: (value) =>
+                    writePtyChunked(response.id, value, terminal.modes.bracketedPasteMode),
+                  write: (data) => writePty(response.id, data),
+                  sleep,
+                  beforeEnter:
+                    command === 'codex' ? () => noteCodexPaneInput(response.id) : undefined,
+                })
                 // A CLI still drawing its first screen, or sitting on a trust prompt, swallows the
                 // first returns, so the text stays typed but unsent. Extra ones only submit empty.
                 for (const delay of [1_200, 3_000, 6_000]) {
@@ -1746,6 +1867,12 @@ export function useXtermSession(params: {
       window.removeEventListener('focus', restoreLastTerminalFocus)
       document.removeEventListener('visibilitychange', restoreLastTerminalFocus)
       container.removeEventListener('contextmenu', onContextMenu)
+      container.removeEventListener('contextmenu', onSelectionContextMenu, true)
+      container.removeEventListener('pointerdown', forgetTuiSelection, true)
+      container.removeEventListener('focusin', onTerminalFocus)
+      osc52.dispose()
+      forgetTuiSelectionOnKey.dispose()
+      releaseFocusedSelection?.()
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-font-changed', onFontChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
@@ -1766,6 +1893,7 @@ export function useXtermSession(params: {
       linkProviderDisposable?.dispose()
       linkScrollDisposable?.dispose()
       completionMonitor?.dispose()
+      unregisterVoiceInput()
       completionMonitor = null
       setLinkActions(null)
       if (terminalRef.current === terminal) terminalRef.current = null

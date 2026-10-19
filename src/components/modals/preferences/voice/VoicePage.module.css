@@ -1,0 +1,38 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header h1 {
+  margin: 0;
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.tabBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.introRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+}
+
+.introActions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.intro {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

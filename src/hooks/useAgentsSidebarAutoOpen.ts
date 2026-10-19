@@ -16,7 +16,8 @@ export function useFocusedPlannerPtyId(): string | null {
     for (const project of projects) {
       const terminal = project.terminals.find((entry) => entry.id === focusedTerminalId)
       if (!terminal) continue
-      const tab = terminal.tabs.find((entry) => entry.id === terminal.activeTabId) ?? terminal.tabs[0]
+      const tab =
+        terminal.tabs.find((entry) => entry.id === terminal.activeTabId) ?? terminal.tabs[0]
       const ptyId = tab?.ptyId ?? null
       return ptyId && hasOrchestratorTools(ptyId) ? ptyId : null
     }

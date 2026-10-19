@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt;
 
 const SERVICE: &str = "com.kc1t.alethe";
@@ -8,15 +9,24 @@ pub enum SecretKind {
     SpotifyClientSecret,
     SpotifyAccessToken,
     SpotifyRefreshToken,
+    VoiceProviderKey(crate::voice_providers::CloudProvider),
+    VoiceServerKey(crate::voice_servers::id::ServerId),
 }
 
 impl SecretKind {
-    fn suffix(self) -> &'static str {
+    fn suffix(self) -> Cow<'static, str> {
         match self {
-            Self::GithubSyncToken => "github-sync-token",
-            Self::SpotifyClientSecret => "spotify-client-secret",
-            Self::SpotifyAccessToken => "spotify-access-token",
-            Self::SpotifyRefreshToken => "spotify-refresh-token",
+            Self::GithubSyncToken => Cow::Borrowed("github-sync-token"),
+            Self::SpotifyClientSecret => Cow::Borrowed("spotify-client-secret"),
+            Self::SpotifyAccessToken => Cow::Borrowed("spotify-access-token"),
+            Self::SpotifyRefreshToken => Cow::Borrowed("spotify-refresh-token"),
+            Self::VoiceProviderKey(provider) => Cow::Borrowed(match provider {
+                crate::voice_providers::CloudProvider::Openai => "voice-key-openai",
+                crate::voice_providers::CloudProvider::Elevenlabs => "voice-key-elevenlabs",
+                crate::voice_providers::CloudProvider::Gemini => "voice-key-gemini",
+                crate::voice_providers::CloudProvider::Openrouter => "voice-key-openrouter",
+            }),
+            Self::VoiceServerKey(id) => Cow::Owned(format!("voice-server-{id}")),
         }
     }
 }
@@ -107,10 +117,32 @@ mod tests {
     }
 
     #[test]
+    fn voice_server_keys_are_per_server() {
+        let id = crate::voice_servers::id::ServerId::parse("V1StGXR8_Z5jdHi6B-myT").unwrap();
+        assert_eq!(
+            account("default", SecretKind::VoiceServerKey(id)),
+            "profile:default:voice-server-V1StGXR8_Z5jdHi6B-myT"
+        );
+    }
+
+    #[test]
     fn errors_do_not_include_backend_or_secret_details() {
         let secret = "super-secret-value";
         let error = SecureStoreError::Unavailable("write").to_string();
         assert_eq!(error, "secure_store_unavailable: write");
         assert!(!error.contains(secret));
+    }
+
+    #[test]
+    fn voice_provider_keys_have_distinct_stable_accounts() {
+        use crate::voice_providers::CloudProvider;
+        let accounts: Vec<String> = CloudProvider::ALL
+            .iter()
+            .map(|provider| account("p", SecretKind::VoiceProviderKey(*provider)))
+            .collect();
+        assert_eq!(accounts[0], "profile:p:voice-key-openai");
+        assert_eq!(accounts[3], "profile:p:voice-key-openrouter");
+        let unique: std::collections::HashSet<_> = accounts.iter().collect();
+        assert_eq!(unique.len(), 4);
     }
 }

@@ -1,0 +1,90 @@
+{
+  "_id": "656730410767cf8706484fb8",
+  "id": "csukuangfj/vits-piper-pt_BR-faber-medium",
+  "private": false,
+  "tags": ["onnx", "region:us"],
+  "downloads": 0,
+  "likes": 6,
+  "modelId": "csukuangfj/vits-piper-pt_BR-faber-medium",
+  "author": "csukuangfj",
+  "sha": "4f385076a8f9d5bc7b4cd9fea4dc77e6e8ca8167",
+  "lastModified": "2024-12-24T06:41:11.000Z",
+  "gated": false,
+  "disabled": false,
+  "config": {},
+  "siblings": [
+    {
+      "rfilename": ".gitattributes"
+    },
+    {
+      "rfilename": "MODEL_CARD"
+    },
+    {
+      "rfilename": "espeak-ng-data/af_dict"
+    },
+    {
+      "rfilename": "espeak-ng-data/am_dict"
+    },
+    {
+      "rfilename": "espeak-ng-data/an_dict"
+    }
+  ],
+  "spaces": [
+    "k2-fsa/text-to-speech",
+    "deep-div/Text-to-Speech-TTS",
+    "Jekyll2000/Text_to_speech_tts",
+    "mukaist/text-to-speech-tts",
+    "OOI-FrontierTech/tts_mockingbird",
+    "csukuangfj/text-to-speech",
+    "ruslanmv/text-to-speech-fast",
+    "itacaiunas/text-to-speech",
+    "pavancos/text-to-speech",
+    "davidegato1/vits-piper-text-to-speech",
+    "hossamdaoud/text-to-speech-2025",
+    "dibend/text-to-speech",
+    "Samirbagda/Swarika",
+    "zeriuj/text-to-speech",
+    "didibaloeiro/text-to-speech",
+    "MishiMachine/text-to-speech",
+    "MarkoVidrih/text-to-speech",
+    "basit123796/text-to-spech1",
+    "antoniomae1234/text-to-speech20",
+    "stack86/text-to-speech",
+    "lakikishorsubba/LakiTextToSpeechs",
+    "basil-ahmad/text-to-speech",
+    "ObindiG/kiswahiliyalaocta",
+    "rolgor/Text_to_speech_tts",
+    "ritwik098/text-to-speech",
+    "undetectable-testing/text-to-speak",
+    "abdullahalioo/text-to-speech",
+    "pogmommy/text-to-speech",
+    "Carlex40/text-to-speech",
+    "XUDONG0629/Text_to_speech_tts",
+    "fashuxu/text-to-speech",
+    "yangwot/text-to-speech",
+    "Isujaybarman/text-to-speech",
+    "OOI-FrontierTech/tts-mockingbird-v2",
+    "Kyon0x3C8B/0x1b",
+    "Skepller/gtre-neuralnet-test",
+    "YouWuZi/text-to-speech",
+    "non-jedi/text-to-speech",
+    "stevenhxf123/text-to-speech",
+    "hifar/text-to-speech",
+    "kovinape/text-to-speech",
+    "a9/text-to-speech",
+    "Raj138900/tts_in_multilanguage",
+    "neillobo/text-to-speech",
+    "Deddy/text-to-speech-2",
+    "micas23/text-to-speech",
+    "rashmikumariappwebdevelopment/text-to-speech",
+    "anhtu8899/text-to-speech",
+    "karatarassul4/text-to-speech",
+    "vbhi25/text-to-speech",
+    "tecnologiaestro/text-to-speech",
+    "Harsimar12346/text-to-speech",
+    "hoangkykhanh39/text-to-speech",
+    "toxicwind/text-to-speech"
+  ],
+  "createdAt": "2023-11-29T12:36:17.000Z",
+  "usedStorage": 73300155
+}

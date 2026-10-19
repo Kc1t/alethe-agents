@@ -1,12 +1,12 @@
 import { nanoid } from 'nanoid'
 
 import { sanitizeCustomAgents } from '../lib/customAgents'
+import { normalizeExperimentalAgentPermissionMode } from '../lib/experimentalAgentPolicy'
 import {
   legacyGitFeatureFlag,
   legacyTodosFeatureFlag,
   normalizeEnabledFeatures,
 } from '../lib/features'
-import { normalizeExperimentalAgentPermissionMode } from '../lib/experimentalAgentPolicy'
 import { normalizeOrchestrationSettings } from '../lib/orchestrationSettings'
 import { recordLegacyGitFlag, recordLegacyTodosFlag } from '../lib/plugins/legacyMigration'
 import { normalizeProjectGrids, projectGridContainer } from '../lib/projectGrids'
@@ -17,19 +17,23 @@ import {
   DEFAULT_PREFERENCES,
   DEFAULT_ROUTER9_PREFERENCES,
   DEFAULT_TERMINAL_FONT_FAMILY,
-  DICTATION_CLOUD_MODELS,
   EMPTY_PROJECTS_FILE,
   type Group,
   GROUP_COLORS,
+  type MonitorBounds,
   type Preferences,
   type Project,
   type ProjectsFile,
   type TodoItem,
   type UsageProviderId,
+  type VoiceDockPosition,
+  type VoiceHudCustomPosition,
   type WorkspaceContainer,
   type WorkspaceRecentTab,
   type WorkspaceTab,
 } from '../lib/types'
+import { normalizeNarration } from '../lib/voice/narration'
+import { type LegacyVoiceFields, normalizeVoicePreferences } from '../lib/voice/voicePreferences'
 import {
   captureWorkspaceSnapshot,
   cloneWorkspaceSnapshot,
@@ -42,7 +46,11 @@ import {
   MAX_RECENT_PROJECT_TABS,
 } from './projectsStore.constants'
 
-type LegacyPreferences = Partial<Preferences> & { showGitControl?: boolean }
+type LegacyPreferences = Partial<Preferences> & {
+  showGitControl?: boolean
+  /** Narration presets before the per-category toggles (`voiceNarration`). */
+  voiceVerbosity?: unknown
+} & LegacyVoiceFields
 
 function normalizeStoredAccent(value: unknown, fallback?: string): string | undefined {
   if (typeof value !== 'string') return fallback
@@ -117,6 +125,68 @@ function usageAccessOfSavedFile(rawPreferences: unknown): Preferences['usageAcce
   ) as Preferences['usageAccess']
 }
 
+const VOICE_APPROVAL_CHANNELS = ['both', 'voice', 'hud'] as const
+const HUD_POSITIONS = [
+  'bottom-center',
+  'bottom-left',
+  'bottom-right',
+  'top-center',
+  'top-left',
+  'top-right',
+  'custom',
+] as const
+
+function normalizeMonitorBounds(value: unknown): MonitorBounds | null {
+  if (!value || typeof value !== 'object') return null
+  const { x, y, width, height } = value as Record<string, unknown>
+  const numbers = [x, y, width, height]
+  if (!numbers.every((n) => typeof n === 'number' && Number.isFinite(n))) return null
+  const bounds = { x, y, width, height } as MonitorBounds
+  return bounds.width > 0 && bounds.height > 0 ? bounds : null
+}
+
+function normalizeHudCustom(value: unknown): VoiceHudCustomPosition | null {
+  if (!value || typeof value !== 'object') return null
+  const { monitor, x, y, bounds } = value as Record<string, unknown>
+  if (typeof monitor !== 'string' || typeof x !== 'number' || typeof y !== 'number') return null
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  const position = { monitor, x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+  const validBounds = normalizeMonitorBounds(bounds)
+  return validBounds ? { ...position, bounds: validBounds } : position
+}
+
+function normalizeDockPosition(value: unknown): VoiceDockPosition | null {
+  if (!value || typeof value !== 'object') return null
+  const { x, y } = value as Record<string, unknown>
+  if (typeof x !== 'number' || typeof y !== 'number') return null
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+  return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+}
+
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : fallback
+}
+
+function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.min(max, Math.max(min, value))
+}
+
+function normalizeVoiceWords(value: unknown): string[] {
+  if (!Array.isArray(value)) return [...DEFAULT_PREFERENCES.voiceInterruptWords]
+  const words = value
+    .filter((word): word is string => typeof word === 'string')
+    .map((word) => word.trim().toLowerCase())
+    .filter(Boolean)
+  return [...new Set(words)].slice(0, 10)
+}
+
+function trimmedOr(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback
+}
+
 export function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
   // Git Control became a plugin; its old toggle is handed to the plugin host.
   recordLegacyGitFlag(legacyGitFeatureFlag(raw))
@@ -126,6 +196,18 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     ...(raw ?? {}),
   } as Preferences & { showGitControl?: boolean }
   delete preferences.showGitControl
+  // Legacy voice fields; their values move into voiceStt / voiceTts / voiceNarration below.
+  for (const legacy of [
+    'dictationModelId',
+    'dictationNativeLocale',
+    'dictationProvider',
+    'dictationCloudModel',
+    'voiceTtsVoice',
+    'voiceTtsRate',
+    'voiceVerbosity',
+  ]) {
+    delete (preferences as Record<string, unknown>)[legacy]
+  }
   const rawResourcePolicy = raw?.resourcePolicy
   const resourcePolicy = {
     ...DEFAULT_PREFERENCES.resourcePolicy,
@@ -193,14 +275,6 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
     dictationEnabled: Boolean(preferences.dictationEnabled),
     dictationMode: preferences.dictationMode === 'hold' ? 'hold' : 'toggle',
-    dictationModelId:
-      typeof preferences.dictationModelId === 'string' && preferences.dictationModelId.trim()
-        ? preferences.dictationModelId.trim()
-        : DEFAULT_PREFERENCES.dictationModelId,
-    dictationProvider: preferences.dictationProvider === 'openrouter' ? 'openrouter' : 'local',
-    dictationCloudModel: DICTATION_CLOUD_MODELS.includes(preferences.dictationCloudModel)
-      ? preferences.dictationCloudModel
-      : DEFAULT_PREFERENCES.dictationCloudModel,
     dictationMicrophoneId:
       typeof preferences.dictationMicrophoneId === 'string' &&
       preferences.dictationMicrophoneId.trim()
@@ -211,6 +285,39 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       preferences.dictationMicrophoneLabel.trim()
         ? preferences.dictationMicrophoneLabel.trim()
         : null,
+    speechEngineMigrated: preferences.speechEngineMigrated === true,
+    ...normalizeVoicePreferences(raw),
+    voiceConversationEnabled: Boolean(preferences.voiceConversationEnabled),
+    voiceShortcut: trimmedOr(preferences.voiceShortcut, DEFAULT_PREFERENCES.voiceShortcut),
+    voiceReadAloudShortcut: trimmedOr(
+      preferences.voiceReadAloudShortcut,
+      DEFAULT_PREFERENCES.voiceReadAloudShortcut,
+    ),
+    voiceCommandShortcut: trimmedOr(
+      preferences.voiceCommandShortcut,
+      DEFAULT_PREFERENCES.voiceCommandShortcut,
+    ),
+    voiceCaptureMode: preferences.voiceCaptureMode === 'toggle' ? 'toggle' : 'push-to-talk',
+    voiceNarration: normalizeNarration(raw?.voiceNarration, raw?.voiceVerbosity),
+    voiceFillAfterMs: Math.round(
+      clampNumber(preferences.voiceFillAfterMs, 3000, 60000, DEFAULT_PREFERENCES.voiceFillAfterMs),
+    ),
+    voiceApprovalChannel: oneOf(preferences.voiceApprovalChannel, VOICE_APPROVAL_CHANNELS, 'both'),
+    voiceDestructiveNeedsHud: preferences.voiceDestructiveNeedsHud !== false,
+    voiceMidTaskDefault: preferences.voiceMidTaskDefault === 'interrupt' ? 'interrupt' : 'queue',
+    voiceInterruptWords: normalizeVoiceWords(preferences.voiceInterruptWords),
+    voiceJevTrigger: trimmedOr(
+      preferences.voiceJevTrigger,
+      DEFAULT_PREFERENCES.voiceJevTrigger,
+    ).toLowerCase(),
+    voiceHudCustomPosition: normalizeHudCustom(preferences.voiceHudCustomPosition),
+    voiceDockPosition: normalizeDockPosition(preferences.voiceDockPosition),
+    voiceHudPosition: (() => {
+      const position = oneOf(preferences.voiceHudPosition, HUD_POSITIONS, 'bottom-center')
+      return position === 'custom' && !normalizeHudCustom(preferences.voiceHudCustomPosition)
+        ? 'bottom-center'
+        : position
+    })(),
     resourcePolicy: {
       // Automatic parking was removed. Keep the legacy shape for file
       // compatibility, but normalize every installation to monitoring only.

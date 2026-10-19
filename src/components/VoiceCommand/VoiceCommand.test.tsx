@@ -3,13 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   preferences: {
-    voiceCommandApiKey: 'test-key',
+    voiceProviders: { openrouter: { configured: true, invalid: false } } as Record<
+      string,
+      { configured: boolean; invalid: boolean }
+    >,
+    voiceCommandApiKey: '',
     dictationEnabled: true,
+    voiceConversationEnabled: false,
     voiceKeepListening: false,
-    dictationModelId: 'test-model',
+    voiceStt: {
+      dictation: { provider: 'local', model: 'test-model', locale: null },
+      conversation: { provider: 'local', model: 'test-model', locale: null as string | null },
+    },
+    voiceShortcut: 'CmdOrCtrl+Shift+Space',
+    voiceCommandShortcut: 'CmdOrCtrl+Shift+J',
     dictationMicrophoneId: null,
-    dictationProvider: 'local' as 'local' | 'openrouter',
-    dictationCloudModel: 'openai/gpt-audio-mini',
   },
   setPreferences: vi.fn(),
   start: vi.fn(),
@@ -48,7 +56,7 @@ vi.mock('../../lib/tauri', () => ({
   speechVadStatus: vi.fn().mockResolvedValue(null),
   speechPrepareVad: vi.fn().mockResolvedValue(true),
   speechTranscribePartial: mocks.partial,
-  stopAndTranscribe: mocks.transcribe,
+  speechStopAndTranscribe: mocks.transcribe,
   jevDecide: mocks.decide,
   writePty: vi.fn(),
 }))
@@ -56,17 +64,26 @@ vi.mock('../../lib/tauri', () => ({
 import { useVoiceHistoryStore } from '../../stores/voiceHistoryStore'
 import { VoiceCommand } from './index'
 
+const CONFIGURED = { openrouter: { configured: true, invalid: false } }
+
 function open() {
-  fireEvent.keyDown(window, { key: ' ', code: 'Space', ctrlKey: true, shiftKey: true })
+  fireEvent.keyDown(window, { key: 'J', code: 'KeyJ', ctrlKey: true, shiftKey: true })
+}
+
+function useConversationEngine(provider: string, model: string) {
+  mocks.preferences.voiceStt = {
+    ...mocks.preferences.voiceStt,
+    conversation: { provider, model, locale: null },
+  }
 }
 
 describe('voice pill capture lifecycle', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.clearAllMocks()
-    mocks.preferences.voiceCommandApiKey = 'test-key'
+    mocks.preferences.voiceProviders = CONFIGURED
     mocks.preferences.voiceKeepListening = false
-    mocks.preferences.dictationProvider = 'local'
+    useConversationEngine('local', 'test-model')
     mocks.partial.mockResolvedValue('')
     mocks.prepare.mockResolvedValue(undefined)
     mocks.start.mockResolvedValue(undefined)
@@ -109,7 +126,7 @@ describe('voice pill capture lifecycle', () => {
   })
 
   it('does not start continuous capture without an API key', async () => {
-    mocks.preferences.voiceCommandApiKey = ''
+    mocks.preferences.voiceProviders = {}
     mocks.preferences.voiceKeepListening = true
     render(<VoiceCommand />)
     open()
@@ -120,7 +137,7 @@ describe('voice pill capture lifecycle', () => {
   })
 
   it('does not allow typing commands or keys in the pill', () => {
-    mocks.preferences.voiceCommandApiKey = ''
+    mocks.preferences.voiceProviders = {}
     render(<VoiceCommand />)
     open()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
@@ -160,7 +177,8 @@ describe('voice pill capture lifecycle', () => {
   })
 
   it('transcribes through OpenRouter without local model work when selected', async () => {
-    mocks.preferences.dictationProvider = 'openrouter'
+    useConversationEngine('openrouter', 'openai/gpt-audio-mini')
+    mocks.prepare.mockResolvedValue(true)
     mocks.transcribe.mockResolvedValue('')
     render(<VoiceCommand />)
     open()
@@ -174,12 +192,12 @@ describe('voice pill capture lifecycle', () => {
       fireEvent.click(screen.getByRole('button', { name: 'voice.bar.stopRecording' }))
     })
     expect(mocks.partial).not.toHaveBeenCalled()
-    expect(mocks.prepare).not.toHaveBeenCalled()
-    expect(mocks.transcribe).toHaveBeenCalledWith({
+    // Only the key check before capture; no local model is loaded.
+    expect(mocks.prepare).not.toHaveBeenCalledWith(expect.anything(), null, 'local')
+    expect(mocks.transcribe).toHaveBeenCalledWith('openai/gpt-audio-mini', null, {
       provider: 'openrouter',
-      modelId: 'test-model',
-      cloudModel: 'openai/gpt-audio-mini',
-      apiKey: 'test-key',
+      fallbackLocale: null,
+      usage: 'conversation',
     })
   })
 

@@ -8,10 +8,12 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 
 import App from './App'
+import { VoiceHud } from './components/VoiceHud'
 import { orchestrationWindowPane } from './lib/orchestrationWindow'
 import { initPluginHost } from './lib/plugins'
 import { recordFrontendError } from './lib/tauri'
 import { watchPluginThemeStyles } from './lib/themeTokens'
+import { isVoiceHudWindow } from './lib/voice/hudWindow'
 import { OrchestrationWindow } from './OrchestrationWindow'
 import { setProjectsReadOnly } from './stores/projectsStore'
 
@@ -48,18 +50,21 @@ window.addEventListener('unhandledrejection', (event) => {
 
 watchPluginThemeStyles()
 
-/** The orchestration pane this window was opened to show on its own (#247), if any. */
-function detachedBoardPane(): string | null {
+function currentWindowLabel(): string | null {
   try {
-    return orchestrationWindowPane(getCurrentWebviewWindow().label)
+    return getCurrentWebviewWindow().label
   } catch {
     // Outside Tauri (the plain Vite dev server) there is no window label.
     return null
   }
 }
 
-const boardPane = detachedBoardPane()
-if (boardPane) {
+const windowLabel = currentWindowLabel()
+// The voice HUD never runs the app shell: it must not write projects.json or touch PTYs.
+const voiceHud = isVoiceHudWindow(windowLabel)
+/** The orchestration pane this window was opened to show on its own (#247), if any. */
+const boardPane = windowLabel ? orchestrationWindowPane(windowLabel) : null
+if (voiceHud || boardPane) {
   // The main window owns projects.json; this one only reads it.
   setProjectsReadOnly(true)
 } else {
@@ -70,6 +75,6 @@ if (boardPane) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {boardPane ? <OrchestrationWindow terminalId={boardPane} /> : <App />}
+    {voiceHud ? <VoiceHud /> : boardPane ? <OrchestrationWindow terminalId={boardPane} /> : <App />}
   </React.StrictMode>,
 )

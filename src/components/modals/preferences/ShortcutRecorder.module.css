@@ -1,0 +1,48 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.keys {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 26px;
+}
+
+.key {
+  min-width: 24px;
+  padding: 2px 7px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+}
+
+.keys[data-recording] .key {
+  border-color: var(--accent);
+}
+
+.prompt {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.error {
+  margin: 0;
+  color: var(--status-offline);
+  font-size: 12px;
+}

@@ -3,15 +3,17 @@ import '@xterm/xterm/css/xterm.css'
 import type { Terminal } from '@xterm/xterm'
 import {
   AppWindow,
+  ClipboardPaste,
   Copy,
   ExternalLink,
   FolderOpen,
   LayoutGrid,
   Maximize2,
   PanelRight,
+  Volume2,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
@@ -25,11 +27,13 @@ import {
   homeDirectory,
   openInBrowser,
   openInFileExplorer,
+  readClipboardText,
   writeClipboardText,
   writePty,
 } from '../../lib/tauri'
 import { agentLabel, resolveAgentCliCommand } from '../../lib/agentProviders'
 import type { AgentRuntimeProfile, AgentType, Theme } from '../../lib/types'
+import { readAloud, readAloudShortcutLabel } from '../../lib/voice/readAloud'
 import { wslTargetFor } from '../../lib/wsl'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -41,7 +45,7 @@ import {
   resolveTerminalFilePath,
 } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
-import { useXtermSession } from './useXtermSession'
+import { type SelectionMenuRequest, useXtermSession } from './useXtermSession'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
 import styles from './XTermView.module.css'
 
@@ -85,6 +89,46 @@ const LINK_MENU_WIDTH = 272
 const LINK_MENU_MAX_HEIGHT = 276
 const LINK_MENU_MARGIN = 10
 const LINK_MENU_OFFSET = 6
+const SELECTION_MENU_MAX_HEIGHT = 164
+
+/** Where a menu opened at the pointer fits, given a conservative estimate of its height. */
+function menuPosition(event: MouseEvent, maxHeight: number): { x: number; y: number } {
+  const maxLeft = window.innerWidth - LINK_MENU_WIDTH - LINK_MENU_MARGIN
+  const x = Math.max(LINK_MENU_MARGIN, Math.min(event.clientX + LINK_MENU_OFFSET, maxLeft))
+  const below = event.clientY + LINK_MENU_OFFSET
+  const y =
+    below + maxHeight <= window.innerHeight - LINK_MENU_MARGIN
+      ? below
+      : Math.max(LINK_MENU_MARGIN, event.clientY - maxHeight - LINK_MENU_OFFSET)
+  return { x, y }
+}
+
+/** Closes an open menu on a pointer down outside it, Escape, window blur or resize. */
+function useMenuDismiss(
+  open: boolean,
+  menuRef: MutableRefObject<HTMLDivElement | null>,
+  hide: () => void,
+): void {
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) hide()
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') hide()
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true)
+    window.addEventListener('keydown', closeOnEscape, true)
+    window.addEventListener('blur', hide)
+    window.addEventListener('resize', hide)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer, true)
+      window.removeEventListener('keydown', closeOnEscape, true)
+      window.removeEventListener('blur', hide)
+      window.removeEventListener('resize', hide)
+    }
+  }, [open, menuRef, hide])
+}
 
 export function XTermView({
   ptyId,
@@ -124,6 +168,7 @@ export function XTermView({
     command && command !== 'shell' ? (s.cliPaths[command] ?? null) : null,
   )
   const setCliPath = useProjectsStore((s) => s.setCliPath)
+  const readAloudShortcut = useProjectsStore((s) => s.preferences.voiceReadAloudShortcut)
   const wslEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.wsl)
   const wslTarget = wslTargetFor(cwd, wslEnabled)
 
@@ -163,6 +208,11 @@ export function XTermView({
     thresholdMb: number
   } | null>(null)
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
+  /** What a right-click opened the menu for (the selection, or none), and where it sits. */
+  const [selectionMenu, setSelectionMenu] = useState<
+    (SelectionMenuRequest & { x: number; y: number }) | null
+  >(null)
+  const selectionMenuRef = useRef<HTMLDivElement | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const sessionPersistenceKey = sessionKey ?? ptyId
 
@@ -185,7 +235,6 @@ export function XTermView({
       .catch(() => undefined)
   }, [])
 
-  // estimativa conservadora do tamanho para nunca cortar o menu na viewport.
   const showLinkActionsMenu = useCallback(
     (event: MouseEvent, link: DetectedTerminalLink) => {
       event.preventDefault()
@@ -194,13 +243,7 @@ export function XTermView({
       terminalRef.current?.clearSelection()
       window.getSelection()?.removeAllRanges()
 
-      const maxLeft = window.innerWidth - LINK_MENU_WIDTH - LINK_MENU_MARGIN
-      const x = Math.max(LINK_MENU_MARGIN, Math.min(event.clientX + LINK_MENU_OFFSET, maxLeft))
-      const below = event.clientY + LINK_MENU_OFFSET
-      const y =
-        below + LINK_MENU_MAX_HEIGHT <= window.innerHeight - LINK_MENU_MARGIN
-          ? below
-          : Math.max(LINK_MENU_MARGIN, event.clientY - LINK_MENU_MAX_HEIGHT - LINK_MENU_OFFSET)
+      const { x, y } = menuPosition(event, LINK_MENU_MAX_HEIGHT)
 
       const target =
         link.kind === 'path'
@@ -235,27 +278,40 @@ export function XTermView({
     linkActionsRef.current = linkActions
   }, [linkActions])
 
-  useEffect(() => {
-    if (!linkActions) return
+  useMenuDismiss(linkActions !== null, linkMenuRef, hideLinkActions)
 
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!linkMenuRef.current?.contains(event.target as Node)) hideLinkActions()
-    }
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') hideLinkActions()
-    }
+  // Stable: the session hook registers its context-menu listener once.
+  const showSelectionMenu = useCallback((event: MouseEvent, request: SelectionMenuRequest) => {
+    setSelectionMenu({ ...request, ...menuPosition(event, SELECTION_MENU_MAX_HEIGHT) })
+  }, [])
+  const hideSelectionMenu = useCallback(() => setSelectionMenu(null), [])
+  useMenuDismiss(selectionMenu !== null, selectionMenuRef, hideSelectionMenu)
 
-    document.addEventListener('pointerdown', closeOnOutsidePointer, true)
-    window.addEventListener('keydown', closeOnEscape, true)
-    window.addEventListener('blur', hideLinkActions)
-    window.addEventListener('resize', hideLinkActions)
-    return () => {
-      document.removeEventListener('pointerdown', closeOnOutsidePointer, true)
-      window.removeEventListener('keydown', closeOnEscape, true)
-      window.removeEventListener('blur', hideLinkActions)
-      window.removeEventListener('resize', hideLinkActions)
+  const copySelection = useCallback(async (text: string) => {
+    terminalRef.current?.clearSelection()
+    try {
+      await writeClipboardText(text)
+    } catch {
+      await navigator.clipboard?.writeText(text).catch(() => undefined)
     }
-  }, [hideLinkActions, linkActions])
+  }, [])
+
+  const readSelectionAloud = useCallback((text: string) => {
+    terminalRef.current?.clearSelection()
+    readAloud(text)
+  }, [])
+
+  // A TUI that draws its own selection often copies it: the clipboard holds it then.
+  const readClipboardAloud = useCallback(async () => {
+    try {
+      readAloud(await readClipboardText())
+    } catch (err) {
+      useUiStore.getState().pushToast({
+        title: translate(getLocale(), 'xterm.toastClipboardReadFail'),
+        body: String(err),
+      })
+    }
+  }, [])
 
   const openFileInGrid = useCallback(
     (target: string) => {
@@ -407,6 +463,7 @@ export function XTermView({
     setRetryKey,
     setDropActive,
     showLinkActionsMenu,
+    showSelectionMenu,
     recordPromptInput,
     navigateHistory,
   })
@@ -657,6 +714,86 @@ export function XTermView({
                   <Copy size={15} />
                   <span>{t('xterm.copy')}</span>
                 </button>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+      {selectionMenu
+        ? createPortal(
+            <div
+              ref={selectionMenuRef}
+              className={styles.linkMenu}
+              style={{ left: selectionMenu.x, top: selectionMenu.y }}
+              role="menu"
+              aria-label={t('xterm.selectionMenu')}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                if (event.target === event.currentTarget) event.preventDefault()
+              }}
+            >
+              <div className={styles.linkMenuHeader}>
+                <span className={styles.linkMenuText} title={selectionMenu.text ?? undefined}>
+                  {selectionMenu.text ?? t('xterm.noSelection')}
+                </span>
+                <button
+                  type="button"
+                  className={styles.linkMenuClose}
+                  onClick={hideSelectionMenu}
+                  title={t('common.close')}
+                  aria-label={t('common.close')}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className={styles.linkMenuItems}>
+                <button
+                  type="button"
+                  className={styles.linkMenuItem}
+                  role="menuitem"
+                  title={t('xterm.readAloudShortcut', {
+                    shortcut: readAloudShortcutLabel(readAloudShortcut),
+                  })}
+                  onClick={() => {
+                    const text = selectionMenu.text
+                    if (text) readSelectionAloud(text)
+                    else void readClipboardAloud()
+                    hideSelectionMenu()
+                  }}
+                >
+                  <Volume2 size={15} />
+                  <span>
+                    {t(selectionMenu.text ? 'xterm.readAloud' : 'xterm.readClipboardAloud')}
+                  </span>
+                </button>
+                {selectionMenu.text ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      if (selectionMenu.text) void copySelection(selectionMenu.text)
+                      hideSelectionMenu()
+                    }}
+                  >
+                    <Copy size={15} />
+                    <span>{t('xterm.copy')}</span>
+                  </button>
+                ) : null}
+                {selectionMenu.paste ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      selectionMenu.paste?.()
+                      hideSelectionMenu()
+                    }}
+                  >
+                    <ClipboardPaste size={15} />
+                    <span>{t('xterm.paste')}</span>
+                  </button>
+                ) : null}
               </div>
             </div>,
             document.body,

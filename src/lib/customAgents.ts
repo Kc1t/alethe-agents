@@ -165,7 +165,7 @@ function tokenizeCommandLine(raw: string): string[] | null {
 
 function isValidBinaryName(binary: string): boolean {
   if (!binary || binary.length > 128) return false
-  const base = binary.split(/[\\/]/).at(-1) ?? binary
+  const base = binary.split(/[\\/]/).pop() ?? binary
   return /^[A-Za-z0-9._-]+(\.exe|\.cmd|\.bat|\.ps1)?$/.test(base)
 }
 

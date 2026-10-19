@@ -208,7 +208,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
     const [endpoint, token, settingsPath] = await Promise.all([
       agentHooksEndpoint(),
       agentHooksToken(),
-      agentHooksSettingsPath('sandbox-demo', true, null),
+      agentHooksSettingsPath('sandbox-demo', true, null, false),
     ])
     if (generation !== sandboxGeneration) return
     const leadNodes = demoNodes(currentPermissionMode())
@@ -554,6 +554,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
     hookEventCleanup = await listen<Record<string, unknown>>('agent-hook', (event) => {
       if (generation !== sandboxGeneration) return
       const payload = event.payload
+      if (payload.voiceOnly === true) return
       const eventCwd = typeof payload.cwd === 'string' ? payload.cwd : ''
       if (!eventCwd) return
       const child = get().nodes.find(

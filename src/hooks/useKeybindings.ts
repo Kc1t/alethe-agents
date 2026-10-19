@@ -11,10 +11,12 @@ import {
   useProjectsStore,
 } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
+import { isRecordingShortcut } from '../stores/voiceConversationStore'
 
 export function useKeybindings() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isRecordingShortcut()) return
       if (e.key === 'Escape') {
         const ui = useUiStore.getState()
         if (ui.openModal) {

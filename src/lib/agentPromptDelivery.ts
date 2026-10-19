@@ -139,3 +139,111 @@ export async function deliverOpenCodePrompt(
   }
   return true
 }
+
+export const SUBMIT_SETTLE_MS = 150
+
+export type PromptSubmitIo = {
+  writeChunked: (text: string) => Promise<void>
+  write: (data: string) => Promise<void>
+  sleep: (ms: number) => Promise<void>
+  /** Runs right before the Enter; throwing leaves the pasted text unsent. */
+  beforeEnter?: () => void
+}
+
+/** Pastes a prompt and submits it with one Enter, after the TUI has taken the paste in. */
+export async function pasteAndSubmit(text: string, io: PromptSubmitIo): Promise<void> {
+  await io.writeChunked(text)
+  await io.sleep(SUBMIT_SETTLE_MS)
+  io.beforeEnter?.()
+  await io.write('\r')
+}
+
+/**
+ * Approval menus as agent TUIs draw them, optionally inside a box border: Claude Code and Codex
+ * number them ("❯ 1. Yes", "› 1. Yes, proceed"), others offer "1. Allow once" or a row of
+ * "Allow once … Reject" buttons.
+ */
+const CHOICE_PROMPT_LINES = [
+  /^\s*[│┃]?\s*[❯›>●]?\s*1[.)]\s+(?:Yes|Allow)\b/,
+  /\bAllow once\b.*\b(?:Reject|Deny)\b/i,
+]
+
+/**
+ * True when the screen shows an agent's own choice menu. A submit's Enter there would pick the
+ * highlighted option, i.e. approve a tool call nobody approved.
+ */
+export function looksLikeChoicePrompt(screen: string): boolean {
+  return screen
+    .split('\n')
+    .some((line) => CHOICE_PROMPT_LINES.some((pattern) => pattern.test(line)))
+}
+
+/** The parts of an xterm.js `IBuffer` the screen read needs. */
+export type ScreenBuffer = {
+  /** First row of the live screen; rows above it are scrollback. */
+  baseY: number
+  /** Cursor row, relative to `baseY`. */
+  cursorY: number
+  length: number
+  getLine: (y: number) => { translateToString: (trimRight?: boolean) => string } | undefined
+}
+
+/**
+ * The live screen (`rows` lines from `baseY`, and down to the cursor), as rendered text. Not the
+ * last N lines: Claude Code draws inline from the top, so in a tall pane its menu can sit far
+ * above the bottom row.
+ */
+export function readLiveScreen(buffer: ScreenBuffer, rows: number): string {
+  const end = Math.min(
+    buffer.length,
+    Math.max(buffer.baseY + rows, buffer.baseY + buffer.cursorY + 1),
+  )
+  const lines: string[] = []
+  for (let y = Math.max(0, buffer.baseY); y < end; y++) {
+    const line = buffer.getLine(y)
+    if (line) lines.push(line.translateToString(true))
+  }
+  return lines.join('\n')
+}
+
+/**
+ * The last `count` lines of the buffer (scrollback included), as rendered text, with soft-wrapped
+ * rows joined back into their line.
+ */
+export function readRecentLines(
+  buffer: Pick<ScreenBuffer, 'length'> & {
+    getLine: (
+      y: number,
+    ) => { translateToString: (trimRight?: boolean) => string; isWrapped?: boolean } | undefined
+  },
+  count: number,
+): string {
+  const lines: string[] = []
+  for (let y = Math.max(0, buffer.length - count); y < buffer.length; y++) {
+    const line = buffer.getLine(y)
+    if (!line) continue
+    const text = line.translateToString(true)
+    if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += text
+    else lines.push(text)
+  }
+  return lines.join('\n')
+}
+
+/** A submit refused because the terminal shows a choice menu (see `looksLikeChoicePrompt`). */
+export class TerminalPromptOpenError extends Error {
+  constructor() {
+    super('The terminal is showing a choice prompt')
+    this.name = 'TerminalPromptOpenError'
+  }
+}
+
+/**
+ * A submit refused because the pane is out of view: Rust streams no output to a hidden pane, so
+ * its screen is stale and the choice-menu check above cannot be trusted.
+ */
+export class PaneHiddenError extends Error {
+  constructor() {
+    super('The terminal pane is not visible')
+    this.name = 'PaneHiddenError'
+  }
+}
