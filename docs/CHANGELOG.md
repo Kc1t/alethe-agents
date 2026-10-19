@@ -390,6 +390,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Pasting images and Finder files into a terminal works on macOS.** Ctrl+V or Cmd+V with a
+  screenshot or a copied image now saves it as a PNG and pastes its path, so Claude Code attaches
+  it as an image; files copied in Finder paste as their paths. Before, only text was read and an
+  image on the clipboard pasted nothing.
+
 - Closing or killing a terminal on Windows now also ends the dev servers and background jobs it
   started, even when the shell that launched them had already exited. Each terminal runs inside its
   own Job Object, so a `npm run dev` left behind by an agent no longer keeps holding memory.

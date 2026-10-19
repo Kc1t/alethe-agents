@@ -894,6 +894,12 @@ mod macos_clipboard {
     use std::io::Write;
     use std::process::{Command, Stdio};
 
+    use objc2_app_kit::{
+        NSBitmapImageFileType, NSBitmapImageRep, NSPasteboard, NSPasteboardTypeFileURL,
+        NSPasteboardTypePNG, NSPasteboardTypeString, NSPasteboardTypeTIFF,
+    };
+    use objc2_foundation::NSDictionary;
+
     use super::ClipboardPayload;
 
     pub fn write_text(text: &str) -> Result<(), String> {
@@ -927,12 +933,90 @@ mod macos_clipboard {
         }
     }
 
+    /// `pbpaste` only hands out text, so this reads `NSPasteboard` directly. Files come first
+    /// because a Finder copy also carries the file names as text; text comes before images, as on
+    /// Windows, because spreadsheets and slide apps put a rendered picture next to copied text.
     pub fn read_payload() -> Result<ClipboardPayload, String> {
-        let text = read_text()?;
-        if text.trim().is_empty() {
-            Ok(ClipboardPayload::Empty)
-        } else {
-            Ok(ClipboardPayload::Text { text })
+        let pasteboard = NSPasteboard::generalPasteboard();
+
+        let paths = read_file_paths(&pasteboard);
+        if !paths.is_empty() {
+            return Ok(ClipboardPayload::Paths { paths });
+        }
+
+        if let Some(text) = unsafe { pasteboard.stringForType(NSPasteboardTypeString) } {
+            let text = text.to_string();
+            if !text.trim().is_empty() {
+                return Ok(ClipboardPayload::Text { text });
+            }
+        }
+
+        if let Some(png) = read_image_as_png(&pasteboard) {
+            return save_png_to_temp(&png).map(|path| ClipboardPayload::Image { path });
+        }
+
+        Ok(ClipboardPayload::Empty)
+    }
+
+    /// Each file copied in Finder is its own pasteboard item with a `file://` URL.
+    fn read_file_paths(pasteboard: &NSPasteboard) -> Vec<String> {
+        let Some(items) = pasteboard.pasteboardItems() else {
+            return Vec::new();
+        };
+        items
+            .iter()
+            .filter_map(|item| unsafe { item.stringForType(NSPasteboardTypeFileURL) })
+            .filter_map(|url| file_url_to_path(&url.to_string()))
+            .collect()
+    }
+
+    fn file_url_to_path(url: &str) -> Option<String> {
+        let encoded = url.strip_prefix("file://")?;
+        let encoded = encoded.strip_prefix("localhost").unwrap_or(encoded);
+        let path = urlencoding::decode(encoded)
+            .map(|decoded| decoded.into_owned())
+            .unwrap_or_else(|_| encoded.to_string());
+        Some(path.trim_end_matches('/').to_string()).filter(|path| !path.is_empty())
+    }
+
+    /// Screenshots land on the pasteboard as TIFF, and most apps' "Copy image" as PNG, TIFF or
+    /// both; TIFF is re-encoded so agents always receive a PNG.
+    fn read_image_as_png(pasteboard: &NSPasteboard) -> Option<Vec<u8>> {
+        if let Some(png) = unsafe { pasteboard.dataForType(NSPasteboardTypePNG) } {
+            if png.length() > 0 {
+                return Some(png.to_vec());
+            }
+        }
+        let tiff = unsafe { pasteboard.dataForType(NSPasteboardTypeTIFF) }?;
+        let rep = NSBitmapImageRep::imageRepWithData(&tiff)?;
+        let png = unsafe {
+            rep.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new())
+        }?;
+        (png.length() > 0).then(|| png.to_vec())
+    }
+
+    fn save_png_to_temp(bytes: &[u8]) -> Result<String, String> {
+        let path =
+            std::env::temp_dir().join(format!("alethe-clipboard-img-{}.png", nanoid::nanoid!(8)));
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::file_url_to_path;
+
+        #[test]
+        fn file_url_to_path_decodes_finder_urls() {
+            assert_eq!(
+                file_url_to_path("file:///Users/me/My%20Shot.png").as_deref(),
+                Some("/Users/me/My Shot.png")
+            );
+            assert_eq!(
+                file_url_to_path("file://localhost/Users/me/folder/").as_deref(),
+                Some("/Users/me/folder")
+            );
+            assert_eq!(file_url_to_path("https://example.com/a.png"), None);
         }
     }
 }

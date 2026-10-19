@@ -33,7 +33,13 @@ export const ROUTING_PRESETS: Record<Exclude<RoutingPresetId, 'custom'>, Routing
       role('builder', 'codex', null, 'medium', false, 'scout'),
     ],
     rules: [
-      { enabled: true, kinds: ['research', 'scrap', 'docs'], efforts: [], gates: [], role: 'scout' },
+      {
+        enabled: true,
+        kinds: ['research', 'scrap', 'docs'],
+        efforts: [],
+        gates: [],
+        role: 'scout',
+      },
       { enabled: true, kinds: [], efforts: ['light'], gates: [], role: 'scout' },
       { enabled: true, kinds: ['review'], efforts: [], gates: [], role: 'handyman' },
       { enabled: true, kinds: [], efforts: ['standard', 'deep'], gates: [], role: 'builder' },
@@ -48,7 +54,13 @@ export const ROUTING_PRESETS: Record<Exclude<RoutingPresetId, 'custom'>, Routing
       role('expert', 'claude', 'opus', 'high', false, 'builder'),
     ],
     rules: [
-      { enabled: true, kinds: ['research', 'scrap', 'docs'], efforts: [], gates: [], role: 'scout' },
+      {
+        enabled: true,
+        kinds: ['research', 'scrap', 'docs'],
+        efforts: [],
+        gates: [],
+        role: 'scout',
+      },
       { enabled: true, kinds: [], efforts: ['light'], gates: [], role: 'scout' },
       { enabled: true, kinds: ['review'], efforts: [], gates: [], role: 'handyman' },
       {

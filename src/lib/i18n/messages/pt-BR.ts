@@ -2014,7 +2014,8 @@ export const ptBR: Record<MessageKey, string> = {
   'mod.leftoversTitle': 'Processos esquecidos',
   'mod.leftoversSubtitle':
     '{count} processos de dev ainda rodando depois que o terminal que os abriu fechou · {total}',
-  'mod.leftoversEmpty': 'Nenhum processo esquecido. Todo servidor de dev pertence a um terminal aberto.',
+  'mod.leftoversEmpty':
+    'Nenhum processo esquecido. Todo servidor de dev pertence a um terminal aberto.',
   'mod.leftoversRunningFor': 'rodando há {duration}',
   'mod.leftoversStartedAt': 'iniciado {time}',
   'mod.leftoversKill': 'Encerrar',
