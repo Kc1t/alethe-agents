@@ -81,14 +81,30 @@ pub fn managed_binary(app: &AppHandle) -> Option<String> {
     path.is_file().then(|| path.to_string_lossy().to_string())
 }
 
+/// A copy the person installed themselves, by full path.
+///
+/// The app launched from Finder or a desktop menu inherits a minimal `PATH` without Homebrew's
+/// prefix or `~/.local/bin`, which is where upstream's installer and `brew` put the binary. Running
+/// the bare name there fails, and Preferences reports ai-memory as missing although it is
+/// installed. The shared CLI resolver searches those folders too.
+fn installed_binary() -> Option<String> {
+    crate::cli_resolver::find_windows_cli_launcher(DEFAULT_COMMAND)
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 /// Which binary to run: what the caller asked for, else the managed copy by full path, else the
-/// bare name for `PATH` to resolve.
+/// one the person installed, by full path, else the bare name for `PATH` to resolve.
 ///
 /// The managed copy lives in the profile folder, so it has to travel as a path — the bare name
 /// would not resolve for the agents the config writers hand it to.
-pub fn pick_command(managed: Option<String>, explicit: Option<String>) -> String {
+pub fn pick_command(
+    managed: Option<String>,
+    explicit: Option<String>,
+    installed: Option<String>,
+) -> String {
     explicit
         .or(managed)
+        .or(installed)
         .unwrap_or_else(|| DEFAULT_COMMAND.to_string())
 }
 
@@ -302,7 +318,7 @@ pub fn ai_memory_detect(
     command: Option<String>,
 ) -> Result<AiMemoryStatus, String> {
     let managed = managed_binary(&app);
-    let cmd = pick_command(managed.clone(), command);
+    let cmd = pick_command(managed.clone(), command, installed_binary());
 
     let mut probe = Command::new(&cmd);
     probe.arg("--version");
@@ -577,7 +593,7 @@ fn managed_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// The command to run and, only for a copy Alethe installed, the data directory to give it.
 pub(crate) fn command_for(app: &AppHandle, explicit: Option<String>) -> (String, Option<String>) {
     let managed = managed_binary(app);
-    let cmd = pick_command(managed.clone(), explicit);
+    let cmd = pick_command(managed.clone(), explicit, installed_binary());
     let data_dir = if managed.as_deref() == Some(cmd.as_str()) {
         managed_data_dir(app).ok().map(|d| d.to_string_lossy().to_string())
     } else {
@@ -1098,23 +1114,47 @@ mod tests {
     fn an_explicit_command_always_wins() {
         // The caller named a binary; nothing may second-guess that.
         assert_eq!(
-            pick_command(Some("/profile/ai-memory".into()), Some("/usr/bin/ai-memory".into())),
+            pick_command(
+                Some("/profile/ai-memory".into()),
+                Some("/usr/bin/ai-memory".into()),
+                Some("/opt/homebrew/bin/ai-memory".into()),
+            ),
             "/usr/bin/ai-memory"
         );
-        assert_eq!(pick_command(None, Some("/usr/bin/ai-memory".into())), "/usr/bin/ai-memory");
+        assert_eq!(
+            pick_command(None, Some("/usr/bin/ai-memory".into()), None),
+            "/usr/bin/ai-memory"
+        );
     }
 
     #[test]
     fn the_copy_alethe_installed_travels_as_a_full_path() {
         // It lives in the profile folder, which is not on PATH: handing the agent the bare name
         // would give it a command it cannot resolve, and memory would silently never work.
-        assert_eq!(pick_command(Some("/profile/ai-memory".into()), None), "/profile/ai-memory");
+        assert_eq!(
+            pick_command(
+                Some("/profile/ai-memory".into()),
+                None,
+                Some("/opt/homebrew/bin/ai-memory".into()),
+            ),
+            "/profile/ai-memory"
+        );
+    }
+
+    #[test]
+    fn a_copy_the_person_installed_travels_as_a_full_path() {
+        // The app's own PATH may not reach Homebrew or ~/.local/bin, so the path the resolver
+        // found is what runs, not the bare name.
+        assert_eq!(
+            pick_command(None, None, Some("/opt/homebrew/bin/ai-memory".into())),
+            "/opt/homebrew/bin/ai-memory"
+        );
     }
 
     #[test]
     fn with_nothing_installed_the_bare_name_is_tried() {
-        // PATH may still hold one the person installed themselves.
-        assert_eq!(pick_command(None, None), DEFAULT_COMMAND);
+        // PATH may still hold one the resolver does not search.
+        assert_eq!(pick_command(None, None, None), DEFAULT_COMMAND);
     }
 
     #[test]

@@ -395,6 +395,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Installing ai-memory from Preferences works on macOS and Linux.** Its releases start with the
   archive's own `./` folder, which the unpacker refused as an empty name, so every install failed.
 
+- **An ai-memory you installed yourself is found when Alethe is opened from Finder.** The app then
+  runs without Homebrew's folder or `~/.local/bin` on its `PATH`, so Preferences → Features said
+  ai-memory was not installed. Alethe now looks in those folders and runs the copy by its full path.
+
 - Claude panes reopen on the conversation they were on when the project folder has a space, an
   underscore, an accent or other punctuation in its path. Alethe looked for the saved conversation
   in the wrong directory, treated it as gone and started a new chat on every launch.
