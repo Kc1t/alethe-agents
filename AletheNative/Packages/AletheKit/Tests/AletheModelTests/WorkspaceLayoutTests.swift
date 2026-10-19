@@ -125,3 +125,37 @@ import Testing
         #expect(doc.project(id)?.layoutMode == nil, "Auto is stored as absent")
     }
 }
+
+@Suite struct FlushPaneGeometryTests {
+    @Test func cleanSplitHandlesOverlapOnlyFourPointsOnEachSide() {
+        let rect = CGRect(x: 0, y: 0, width: 411, height: 311)
+        for mode in [PaneLayoutMode.auto, .spotlight, .sidebar] {
+            let geometry = PaneGridGeometry(count: 4, in: rect, weights: GridWeights(), gap: 0, handle: 8, mode: mode)
+            let column = geometry.dividers[.column(row: 0)]!
+            #expect(column.width == 8)
+            for frame in geometry.paneFrames {
+                #expect(rect.contains(frame))
+                #expect(frame.width > 0 && frame.height > 0)
+            }
+            let left = geometry.paneFrames.filter { $0.maxX <= column.midX }.map(\.maxX).max()!
+            let right = geometry.paneFrames.filter { $0.minX >= column.midX }.map(\.minX).min()!
+            #expect(abs(left - right) < 0.000001)
+            #expect(abs(column.minX - (left - 4)) < 0.000001)
+        }
+    }
+
+    @Test func webGridHandlesStayInsideLeadingCellsAndRespectSpans() {
+        let grid = CustomGrid(cols: 2, rows: 2, cells: [
+            "a": GridCell(col: 1, row: 1, colSpan: 2),
+            "b": GridCell(col: 1, row: 2),
+        ])
+        let geometry = PaneGridGeometry(count: 2, in: CGRect(x: 0, y: 0, width: 400, height: 300),
+                                        weights: GridWeights(), gap: 0, handle: 8, mode: .grid,
+                                        grid: grid, ids: ["a", "b"], handlesInsideLeadingCell: true)
+        #expect(geometry.paneFrames[0] == CGRect(x: 0, y: 0, width: 400, height: 150))
+        #expect(geometry.paneFrames[1] == CGRect(x: 0, y: 150, width: 200, height: 150))
+        #expect(geometry.dividers[.gridColumn(boundary: 0, segment: 0)] == CGRect(x: 192, y: 150, width: 8, height: 150))
+        #expect(geometry.dividers[.gridRow(boundary: 0, segment: 0)] == CGRect(x: 0, y: 142, width: 400, height: 8))
+        #expect(geometry.freeSlots.first?.frame == CGRect(x: 200, y: 150, width: 200, height: 150))
+    }
+}
