@@ -93,7 +93,7 @@ struct SidebarView: View {
                 .onInsert(of: [.plainText]) { index, providers in
                     SidebarDrag.load(providers) { actions.insertGroup($0, under: nil, at: index) }
                 }
-                if metrics.isWebInterface {
+                if metrics.isWebInterface && projectIDs.isEmpty {
                     SidebarUngroupedDropArea(actions: actions)
                 }
                 ForEach(projectIDs, id: \.self) { id in
@@ -110,13 +110,11 @@ struct SidebarView: View {
             }
         }
         .modifier(SidebarListAppearance())
+        .modifier(SidebarWebDropSurface(actions: actions))
         // Clean density uses the available upstream visual-clean.css tokens.
         .environment(\.sidebarRowSize, metrics.style == .clean ? .small : .medium)
         .accessibilityIdentifier("sidebar.list")
-        .dropDestination(for: URL.self) { urls, _ in
-            let added = actions.addProjects(folders: urls)
-            return !added.isEmpty
-        }
+        .modifier(SidebarNativeFolderDrop(actions: actions))
         .webContextMenu {
             SidebarMenuButton("menu.file.newProject", symbol: "plus") { environment.editorRequest = .newProject(.ungrouped) }
             SidebarMenuButton("sidebar.addProject", symbol: "folder.badge.plus") { actions.chooseFolders() }
@@ -292,7 +290,7 @@ private struct GroupRow: View {
             ForEach(projectIDs, id: \.self) { id in
                 if let project = doc.project(id) {
                     ProjectRow(project: project, actions: actions)
-                        .modifier(SidebarWebDrop(target: .groupBody(group.id), actions: actions))
+                        .modifier(SidebarWebGroupContents(group: group.id))
                 }
             }
             .onMove { source, destination in actions.reorder(in: .group(group.id), from: source, to: destination, visibleIDs: metrics.isWebInterface ? projectIDs : nil) }
@@ -422,6 +420,7 @@ private struct GroupRow: View {
             }
             .accessibilityIdentifier("sidebar.group.\(group.name)")
         }
+        .modifier(SidebarWebGroupRegion(group: group.id))
         .modifier(SidebarNativeDragSource(payload: SidebarDrag.payload(group.id)))
     }
 }

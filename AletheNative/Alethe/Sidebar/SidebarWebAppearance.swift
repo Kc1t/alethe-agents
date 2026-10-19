@@ -178,6 +178,7 @@ struct SidebarWebRow: ViewModifier {
                                           bottom: 0, trailing: metrics.size(8)))
                 .listRowSeparator(.hidden)
                 .listRowBackground(theme[.bg])
+                .modifier(SidebarWebTerminalBodyDrop(enabled: kind == .terminal))
         } else { content }
     }
 }
