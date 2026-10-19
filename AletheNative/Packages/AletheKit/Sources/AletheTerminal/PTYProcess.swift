@@ -206,6 +206,7 @@ public final class PTYProcess: @unchecked Sendable {
     private func applyOnQueue(_ size: PTYSize) {
         guard masterFD >= 0, !exited else { return }
         lastSent = size
+        TerminalResizeLog.write("pty \(pid) TIOCSWINSZ \(size.columns)x\(size.rows)")
         _ = alethe_pty_resize(masterFD, size.columns, size.rows, size.widthPixels, size.heightPixels)
     }
 
@@ -215,6 +216,7 @@ public final class PTYProcess: @unchecked Sendable {
     public func reassertSize(_ size: PTYSize) {
         queue.async { [self] in
             guard masterFD >= 0, !exited, pid > 0, size.columns > 0, size.rows > 0 else { return }
+            TerminalResizeLog.write("pty \(pid) reassert \(size.columns)x\(size.rows) last=\(lastSent.map { "\($0.columns)x\($0.rows)" } ?? "nil")")
             let differs = lastSent.map { $0.columns != size.columns || $0.rows != size.rows } ?? true
             applyOnQueue(size)
             if differs {

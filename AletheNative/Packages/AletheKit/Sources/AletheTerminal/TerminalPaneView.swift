@@ -87,6 +87,7 @@ public final class TerminalPaneView: NSView {
                     widthPixels: UInt16(clamping: viewport.widthPixels),
                     heightPixels: UInt16(clamping: viewport.heightPixels)
                 )
+                TerminalResizeLog.write("ghostty resize \(size.columns)x\(size.rows)")
                 if size.columns > 0, size.rows > 0 { grid.size = size }
                 if spawner.spawnIfNeeded(size) { return }
                 process.resizeCoalesced(size)
@@ -95,6 +96,7 @@ public final class TerminalPaneView: NSView {
         controller = TerminalController(theme: TerminalAppearance.terminalTheme(for: theme, fontSize: fontSize))
         terminalView = TerminalView(frame: .zero)
         super.init(frame: .zero)
+        TerminalResizeLog.enableIfRequested()
 
         forceKill.session = session
         history.onChange = { [weak self] entries in self?.onPromptHistoryChange?(entries) }
