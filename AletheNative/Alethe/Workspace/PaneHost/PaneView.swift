@@ -24,6 +24,12 @@ final class PaneView: NSView {
     /// The terminal whose find bar this pane follows (the active tab's).
     private weak var searchedTerminal: TerminalPaneView?
     private var context: PaneHostContext?
+    private var lastStyle: (focused: Bool, dropTarget: Bool)?
+    nonisolated(unsafe) private var defaultsObserver: NSObjectProtocol?
+
+    deinit {
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
+    }
 
     init(paneID: PaneID) {
         self.paneID = paneID
@@ -38,6 +44,12 @@ final class PaneView: NSView {
         content.setAccessibilityIdentifier("terminal.pane")
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
+        defaultsObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, let context = self.context, let last = self.lastStyle else { return }
+                self.style(focused: last.focused, dropTarget: last.dropTarget, context: context)
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -77,7 +89,10 @@ final class PaneView: NSView {
     }
 
     private func style(focused: Bool, dropTarget: Bool, context: PaneHostContext) {
+        lastStyle = (focused, dropTarget)
         let web = context.metrics.isWebInterface
+        let focusEnabled = PaneFocusBorder.enabled
+        let focusOpacity = CGFloat(PaneFocusBorder.opacity)
         let media = context.workspace?.document.pane(paneID)?.pane.content.kind
         layer?.cornerRadius = web ? (media == .image || media == .video ? context.metrics.radius(.md) : 0)
             : context.metrics.radius(.md)
@@ -85,12 +100,13 @@ final class PaneView: NSView {
         let focusToken: ThemeToken = web && context.metrics.style != .clean
             ? (media == .image || media == .video ? .accent : .focusRing) : context.focusBorder
         let isMedia = media == .image || media == .video
-        let showFocus = focused && (!web || isMedia || context.environment.focusModePaneID != paneID)
-        layer?.borderColor = context.theme.nsColor(dropTarget ? (web ? .focusRing : .accent) : showFocus ? focusToken : .border).cgColor
+        let showFocus = focusEnabled && focused && (!web || isMedia || context.environment.focusModePaneID != paneID)
+        let frameColor = context.theme.nsColor(dropTarget ? (web ? .focusRing : .accent) : showFocus ? focusToken : .border)
+        layer?.borderColor = (showFocus && !dropTarget ? frameColor.withAlphaComponent(frameColor.alphaComponent * focusOpacity) : frameColor).cgColor
         layer?.backgroundColor = context.theme.nsColor(.bgSunken).cgColor
-        if web && focused && context.environment.focusModePaneID != paneID {
+        if web && focusEnabled && focused && context.environment.focusModePaneID != paneID {
             if focusInset.superlayer == nil { layer?.addSublayer(focusInset) }
-            focusInset.borderColor = context.theme.nsColor(focusToken).withAlphaComponent(context.metrics.style == .clean ? 1 : 0.7).cgColor
+            focusInset.borderColor = context.theme.nsColor(focusToken).withAlphaComponent((context.metrics.style == .clean ? 1 : 0.7) * focusOpacity).cgColor
             focusInset.borderWidth = context.metrics.size(1)
             focusInset.zPosition = 10
         } else { focusInset.removeFromSuperlayer() }

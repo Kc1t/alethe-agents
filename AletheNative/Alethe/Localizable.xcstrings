@@ -49904,6 +49904,74 @@
           }
         }
       }
+    },
+    "settings.paneFocus.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pane focus border"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Borda do painel em foco"
+          }
+        }
+      }
+    },
+    "settings.paneFocus.show" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show a border around the focused pane"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar borda ao redor do painel em foco"
+          }
+        }
+      }
+    },
+    "settings.paneFocus.opacity" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Border opacity"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opacidade da borda"
+          }
+        }
+      }
+    },
+    "settings.paneFocus.desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The frame drawn around the terminal or pane you are working in."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A moldura desenhada ao redor do terminal ou painel em que você está."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

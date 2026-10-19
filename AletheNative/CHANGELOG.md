@@ -137,6 +137,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   including while a text field is focused.
 
 ### Added
+- Settings › Appearance can hide the border around the focused pane or lower its opacity.
 - Web-style keyboard shortcuts (⌘B, ⌘P, ⇧⌘G, ⇧⌘P, ⌘W, ⌘1–9, terminal cycling, R), the full hamburger menu, group archive/quick-rename/move menu items and a web-style file preview overlay.
 - Web-style pane groups persist and import from web workspaces. Shift-click panes to combine them
   in one layout slot, keep each pane interactive, and ungroup from the group header.
