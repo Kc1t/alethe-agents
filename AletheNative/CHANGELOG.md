@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Sidebar drop targets (dd2)
+- Web interface: show one correctly aligned insertion line or group highlight, including nested
+  groups, row spacing, collapsed headers, and the ungrouped area below the last project.
+- Clear drop highlights and restore dragged rows after dropping or cancelling; dropping at the root
+  end also moves already-ungrouped projects and root groups to the end.
+
 ### Sidebar drag and drop (dd)
 - Web interface: reorder projects and groups before or after a row, move projects between groups,
   nest groups through their expanded contents, and move projects or groups back to the root.
