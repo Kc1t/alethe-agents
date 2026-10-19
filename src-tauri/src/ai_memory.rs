@@ -703,7 +703,21 @@ pub fn hook_config(app: &AppHandle, port: u16) -> Result<Value, String> {
     Ok(hooks)
 }
 
+/// The person's own Claude Code `settings.json`: `$CLAUDE_CONFIG_DIR`, else `~/.claude`. `None`
+/// when it is missing or unreadable, which reads as "no hooks there".
+fn user_claude_settings() -> Option<Value> {
+    let dir = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| crate::provider_common::provider_home_dir(&[".claude"]))?;
+    let body = std::fs::read_to_string(dir.join("settings.json")).ok()?;
+    serde_json::from_str(&body).ok()
+}
+
 /// The hooks to merge, or `None` when consent is off or the binary is not there.
+///
+/// Events the person's own settings already capture are left out: Claude Code would run both
+/// copies and every prompt and tool call would be recorded twice.
 ///
 /// A failure here is not worth failing a terminal launch over: no hooks means no capture, and the
 /// panel is where a person finds out why.
@@ -711,7 +725,11 @@ pub(crate) fn claude_hooks(app: &AppHandle, enabled: bool, port: u16) -> Option<
     if !enabled {
         return None;
     }
-    hook_config(app, port).ok()
+    let ours = hook_config(app, port).ok()?;
+    let captured = user_claude_settings()
+        .map(|settings| crate::ai_memory_hooks::events_already_captured(&settings))
+        .unwrap_or_default();
+    Some(crate::ai_memory_hooks::without_events(&ours, &captured))
 }
 
 /// Runs after extraction, so a failure partway through — a cap tripped, a corrupt archive — leaves

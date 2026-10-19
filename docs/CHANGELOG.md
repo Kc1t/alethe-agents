@@ -399,6 +399,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   runs without Homebrew's folder or `~/.local/bin` on its `PATH`, so Preferences → Features said
   ai-memory was not installed. Alethe now looks in those folders and runs the copy by its full path.
 
+- **ai-memory no longer records Claude Code activity twice.** When your own Claude Code settings
+  already run ai-memory's capture hooks (as `ai-memory install-hooks --apply` sets up), a Claude
+  pane opened by Alethe got a second copy of them, and every prompt and tool call was saved twice.
+  Alethe now leaves out the events your settings already capture and still connects the pane to
+  ai-memory's tools.
+
 - Claude panes reopen on the conversation they were on when the project folder has a space, an
   underscore, an accent or other punctuation in its path. Alethe looked for the saved conversation
   in the wrong directory, treated it as gone and started a new chat on every launch.

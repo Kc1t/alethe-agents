@@ -4,7 +4,80 @@
 //! `settings.json` is never touched, the scope is one terminal, and stopping the integration simply
 //! stops writing them.
 
+use std::collections::HashSet;
+
 use serde_json::{Map, Value};
+
+/// Whether one hook entry runs ai-memory's capture (`ai-memory … hook --event …`), in either the
+/// shell form (`command` holds the whole line) or the exec form (`command` plus `args`).
+fn is_ai_memory_capture(hook: &Value) -> bool {
+    let mut line = hook
+        .get("command")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    for arg in hook
+        .get("args")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(arg) = arg.as_str() {
+            line.push(' ');
+            line.push_str(arg);
+        }
+    }
+    let words: Vec<&str> = line
+        .split_whitespace()
+        .map(|word| word.trim_matches(|c| c == '\'' || c == '"'))
+        .collect();
+    let runs_ai_memory = words.iter().any(|word| {
+        let name = word.rsplit(['/', '\\']).next().unwrap_or(word);
+        name == "ai-memory" || name == "ai-memory.exe"
+    });
+    runs_ai_memory && words.contains(&"hook") && words.contains(&"--event")
+}
+
+/// The events the person's own Claude Code settings already capture with ai-memory.
+///
+/// Claude Code runs the hooks of every settings source and collapses only those whose command text
+/// is identical. ai-memory's own installer writes its hooks into `~/.claude/settings.json`, and the
+/// copy Alethe adds reaches the same binary by another path, so both would run and every prompt and
+/// tool call would be recorded twice. ai-memory does not drop the second one when both arrive at once.
+pub fn events_already_captured(user_settings: &Value) -> HashSet<String> {
+    let Some(hooks) = user_settings.get("hooks").and_then(Value::as_object) else {
+        return HashSet::new();
+    };
+    hooks
+        .iter()
+        .filter(|(_, groups)| {
+            groups.as_array().into_iter().flatten().any(|group| {
+                group
+                    .get("hooks")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .any(is_ai_memory_capture)
+            })
+        })
+        .map(|(event, _)| event.clone())
+        .collect()
+}
+
+/// ai-memory's hooks minus the events in `skip`. Anything that is not an object comes back as is,
+/// for `merge_hooks` to refuse.
+pub fn without_events(theirs: &Value, skip: &HashSet<String>) -> Value {
+    match theirs.as_object() {
+        Some(events) => Value::Object(
+            events
+                .iter()
+                .filter(|(event, _)| !skip.contains(*event))
+                .map(|(event, entries)| (event.clone(), entries.clone()))
+                .collect(),
+        ),
+        None => theirs.clone(),
+    }
+}
 
 /// Adds ai-memory's hook entries to Alethe's hooks object.
 ///
@@ -86,6 +159,73 @@ mod tests {
         let mut alethe = alethe_side();
         merge_hooks(&mut alethe, &their_side()).unwrap();
         assert_eq!(alethe.get("UserPromptSubmit").unwrap().as_array().unwrap().len(), 1);
+    }
+
+    fn user_settings(command: serde_json::Value) -> serde_json::Value {
+        json!({ "hooks": {
+            "UserPromptSubmit": [{ "matcher": "", "hooks": [command] }],
+            "Notification": [{ "hooks": [{ "type": "command", "command": "say done" }] }]
+        }})
+    }
+
+    #[test]
+    fn capture_the_person_installed_is_found_in_shell_and_exec_form() {
+        // What `ai-memory install-hooks --apply` writes, with a quoted data dir that has spaces.
+        let shell = user_settings(json!({ "type": "command", "command":
+            "/opt/homebrew/bin/ai-memory --data-dir '/Users/x/Library/Application Support/ai-memory' hook --event user-prompt-submit --agent claude-code --server-url http://127.0.0.1:49374" }));
+        let exec = user_settings(json!({ "type": "command", "command": "ai-memory",
+            "args": ["hook", "--event", "user-prompt-submit"] }));
+        let windows = user_settings(json!({ "type": "command", "command":
+            "C:\\Tools\\ai-memory.exe hook --event user-prompt-submit" }));
+        for settings in [shell, exec, windows] {
+            let found = events_already_captured(&settings);
+            assert_eq!(
+                found,
+                HashSet::from(["UserPromptSubmit".to_string()]),
+                "{settings}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_hooks_and_other_ai_memory_commands_are_not_capture() {
+        for command in [
+            json!({ "type": "command", "command": "say hook --event" }),
+            json!({ "type": "command", "command": "ai-memory status" }),
+            json!({ "type": "command", "command": "my-ai-memory-wrapper hook --event stop" }),
+            json!({ "type": "http", "url": "http://127.0.0.1:9123/hook" }),
+        ] {
+            assert!(
+                events_already_captured(&user_settings(command.clone())).is_empty(),
+                "{command}"
+            );
+        }
+        assert!(events_already_captured(&json!({})).is_empty());
+        assert!(events_already_captured(&json!({ "hooks": "nope" })).is_empty());
+    }
+
+    #[test]
+    fn events_the_person_already_captures_are_left_out_of_the_merge() {
+        let skip = HashSet::from(["SessionStart".to_string()]);
+        let mut alethe = alethe_side();
+        merge_hooks(&mut alethe, &without_events(&their_side(), &skip)).unwrap();
+        assert_eq!(
+            alethe
+                .get("SessionStart")
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .len(),
+            1,
+            "Alethe's own"
+        );
+        assert_eq!(
+            alethe.get("Stop").unwrap().as_array().unwrap().len(),
+            1,
+            "still added"
+        );
+        // A shape we cannot read passes through, so `merge_hooks` still refuses it.
+        assert!(merge_hooks(&mut alethe_side(), &without_events(&json!("nope"), &skip)).is_err());
     }
 
     #[test]
