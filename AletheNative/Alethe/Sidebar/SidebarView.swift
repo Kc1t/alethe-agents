@@ -453,7 +453,8 @@ private struct ProjectRow: View {
                             if let tab = pane.activeTab {
                                 SidebarTerminalRow(tab: tab, project: project, actions: actions)
                                     .id(pane.id)
-                            } else if pane.content.filePath != nil {
+                            } else if !pane.content.isTerminal {
+                                // File panes and the board / Graphify / diff / web panes occupy a row in the tree too.
                                 SidebarFileRow(pane: pane, project: project, actions: actions)
                             }
                         }
@@ -718,11 +719,33 @@ private struct SidebarFileRow: View {
 
     private var path: String { pane.content.filePath ?? "" }
 
+    private var symbol: String {
+        switch pane.content {
+        case .orchestrator: "rectangle.3.group"
+        case .graphify: "point.3.connected.trianglepath.dotted"
+        case .web: "globe"
+        case .diff: "plusminus"
+        case .image: "photo"
+        case .video: "film"
+        default: "doc.text"
+        }
+    }
+
+    private var title: Text {
+        switch pane.content {
+        case .orchestrator: Text("orchestrator.title")
+        case .graphify: Text("graphify.title")
+        case .web(let url, _): Text(verbatim: URL(string: url)?.host ?? url)
+        case .diff(let diffPath, _): Text(verbatim: diffPath.map { URL(filePath: $0).lastPathComponent } ?? "Diff")
+        default: Text(verbatim: URL(filePath: path).lastPathComponent)
+        }
+    }
+
     var body: some View {
         HStack(spacing: metrics.size(9)) {
-            AletheSidebarItemIcon(symbol: "doc.text")
+            AletheSidebarItemIcon(symbol: symbol)
                 .foregroundStyle(theme[.fgMuted])
-            Text(verbatim: URL(filePath: path).lastPathComponent)
+            title
                 .font(metrics.font(size: 12.5))
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -737,7 +760,9 @@ private struct SidebarFileRow: View {
                         environment.rightSidebarVisible = true
                     }
                 }
-                SidebarMenuButton("sidebar.revealInFinder", symbol: "folder") { OpenInActions.revealInFinder(path) }
+                if pane.content.filePath != nil {
+                    SidebarMenuButton("sidebar.revealInFinder", symbol: "folder") { OpenInActions.revealInFinder(path) }
+                }
                 SidebarMenuButton("terminal.close", symbol: "xmark") { actions.workspace.update { $0.closePane(pane.id) } }
             } label: {
                 Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }

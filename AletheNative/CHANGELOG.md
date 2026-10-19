@@ -54,6 +54,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reports when its pane is gone. The web sidebar inspector adds pane actions and a sub-tab switcher.
 
 ### Fixed
+- Orchestration boards (and Graphify, diff and web panes) now get a row in the sidebar project tree, like the web.
 - Terminal content now always resizes with its pane (window resize, splitter drag, sidebars, grid
   change, focus mode, tab switch): the surface is pinned to the pane by frame and refit, with the PTY
   size updated, on every size change, reparent and unhide.
