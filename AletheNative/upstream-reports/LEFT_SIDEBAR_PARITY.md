@@ -237,3 +237,43 @@ Web references: `origin/main:src/components/ProjectSidebar/sidebarMenus.tsx`,
 - New Swift tests cover persistence, transfer validation and legacy visibility migration. The string
   gate passes. Compilation, Swift tests and visual/runtime checks are pending outside the sandbox.
   See `../ORCHESTRATION_PARITY.md` for the complete k3 handoff and implementation memory.
+
+
+## Sidebar drag and drop — dd
+
+Source of truth: `origin/main:src/components/ProjectSidebar/{NormalProjectSidebar,index}.tsx`,
+`NormalProjectNode.tsx`, `NormalGroupNode.tsx`, `GroupNode.tsx`, both sidebar CSS modules,
+`src/lib/sidebarDrag.ts` and its tests, and `src/stores/projectsStore.{projectSlices,terminalSlices}.ts`.
+
+| Web behavior | Native implementation |
+| --- | --- |
+| Project row midpoint selects before/after | `SidebarWebDrop` uses the label height and pointer Y; `dropProject` translates against persisted IDs, including hidden rows. |
+| Project header drops append into a group | Typed project targets append only when changing membership, matching `moveProjectToGroup`. |
+| Group headers reorder among the target's siblings | `dropGroup` applies source-removal compensation once and delegates to `moveGroup`. |
+| Expanded group contents accept nesting | Group empty rows and project subtrees accept group payloads; nested group headers retain their own reorder targets. |
+| Ungrouped target moves projects/groups to root | Explicit root drop area supports both kinds, including an empty ungrouped list. |
+| Self/descendant drops are rejected | Provider identity filters invalid hover targets; pure model operations retain cycle guards. |
+| Terminal drops only target project rows | Own-process UTTypes separate projects, groups and panes; terminal and file rows carry a pane identity. |
+| DragOverlay | Folder symbol 14, gap 8, padding 7×10, width 150–260, minimum height 34, font 12, elevated background, strong border and small radius through metrics/theme. |
+| Insertion and inside indicators | Accent line 2 points high, inset 5 and offset 2 outside the selected edge; inside uses panel-hover and a 1-point strong border. |
+| Escape cancels | AppKit owns cancellation; document mutation happens only on successful drop. |
+| Edge scrolling | Drop updates scroll the enclosing sidebar clip view near its top/bottom edges, clamped to document bounds. |
+| Collapsed groups | No hover expansion is added: the inspected web does not implement it. Expand before nesting a group into its body. |
+| Finder folders | Row drops create projects in the target group (project rows use their containing group); existing empty-area import is preserved. |
+| Undo/order persistence | All completed moves use `workspace.update(undoManager:actionName:)` and existing bilingual `undo.move`; no schema changes. Existing groups/projectIDs/ungroupedProjectIDs retain order. |
+
+Validation: string gate and `git diff --check` pass. Added `SidebarDropOperationsTests` covers
+both project edges in both directions, cross-group moves, ungrouping, group reorder/nesting,
+cycle and stale-target rejection, JSON order round trip, and pane/session preservation.
+Swift tests, build and UI harness were deliberately not run under the owner's sandbox restriction.
+The `.mac` branch retains its original row providers, drop delegates and native disclosure.
+
+Memory handoff: no ai-memory skill/connector is available in this session; this existing report
+records the implementation decisions and outstanding reviewer validation. No staging, commit or push.
+Reviewer should check overlapping nested List drop targets, dragging at multiple zoom levels,
+Escape and continuous edge scrolling on macOS 26.6. Current deviations: the explicit root drop
+area remains visible outside a drag to keep a stable List target; preview uses the nearest native
+semibold weight to CSS 650 and AppKit's drag shadow/source treatment rather than web CSS shadow
+and explicit 0.45 source opacity. Group-body highlights follow the flattened List row targets
+rather than a single DOM wrapper surrounding all descendants. These require UI review for exact
+visual parity; model behavior is covered by the added tests, pending execution outside the sandbox.

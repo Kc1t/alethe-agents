@@ -15,6 +15,22 @@ enum SidebarDrag {
     static let projectPrefix = "alethe-project:"
     static let groupPrefix = "alethe-group:"
     static let panePrefix = "alethe-pane:"
+    static let projectType = UTType(exportedAs: "com.kc1t.alethe.sidebar-project")
+    static let groupType = UTType(exportedAs: "com.kc1t.alethe.sidebar-group")
+    static var webTypes: [UTType] { [projectType, groupType, paneType, .fileURL] }
+
+    static func provider(_ payload: String) -> NSItemProvider {
+        let type = payload.hasPrefix(projectPrefix) ? projectType : payload.hasPrefix(groupPrefix) ? groupType : paneType
+        let provider = NSItemProvider()
+        provider.suggestedName = payload
+        let data = Data(payload.utf8)
+        provider.registerDataRepresentation(forTypeIdentifier: type.identifier, visibility: .ownProcess) { completion in
+            completion(data, nil)
+            return nil
+        }
+        return provider
+    }
+
     static let paneType = UTType(exportedAs: "com.kc1t.alethe.sidebar-pane")
     static func payload(_ pane: PaneID) -> String { panePrefix + pane.rawValue }
 
@@ -26,8 +42,10 @@ enum SidebarDrag {
     /// Reads dragged sidebar payloads and hands each one to `apply` on the main actor.
     static func load(_ providers: [NSItemProvider], apply: @escaping @MainActor (Dropped) -> Void) {
         for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(paneType.identifier) {
-                provider.loadDataRepresentation(forTypeIdentifier: paneType.identifier) { data, _ in
+            if let type = [projectType, groupType, paneType].first(where: {
+                provider.hasItemConformingToTypeIdentifier($0.identifier)
+            }) {
+                provider.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
                     guard let data, let text = String(data: data, encoding: .utf8), let dropped = parse(text) else { return }
                     Task { @MainActor in apply(dropped) }
                 }

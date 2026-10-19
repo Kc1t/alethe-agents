@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Sidebar drag and drop (dd)
+- Web interface: reorder projects and groups before or after a row, move projects between groups,
+  nest groups through their expanded contents, and move projects or groups back to the root.
+- Move terminal and file panes onto another project without replacing their tabs or sessions;
+  import Finder folders into the group under the pointer. Drops show insertion lines or target
+  highlights, a compact themed drag preview, edge scrolling, and support undo.
+
 ### Web-styled settings controls
 - Web interface: Integrations (9router, Playwright, usage), Plugins, Custom agents, Multiagent, CLI tool,
   Profiles and Terminal settings use the themed dropdown, confirm/prompt dialogs, stepper, spinner and

@@ -73,13 +73,6 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
         Group {
             label
                 .tag(item)
-                .itemProvider {
-                    switch item {
-                    case .group(let id): NSItemProvider(object: SidebarDrag.payload(id) as NSString)
-                    case .project(let id): NSItemProvider(object: SidebarDrag.payload(id) as NSString)
-                    case .tab: nil
-                    }
-                }
                 .onTapGesture { if isGroup { toggle() } }
                 .overlay(alignment: .bottomTrailing) {
                     Button { toggle() } label: {

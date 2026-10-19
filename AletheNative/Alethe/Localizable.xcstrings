@@ -49972,6 +49972,22 @@
           }
         }
       }
+    },
+    "sidebar.drag.ungrouped" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drop here to ungroup"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solte aqui para desagrupar"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

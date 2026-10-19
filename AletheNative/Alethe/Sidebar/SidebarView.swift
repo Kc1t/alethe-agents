@@ -93,6 +93,9 @@ struct SidebarView: View {
                 .onInsert(of: [.plainText]) { index, providers in
                     SidebarDrag.load(providers) { actions.insertGroup($0, under: nil, at: index) }
                 }
+                if metrics.isWebInterface {
+                    SidebarUngroupedDropArea(actions: actions)
+                }
                 ForEach(projectIDs, id: \.self) { id in
                     if let project = doc.project(id) {
                         ProjectRow(project: project, actions: actions)
@@ -273,6 +276,7 @@ private struct GroupRow: View {
             if projectIDs.isEmpty && doc.childGroups(of: group.id).isEmpty {
                 if metrics.isWebInterface {
                     SidebarWebGroupEmpty()
+                        .modifier(SidebarWebDrop(target: .groupBody(group.id), actions: actions))
                 } else {
                     Text("sidebar.group.empty")
                         .font(metrics.font(.caption))
@@ -288,6 +292,7 @@ private struct GroupRow: View {
             ForEach(projectIDs, id: \.self) { id in
                 if let project = doc.project(id) {
                     ProjectRow(project: project, actions: actions)
+                        .modifier(SidebarWebDrop(target: .groupBody(group.id), actions: actions))
                 }
             }
             .onMove { source, destination in actions.reorder(in: .group(group.id), from: source, to: destination, visibleIDs: metrics.isWebInterface ? projectIDs : nil) }
@@ -348,11 +353,8 @@ private struct GroupRow: View {
                 environment.showingHome = false
             })
             .modifier(SidebarWebRow(kind: .group, first: doc.childGroups(of: nil).first?.id == group.id))
-            .modifier(SidebarDropAppearance(targeted: dropTarget))
-        .onDrop(of: [.plainText], isTargeted: $dropTarget) { providers in
-                SidebarDrag.load(providers) { actions.drop($0, onGroup: group.id) }
-                return true
-            }
+            .modifier(SidebarGroupRowDrop(target: group.id, actions: actions, targeted: $dropTarget))
+            .modifier(SidebarWebDragSource(payload: SidebarDrag.payload(group.id), name: group.name))
             .onHover { hovering = $0 }
             .webContextMenu {
                 SidebarMenuButton("sidebar.openOnlyGroup", symbol: "rectangle") {
@@ -570,9 +572,9 @@ private struct ProjectRow: View {
         .onHover { hovering = $0 }
         .tag(SidebarItem.project(project.id))
         .help(Text(verbatim: project.folder))
-        .modifier(SidebarDropAppearance(targeted: dropTarget, insertion: !dropInside))
-        .onDrop(of: [.plainText, SidebarDrag.paneType], delegate: SidebarProjectDrop(
-            targeted: $dropTarget, inside: $dropInside, project: project.id, actions: actions))
+        .modifier(SidebarProjectRowDrop(project: project.id, actions: actions,
+                                        targeted: $dropTarget, inside: $dropInside))
+        .modifier(SidebarWebDragSource(payload: SidebarDrag.payload(project.id), name: project.name))
         .webContextMenu { ProjectContextMenu(project: project, actions: actions) }
         .accessibilityIdentifier("sidebar.project.\(project.name)")
     }
@@ -688,7 +690,8 @@ private struct SidebarTerminalRow: View {
         .tag(SidebarItem.tab(tab.id))
         .modifier(SidebarWebClick(single: { selectWebPane(individually: false) },
                                   double: { selectWebPane(individually: true) }))
-        .modifier(SidebarWebPaneDrag(pane: pane?.id))
+        .modifier(SidebarWebDragSource(payload: pane.map { SidebarDrag.payload($0.id) } ?? "",
+                                        name: environment.terminals.displayName(of: tab)))
         .modifier(SidebarWebHelp(text: environment.terminals.displayName(of: tab)))
         .webContextMenu { TabContextMenu(tab: tab, project: project, actions: actions) }
         .accessibilityIdentifier("sidebar.tab.\(tab.agent)")
@@ -796,6 +799,7 @@ private struct SidebarFileRow: View {
         }
         .modifier(SidebarWebRow(kind: .terminal,
             focused: actions.workspace.document.workspace.focusedPaneID == pane.id))
+        .modifier(SidebarWebDragSource(payload: SidebarDrag.payload(pane.id), name: pane.content.filePath ?? project.name))
         .onHover { hovering = $0 }
         .help(Text(verbatim: path))
         .accessibilityIdentifier("sidebar.file.\(pane.id.rawValue)")
