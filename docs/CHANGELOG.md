@@ -307,6 +307,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **ai-memory 3.x.** Installing from Preferences → Features now fetches ai-memory 3.1.1, and a copy
+  you installed yourself works with either line: on 3.x, Claude Code, Codex and OpenCode reach its
+  memory through `ai-memory mcp-bridge`, which carries the server's token, and on 2.x through the
+  loopback URL as before. Without this, a 3.x server answered every agent with 401 once
+  `ai-memory setup` had turned its token on.
+
 - Plugin Market profiles now open in a modal without adding workspace panes or requiring a project.
   The sidebar and preferences catalogue share status/source filters, sorting, result counts, and
   accent-insensitive multiword search across names, authors, descriptions, repositories, and permissions.
@@ -385,6 +391,19 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   context file is created owner-only and never overwrites an existing one.
 
 ### Fixed
+
+- **Installing ai-memory from Preferences works on macOS and Linux.** Its releases start with the
+  archive's own `./` folder, which the unpacker refused as an empty name, so every install failed.
+
+- **An ai-memory you installed yourself is found when Alethe is opened from Finder.** The app then
+  runs without Homebrew's folder or `~/.local/bin` on its `PATH`, so Preferences → Features said
+  ai-memory was not installed. Alethe now looks in those folders and runs the copy by its full path.
+
+- **ai-memory no longer records Claude Code activity twice.** When your own Claude Code settings
+  already run ai-memory's capture hooks (as `ai-memory install-hooks --apply` sets up), a Claude
+  pane opened by Alethe got a second copy of them, and every prompt and tool call was saved twice.
+  Alethe now leaves out the events your settings already capture and still connects the pane to
+  ai-memory's tools.
 
 - Claude panes reopen on the conversation they were on when the project folder has a space, an
   underscore, an accent or other punctuation in its path. Alethe looked for the saved conversation

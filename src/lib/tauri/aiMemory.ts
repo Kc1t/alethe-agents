@@ -19,8 +19,9 @@ export async function aiMemoryDetect(command?: string): Promise<AiMemoryStatus> 
   return invoke<AiMemoryStatus>('ai_memory_detect', { command })
 }
 
-// These three no longer take a `command`: they register ai-memory's MCP server as a loopback HTTP
-// endpoint, which needs a port, not a binary to spawn — see `mcp_server_spec` in `ai_memory.rs`.
+// These three take no `command`: the backend picks the binary and how to register it — the loopback
+// HTTP endpoint on ai-memory 2.x, the `mcp-bridge` stdio shim on 3.x (see `McpTransport` in
+// `ai_memory.rs`).
 export async function aiMemoryMcpConfigPath(repo: string): Promise<string> {
   return invoke<string>('ai_memory_mcp_config_path', { repo })
 }
