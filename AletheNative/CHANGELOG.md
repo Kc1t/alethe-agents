@@ -163,6 +163,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the requested agent is strained or rate-limited, preserving its worktree and approval options.
 
 ### Removed
+- The live spend (token HUD) overlay: its panel sat behind open dropdowns and took their hover.
 - Removed the native Pomodoro timer, focus actions, notifications, toolbar item and duration settings.
   Existing Todos lists and template settings continue to load, ignoring legacy timer fields.
 
