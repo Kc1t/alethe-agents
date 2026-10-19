@@ -17,6 +17,39 @@
 			</array>
 		</dict>
 	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.kc1t.alethe.sidebar-project</string>
+			<key>UTTypeDescription</key>
+			<string>Alethe sidebar project</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.kc1t.alethe.sidebar-group</string>
+			<key>UTTypeDescription</key>
+			<string>Alethe sidebar group</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.kc1t.alethe.sidebar-pane</string>
+			<key>UTTypeDescription</key>
+			<string>Alethe sidebar pane</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Alethe uses the local network only when you turn on Remote Control, so your paired phone can follow the terminals you share.</string>
 </dict>
