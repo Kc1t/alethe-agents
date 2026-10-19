@@ -202,12 +202,20 @@ public final class PTYProcess: @unchecked Sendable {
     /// The size last written to the PTY (spawn or resize). On `queue` only.
     private var lastSent: PTYSize?
 
-    /// On `queue` only. TIOCSWINSZ; the kernel raises SIGWINCH itself when the size changed.
+    /// On `queue` only. TIOCSWINSZ, then SIGWINCH to the group when the grid changed.
     private func applyOnQueue(_ size: PTYSize) {
         guard masterFD >= 0, !exited else { return }
+        let changed = lastSent.map { $0.columns != size.columns || $0.rows != size.rows } ?? false
         lastSent = size
         TerminalResizeLog.write("pty \(pid) TIOCSWINSZ \(size.columns)x\(size.rows)")
         _ = alethe_pty_resize(masterFD, size.columns, size.rows, size.widthPixels, size.heightPixels)
+        // The child is a session leader that only gets a controlling terminal if it asks for one
+        // (a shell does, an agent started directly does not), and without one the kernel never raises
+        // SIGWINCH: the agent would keep drawing at its launch size. Signal the group ourselves.
+        if changed, pid > 0 {
+            let group = tcgetpgrp(masterFD)
+            kill(group > 0 ? -group : -pid, SIGWINCH)
+        }
     }
 
     /// Safety net once a size has settled: writes `size` again (idempotent) and, when it differs
