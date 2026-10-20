@@ -10,39 +10,37 @@ enum SidebarWebDropTarget: Equatable, Sendable {
     case project(ProjectID), groupHeader(GroupID), groupBody(GroupID), ungrouped
 }
 
-/// Rows only publish geometry. One delegate resolves every overlapping target before painting.
+/// Rows register their live AppKit view with the surface; one delegate resolves every overlapping target.
+/// (SwiftUI named-space frames are not reliable inside List cells, so geometry is read from the views on demand.)
 struct SidebarWebDrop: ViewModifier {
     let target: SidebarWebDropTarget
     let actions: SidebarActions
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.sidebarWebDrag) private var drag
+    @Environment(\.sidebarDropGeometry) private var geometry
+    @Environment(\.sidebarWebAncestors) private var ancestors
+    @State private var token = UUID()
 
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface {
-            content.background(GeometryReader { geometry in
-                let hit = geometry.frame(in: .named("sidebar.web.drop"))
-                let top: CGFloat = switch target {
-                case .project: metrics.size(6)
-                case .groupHeader: max(0, hit.height - metrics.size(26))
-                default: 0
+            let top: CGFloat = if case .project = target { metrics.size(6) } else { 0 }
+            content.background {
+                ZStack {
+                    RoundedRectangle(cornerRadius: metrics.radius(.sm))
+                        .fill(theme[.panelHover].opacity(isInside ? 1 : 0))
+                        .padding(.top, top)
+                    SidebarDropProbe(token: token, target: target, ancestors: ancestors, geometry: geometry, unit: metrics.size(1))
                 }
-                let bottom: CGFloat = if case .groupHeader = target { metrics.size(2) } else { 0 }
-                let inside = drag?.edge == .inside && (drag?.indicator?.target == target || {
-                    guard let indicator = drag?.indicator,
-                          case .groupBody = indicator.target else { return false }
-                    return indicator.hit.contains(CGPoint(x: hit.midX, y: hit.midY))
-                }())
-                RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                    .fill(theme[.panelHover].opacity(inside ? 1 : 0))
-                    .padding(.top, top)
-                    .padding(.bottom, bottom)
-                    .preference(key: SidebarDropRegions.self, value: [SidebarDropRegion(
-                    target: target, hit: hit,
-                    visual: CGRect(x: hit.minX, y: hit.minY + top, width: hit.width,
-                                   height: max(0, hit.height - top - bottom)))])
-            })
+            }
         } else { content }
+    }
+
+    private var isInside: Bool {
+        guard drag?.edge == .inside, let indicator = drag?.indicator else { return false }
+        if indicator.target == target { return true }
+        guard case .groupBody = indicator.target, let rect = geometry?.rect(of: token) else { return false }
+        return indicator.hit.contains(CGPoint(x: rect.midX, y: rect.midY))
     }
 }
 
@@ -52,40 +50,126 @@ struct SidebarDropRegion: Equatable, Sendable {
     let visual: CGRect
 }
 
-final class SidebarDropRegionStore {
-    var regions: [SidebarDropRegion] = []
+/// Live row geometry for the drop surface: every row registers its AppKit view and the frames are converted to
+/// surface coordinates only when a drag asks for them, so scrolling and expanding can never leave them stale.
+@MainActor final class SidebarDropGeometry {
+    private struct Entry {
+        let target: SidebarWebDropTarget
+        let ancestors: [GroupID]
+        let unit: CGFloat
+        weak var view: NSView?
+    }
+
+    private var entries: [UUID: Entry] = [:]
+    weak var surface: NSView?
+
+    func register(_ token: UUID, target: SidebarWebDropTarget, ancestors: [GroupID], unit: CGFloat, view: NSView) {
+        entries[token] = Entry(target: target, ancestors: ancestors, unit: unit, view: view)
+    }
+
+    func unregister(_ token: UUID) { entries[token] = nil }
+
+    private func local(_ view: NSView) -> CGRect? {
+        guard let surface, surface.window != nil, view.window === surface.window, !view.isHiddenOrHasHiddenAncestor,
+              view.bounds.width > 0, view.bounds.height > 0 else { return nil }
+        var rect = surface.convert(view.bounds, from: view)
+        if !surface.isFlipped { rect.origin.y = surface.bounds.height - rect.maxY }
+        return rect
+    }
+
+    func rect(of token: UUID) -> CGRect? { entries[token]?.view.flatMap(local) }
+
+    func regions() -> [SidebarDropRegion] {
+        var result: [SidebarDropRegion] = []
+        var bodies: [GroupID: CGRect] = [:]
+        var unitFor: [GroupID: CGFloat] = [:]
+        for entry in entries.values {
+            guard let view = entry.view, let hit = local(view) else { continue }
+            for group in entry.ancestors where entry.target != .groupHeader(group) {
+                bodies[group] = bodies[group].map { $0.union(hit) } ?? hit
+                unitFor[group] = entry.unit
+            }
+            if case .groupBody = entry.target { continue }
+            let top: CGFloat
+            let bottom: CGFloat
+            switch entry.target {
+            case .project: (top, bottom) = (6 * entry.unit, 0)
+            case .groupHeader: (top, bottom) = (max(0, hit.height - 26 * entry.unit), 2 * entry.unit)
+            default: (top, bottom) = (0, 0)
+            }
+            result.append(SidebarDropRegion(
+                target: entry.target, hit: hit,
+                visual: CGRect(x: hit.minX, y: hit.minY + top, width: hit.width, height: max(0, hit.height - top - bottom))))
+        }
+        for (group, bounds) in bodies {
+            let pad = 7 * (unitFor[group] ?? 1)
+            let rect = CGRect(x: bounds.minX - pad, y: bounds.minY, width: bounds.width + pad, height: bounds.height)
+            result.append(SidebarDropRegion(target: .groupBody(group), hit: rect, visual: rect))
+        }
+        return result
+    }
 
     func dropRegions(size: CGSize) -> [SidebarDropRegion] {
-        let bottom = regions.map(\.hit.maxY).max() ?? 0
+        let found = regions()
+        let bottom = found.filter { $0.target != .ungrouped }.map(\.hit.maxY).max() ?? 0
         let rect = CGRect(x: 0, y: bottom, width: size.width, height: max(0, size.height - bottom))
-        return regions + [SidebarDropRegion(target: .ungrouped, hit: rect, visual: rect)]
+        return found + [SidebarDropRegion(target: .ungrouped, hit: rect, visual: rect)]
     }
 }
 
-struct SidebarDropRegions: PreferenceKey {
-    static let defaultValue: [SidebarDropRegion] = []
-    static func reduce(value: inout [SidebarDropRegion], nextValue: () -> [SidebarDropRegion]) {
-        value += nextValue()
+/// Zero-size-hit AppKit view that lets the drop surface read a row's real frame.
+struct SidebarDropProbe: NSViewRepresentable {
+    let token: UUID
+    let target: SidebarWebDropTarget
+    let ancestors: [GroupID]
+    let geometry: SidebarDropGeometry?
+    let unit: CGFloat
+
+    final class View: NSView {
+        var token: UUID?
+        weak var geometry: SidebarDropGeometry?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
+
+    func makeNSView(context: Context) -> View { View() }
+
+    func updateNSView(_ view: View, context: Context) {
+        view.token = token
+        view.geometry = geometry
+        geometry?.register(token, target: target, ancestors: ancestors, unit: unit, view: view)
+    }
+
+    static func dismantleNSView(_ view: View, coordinator: ()) {
+        if let token = view.token { MainActor.assumeIsolated { view.geometry?.unregister(token) } }
+    }
+}
+
+/// Marks the drop surface's own view so row frames can be converted into its coordinates.
+private struct SidebarDropSurfaceProbe: NSViewRepresentable {
+    let geometry: SidebarDropGeometry
+
+    final class View: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context: Context) -> View {
+        let view = View()
+        geometry.surface = view
+        return view
+    }
+
+    func updateNSView(_ view: View, context: Context) { geometry.surface = view }
 }
 
 /// A group's body includes descendants, but excludes its own header and its top margin.
 struct SidebarWebGroupRegion: ViewModifier {
     let group: GroupID
     @Environment(\.metrics) private var metrics
+    @Environment(\.sidebarWebAncestors) private var ancestors
 
     @ViewBuilder func body(content: Content) -> some View {
-        if metrics.isWebInterface {
-            content.transformPreference(SidebarDropRegions.self) { regions in
-                let children = regions.filter { $0.target != .groupHeader(group) }
-                guard let first = children.first else { return }
-                let bounds = children.dropFirst().reduce(first.hit) { $0.union($1.hit) }
-                let rect = CGRect(x: bounds.minX - metrics.size(7), y: bounds.minY,
-                                  width: bounds.width + metrics.size(7), height: bounds.height)
-                regions.removeAll { $0.target == .groupBody(group) }
-                regions.append(SidebarDropRegion(target: .groupBody(group), hit: rect, visual: rect))
-            }
-        } else { content }
+        if metrics.isWebInterface { content.environment(\.sidebarWebAncestors, ancestors + [group]) }
+        else { content }
     }
 }
 
@@ -121,6 +205,8 @@ struct SidebarWebGroupRegion: ViewModifier {
 private extension EnvironmentValues {
     @Entry var sidebarWebDrag: SidebarWebDragState? = nil
     @Entry var sidebarWebParentGroup: GroupID? = nil
+    @Entry var sidebarWebAncestors: [GroupID] = []
+    @Entry var sidebarDropGeometry: SidebarDropGeometry? = nil
 }
 
 /// Expanded terminal rows contribute to their group's complete body bounds.
@@ -137,19 +223,22 @@ struct SidebarWebGroupContents: ViewModifier {
 struct SidebarWebTerminalBodyDrop: ViewModifier {
     let enabled: Bool
     @Environment(\.sidebarWebParentGroup) private var group
+    @Environment(\.sidebarWebAncestors) private var ancestors
+    @Environment(\.sidebarDropGeometry) private var geometry
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.sidebarWebDrag) private var drag
+    @State private var token = UUID()
 
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface, enabled, let group {
-            content.background(GeometryReader { geometry in
-                let rect = geometry.frame(in: .named("sidebar.web.drop"))
-                let inside = drag?.edge == .inside && drag?.indicator?.target == .groupBody(group)
-                theme[.panelHover].opacity(inside ? 1 : 0)
-                    .preference(key: SidebarDropRegions.self, value: [SidebarDropRegion(
-                        target: .groupBody(group), hit: rect, visual: rect)])
-            })
+            let inside = drag?.edge == .inside && drag?.indicator?.target == .groupBody(group)
+            content.background {
+                ZStack {
+                    theme[.panelHover].opacity(inside ? 1 : 0)
+                    SidebarDropProbe(token: token, target: .groupBody(group), ancestors: ancestors, geometry: geometry, unit: metrics.size(1))
+                }
+            }
         } else { content }
     }
 }
@@ -159,25 +248,17 @@ struct SidebarWebDropSurface: ViewModifier {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var state = SidebarWebDragState()
-    /// Row frames change on every scroll tick; a plain reference keeps them out of SwiftUI's state so scrolling
-    /// does not re-render the list. The drop delegate reads them lazily.
-    @State private var store = SidebarDropRegionStore()
+    /// Live row frames, read lazily by the drop delegate (never SwiftUI state, so scrolling does not re-render).
+    @State private var store = SidebarDropGeometry()
     @State private var size: CGSize = .zero
 
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface {
             content
-                .coordinateSpace(name: "sidebar.web.drop")
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
                 .environment(\.sidebarWebDrag, state)
-                .onPreferenceChange(SidebarDropRegions.self) { updated in
-                    let wasEnd = state.indicator.map { !store.regions.contains($0) && $0.target == .ungrouped } ?? false
-                    store.regions = updated
-                    if let current = state.indicator {
-                        state.indicator = wasEnd ? store.dropRegions(size: size).last : updated.first { $0.target == current.target }
-                        if state.indicator == nil { state.edge = nil }
-                    }
-                }
+                .environment(\.sidebarDropGeometry, store)
+                .background(SidebarDropSurfaceProbe(geometry: store))
                 .overlay(alignment: .topLeading) {
                     if let region = state.indicator, let edge = state.edge {
                         let rect = region.visual
@@ -193,7 +274,7 @@ struct SidebarWebDropSurface: ViewModifier {
                 .overlay(alignment: .topLeading) {
                     if let region = state.indicator, state.edge == .inside {
                         RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                            .fill(theme[.panelHover].opacity(region.target == .ungrouped && !store.regions.contains(region) ? 1 : 0))
+                            .fill(theme[.panelHover].opacity(region.target == .ungrouped ? 1 : 0))
                             .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
                                 .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
                             .frame(width: region.visual.width, height: region.visual.height)
@@ -219,7 +300,7 @@ struct SidebarWebDropSurface: ViewModifier {
 
 private struct SidebarWebDropDelegate: DropDelegate {
     let state: SidebarWebDragState
-    let store: SidebarDropRegionStore
+    let store: SidebarDropGeometry
     let size: CGSize
     let width: CGFloat
     let actions: SidebarActions
