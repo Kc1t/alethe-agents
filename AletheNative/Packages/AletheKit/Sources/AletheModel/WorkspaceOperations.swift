@@ -68,6 +68,13 @@ extension WorkspaceDocument {
     /// Deletes a group; its projects and child groups move up to its parent (or the top level).
     public mutating func deleteGroup(_ id: GroupID) {
         guard let removed = group(id) else { return }
+        let formerChildren = sidebarChildren(of: id)
+        if let parent = removed.parentID, let index = groups.firstIndex(where: { $0.id == parent }),
+           let tokens = groups[index].childOrder {
+            groups[index].childOrder = tokens.flatMap { token in
+                token == SidebarChild.group(id).orderToken ? formerChildren.map(\.orderToken) : [token]
+            }
+        }
         for index in groups.indices where groups[index].parentID == id {
             groups[index].parentID = removed.parentID
         }
@@ -77,6 +84,7 @@ extension WorkspaceDocument {
             ungroupedProjectIDs.append(contentsOf: removed.projectIDs)
         }
         groups.removeAll { $0.id == id }
+        if let parent = removed.parentID { normalizeSidebarChildOrder(of: parent) }
     }
 
     /// Removes the entire group subtree and its projects through the normal cleanup path.

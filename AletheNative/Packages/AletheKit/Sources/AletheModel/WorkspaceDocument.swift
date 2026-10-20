@@ -16,6 +16,8 @@ public struct ProjectGroup: Codable, Hashable, Sendable, Identifiable {
     public var parentID: GroupID?
     /// Projects directly in this group, in sidebar order.
     public var projectIDs: [ProjectID]
+    /// Optional mixed sidebar order; absent for the default groups-then-projects order.
+    public var childOrder: [String]?
     public var isCollapsed: Bool
     /// Suspended: every project under it is disabled (upstream `group.suspended`, P2-23).
     public var suspended: Bool?

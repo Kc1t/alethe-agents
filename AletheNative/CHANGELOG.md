@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Sidebar child order
+- Groups can keep sub-groups between their projects; existing workspaces are unchanged.
+
 ### Sidebar drag and drop
 - Web interface: dragging projects, groups and terminals in the left sidebar no longer uses the macOS drag
   session. It follows the web's pointer drag instead: 8px to start, a floating drag preview that is never
