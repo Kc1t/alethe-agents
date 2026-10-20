@@ -7,12 +7,14 @@ import AppKit
 @MainActor
 enum ImagePasteMonitor {
     private static var monitor: Any?
+    private static weak var hoverTerminal: TerminalPaneView?
+    private static var consumedLinkDown = false
     private static weak var rightClickTerminal: TerminalPaneView?
 
     static func install(metrics: @escaping @MainActor () -> Metrics? = { nil }) {
         TerminalPaneView.inputMetrics = metrics
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .rightMouseDown, .rightMouseUp]) { event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .rightMouseDown, .rightMouseUp, .leftMouseDown, .leftMouseUp, .mouseMoved, .scrollWheel]) { event in
             let handled = MainActor.assumeIsolated { handle(event) }
             return handled ? nil : event
         }
@@ -21,6 +23,31 @@ enum ImagePasteMonitor {
     private static func handle(_ event: NSEvent) -> Bool {
         let metrics = TerminalPaneView.inputMetrics()
         let web = metrics?.isWebInterface == true
+        if web, event.type == .leftMouseUp, consumedLinkDown {
+            consumedLinkDown = false
+            return true
+        }
+        if web, [.mouseMoved, .scrollWheel, .leftMouseDown].contains(event.type) {
+            guard WebMenuHost.shared.presentation == nil else {
+                hoverTerminal?.highlightWebLink(at: nil)
+                return false
+            }
+            let content = event.window?.contentView
+            let terminal = content.flatMap { $0.hitTest($0.convert(event.locationInWindow, from: nil))?.enclosingTerminal }
+            if hoverTerminal !== terminal { hoverTerminal?.highlightWebLink(at: nil) }
+            hoverTerminal = terminal
+            if event.type == .scrollWheel { terminal?.highlightWebLink(at: nil); return false }
+            terminal?.highlightWebLink(at: event.locationInWindow)
+            if event.type == .leftMouseDown, let terminal,
+               let hit = terminal.webLink(at: event.locationInWindow) {
+                terminal.terminalView.performBindingAction("clear_selection")
+                terminal.terminalDidRequestOpenURL(hit.link.target, kind: .text)
+                terminal.highlightWebLink(at: nil)
+                consumedLinkDown = true
+                return true
+            }
+            return false
+        }
         if event.type == .rightMouseDown || event.type == .rightMouseUp {
             guard web else { return false }
             if event.type == .rightMouseDown {
@@ -40,6 +67,7 @@ enum ImagePasteMonitor {
             }
             return true
         }
+        guard event.type == .keyDown else { return false }
         guard let responder = event.window?.firstResponder as? NSView,
               let terminal = responder.enclosingTerminal else { return false }
         let flags = event.modifierFlags.intersection([.command, .control, .option, .shift])

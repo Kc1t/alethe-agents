@@ -80,7 +80,8 @@ final class WebMenuHost {
     struct Presentation: Identifiable {
         let id = UUID()
         let placement: Placement
-        let content: AnyView
+        var content: AnyView
+        var usesDefaultChrome = true
     }
 
     var presentation: Presentation?
@@ -89,8 +90,8 @@ final class WebMenuHost {
     @ObservationIgnored var layerOrigin: CGPoint = .zero
     @ObservationIgnored weak var layerView: NSView?
 
-    func present(at point: CGPoint, content: AnyView) {
-        presentation = Presentation(placement: .point(point), content: content)
+    func present(at point: CGPoint, content: AnyView, usesDefaultChrome: Bool = true) {
+        presentation = Presentation(placement: .point(point), content: content, usesDefaultChrome: usesDefaultChrome)
     }
 
     /// `rect` is in the SwiftUI global space (a trigger's `frame(in: .global)`).
@@ -394,10 +395,10 @@ private struct WebMenuPanel: View {
     @State private var shown = false
 
     var body: some View {
-        let margin = metrics.size(8)
+        let margin = metrics.size(presentation.usesDefaultChrome ? 8 : 10)
         let spot = position(margin: margin)
         let clean = metrics.style == .clean
-        WebMenuChrome { presentation.content }
+        panelContent
             .environment(\.webMenuSession, session)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
             .scaleEffect(clean && !shown ? 0.96 : 1, anchor: .topLeading)
@@ -409,6 +410,14 @@ private struct WebMenuPanel: View {
                 WebMenuHost.shared.session = session
                 withAnimation(metrics.reducesMotion ? nil : .timingCurve(0.16, 1, 0.3, 1, duration: 0.18)) { shown = true }
             }
+    }
+
+    @ViewBuilder private var panelContent: some View {
+        if presentation.usesDefaultChrome {
+            WebMenuChrome { presentation.content }
+        } else {
+            presentation.content
+        }
     }
 
     /// The web clamps to an 8px margin on every side (`ContextMenu.tsx`).

@@ -29,6 +29,16 @@ import Testing
         #expect(TerminalAppearance.surfaceFrame(in: bounds, metrics: metrics) == bounds)
     }
 
+    @Test func webOwnsLinkDetectionAndMacKeepsGhosttyDefaults() {
+        let theme = ThemeCatalog.builtin.defaultTheme
+        let web = TerminalAppearance.configuration(for: theme, metrics: Metrics()).rendered
+        let mac = TerminalAppearance.configuration(for: theme, metrics: Metrics(interface: .mac)).rendered
+        #expect(web.contains("link-url = false"))
+        #expect(!mac.contains("link-url = false"))
+        #expect(web.contains("link-osc8 = false"))
+        #expect(!mac.contains("link-osc8 = false"))
+    }
+
     @Test func blendsTranslucentColorsOverTheBackground() throws {
         let background = try #require(ThemeColor(hex: "#000000"))
         let halfWhite = try #require(ThemeColor(hex: "#ffffff80"))
