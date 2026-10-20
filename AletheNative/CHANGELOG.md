@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Sidebar dimensions (sz)
+- Web interface: align Clean and Normal project icon slots, row actions, group indentation and empty rows, working indicators, and Organization footer dimensions with the web sidebar.
+
 ### Terminal link actions (tl)
 - Web interface: detect printed URLs and file paths, underline hovered links with the active theme,
   and open a themed actions menu on click. Open files in the grid, preview media and Markdown,

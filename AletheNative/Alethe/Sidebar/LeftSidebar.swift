@@ -203,27 +203,28 @@ struct LeftSidebar: View {
                         theme[.bg].opacity(0).frame(width: metrics.size(0), height: metrics.size(0))
                     }
                     Spacer(minLength: 0)
-                    HStack(spacing: metrics.size(2)) {
+                    HStack(spacing: metrics.size(metrics.style == .clean ? 1 : 2)) {
                         ForEach(PaneLayoutMode.allCases, id: \.self) { mode in
                             Button { environment.workspace?.update { $0.setLayoutMode(mode, for: project.id) } } label: {
                                 Label { Text(mode.title) } icon: { Image(systemName: mode.symbol).webProfileSized(14) }
                             }
-                            .buttonStyle(AletheSidebarMotionTabStyle(isSelected: project.layout == mode,
-                                                              layout: true))
+                            .buttonStyle(AletheSidebarSizeLayoutStyle(isSelected: project.layout == mode))
                             .help(Text(mode.title))
                             .accessibilityIdentifier("leftSidebar.layout.\(mode.rawValue)")
                             .accessibilityAddTraits(project.layout == mode ? .isSelected : [])
                         }
                     }
                     .fixedSize()
-                    .padding(metrics.size(2))
-                    .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                    .padding(metrics.size(metrics.style == .clean ? 0 : 2))
+                    .background(theme[.bgElevated].opacity(metrics.style == .clean ? 0 : 1),
+                                in: RoundedRectangle(cornerRadius: metrics.style == .clean ? 0 : metrics.radius(.md)))
                     .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
-                        .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                        .strokeBorder(theme[.border].opacity(metrics.style == .clean ? 0 : 1), lineWidth: metrics.size(1)))
                 }
-                .padding(.horizontal, metrics.size(12))
-                .padding(.top, metrics.size(8))
-                .padding(.bottom, metrics.size(10))
+                .padding(.horizontal, metrics.size(metrics.style == .clean ? 10 : 12))
+                .padding(.top, metrics.size(metrics.style == .clean ? 4 : 8))
+                .padding(.bottom, metrics.size(metrics.style == .clean ? 4 : 10))
+                .frame(minHeight: metrics.style == .clean ? metrics.size(40) : nil)
                 .overlay(alignment: .top) { rule }
             }
             SidebarNowPlaying()
