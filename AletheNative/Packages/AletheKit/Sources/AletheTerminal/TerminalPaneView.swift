@@ -32,7 +32,9 @@ public final class TerminalPaneView: NSView {
     /// longer opens URLs itself.
     public var onOpenLink: ((String) -> Void)?
     /// Current Ghostty hyperlink under the pointer, used by explicit context-menu actions.
-    public private(set) var hoveredLink: String?
+    public internal(set) var hoveredLink: String?
+    let linkHighlight = TerminalLinkHighlightView()
+    var linkGrid: TerminalGridMetrics?
     /// A local development server address printed in the output, reported once per address.
     public var onLocalServer: ((URL) -> Void)? {
         get { servers.onFound }
@@ -116,6 +118,9 @@ public final class TerminalPaneView: NSView {
         terminalView.translatesAutoresizingMaskIntoConstraints = true
         terminalView.autoresizingMask = [.width, .height]
         addSubview(terminalView)
+        linkHighlight.color = theme.nsColor(.accent)
+        linkHighlight.thickness = Self.inputMetrics()?.size(1) ?? 1
+        addSubview(linkHighlight)
 
         let session = session
         let activity = activity
@@ -213,6 +218,9 @@ public final class TerminalPaneView: NSView {
             for: theme, fontSize: fontSize, metrics: Self.inputMetrics()))
         syncSurfaceSize()
         dropHighlight = theme.nsColor(.accent)
+        linkHighlight.color = theme.nsColor(.accent)
+        linkHighlight.thickness = Self.inputMetrics()?.size(1) ?? 1
+        highlightWebLink(at: nil)
     }
 
     // MARK: - Smart paste and drop
@@ -422,7 +430,7 @@ public final class TerminalPaneView: NSView {
 
 extension TerminalPaneView: TerminalSurfaceOpenURLDelegate, TerminalSurfacePwdDelegate, TerminalSurfaceHoverLinkDelegate {
     public func terminalDidUpdateHoverLink(_ url: String?) {
-        hoveredLink = url
+        if Self.inputMetrics()?.isWebInterface != true { hoveredLink = url }
     }
 
     public func terminalDidRequestOpenURL(_ url: String, kind: TerminalOpenURLKind) {
@@ -565,3 +573,9 @@ private final class DeferredSpawn: @unchecked Sendable {
     }
 }
 
+extension TerminalPaneView: TerminalSurfaceGridResizeDelegate {
+    public func terminalDidResize(_ size: TerminalGridMetrics) {
+        linkGrid = size
+        highlightWebLink(at: nil)
+    }
+}

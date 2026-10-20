@@ -1,3 +1,5 @@
+import AletheDesign
+import SwiftUI
 import AletheModel
 import AletheTerminal
 import AppKit
@@ -10,6 +12,10 @@ import AppKit
 extension AppEnvironment {
     func openTerminalLink(_ raw: String, from terminal: TerminalPaneView, tab: PaneTab, project: Project) {
         let cwd = terminal.reportedDirectory ?? tab.workingDirectory ?? project.folder
+        if metrics.isWebInterface {
+            showWebTerminalLink(raw, cwd: cwd, terminal: terminal, project: project)
+            return
+        }
         let link = metrics.isWebInterface ? TerminalLink.resolveWeb(raw, cwd: cwd) : TerminalLink.resolve(raw, cwd: cwd)
         if NSEvent.modifierFlags.contains(.shift) {
             LinkActionsMenu(environment: self, link: link, raw: raw, project: project.id).show(in: terminal)

@@ -32,6 +32,10 @@ public enum TerminalAppearance {
             // sees it. App shortcuts live in the menus; copy/paste/select-all reach the view
             // through the responder chain (its copy:/paste:/selectAll: actions).
             .custom("keybind", "clear")
+        // Custom regex links are not configurable in libghostty yet. Web detection is host-owned.
+        if web {
+            configuration = configuration.custom("link-url", "false").custom("link-osc8", "false")
+        }
         for (index, color) in palette.ansi.enumerated() {
             configuration = configuration.palette(index, color: opaqueHex(color, over: palette.background))
         }

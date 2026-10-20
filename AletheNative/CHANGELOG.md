@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Terminal link actions (tl)
+- Web interface: detect printed URLs and file paths, underline hovered links with the active theme,
+  and open a themed actions menu on click. Open files in the grid, preview media and Markdown,
+  send Markdown to the right sidebar, open externally, reveal files, or copy the resolved target.
+- Resolve relative links from the terminal folder and other project worktrees, including named
+  worktree paths and the newest matching file. The macOS interface retains its existing behavior.
+
 ### Sidebar drop targets (dd2)
 - Web interface: show one correctly aligned insertion line or group highlight, including nested
   groups, row spacing, collapsed headers, and the ungrouped area below the last project.
