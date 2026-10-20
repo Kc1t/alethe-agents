@@ -350,7 +350,7 @@ private struct GroupRow: View {
                 actions.openGroup(group.id, adding: false, web: metrics.isWebInterface)
                 environment.showingHome = false
             })
-            .modifier(SidebarWebRow(kind: .group, first: doc.childGroups(of: nil).first?.id == group.id))
+            .modifier(SidebarWebRow(kind: .group, first: doc.childGroups(of: metrics.style == .clean ? group.parentID : nil).first?.id == group.id))
             .modifier(SidebarGroupRowDrop(target: group.id, actions: actions, targeted: $dropTarget))
             .modifier(SidebarWebDragSource(payload: SidebarDrag.payload(group.id), name: group.name))
             .onHover { hovering = $0 }
@@ -489,7 +489,7 @@ private struct ProjectRow: View {
         return Label {
             HStack(spacing: metrics.isWebInterface ? metrics.size(9) : metrics.space(.xs)) {
                 Text(verbatim: project.name)
-                    .font(metrics.font(size: 12.5, weight: selected ? .medium : .regular))
+                    .font(metrics.font(size: 12.5, weight: selected && (!metrics.isWebInterface || metrics.style == .normal) ? .medium : .regular))
                     .foregroundStyle(theme[dimmed ? .textTertiary : .textPrimary])
                     .lineLimit(metrics.isWebInterface ? 1 : nil)
                     .frame(maxWidth: metrics.isWebInterface ? .infinity : nil, alignment: .leading)
@@ -504,10 +504,10 @@ private struct ProjectRow: View {
                         .foregroundStyle(theme[metrics.isWebInterface ? .fgFaint : .statusDisabled])
                         .accessibilityLabel(Text("sidebar.disableProject"))
                 }
-                Spacer(minLength: metrics.space(.xxs))
+                if !metrics.isWebInterface { Spacer(minLength: metrics.space(.xxs)) }
                 Button { environment.editorRequest = .newTerminal(project.id) } label: {
-                    Label { Text("terminal.new") } icon: { Image(systemName: "plus").webProfileSized(14) }
-                        .modifier(SidebarSymbolAppearance(size: 15))
+                    Label { Text("terminal.new") } icon: { Image(systemName: "plus").webProfileSized(metrics.isWebInterface ? (metrics.style == .clean ? 12 : 15) : 14) }
+                        .modifier(SidebarSymbolAppearance(size: metrics.style == .clean ? 12 : 15))
                 }
                 .buttonStyle(AletheIconButtonStyle(side: 20))
                 .help(Text("terminal.new"))
@@ -515,16 +515,16 @@ private struct ProjectRow: View {
                 if metrics.isWebInterface {
                     SidebarRowEndSlot(active: working, hovering: hovering) {
                         if working {
-                            AletheActivitySpinner()
+                            AletheSidebarSizeSpinner()
                                 .accessibilityLabel(Text("agentStatus.working"))
                         }
                     } action: {
                         WebMenu { ProjectContextMenu(project: project, actions: actions) } label: {
-                            Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
+                            Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(metrics.style == .clean ? 13 : 14) }
                         }
                         .menuIndicator(.hidden)
                         .menuStyle(.borderlessButton)
-                        .modifier(SidebarMenuAppearance())
+                        .modifier(SidebarMenuAppearance(size: metrics.style == .clean ? 13 : 14))
                         .fixedSize()
                         .help(Text("sidebar.rowMenu"))
                     }
@@ -551,8 +551,8 @@ private struct ProjectRow: View {
         } icon: {
             if metrics.isWebInterface {
                 SidebarCoverImage(source: project.iconUrl ?? "", side: metrics.style == .normal ? 16 : 15) {
-                    Image(systemName: "folder").webProfileSized(16)
-                        .font(metrics.font(size: 16))
+                    Image(systemName: "folder").webProfileSized(metrics.style == .clean ? 15 : 16)
+                        .font(metrics.font(size: metrics.style == .clean ? 15 : 16))
                         .foregroundStyle(theme[project.color.token])
                 }
                 .saturation(dimmed ? 0 : 1)
@@ -631,7 +631,7 @@ private struct SidebarTerminalRow: View {
                         SidebarWebTerminalStatus(tab: statusTab.id)
                     } action: {
                         WebMenu { TabContextMenu(tab: tab, project: project, actions: actions) } label: {
-                            Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(14) }
+                            Label { Text("sidebar.rowMenu") } icon: { Image(systemName: "ellipsis").webProfileSized(13) }
                         }
                         .menuIndicator(.hidden)
                         .menuStyle(.borderlessButton)

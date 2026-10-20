@@ -12,7 +12,7 @@ struct SidebarWebTerminalStatus: View {
     var body: some View {
         Group {
             if environment.terminals.activity[tab] == .working {
-                AletheActivitySpinner()
+                AletheSidebarSizeSpinner()
                     .help(Text("agentStatus.working"))
                     .accessibilityLabel(Text("agentStatus.working"))
             } else if environment.terminals.unread.contains(tab) {

@@ -77,11 +77,11 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                 .onTapGesture { if isGroup { toggle() } }
                 .overlay(alignment: .bottomTrailing) {
                     Button { toggle() } label: {
-                        Image(systemName: "chevron.down").webProfileSized(isGroup ? 14 : 15)
+                        Image(systemName: "chevron.down").webProfileSized(isGroup ? 14 : (metrics.style == .clean ? 13 : 15))
                             .rotationEffect(.degrees(binding.wrappedValue ? 0 : -90))
                             .animation(Motion.SidebarEffect.chevron.animation(reduceMotion: metrics.reducesMotion),
                                        value: binding.wrappedValue)
-                            .font(metrics.font(size: isGroup ? 14 : 15))
+                            .font(metrics.font(size: isGroup ? 14 : (metrics.style == .clean ? 13 : 15)))
                             .foregroundStyle(theme[isGroup ? .fgFaint : .fgMuted])
                             .frame(width: metrics.size(isGroup ? 18 : 20), height: metrics.size(isGroup ? 18 : 20))
                     }
@@ -91,7 +91,7 @@ struct SidebarDisclosure<Content: View, Label: View>: View {
                     .padding(.trailing, metrics.size(isGroup ? 6 : 8))
                     .padding(.bottom, metrics.size(isGroup ? 5 : 4))
                 }
-                .listRowInsets(EdgeInsets(top: 0, leading: metrics.size(8 + CGFloat(depth) * 10),
+                .listRowInsets(EdgeInsets(top: 0, leading: metrics.size(8 + CGFloat(depth) * (metrics.style == .clean ? 11 : 10)),
                                           bottom: 0, trailing: metrics.size(8)))
                 .listRowSeparator(.hidden)
                 .listRowBackground(theme[.bg])
@@ -126,9 +126,10 @@ struct SidebarLabelStyle: LabelStyle {
             HStack(spacing: metrics.size(isGroup ? 8 : 9)) {
                 if !isGroup {
                     configuration.icon
-                        .font(metrics.font(size: iconSize == 16 ? 16 : 14))
+                        .font(metrics.font(size: iconSize == 16 ? (metrics.style == .clean ? 15 : 16) : 14))
                         .fixedSize()
-                        .frame(minWidth: metrics.size(iconSize == 16 ? 15 : iconSize))
+                        .frame(minWidth: metrics.size(15))
+                        .frame(width: iconSize == 16 ? metrics.size(15) : nil)
                 }
                 configuration.title
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,16 +168,16 @@ struct SidebarWebRow: ViewModifier {
                                         in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
                     }
                 }
-                .padding(.top, metrics.size(kind == .group ? ((first || inheritedFirstRootGroup) ? 12 : 22) : kind == .project ? 6 : 0))
+                .padding(.top, metrics.size(kind == .group ? ((first || (metrics.style == .normal && inheritedFirstRootGroup)) ? 12 : 22) : kind == .project ? 6 : 0))
                 .padding(.bottom, metrics.size(kind == .group ? 2 : 0))
                 .overlay(alignment: .leading) {
                     ForEach(0..<depth, id: \.self) { level in
                         Rectangle().fill(theme[.border].opacity(0.55))
                             .frame(width: metrics.size(1))
-                            .offset(x: -metrics.size(7 + CGFloat(level) * 10))
+                            .offset(x: -metrics.size((metrics.style == .clean ? 8 : 7) + CGFloat(level) * (metrics.style == .clean ? 11 : 10)))
                     }
                 }
-                .listRowInsets(EdgeInsets(top: 0, leading: metrics.size(8 + CGFloat(depth) * 10),
+                .listRowInsets(EdgeInsets(top: 0, leading: metrics.size(8 + CGFloat(depth) * (metrics.style == .clean ? 11 : 10)),
                                           bottom: 0, trailing: metrics.size(8)))
                 .listRowSeparator(.hidden)
                 .listRowBackground(theme[.bg])
@@ -206,16 +207,16 @@ struct SidebarWebGroupEmpty: View {
             .font(metrics.font(size: 11))
             .foregroundStyle(theme[.fgFaint])
             .padding(.horizontal, metrics.size(10))
-            .padding(.vertical, metrics.size(7))
+            .padding(.vertical, metrics.size(metrics.style == .clean ? 4 : 7))
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .leading) {
                 ForEach(0..<depth, id: \.self) { level in
                     Rectangle().fill(theme[.border].opacity(0.55))
                         .frame(width: metrics.size(1))
-                        .offset(x: -metrics.size(7 + CGFloat(level) * 10))
+                        .offset(x: -metrics.size((metrics.style == .clean ? 8 : 7) + CGFloat(level) * (metrics.style == .clean ? 11 : 10)))
                 }
             }
-            .listRowInsets(EdgeInsets(top: 0, leading: metrics.size(8 + CGFloat(depth) * 10),
+            .listRowInsets(EdgeInsets(top: 0, leading: metrics.size(8 + CGFloat(depth) * (metrics.style == .clean ? 11 : 10)),
                                       bottom: 0, trailing: metrics.size(8)))
             .listRowSeparator(.hidden)
             .listRowBackground(theme[.bg])
