@@ -14,6 +14,7 @@ struct SidebarListAppearance: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface {
             content.listStyle(.plain)
+                .scrollBounceBehavior(.basedOnSize)
                 .listItemTint(.clear)
                 .contentMargins(.horizontal, 0, for: .scrollContent)
                 .scrollContentBackground(.hidden)
