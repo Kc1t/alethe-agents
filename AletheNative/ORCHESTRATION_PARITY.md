@@ -1,7 +1,7 @@
 # Orchestration parity handoff
 
 Baseline: `origin/main` web v1.7.0, read with `git show` on 2026-10-18. Scoped follow-up to
-`/Users/kauamiguel/Developer/.codex-runs/audit.md`. “Done” below means implemented and statically
+the local `audit.md` Codex report. “Done” below means implemented and statically
 reviewed, pending the reviewer's build and visual/runtime validation outside the sandbox.
 
 | Audit area | Implementation status | Web sources and native behavior |
