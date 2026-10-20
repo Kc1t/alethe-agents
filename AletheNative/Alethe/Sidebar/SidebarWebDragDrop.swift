@@ -5,11 +5,6 @@ import Observation
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Separate row/header and body targets mirror dnd-kit's ranked collision targets.
-enum SidebarWebDropTarget: Equatable, Sendable {
-    case project(ProjectID), groupHeader(GroupID), groupBody(GroupID), ungrouped
-}
-
 /// Rows register their live AppKit view with the surface; one delegate resolves every overlapping target.
 /// (SwiftUI named-space frames are not reliable inside List cells, so geometry is read from the views on demand.)
 struct SidebarWebDrop: ViewModifier {
@@ -36,21 +31,15 @@ struct SidebarWebDrop: ViewModifier {
         } else { content }
     }
 
+    /// Single rows and headers paint their own `.dropInside` fill; a group body is one continuous overlay instead
+    /// (see `SidebarWebDropSurface`), since the list's opaque row backgrounds would leave gaps between rows.
     private var isInside: Bool {
         guard drag?.edge == .inside, let indicator = drag?.indicator else { return false }
-        if indicator.target == target { return true }
-        guard case .groupBody = indicator.target, let rect = geometry?.rect(of: token) else { return false }
-        return indicator.hit.contains(CGPoint(x: rect.midX, y: rect.midY))
+        return indicator.target == target
     }
 }
 
-struct SidebarDropRegion: Equatable, Sendable {
-    let target: SidebarWebDropTarget
-    let hit: CGRect
-    let visual: CGRect
-}
-
-/// Live row geometry for the drop surface: every row registers its AppKit view and the frames are converted to
+/// Live row geometry for the drag surface: every row registers its AppKit view and the frames are converted to
 /// surface coordinates only when a drag asks for them, so scrolling and expanding can never leave them stale.
 @MainActor final class SidebarDropGeometry {
     private struct Entry {
@@ -61,6 +50,7 @@ struct SidebarDropRegion: Equatable, Sendable {
     }
 
     private var entries: [UUID: Entry] = [:]
+    private weak var cachedScroll: NSScrollView?
     weak var surface: NSView?
 
     func register(_ token: UUID, target: SidebarWebDropTarget, ancestors: [GroupID], unit: CGFloat, view: NSView) {
@@ -81,6 +71,31 @@ struct SidebarDropRegion: Equatable, Sendable {
 
     func rect(of token: UUID) -> CGRect? { entries[token]?.view.flatMap(local) }
 
+    #if DEBUG
+    /// Self-test seam: a scripted pointer, in surface coordinates, used instead of the mouse.
+    var pointerOverride: CGPoint?
+    #endif
+
+    /// The mouse in screen coordinates.
+    func screenPointer() -> CGPoint {
+        #if DEBUG
+        if let point = pointerOverride, let surface, let window = surface.window {
+            let local = CGPoint(x: point.x, y: surface.isFlipped ? point.y : surface.bounds.height - point.y)
+            return window.convertPoint(toScreen: surface.convert(local, to: nil))
+        }
+        #endif
+        return NSEvent.mouseLocation
+    }
+
+    /// The mouse in surface coordinates (top-left origin), or nil while the surface is off screen.
+    func pointer() -> CGPoint? {
+        guard let surface, let window = surface.window else { return nil }
+        var point = surface.convert(window.convertPoint(fromScreen: screenPointer()), from: nil)
+        if !surface.isFlipped { point.y = surface.bounds.height - point.y }
+        return point
+    }
+
+    /// Every droppable, with the group bodies derived from the rows that sit inside each group.
     func regions() -> [SidebarDropRegion] {
         var result: [SidebarDropRegion] = []
         var bodies: [GroupID: CGRect] = [:]
@@ -111,11 +126,52 @@ struct SidebarDropRegion: Equatable, Sendable {
         return result
     }
 
-    func dropRegions(size: CGSize) -> [SidebarDropRegion] {
-        let found = regions()
-        let bottom = found.filter { $0.target != .ungrouped }.map(\.hit.maxY).max() ?? 0
-        let rect = CGRect(x: 0, y: bottom, width: size.width, height: max(0, size.height - bottom))
-        return found + [SidebarDropRegion(target: .ungrouped, hit: rect, visual: rect)]
+    // MARK: Auto-scroll
+
+    /// Scrolls the list while the pointer is inside its top or bottom 20% (dnd-kit's default threshold).
+    func autoscroll(pointer: CGPoint, unit: CGFloat) {
+        guard let surface, let scroll = scrollView() else { return }
+        let size = surface.bounds.size
+        guard size.height > 0, pointer.x > -20 * unit, pointer.x < size.width + 20 * unit else { return }
+        let zone = min(size.height * 0.2, 80 * unit)
+        let fromBottom = size.height - pointer.y
+        let direction: CGFloat
+        if pointer.y < zone { direction = -(1 - max(pointer.y, 0) / zone) }
+        else if fromBottom < zone { direction = 1 - max(fromBottom, 0) / zone }
+        else { return }
+        guard let document = scroll.documentView else { return }
+        let clip = scroll.contentView
+        let insets = scroll.contentInsets
+        let lowest = -insets.top
+        let highest = max(lowest, document.bounds.height - clip.bounds.height + insets.bottom)
+        let y = min(max(clip.bounds.origin.y + direction * 14 * unit, lowest), highest)
+        guard y != clip.bounds.origin.y else { return }
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+        scroll.reflectScrolledClipView(clip)
+    }
+
+    /// The list's `NSScrollView`: the one that covers the surface.
+    private func scrollView() -> NSScrollView? {
+        if let cachedScroll, cachedScroll.window != nil { return cachedScroll }
+        guard let surface else { return nil }
+        let area = surface.bounds.width * surface.bounds.height
+        var ancestor = surface.superview
+        while let root = ancestor {
+            var queue = [root]
+            while !queue.isEmpty {
+                let view = queue.removeFirst()
+                if let scroll = view as? NSScrollView {
+                    let overlap = surface.convert(scroll.bounds, from: scroll).intersection(surface.bounds)
+                    if overlap.width * overlap.height > area * 0.5 {
+                        cachedScroll = scroll
+                        return scroll
+                    }
+                }
+                queue.append(contentsOf: view.subviews)
+            }
+            ancestor = root.superview
+        }
+        return nil
     }
 }
 
@@ -175,36 +231,7 @@ struct SidebarWebGroupRegion: ViewModifier {
     }
 }
 
-@MainActor @Observable final class SidebarWebDragState {
-    var indicator: SidebarDropRegion?
-    var edge: SidebarDropEdge?
-    var source: String?
-    var escapeMonitor: Any?
-
-    func watchCancellation() {
-        guard escapeMonitor == nil else { return }
-        escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            MainActor.assumeIsolated {
-                if event.keyCode == 53 { self?.clear() }
-            }
-            return event
-        }
-    }
-
-    func stopWatching() {
-        if let escapeMonitor { NSEvent.removeMonitor(escapeMonitor) }
-        escapeMonitor = nil
-        clear()
-    }
-
-    func clear() {
-        indicator = nil
-        edge = nil
-        source = nil
-    }
-}
-
-private extension EnvironmentValues {
+extension EnvironmentValues {
     @Entry var sidebarWebDrag: SidebarWebDragState? = nil
     @Entry var sidebarWebParentGroup: GroupID? = nil
     @Entry var sidebarWebAncestors: [GroupID] = []
@@ -228,18 +255,13 @@ struct SidebarWebTerminalBodyDrop: ViewModifier {
     @Environment(\.sidebarWebAncestors) private var ancestors
     @Environment(\.sidebarDropGeometry) private var geometry
     @Environment(\.metrics) private var metrics
-    @Environment(\.theme) private var theme
-    @Environment(\.sidebarWebDrag) private var drag
     @State private var token = UUID()
 
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface, enabled, let group {
-            let inside = drag?.edge == .inside && drag?.indicator?.target == .groupBody(group)
             content.background {
-                ZStack {
-                    theme[.panelHover].opacity(inside ? 1 : 0)
-                    SidebarDropProbe(token: token, target: .groupBody(group), ancestors: ancestors, geometry: geometry, unit: metrics.size(1))
-                }
+                SidebarDropProbe(token: token, target: .groupBody(group), ancestors: ancestors, geometry: geometry,
+                                 unit: metrics.size(1))
             }
         } else { content }
     }
@@ -250,33 +272,39 @@ struct SidebarWebDropSurface: ViewModifier {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var state = SidebarWebDragState()
-    /// Live row frames, read lazily by the drop delegate (never SwiftUI state, so scrolling does not re-render).
+    /// Live row frames, read lazily while dragging (never SwiftUI state, so scrolling does not re-render).
     @State private var store = SidebarDropGeometry()
-    @State private var size: CGSize = .zero
+
+    private func insideFill(_ target: SidebarWebDropTarget) -> Double {
+        switch target {
+        case .ungrouped: 1
+        case .groupBody: 0.55
+        default: 0
+        }
+    }
 
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface {
             content
-                .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
                 .environment(\.sidebarWebDrag, state)
                 .environment(\.sidebarDropGeometry, store)
                 .background(SidebarDropSurfaceProbe(geometry: store))
                 .overlay(alignment: .topLeading) {
-                    if let region = state.indicator, let edge = state.edge {
+                    // Web `.dropBefore` / `.dropAfter`: a 2px accent line 2px outside the element, inset 5px.
+                    if let region = state.indicator, let edge = state.edge, edge != .inside {
                         let rect = region.visual
-                        if edge != .inside {
-                            Capsule().fill(theme[.accent])
-                                .frame(width: max(0, rect.width - metrics.size(10)), height: metrics.size(2))
-                                .allowsHitTesting(false)
-                                .offset(x: rect.minX + metrics.size(5),
-                                        y: edge == .before ? rect.minY - metrics.size(2) : rect.maxY)
-                        }
+                        Capsule().fill(theme[.accent])
+                            .frame(width: max(0, rect.width - metrics.size(10)), height: metrics.size(2))
+                            .allowsHitTesting(false)
+                            .offset(x: rect.minX + metrics.size(5),
+                                    y: edge == .before ? rect.minY - metrics.size(2) : rect.maxY)
                     }
                 }
                 .overlay(alignment: .topLeading) {
+                    // Web `.dropInside`: panel-hover fill (drawn by the rows) and a 1px inset strong border.
                     if let region = state.indicator, state.edge == .inside {
                         RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                            .fill(theme[.panelHover].opacity(region.target == .ungrouped ? 1 : 0))
+                            .fill(theme[.panelHover].opacity(insideFill(region.target)))
                             .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
                                 .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
                             .frame(width: region.visual.width, height: region.visual.height)
@@ -285,167 +313,82 @@ struct SidebarWebDropSurface: ViewModifier {
                     }
                 }
                 .clipped()
-                .onDrop(of: SidebarDrag.webTypes, delegate: SidebarWebDropDelegate(
-                    state: state, store: store, size: size, width: size.width, actions: actions, scrollStep: metrics.size(8)))
+                // Only Finder folders use the system drag session; sidebar items are dragged by `SidebarWebDragState`.
+                .onDrop(of: [.fileURL], delegate: SidebarFileDropDelegate(
+                    state: state, geometry: store, actions: actions, unit: metrics.size(1)))
+                .onAppear {
+                    let document = { actions.workspace.document }
+                    let perform: (SidebarDragPayload, SidebarWebDropTarget, SidebarDropEdge) -> Void = { actions.webDrop($0, target: $1, edge: $2) }
+                    state.configure(geometry: store, document: document, perform: perform)
+                    #if DEBUG
+                    if SidebarDragSelfTest.enabled {
+                        Task {
+                            await SidebarDragSelfTest.run(state: state, geometry: store, document: document,
+                                                          restore: { state.configure(geometry: store, document: document, perform: perform) })
+                        }
+                    }
+                    #endif
+                }
                 .task {
-                    state.watchCancellation()
-                    // SwiftUI does not guarantee dropExited on Escape, release outside, or removal.
+                    // SwiftUI does not guarantee dropExited on Escape or a release outside the window.
                     while !Task.isCancelled {
-                        try? await Task.sleep(for: .milliseconds(50))
-                        if NSEvent.pressedMouseButtons == 0 { state.clear() }
+                        try? await Task.sleep(for: .milliseconds(100))
+                        if !state.isDragging, state.indicator != nil, NSEvent.pressedMouseButtons == 0 { state.clearHover() }
                     }
                 }
-                .onDisappear { state.stopWatching() }
+                .onDisappear { state.cancel() }
         } else { content }
     }
 }
 
-private struct SidebarWebDropDelegate: DropDelegate {
+/// Finder folders dropped on the list: added as projects in the container under the pointer.
+private struct SidebarFileDropDelegate: DropDelegate {
     let state: SidebarWebDragState
-    let store: SidebarDropGeometry
-    let size: CGSize
-    let width: CGFloat
+    let geometry: SidebarDropGeometry
     let actions: SidebarActions
-    let scrollStep: CGFloat
+    let unit: CGFloat
 
-    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: SidebarDrag.webTypes) }
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.fileURL]) }
 
-    @MainActor private func resolve(_ info: DropInfo) -> (SidebarDropRegion, SidebarDropEdge)? {
-        let payload = state.source ?? info.itemProviders(for: SidebarDrag.webTypes).first?.suggestedName
-        let source = payload.flatMap(SidebarDrag.parse)
-        let files = info.hasItemsConforming(to: [.fileURL])
-        let candidates = store.dropRegions(size: size).compactMap { region -> (SidebarDropRegion, Int)? in
-            let rank: Int
-            switch (source, region.target) {
-            case (.project(let id), .project(let destination)):
-                guard id != destination else { return nil }; rank = 0
-            case (.project, .groupHeader), (.project, .groupBody), (.project, .ungrouped): rank = 1
-            case (.pane(let id), .project(let destination)):
-                guard actions.workspace.document.pane(id)?.project.id != destination else { return nil }; rank = 0
-            case (.group(let id), .groupHeader(let destination)), (.group(let id), .groupBody(let destination)):
-                guard !actions.workspace.document.isGroup(destination, inside: id) else { return nil }
-                if case .groupHeader = region.target { rank = 0 } else { rank = 1 }
-            case (.group, .ungrouped): rank = 1
-            default:
-                guard files else { return nil }
-                switch region.target {
-                case .project, .groupHeader: rank = 0
-                case .groupBody, .ungrouped: rank = 1
-                }
-            }
-            return (region, rank)
-        }
-        let hit = SidebarDropResolution.winner(at: info.location, candidates: candidates.map {
-            let region = $0.0
-            let bounds: CGRect
-            switch region.target {
-            case .project, .groupHeader:
-                // List insets and indentation belong to the same row's hit area.
-                bounds = CGRect(x: 0, y: region.hit.minY, width: width, height: region.hit.height)
-            default: bounds = region.hit
-            }
-            return SidebarDropCandidate(bounds: bounds, rank: $0.1)
-        })
-        guard let hit else { return nil }
-        let region = candidates[hit].0
-        let edge: SidebarDropEdge
-        var isPane = false, isGroup = false
-        switch source {
-        case .pane: isPane = true
-        case .group: isGroup = true
-        default: break
-        }
-        // The dragged payload decides the edge; provider type checks can lag behind mid-drag and made a group
-        // reorder resolve as "inside" (nesting it) while the indicator showed the right row.
-        if files || isPane || (source == nil && info.hasItemsConforming(to: [SidebarDrag.paneType])) { edge = .inside }
-        else {
-            switch region.target {
-            case .project: edge = SidebarDropResolution.edge(at: info.location.y, row: region.visual)
-            case .groupHeader:
-                edge = isGroup || (source == nil && info.hasItemsConforming(to: [SidebarDrag.groupType]))
-                    ? SidebarDropResolution.edge(at: info.location.y, row: region.visual) : .inside
-            case .groupBody, .ungrouped: edge = .inside
-            }
-        }
-        return (region, edge)
-    }
-
-    private static var logging: Bool { UserDefaults.standard.bool(forKey: "debug.sidebarDrop") }
-
-    /// Diagnostic for drop mismatches: `defaults write com.kc1t.alethe.mac debug.sidebarDrop -bool true`.
-    @MainActor private func log(_ event: String, _ info: DropInfo, _ resolved: (SidebarDropRegion, SidebarDropEdge)?) {
-        guard Self.logging else { return }
-        func r(_ rect: CGRect) -> String { "(\(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))x\(Int(rect.height)))" }
-        var lines = ["\(Date()) \(event) loc=(\(Int(info.location.x)),\(Int(info.location.y))) surface=\(Int(size.width))x\(Int(size.height)) source=\(state.source ?? "nil")"]
-        lines.append("  chosen=\(resolved.map { "\($0.0.target) edge=\($0.1) hit=\(r($0.0.hit))" } ?? "none")")
-        for region in store.dropRegions(size: size) { lines.append("  \(region.target) hit=\(r(region.hit)) visual=\(r(region.visual))") }
-        let url = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/com.kc1t.alethe.mac/logs/sidebar-drop.log")
-        let data = Data((lines.joined(separator: "\n") + "\n").utf8)
-        if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(data); try? handle.close() }
-        else { try? data.write(to: url) }
+    @MainActor private func resolve(_ info: DropInfo) -> (region: SidebarDropRegion, edge: SidebarDropEdge)? {
+        guard let width = geometry.surface?.bounds.width else { return nil }
+        return SidebarWebDropRules.resolve(.files, regions: geometry.regions(), at: info.location, width: width,
+                                           in: actions.workspace.document)
     }
 
     func dropEntered(info: DropInfo) { _ = dropUpdated(info: info) }
-    func dropExited(info: DropInfo) { MainActor.assumeIsolated { state.indicator = nil; state.edge = nil } }
+    func dropExited(info: DropInfo) { MainActor.assumeIsolated { state.clearHover() } }
+
     func dropUpdated(info: DropInfo) -> DropProposal? {
         MainActor.assumeIsolated {
             let resolved = resolve(info)
-            if Self.logging, resolved?.0.target != state.indicator?.target || resolved?.1 != state.edge { log("update", info, resolved) }
-            state.indicator = resolved?.0
-            state.edge = resolved?.1
-            scrollNearEdge()
-            return DropProposal(operation: resolved == nil ? .forbidden
-                : info.hasItemsConforming(to: [.fileURL]) ? .copy : .move)
+            state.hover(resolved?.region, resolved?.edge)
+            geometry.autoscroll(pointer: info.location, unit: unit)
+            return DropProposal(operation: resolved == nil ? .forbidden : .copy)
         }
     }
 
     func performDrop(info: DropInfo) -> Bool {
         MainActor.assumeIsolated {
             let resolved = resolve(info)
-            log("DROP", info, resolved)
-            state.clear()
-            guard let (region, placement) = resolved else { return false }
-            let target = region.target
-            if info.hasItemsConforming(to: [.fileURL]) {
-                for provider in info.itemProviders(for: [.fileURL]) {
-                    _ = provider.loadObject(ofClass: NSURL.self) { [target, actions] object, _ in
-                        guard let url = object as? URL else { return }
-                        Task { @MainActor in
-                            let location: ProjectLocation
-                            switch target {
-                            case .project(let id): location = actions.workspace.document.location(of: id) ?? .ungrouped
-                            case .groupHeader(let id), .groupBody(let id): location = .group(id)
-                            case .ungrouped: location = .ungrouped
-                            }
-                            actions.addProjects(folders: [url], in: location)
+            state.clearHover()
+            guard let target = resolved?.region.target else { return false }
+            for provider in info.itemProviders(for: [.fileURL]) {
+                _ = provider.loadObject(ofClass: NSURL.self) { [target, actions] object, _ in
+                    guard let url = object as? URL else { return }
+                    Task { @MainActor in
+                        let location: ProjectLocation
+                        switch target {
+                        case .project(let id): location = actions.workspace.document.location(of: id) ?? .ungrouped
+                        case .groupHeader(let id), .groupBody(let id): location = .group(id)
+                        case .ungrouped: location = .ungrouped
                         }
+                        actions.addProjects(folders: [url], in: location)
                     }
-                }
-            } else {
-                SidebarDrag.load(info.itemProviders(for: SidebarDrag.webTypes)) { [target, actions] dropped in
-                    actions.webDrop(dropped, target: target, edge: placement)
                 }
             }
             return true
         }
-    }
-
-    /// AppKit owns the drag session (including Escape); scroll only the sidebar under the pointer.
-    @MainActor private func scrollNearEdge() {
-        guard let window = NSApp.keyWindow, let root = window.contentView else { return }
-        let point = window.convertPoint(fromScreen: NSEvent.mouseLocation)
-        guard let hit = root.hitTest(root.convert(point, from: nil)),
-              let scroll = hit.enclosingScrollView else { return }
-        let clip = scroll.contentView
-        let local = clip.convert(point, from: nil)
-        let margin = scrollStep * 3
-        let delta: CGFloat = local.y < clip.bounds.minY + margin ? -scrollStep
-            : local.y > clip.bounds.maxY - margin ? scrollStep : 0
-        guard delta != 0, let document = scroll.documentView else { return }
-        let y = max(0, min(clip.bounds.origin.y + delta, max(0, document.bounds.height - clip.bounds.height)))
-        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
-        scroll.reflectScrolledClipView(clip)
     }
 }
 
@@ -473,33 +416,64 @@ extension SidebarActions {
     }
 }
 
+/// Starts the pointer drag of `SidebarWebDragState` from a row (web `useDraggable` + `PointerSensor`, 8px).
 struct SidebarWebDragSource: ViewModifier {
     let payload: String
     let name: String
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.sidebarWebDrag) private var drag
+    @Environment(\.sidebarWebAncestors) private var ancestors
+    @State private var rowView = SidebarViewBox()
+    @State private var started = false
+
+    /// Web `.dragSource`: the picked-up item (and, for a group, everything inside it) fades to 45%.
+    private var dimmed: Bool {
+        guard let drag else { return false }
+        if drag.source == payload { return true }
+        return drag.sourceGroup.map { ancestors.contains($0) } ?? false
+    }
 
     @ViewBuilder func body(content: Content) -> some View {
-        if metrics.isWebInterface {
-            content.opacity(drag?.source == payload ? 0.45 : 1).onDrag {
-                drag?.source = payload
-                return SidebarDrag.provider(payload)
-            } preview: {
-                HStack(spacing: metrics.size(8)) {
-                    Image(systemName: "folder").font(metrics.font(size: 14))
-                    Text(verbatim: name).lineLimit(1).truncationMode(.tail)
-                }
-                .font(metrics.font(size: 12, weight: .semibold))
-                .foregroundStyle(theme[.fg])
-                .padding(.vertical, metrics.size(7)).padding(.horizontal, metrics.size(10))
-                .frame(minWidth: metrics.size(150), maxWidth: metrics.size(260), minHeight: metrics.size(34), alignment: .leading)
-                .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-                .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                    .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
-            }
+        if metrics.isWebInterface, let item = SidebarDrag.parse(payload) {
+            content
+                .opacity(dimmed ? 0.45 : 1)
+                .animation(.easeOut(duration: 0.12), value: dimmed)
+                .background(SidebarRowViewProbe(box: rowView))
+                .simultaneousGesture(DragGesture(minimumDistance: metrics.size(8), coordinateSpace: .global)
+                    .onChanged { value in
+                        guard !started, let drag else { return }
+                        started = true
+                        drag.begin(item, raw: payload, label: name, translation: value.translation,
+                                   row: rowView.view, theme: theme, metrics: metrics)
+                    }
+                    .onEnded { _ in
+                        started = false
+                        drag?.finish()
+                    })
         } else { content }
     }
+}
+
+final class SidebarViewBox {
+    weak var view: NSView?
+}
+
+/// Lets a drag source read its row's screen frame to place the preview where the mouse grabbed it.
+private struct SidebarRowViewProbe: NSViewRepresentable {
+    let box: SidebarViewBox
+
+    final class View: NSView {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
+
+    func makeNSView(context: Context) -> View {
+        let view = View()
+        box.view = view
+        return view
+    }
+
+    func updateNSView(_ view: View, context: Context) { box.view = view }
 }
 
 /// An empty ungrouped list must remain reachable when all projects belong to groups.

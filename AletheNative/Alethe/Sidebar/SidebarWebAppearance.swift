@@ -146,6 +146,7 @@ struct SidebarWebRow: ViewModifier {
     @Environment(\.theme) private var theme
     @Environment(\.sidebarGroupDepth) private var depth
     @Environment(\.sidebarFirstRootGroup) private var inheritedFirstRootGroup
+    @Environment(\.sidebarWebDrag) private var drag
     @State private var hovering = false
 
     @ViewBuilder func body(content: Content) -> some View {
@@ -154,7 +155,7 @@ struct SidebarWebRow: ViewModifier {
                 .padding(.leading, metrics.size(kind == .terminal ? 26 : 10))
                 .padding(.trailing, metrics.size(kind == .group ? 32 : kind == .project ? 37 : 8))
                 .frame(height: metrics.size(kind == .group ? 24 : 28))
-                .background(theme[.panelHover].opacity(hovering && !focused ? 1 : 0),
+                .background(theme[.panelHover].opacity(hovering && !focused && drag?.isDragging != true ? 1 : 0),
                             in: RoundedRectangle(cornerRadius: kind == .group ? metrics.size(6) : metrics.radius(.md)))
                 .contentShape(Rectangle())
                 .onHover { hovering = $0 }

@@ -37,7 +37,7 @@ enum SidebarDrag {
     static func payload(_ project: ProjectID) -> String { projectPrefix + project.rawValue }
     static func payload(_ group: GroupID) -> String { groupPrefix + group.rawValue }
 
-    enum Dropped { case project(ProjectID), group(GroupID), pane(PaneID) }
+    typealias Dropped = SidebarDragPayload
 
     /// Reads dragged sidebar payloads and hands each one to `apply` on the main actor.
     static func load(_ providers: [NSItemProvider], apply: @escaping @MainActor (Dropped) -> Void) {
