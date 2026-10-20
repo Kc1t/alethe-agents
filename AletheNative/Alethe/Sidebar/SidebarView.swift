@@ -90,7 +90,7 @@ struct SidebarView: View {
                 ForEach(doc.childGroups(of: nil).filter { !metrics.isWebInterface || !SidebarProjectVisibility.containsGroup(archivedGroups, group: $0.id, profile: environment.profileID) }) { group in
                     GroupRow(group: group, actions: actions)
                 }
-                .onInsert(of: [.plainText]) { index, providers in
+                .onInsert(of: metrics.isWebInterface ? [] : [.plainText]) { index, providers in
                     SidebarDrag.load(providers) { actions.insertGroup($0, under: nil, at: index) }
                 }
                 if metrics.isWebInterface && projectIDs.isEmpty {
@@ -101,8 +101,8 @@ struct SidebarView: View {
                         ProjectRow(project: project, actions: actions)
                     }
                 }
-                .onMove { source, destination in actions.reorder(in: .ungrouped, from: source, to: destination, visibleIDs: metrics.isWebInterface ? projectIDs : nil) }
-                .onInsert(of: [.plainText]) { index, providers in
+                .onMove(perform: metrics.isWebInterface ? nil : { source, destination in actions.reorder(in: .ungrouped, from: source, to: destination, visibleIDs: nil) })
+                .onInsert(of: metrics.isWebInterface ? [] : [.plainText]) { index, providers in
                     SidebarDrag.load(providers) { actions.insert($0, into: .ungrouped, at: metrics.isWebInterface ? actions.insertionIndex(index, in: .ungrouped, visibleIDs: projectIDs) : index) }
                 }
             } header: {
@@ -284,7 +284,7 @@ private struct GroupRow: View {
             ForEach(doc.childGroups(of: group.id).filter { !metrics.isWebInterface || !SidebarProjectVisibility.containsGroup(archivedGroups, group: $0.id, profile: environment.profileID) }) { child in
                 GroupRow(group: child, actions: actions)
             }
-            .onInsert(of: [.plainText]) { index, providers in
+            .onInsert(of: metrics.isWebInterface ? [] : [.plainText]) { index, providers in
                 SidebarDrag.load(providers) { actions.insertGroup($0, under: group.id, at: index) }
             }
             ForEach(projectIDs, id: \.self) { id in
@@ -293,8 +293,8 @@ private struct GroupRow: View {
                         .modifier(SidebarWebGroupContents(group: group.id))
                 }
             }
-            .onMove { source, destination in actions.reorder(in: .group(group.id), from: source, to: destination, visibleIDs: metrics.isWebInterface ? projectIDs : nil) }
-            .onInsert(of: [.plainText]) { index, providers in
+            .onMove(perform: metrics.isWebInterface ? nil : { source, destination in actions.reorder(in: .group(group.id), from: source, to: destination, visibleIDs: nil) })
+            .onInsert(of: metrics.isWebInterface ? [] : [.plainText]) { index, providers in
                 SidebarDrag.load(providers) { actions.insert($0, into: .group(group.id), at: metrics.isWebInterface ? actions.insertionIndex(index, in: .group(group.id), visibleIDs: projectIDs) : index) }
             }
         } label: {

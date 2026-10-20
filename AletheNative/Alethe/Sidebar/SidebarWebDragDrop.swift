@@ -266,12 +266,20 @@ private struct SidebarWebDropDelegate: DropDelegate {
         guard let hit else { return nil }
         let region = candidates[hit].0
         let edge: SidebarDropEdge
-        if files || info.hasItemsConforming(to: [SidebarDrag.paneType]) { edge = .inside }
+        var isPane = false, isGroup = false
+        switch source {
+        case .pane: isPane = true
+        case .group: isGroup = true
+        default: break
+        }
+        // The dragged payload decides the edge; provider type checks can lag behind mid-drag and made a group
+        // reorder resolve as "inside" (nesting it) while the indicator showed the right row.
+        if files || isPane || (source == nil && info.hasItemsConforming(to: [SidebarDrag.paneType])) { edge = .inside }
         else {
             switch region.target {
             case .project: edge = SidebarDropResolution.edge(at: info.location.y, row: region.visual)
             case .groupHeader:
-                edge = info.hasItemsConforming(to: [SidebarDrag.groupType])
+                edge = isGroup || (source == nil && info.hasItemsConforming(to: [SidebarDrag.groupType]))
                     ? SidebarDropResolution.edge(at: info.location.y, row: region.visual) : .inside
             case .groupBody, .ungrouped: edge = .inside
             }
