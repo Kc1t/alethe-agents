@@ -237,7 +237,6 @@ struct MainWindow: View {
                         }
                     }
                     .frame(maxHeight: .infinity)
-                    .allowsHitTesting(!webPopoverOpen)
                     .animation(Motion.webShellCurve(duration: 0.22, reduceMotion: metrics.reducesMotion),
                                value: sidebarVisible)
                     .animation(Motion.webShellCurve(duration: 0.22, reduceMotion: metrics.reducesMotion),

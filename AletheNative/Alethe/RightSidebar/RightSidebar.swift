@@ -78,12 +78,22 @@ private struct ExtensionOrUnavailable: View {
 }
 
 /// The inspector column (P4-3): the right-side contributed tabs, in `ViewPlacements` order.
+private struct TabStripState: Equatable {
+    var offset: CGFloat = 0
+    var content: CGFloat = 0
+    var visible: CGFloat = 0
+    var canBack: Bool { offset > 1 }
+    var canForward: Bool { content - visible - offset > 1 }
+}
+
 struct RightSidebar: View {
     @Environment(AppEnvironment.self) private var environment
 
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var droppedMarkdown: [URL] = []
+    @State private var tabScroll = ScrollPosition()
+    @State private var tabStrip = TabStripState()
 
     private var nativeContributions: [SidebarTabContribution] {
         let plugins = environment.plugins.map {
@@ -174,8 +184,11 @@ struct RightSidebar: View {
         }
     }
 
-    private var webTabs: some View {
-        HStack(spacing: metrics.size(4)) {
+    /// Tabs as a carousel: no scroll bar, soft edge fades and small chevrons only while tabs hide off-screen.
+    private var tabCarousel: some View {
+        let edge = metrics.size(14)
+        return HStack(spacing: metrics.size(2)) {
+            if tabStrip.canBack { carouselChevron("chevron.left") { pageTabs(-1) } }
             ScrollView(.horizontal) {
                 HStack(spacing: metrics.size(4)) {
                     ForEach(tabs, id: \.id) { tab in
@@ -191,11 +204,56 @@ struct RightSidebar: View {
                         .buttonStyle(AletheAnimatedRightSidebarTabStyle(selected: selected?.id == tab.id))
                         .help(Text(webTitle(tab)))
                         .accessibilityAddTraits(selected?.id == tab.id ? .isSelected : [])
+                        .id(tab.id)
                     }
                 }
             }
             .scrollIndicators(.hidden)
+            .scrollPosition($tabScroll)
+            .onScrollGeometryChange(for: TabStripState.self) { geo in
+                TabStripState(offset: geo.contentOffset.x, content: geo.contentSize.width, visible: geo.visibleRect.width)
+            } action: { _, state in tabStrip = state }
+            .mask {
+                HStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: tabStrip.canBack ? edge : 0)
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: tabStrip.canForward ? edge : 0)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(height: metrics.size(26))
+            .onChange(of: selected?.id) { _, id in
+                guard let id else { return }
+                withAnimation(.easeOut(duration: 0.2)) { tabScroll.scrollTo(id: id) }
+            }
             .accessibilityIdentifier("rightSidebar.tabs")
+            if tabStrip.canForward { carouselChevron("chevron.right") { pageTabs(1) } }
+        }
+    }
+
+    private func carouselChevron(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: metrics.size(9), weight: .semibold))
+                .foregroundStyle(theme[.fgFaint])
+                .frame(width: metrics.size(12), height: metrics.size(22))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHidden(true)
+    }
+
+    private func pageTabs(_ direction: CGFloat) {
+        let step = max(tabStrip.visible * 0.7, metrics.size(60))
+        let target = min(max(0, tabStrip.offset + direction * step), max(0, tabStrip.content - tabStrip.visible))
+        withAnimation(.easeOut(duration: 0.2)) { tabScroll.scrollTo(x: target) }
+    }
+
+    private var webTabs: some View {
+        HStack(spacing: metrics.size(4)) {
+            tabCarousel
             Spacer(minLength: 0)
             if selected?.viewID == McpPanel.tabID {
                 Button {
@@ -243,7 +301,7 @@ struct RightSidebar: View {
 
     private func webSymbol(_ tab: SidebarTabContribution) -> String {
         switch tab.viewID {
-        case AgentsView.tabID: "head.square"
+        case AgentsView.tabID: "cpu"
         case McpPanel.tabID: "powerplug"
         case "plugins": "square.grid.2x2"
         case GSDSyncView.tabID: "sparkles"

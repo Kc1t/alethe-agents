@@ -36,7 +36,7 @@ struct AgentsView: View {
             VStack(spacing: metrics.isWebInterface ? 0 : metrics.space(.s)) {
                 if metrics.isWebInterface {
                     WebSidebarHeader(trailing: 8) {
-                        Image(systemName: "head.square").resizable().scaledToFit()
+                        Image(systemName: "cpu").resizable().scaledToFit()
                             .frame(width: metrics.size(15), height: metrics.size(15))
                         Text("rightSidebar.agents").lineLimit(1)
                         Text((planner == nil ? "rightSidebar.agents.scopeAll" : "rightSidebar.agents.scopeFocused") as LocalizedStringKey)
@@ -68,7 +68,7 @@ struct AgentsView: View {
                 } else { nativeHeader }
                 if jobs.isEmpty {
                     if metrics.isWebInterface {
-                        WebSidebarEmpty(title: "rightSidebar.agents.empty", detail: "rightSidebar.agents.emptyDetail", symbol: "head.square")
+                        WebSidebarEmpty(title: "rightSidebar.agents.empty", detail: "rightSidebar.agents.emptyDetail", symbol: "cpu")
                     } else {
                         ContentUnavailableView {
                             Label("agents.empty", systemImage: "person.3")
