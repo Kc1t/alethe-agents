@@ -15,6 +15,7 @@ struct MainWindow: View {
     @AppStorage("main.rightSidebarWidth") private var rightSidebarWidth = 280.0
     @AppStorage("main.webLeftWidth") private var webLeftWidth = 286.0
     @State private var webSidebarDragging = false
+    @State private var webPopoverOpen = false
     @State private var webTrafficLightTrailingEdge: CGFloat = 0
     @State private var showsTitleBarNews = false
     @State private var showsTitleBarMemory = false
@@ -236,6 +237,7 @@ struct MainWindow: View {
                         }
                     }
                     .frame(maxHeight: .infinity)
+                    .allowsHitTesting(!webPopoverOpen)
                     .animation(Motion.webShellCurve(duration: 0.22, reduceMotion: metrics.reducesMotion),
                                value: sidebarVisible)
                     .animation(Motion.webShellCurve(duration: 0.22, reduceMotion: metrics.reducesMotion),
@@ -249,6 +251,7 @@ struct MainWindow: View {
                 }
             }
             .frame(width: windowGeometry.size.width, height: windowGeometry.size.height, alignment: .topLeading)
+            .onPreferenceChange(WebTitleBarPopoverOpenKey.self) { webPopoverOpen = $0 }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .modifier(WebTitleBarPopoverLayer())

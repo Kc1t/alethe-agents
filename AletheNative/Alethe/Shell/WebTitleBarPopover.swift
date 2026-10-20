@@ -17,10 +17,18 @@ struct WebTitleBarPopoverKey: PreferenceKey {
     }
 }
 
+/// True while any title-bar popover is open: the panels below stop reacting to hover (their AppKit-backed
+/// rows keep tracking the pointer even under the popover layer).
+struct WebTitleBarPopoverOpenKey: PreferenceKey {
+    static var defaultValue: Bool { false }
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
+}
+
 extension View {
     func webTitleBarPopover<Content: View>(isPresented: Binding<Bool>, width: CGFloat, trailing: Bool = true,
                                           @ViewBuilder content: @escaping () -> Content) -> some View {
-        anchorPreference(key: WebTitleBarPopoverKey.self, value: .bounds) { anchor in
+        preference(key: WebTitleBarPopoverOpenKey.self, value: isPresented.wrappedValue)
+        .anchorPreference(key: WebTitleBarPopoverKey.self, value: .bounds) { anchor in
             isPresented.wrappedValue ? [WebTitleBarPopover(anchor: anchor, content: AnyView(content()), width: width,
                                                           trailing: trailing, dismiss: { isPresented.wrappedValue = false })] : []
         }
