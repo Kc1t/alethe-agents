@@ -487,8 +487,10 @@ struct SidebarUngroupedDropArea: View {
         if let source = drag?.source, !source.hasPrefix(SidebarDrag.panePrefix) {
             Text("sidebar.drag.ungrouped")
                 .font(metrics.font(size: 10)).foregroundStyle(theme[.fgFaint])
-                .frame(maxWidth: .infinity, minHeight: metrics.size(24))
+                // Web `.ungroupedEmptyDrop`: 24pt (clean: 22pt, no margin), normal adds a 2pt margin above the section.
+                .frame(maxWidth: .infinity, minHeight: metrics.size(metrics.style == .clean ? 22 : 24))
                 .modifier(SidebarWebDrop(target: .ungrouped, actions: actions))
+                .padding(.top, metrics.size(metrics.style == .clean ? 0 : 2))
                 .listRowSeparator(.hidden)
                 .listRowBackground(theme[.bg])
                 .accessibilityIdentifier("sidebar.drop.ungrouped")

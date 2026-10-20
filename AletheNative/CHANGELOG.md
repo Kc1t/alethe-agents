@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Sidebar drag and drop
+- Web interface: dragging projects, groups and terminals in the left sidebar no longer uses the macOS drag
+  session. It follows the web's pointer drag instead: 8px to start, a floating drag preview that is never
+  clipped, a 2px accent line for before/after and a bordered fill for "inside", auto-scroll near the list
+  edges and Escape to cancel. Projects land on rows and group headers, groups reorder on headers and nest in
+  group bodies, terminals land on other projects, exactly as in the web collision rules.
+- Fix drops that were ignored or sent to another group, and indicators drawn away from the row under the pointer.
+  Finder folders dropped on the list keep using the system drag.
+
 ### Sidebar dimensions (sz)
 - Web interface: align Clean and Normal project icon slots, row actions, group indentation and empty rows, working indicators, and Organization footer dimensions with the web sidebar.
 
