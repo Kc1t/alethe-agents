@@ -62,7 +62,8 @@ final class SidebarWebDragState {
         installEscapeMonitor()
         ticker = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                self?.tick()
+                guard let self else { return }
+                self.tick()
                 try? await Task.sleep(for: .milliseconds(16))
             }
         }
