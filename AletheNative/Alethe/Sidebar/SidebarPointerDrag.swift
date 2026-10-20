@@ -13,8 +13,8 @@ import SwiftUI
 /// `DragOverlay`) and the drop is applied on mouse up. Escape cancels.
 @MainActor @Observable
 final class SidebarWebDragState {
-    private(set) var indicator: SidebarDropRegion?
-    private(set) var edge: SidebarDropEdge?
+    /// What dropping here would do; drives the insertion line, the box and the row fills.
+    private(set) var plan: SidebarDropPlan?
     /// Payload string of the item being dragged; nil when idle. Rows dim themselves while it matches.
     private(set) var source: String?
     private(set) var sourceGroup: GroupID?
@@ -23,7 +23,7 @@ final class SidebarWebDragState {
 
     @ObservationIgnored private weak var geometry: SidebarDropGeometry?
     @ObservationIgnored private var document: (() -> WorkspaceDocument)?
-    @ObservationIgnored private var perform: ((SidebarDragPayload, SidebarWebDropTarget, SidebarDropEdge) -> Void)?
+    @ObservationIgnored private var perform: ((SidebarDropPlan.Action) -> Void)?
     @ObservationIgnored private var payload: SidebarDragPayload?
     @ObservationIgnored private var unit: CGFloat = 1
     @ObservationIgnored private var grab: CGPoint = .zero
@@ -38,7 +38,7 @@ final class SidebarWebDragState {
     #endif
 
     func configure(geometry: SidebarDropGeometry, document: @escaping () -> WorkspaceDocument,
-                   perform: @escaping (SidebarDragPayload, SidebarWebDropTarget, SidebarDropEdge) -> Void) {
+                   perform: @escaping (SidebarDropPlan.Action) -> Void) {
         self.geometry = geometry
         self.document = document
         self.perform = perform
@@ -74,11 +74,10 @@ final class SidebarWebDragState {
     func finish() {
         guard isDragging else { return }
         if let point = geometry?.pointer() { resolve(at: point) }
-        let item = payload, region = indicator, edge = edge
+        let action = plan?.action
         log("DROP")
         teardown()
-        guard let item, let region, let edge else { return }
-        perform?(item, region.target, edge)
+        if let action { perform?(action) }
     }
 
     func cancel() {
@@ -89,14 +88,14 @@ final class SidebarWebDragState {
 
     // MARK: - Finder folders (system drag, hover feedback only)
 
-    func hover(_ region: SidebarDropRegion?, _ edge: SidebarDropEdge?) {
+    func hover(_ plan: SidebarDropPlan?) {
         guard !isDragging else { return }
-        publish(region, edge)
+        publish(plan)
     }
 
     func clearHover() {
         guard !isDragging else { return }
-        publish(nil, nil)
+        publish(nil)
     }
 
     // MARK: - Tracking
@@ -112,7 +111,7 @@ final class SidebarWebDragState {
         }
         ghost?.move(pointer: geometry?.screenPointer() ?? NSEvent.mouseLocation, grab: grab)
         guard let geometry, let point = geometry.pointer() else {
-            publish(nil, nil)
+            publish(nil)
             return
         }
         geometry.autoscroll(pointer: point, unit: unit)
@@ -121,16 +120,15 @@ final class SidebarWebDragState {
 
     private func resolve(at point: CGPoint) {
         guard let payload, let geometry, let size = geometry.surface?.bounds.size, let document else { return }
-        let hit = SidebarWebDropRules.resolve(.item(payload), regions: geometry.regions(), at: point,
-                                              width: size.width, in: document())
-        publish(hit?.region, hit?.edge)
+        publish(SidebarWebDropRules.plan(.item(payload), regions: geometry.regions(), at: point, width: size.width,
+                                         in: document()))
     }
 
-    private func publish(_ region: SidebarDropRegion?, _ edge: SidebarDropEdge?) {
-        let changed = indicator?.target != region?.target || self.edge != edge
-        if indicator != region { indicator = region }
-        if self.edge != edge { self.edge = edge }
-        if changed, isDragging { log("target") }
+    private func publish(_ new: SidebarDropPlan?) {
+        guard plan != new else { return }
+        let moved = plan?.action != new?.action
+        plan = new
+        if moved, isDragging { log("target") }
     }
 
     private var buttonDown: Bool {
@@ -163,8 +161,7 @@ final class SidebarWebDragState {
         payload = nil
         source = nil
         sourceGroup = nil
-        indicator = nil
-        edge = nil
+        plan = nil
     }
 
     private func installEscapeMonitor() {
@@ -190,7 +187,7 @@ final class SidebarWebDragState {
         let point = geometry?.pointer() ?? .zero
         let size = geometry?.surface?.bounds.size ?? .zero
         var lines = ["\(Date()) \(event) pointer=(\(Int(point.x)),\(Int(point.y))) surface=\(Int(size.width))x\(Int(size.height)) source=\(source ?? "nil")"]
-        lines.append("  chosen=\(indicator.map { "\($0.target) edge=\(edge.map { "\($0)" } ?? "nil") hit=\(r($0.hit))" } ?? "none")")
+        lines.append("  plan=\(plan.map { "\($0.action) mark=\($0.mark) fill=\($0.fill.map { "\($0)" } ?? "nil")" } ?? "none")")
         for region in geometry?.regions() ?? [] { lines.append("  \(region.target) hit=\(r(region.hit)) visual=\(r(region.visual))") }
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Application Support/com.kc1t.alethe.mac/logs/sidebar-drop.log")

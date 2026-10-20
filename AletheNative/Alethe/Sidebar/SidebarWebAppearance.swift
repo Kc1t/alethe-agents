@@ -1,5 +1,6 @@
 import AppKit
 import AletheDesign
+import AletheModel
 import SwiftUI
 
 private extension EnvironmentValues {
@@ -143,6 +144,8 @@ struct SidebarWebRow: ViewModifier {
     let kind: Kind
     var first = false
     var focused = false
+    /// The project a terminal row belongs to, so a drop on it counts as a drop on that project.
+    var project: ProjectID?
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @Environment(\.sidebarGroupDepth) private var depth
@@ -181,7 +184,7 @@ struct SidebarWebRow: ViewModifier {
                                           bottom: 0, trailing: metrics.size(8)))
                 .listRowSeparator(.hidden)
                 .listRowBackground(theme[.bg])
-                .modifier(SidebarWebTerminalBodyDrop(enabled: kind == .terminal))
+                .modifier(SidebarWebTerminalBodyDrop(enabled: kind == .terminal, project: project))
         } else { content }
     }
 }

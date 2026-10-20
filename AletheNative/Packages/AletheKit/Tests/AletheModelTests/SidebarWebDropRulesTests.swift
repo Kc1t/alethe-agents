@@ -2,7 +2,8 @@ import Foundation
 import Testing
 @testable import AletheModel
 
-/// The web sidebar's collision rules (`sidebarCollisionDetection`, `dropIndicatorForEvent`).
+/// Where a dragged item lands for each spot under the pointer (the web's collision rules plus the extra
+/// insertion zones that make reordering work from anywhere inside a group's area).
 @Suite struct SidebarWebDropRulesTests {
     private struct Fixture {
         var doc = WorkspaceDocument()
@@ -24,85 +25,16 @@ import Testing
             foreign = doc.addProject(name: "Foreign", folder: "/foreign", in: .group(other))
             loose = doc.addProject(name: "Loose", folder: "/loose")
             pane = doc.addPane(to: first, tab: PaneTab(agent: "shell"))!
+            doc.updateGroup(inner) { $0.isCollapsed = true }
         }
     }
 
-    private func rank(_ source: SidebarWebDropRules.Source, _ target: SidebarWebDropTarget, _ doc: WorkspaceDocument) -> Int? {
-        SidebarWebDropRules.rank(source, over: target, in: doc)
-    }
-
-    @Test func projectsLandOnRowsAndGroupHeadersButNeverOnGroupBodies() {
-        let f = Fixture()
-        let source = SidebarWebDropRules.Source.item(.project(f.first))
-        #expect(rank(source, .project(f.second), f.doc) == 0)
-        #expect(rank(source, .project(f.first), f.doc) == nil)
-        #expect(rank(source, .groupHeader(f.other), f.doc) == 1)
-        #expect(rank(source, .groupHeader(f.outer), f.doc) == 1)
-        #expect(rank(source, .ungrouped, f.doc) == 1)
-        #expect(rank(source, .groupBody(f.other), f.doc) == nil)
-    }
-
-    @Test func groupsReorderOnHeadersAndNestInBodiesButNeverIntoThemselves() {
-        let f = Fixture()
-        let source = SidebarWebDropRules.Source.item(.group(f.outer))
-        #expect(rank(source, .groupHeader(f.other), f.doc) == 0)
-        #expect(rank(source, .groupBody(f.other), f.doc) == 1)
-        #expect(rank(source, .ungrouped, f.doc) == 1)
-        #expect(rank(source, .groupHeader(f.outer), f.doc) == nil)
-        #expect(rank(source, .groupBody(f.outer), f.doc) == nil)
-        #expect(rank(source, .groupHeader(f.inner), f.doc) == nil)
-        #expect(rank(source, .groupBody(f.inner), f.doc) == nil)
-        #expect(rank(source, .project(f.loose), f.doc) == nil)
-        // A nested group may still move out next to its parent's siblings or into another group.
-        let nested = SidebarWebDropRules.Source.item(.group(f.inner))
-        #expect(rank(nested, .groupHeader(f.outer), f.doc) == 0)
-        #expect(rank(nested, .groupBody(f.outer), f.doc) == 1)
-    }
-
-    @Test func aTerminalOnlyLandsOnAnotherProject() {
-        let f = Fixture()
-        let source = SidebarWebDropRules.Source.item(.pane(f.pane))
-        #expect(rank(source, .project(f.foreign), f.doc) == 0)
-        #expect(rank(source, .project(f.first), f.doc) == nil)
-        #expect(rank(source, .groupHeader(f.other), f.doc) == nil)
-        #expect(rank(source, .ungrouped, f.doc) == nil)
-    }
-
-    @Test func finderFoldersAcceptEveryContainer() {
-        let f = Fixture()
-        #expect(rank(.files, .project(f.first), f.doc) == 0)
-        #expect(rank(.files, .groupHeader(f.other), f.doc) == 0)
-        #expect(rank(.files, .groupBody(f.other), f.doc) == 1)
-        #expect(rank(.files, .ungrouped, f.doc) == 1)
-    }
-
-    private let row = SidebarDropRegion(target: .ungrouped, hit: CGRect(x: 24, y: 100, width: 204, height: 31),
-                                        visual: CGRect(x: 24, y: 105, width: 204, height: 25))
-
-    @Test func edgesFollowTheElementMidpointOnlyWhereTheWebDoes() {
-        let f = Fixture()
-        let project = SidebarDropRegion(target: .project(f.second), hit: row.hit, visual: row.visual)
-        let header = SidebarDropRegion(target: .groupHeader(f.other), hit: row.hit, visual: row.visual)
-        let body = SidebarDropRegion(target: .groupBody(f.other), hit: row.hit, visual: row.visual)
-        let midY = row.visual.midY
-        for (source, region, above, below) in [
-            (SidebarWebDropRules.Source.item(.project(f.first)), project, SidebarDropEdge.before, SidebarDropEdge.after),
-            (.item(.group(f.outer)), header, .before, .after),
-            (.item(.project(f.first)), header, .inside, .inside),
-            (.item(.group(f.outer)), body, .inside, .inside),
-            (.item(.pane(f.pane)), project, .inside, .inside),
-            (.files, project, .inside, .inside),
-        ] {
-            #expect(SidebarWebDropRules.edge(source, over: region, pointerY: midY - 1) == above)
-            #expect(SidebarWebDropRules.edge(source, over: region, pointerY: midY + 1) == below)
-        }
-    }
-
-    // MARK: - Resolution on a realistic column (257 wide, as logged from the app)
-
-    private func header(_ group: GroupID, y: CGFloat) -> SidebarDropRegion {
-        SidebarDropRegion(target: .groupHeader(group), hit: CGRect(x: 15, y: y, width: 213, height: 43),
-                          visual: CGRect(x: 15, y: y + 20, width: 213, height: 21))
+    // Column as logged from the app (257 wide); y values are the top of each row's cell.
+    //   0 header Outer   43 header Inner (collapsed, child of Outer)   86 First   117 First's 2 terminals
+    // 173 Second        204 header Other                              247 Foreign   278 Loose (ungrouped)
+    private func header(_ group: GroupID, y: CGFloat, x: CGFloat = 15, width: CGFloat = 213) -> SidebarDropRegion {
+        SidebarDropRegion(target: .groupHeader(group), hit: CGRect(x: x, y: y, width: width, height: 43),
+                          visual: CGRect(x: x, y: y + 20, width: width, height: 21))
     }
 
     private func project(_ id: ProjectID, y: CGFloat) -> SidebarDropRegion {
@@ -110,75 +42,226 @@ import Testing
                           visual: CGRect(x: 24, y: y + 5, width: 204, height: 25))
     }
 
-    private func body(_ group: GroupID, y: CGFloat, height: CGFloat) -> SidebarDropRegion {
-        let rect = CGRect(x: 17, y: y, width: 210, height: height)
-        return SidebarDropRegion(target: .groupBody(group), hit: rect, visual: rect)
-    }
-
     private func column(_ f: Fixture) -> [SidebarDropRegion] {
-        [header(f.outer, y: 0), header(f.inner, y: 43), project(f.first, y: 86), project(f.second, y: 117),
-         body(f.outer, y: 43, height: 105), header(f.other, y: 160), project(f.foreign, y: 203),
-         body(f.other, y: 203, height: 31)]
+        let terminals = CGRect(x: 24, y: 117, width: 204, height: 56)
+        return [header(f.outer, y: 0), header(f.inner, y: 43, x: 24, width: 204), project(f.first, y: 86),
+                SidebarDropRegion(target: .terminals(f.first), hit: terminals, visual: terminals),
+                project(f.second, y: 173), header(f.other, y: 204), project(f.foreign, y: 247),
+                project(f.loose, y: 278)]
     }
 
-    private func resolve(_ source: SidebarWebDropRules.Source, _ f: Fixture, x: CGFloat = 90, y: CGFloat)
-        -> (SidebarWebDropTarget, SidebarDropEdge)? {
-        SidebarWebDropRules.resolve(source, regions: column(f), at: CGPoint(x: x, y: y), width: 257, in: f.doc)
-            .map { ($0.region.target, $0.edge) }
+    private func plan(_ source: SidebarWebDropRules.Source, _ f: Fixture, x: CGFloat = 90, y: CGFloat) -> SidebarDropPlan? {
+        SidebarWebDropRules.plan(source, regions: column(f), at: CGPoint(x: x, y: y), width: 257, in: f.doc)
     }
 
-    @Test func aProjectOverARowReordersAndOverAHeaderMovesInside() throws {
+    private func place(_ plan: SidebarDropPlan?) -> (SidebarChild, GroupID?, SidebarChild?)? {
+        guard case .place(let item, let container, let before)? = plan?.action else { return nil }
+        return (item, container, before)
+    }
+
+    private func isLine(_ plan: SidebarDropPlan?, _ edge: SidebarDropEdge) -> Bool {
+        if case .line(_, let found, _)? = plan?.mark { return found == edge }
+        return false
+    }
+
+    // MARK: - A project is dragged
+
+    @Test func aProjectGoesBeforeOrAfterARowInThatRowsGroup() throws {
         let f = Fixture()
         let source = SidebarWebDropRules.Source.item(.project(f.loose))
-        let upper = try #require(resolve(source, f, y: 90))
-        #expect(upper.0 == .project(f.first) && upper.1 == .before)
-        let lower = try #require(resolve(source, f, y: 112))
-        #expect(lower.0 == .project(f.first) && lower.1 == .after)
-        let onHeader = try #require(resolve(source, f, y: 185))
-        #expect(onHeader.0 == .groupHeader(f.other) && onHeader.1 == .inside)
+        let upper = plan(source, f, y: 92)
+        let target = try #require(place(upper))
+        #expect(target.0 == .project(f.loose) && target.1 == f.outer && target.2 == .project(f.first))
+        #expect(isLine(upper, .before))
+        // The lower half goes before whatever follows: First is followed by Second (its terminals are not siblings),
+        // and the line sits under First's terminals because that is where the item will be.
+        let lowerPlan = plan(source, f, y: 112)
+        let lower = place(lowerPlan)
+        #expect(lower?.1 == f.outer && lower?.2 == .project(f.second))
+        if case .line(let rect, .after, _)? = lowerPlan?.mark { #expect(rect.maxY == 173) } else { Issue.record("expected a line") }
+        // Last row of the group: after it means the end of the group.
+        let last = place(plan(source, f, y: 200))
+        #expect(last?.1 == f.outer && last?.2 == nil)
     }
 
-    @Test func aProjectIsNotDroppedInTheMarginAboveAHeaderOrInsideABodyGap() {
+    @Test func overTheTerminalsOfAProjectMeansAfterItsWholeNode() throws {
         let f = Fixture()
         let source = SidebarWebDropRules.Source.item(.project(f.loose))
-        // y 165 is the 20pt margin above the "Other" header: between groups, no target in the web.
-        #expect(resolve(source, f, y: 165) == nil)
-        #expect(resolve(source, f, x: 3, y: 500) == nil)
+        let result = plan(source, f, y: 140)
+        let target = try #require(place(result))
+        #expect(target.1 == f.outer && target.2 == .project(f.second))
+        guard case .line(let rect, .after, _)? = result?.mark else { Issue.record("expected a line"); return }
+        // The line sits under the last terminal, not under the project row.
+        #expect(rect.maxY == 173 && rect.minY == 91)
     }
 
-    @Test func aGroupOverARowNestsIntoTheRowsGroup() throws {
+    @Test func aProjectIntoAHeaderOnlyFromTheHeaderBand() throws {
         let f = Fixture()
-        let hit = try #require(resolve(.item(.group(f.other)), f, y: 100))
-        #expect(hit.0 == .groupBody(f.outer) && hit.1 == .inside)
+        let source = SidebarWebDropRules.Source.item(.project(f.loose))
+        let into = try #require(place(plan(source, f, y: 230)))
+        #expect(into.1 == f.other && into.2 == nil)
+        // The margin above a top-level header lies between two groups: the web leaves it without a target.
+        #expect(plan(source, f, y: 210) == nil)
     }
 
-    @Test func aGroupOverAHeaderReordersAndTheMarginAboveItCountsAsBefore() throws {
+    @Test func aHeaderNestedInAGroupAlsoHasABeforeZone() throws {
+        let f = Fixture()
+        let source = SidebarWebDropRules.Source.item(.project(f.loose))
+        let before = try #require(place(plan(source, f, y: 64)))
+        #expect(before.1 == f.outer && before.2 == .group(f.inner))
+        let inside = try #require(place(plan(source, f, y: 78)))
+        #expect(inside.1 == f.inner && inside.2 == nil)
+    }
+
+    @Test func aProjectIgnoresItself() {
+        let f = Fixture()
+        #expect(plan(.item(.project(f.first)), f, y: 100) == nil)
+        #expect(plan(.item(.project(f.first)), f, y: 140) == nil)
+    }
+
+    // MARK: - A group is dragged
+
+    @Test func aGroupCanSitBetweenAndAfterTheProjectsOfItsParent() throws {
+        let f = Fixture()
+        let source = SidebarWebDropRules.Source.item(.group(f.inner))
+        let between = try #require(place(plan(source, f, y: 92)))
+        #expect(between.0 == .group(f.inner) && between.1 == f.outer && between.2 == .project(f.first))
+        let afterLast = try #require(place(plan(source, f, y: 200)))
+        #expect(afterLast.1 == f.outer && afterLast.2 == nil)
+    }
+
+    @Test func aGroupOverAProjectRowOfAnotherGroupGoesIntoThatGroup() throws {
+        let f = Fixture()
+        let target = try #require(place(plan(.item(.group(f.other)), f, y: 92)))
+        #expect(target.0 == .group(f.other) && target.1 == f.outer && target.2 == .project(f.first))
+        // Its own area is off limits.
+        #expect(plan(.item(.group(f.other)), f, y: 260) == nil)
+    }
+
+    @Test func aGroupOverAnExpandedHeaderGoesBeforeItOrBecomesItsFirstChild() throws {
         let f = Fixture()
         let source = SidebarWebDropRules.Source.item(.group(f.other))
-        let after = try #require(resolve(source, f, y: 40))
-        #expect(after.0 == .groupHeader(f.outer) && after.1 == .after)
-        let marginAbove = try #require(resolve(source, f, y: 5))
-        #expect(marginAbove.0 == .groupHeader(f.outer) && marginAbove.1 == .before)
+        let before = try #require(place(plan(source, f, y: 28)))
+        #expect(before.1 == nil && before.2 == .group(f.outer))
+        let firstChild = plan(source, f, y: 38)
+        let into = try #require(place(firstChild))
+        #expect(into.1 == f.outer && into.2 == .group(f.inner))
+        guard case .line(_, .after, let indent)? = firstChild?.mark else { Issue.record("expected a line"); return }
+        #expect(indent == 9)   // the child rows start 9pt to the right of the header
     }
 
-    @Test func theHeaderBeatsTheBodyItSitsIn() throws {
+    @Test func theMarginBetweenTwoGroupsMeansBeforeTheLowerOne() throws {
         let f = Fixture()
-        // The nested header lies inside the outer body (rank 1) but has rank 0 for a group.
-        let hit = try #require(resolve(.item(.group(f.other)), f, y: 70))
-        #expect(hit.0 == .groupHeader(f.inner))
+        let result = try #require(place(plan(.item(.group(f.outer)), f, y: 210)))
+        #expect(result.1 == nil && result.2 == .group(f.other))
+    }
+
+    @Test func aCollapsedHeaderHasBeforeIntoAndAfterZones() throws {
+        let f = Fixture()
+        let source = SidebarWebDropRules.Source.item(.group(f.other))
+        let before = try #require(place(plan(source, f, y: 64)))
+        #expect(before.1 == f.outer && before.2 == .group(f.inner))
+        let into = try #require(place(plan(source, f, y: 74)))
+        #expect(into.1 == f.inner && into.2 == nil)
+        let after = try #require(place(plan(source, f, y: 82)))
+        #expect(after.1 == f.outer && after.2 == .project(f.first))
+    }
+
+    @Test func aGroupOverAnUngroupedProjectGoesToTheEndOfTheTopLevelGroups() throws {
+        let f = Fixture()
+        let result = plan(.item(.group(f.inner)), f, y: 290)
+        let target = try #require(place(result))
+        #expect(target.1 == nil && target.2 == nil)
+        #expect(isLine(result, .before))
+    }
+
+    @Test func aGroupNeverLandsInsideItself() {
+        let f = Fixture()
+        // Outer's own header, its descendants and its projects.
+        for y in [10, 38, 64, 100, 140, 190] as [CGFloat] { #expect(plan(.item(.group(f.outer)), f, y: y) == nil) }
+    }
+
+    // MARK: - Terminals, Finder folders, edges of the surface
+
+    @Test func aTerminalOnlyLandsOnAnotherProject() throws {
+        let f = Fixture()
+        let source = SidebarWebDropRules.Source.item(.pane(f.pane))
+        let over = try #require(plan(source, f, y: 262))
+        #expect(over.action == .movePane(f.pane, to: f.foreign) && over.fill == .project(f.foreign))
+        #expect(plan(source, f, y: 100) == nil)
+        #expect(plan(source, f, y: 140) == nil)
+        #expect(plan(source, f, y: 230) == nil)
+    }
+
+    @Test func finderFoldersGoToTheContainerUnderThePointer() throws {
+        let f = Fixture()
+        #expect(plan(.files, f, y: 100)?.action == .addFolders(container: f.outer))
+        #expect(plan(.files, f, y: 230)?.action == .addFolders(container: f.other))
+        #expect(plan(.files, f, y: 290)?.action == .addFolders(container: nil))
+        #expect(plan(.files, f, y: 400)?.action == .addFolders(container: nil))
+    }
+
+    @Test func belowTheLastRowMeansTheEndOfTheTopLevel() throws {
+        let f = Fixture()
+        let project = try #require(place(plan(.item(.project(f.first)), f, y: 500)))
+        #expect(project.1 == nil && project.2 == nil)
+        #expect(plan(.item(.pane(f.pane)), f, y: 500) == nil)
+    }
+
+    @Test func outsideTheListNothingHappens() {
+        let f = Fixture()
+        #expect(plan(.item(.project(f.loose)), f, x: -4, y: 100) == nil)
+        #expect(plan(.item(.project(f.loose)), f, x: 300, y: 100) == nil)
     }
 
     @Test func rowsAreHitAcrossTheWholeWidth() throws {
         let f = Fixture()
-        let hit = try #require(resolve(.item(.project(f.loose)), f, x: 2, y: 100))
-        #expect(hit.0 == .project(f.first))
-        #expect(resolve(.item(.project(f.loose)), f, x: 300, y: 100) == nil)
+        let target = try #require(place(plan(.item(.project(f.loose)), f, x: 2, y: 100)))
+        #expect(target.2 == .project(f.first))
     }
 
-    @Test func aTerminalOnlyHighlightsOtherProjects() throws {
-        let f = Fixture()
-        let over = try #require(resolve(.item(.pane(f.pane)), f, y: 210))
-        #expect(over.0 == .project(f.foreign) && over.1 == .inside)
-        #expect(resolve(.item(.pane(f.pane)), f, y: 100) == nil)
+    // MARK: - Plans applied to the document
+
+    private func apply(_ plan: SidebarDropPlan?, to doc: inout WorkspaceDocument) {
+        guard case .place(let item, let container, let before)? = plan?.action else {
+            Issue.record("expected a placement")
+            return
+        }
+        doc.place(item, in: container, before: before)
+    }
+
+    @Test func droppingAGroupBelowTheProjectsOfItsParentKeepsItThere() {
+        var f = Fixture()
+        apply(plan(.item(.group(f.inner)), f, y: 200), to: &f.doc)
+        #expect(f.doc.sidebarChildren(of: f.outer) == [.project(f.first), .project(f.second), .group(f.inner)])
+        #expect(f.doc.group(f.inner)?.parentID == f.outer)
+        #expect(f.doc.group(f.outer)?.projectIDs == [f.first, f.second])
+    }
+
+    @Test func droppingAProjectBetweenSubgroupsAndProjects() {
+        var f = Fixture()
+        apply(plan(.item(.project(f.loose)), f, y: 64), to: &f.doc)   // before the collapsed Inner header
+        #expect(f.doc.sidebarChildren(of: f.outer) == [.project(f.loose), .group(f.inner), .project(f.first), .project(f.second)])
+        #expect(f.doc.ungroupedProjectIDs.isEmpty)
+    }
+
+    @Test func droppingAProjectUnderTheTerminalsOfAnother() {
+        var f = Fixture()
+        apply(plan(.item(.project(f.loose)), f, y: 140), to: &f.doc)
+        #expect(f.doc.sidebarChildren(of: f.outer) == [.group(f.inner), .project(f.first), .project(f.loose), .project(f.second)])
+    }
+
+    @Test func droppingAGroupBetweenProjectsOfAnotherGroup() {
+        var f = Fixture()
+        apply(plan(.item(.group(f.other)), f, y: 120 - 20), to: &f.doc)   // upper half of First's row
+        #expect(f.doc.sidebarChildren(of: f.outer) == [.group(f.inner), .group(f.other), .project(f.first), .project(f.second)])
+        #expect(f.doc.group(f.other)?.parentID == f.outer)
+        #expect(f.doc.group(f.other)?.projectIDs == [f.foreign])
+    }
+
+    @Test func aGroupMovedAboveAnotherTopLevelGroupBecomesItsSibling() {
+        var f = Fixture()
+        apply(plan(.item(.group(f.other)), f, y: 28), to: &f.doc)   // upper half of the Outer header
+        #expect(f.doc.sidebarChildren(of: nil).prefix(2) == [.group(f.other), .group(f.outer)])
     }
 }

@@ -16,6 +16,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   group bodies, terminals land on other projects, exactly as in the web collision rules.
 - Fix drops that were ignored or sent to another group, and indicators drawn away from the row under the pointer.
   Finder folders dropped on the list keep using the system drag.
+- Reorder from anywhere inside a group's area: a project goes before or after any project row (the terminals
+  under a project count as that project, so the line sits under them), a group dragged over a project row
+  becomes a child of that row's group at that position, and group headers have before / into / after zones.
+  A group may now sit between or after the projects of its parent (the order is saved with the group; existing
+  workspaces are unchanged).
 
 ### Sidebar dimensions (sz)
 - Web interface: align Clean and Normal project icon slots, row actions, group indentation and empty rows, working indicators, and Organization footer dimensions with the web sidebar.

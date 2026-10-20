@@ -265,6 +265,12 @@ private struct GroupRow: View {
         let projectIDs = group.projectIDs.filter {
             !metrics.isWebInterface || SidebarProjectVisibility.visible(doc.project($0), reveal: revealHidden)
         }
+        let webChildren = metrics.isWebInterface ? doc.sidebarChildren(of: group.id).filter { child in
+            switch child {
+            case .group(let id): !SidebarProjectVisibility.containsGroup(archivedGroups, group: id, profile: environment.profileID)
+            case .project(let id): SidebarProjectVisibility.visible(doc.project(id), reveal: revealHidden)
+            }
+        } : []
         SidebarDisclosure(isGroup: true, item: .group(group.id),
                           firstRootGroup: doc.childGroups(of: nil).first?.id == group.id, isExpanded: Binding {
             !group.isCollapsed
@@ -281,21 +287,32 @@ private struct GroupRow: View {
                         .foregroundStyle(theme[.fgFaint])
                 }
             }
-            ForEach(doc.childGroups(of: group.id).filter { !metrics.isWebInterface || !SidebarProjectVisibility.containsGroup(archivedGroups, group: $0.id, profile: environment.profileID) }) { child in
-                GroupRow(group: child, actions: actions)
-            }
-            .onInsert(of: metrics.isWebInterface ? [] : [.plainText]) { index, providers in
-                SidebarDrag.load(providers) { actions.insertGroup($0, under: group.id, at: index) }
-            }
-            ForEach(projectIDs, id: \.self) { id in
-                if let project = doc.project(id) {
-                    ProjectRow(project: project, actions: actions)
-                        .modifier(SidebarWebGroupContents(group: group.id))
+            if metrics.isWebInterface {
+                // Child groups and projects share one order (a sub-group may sit between projects).
+                ForEach(webChildren, id: \.self) { child in
+                    switch child {
+                    case .group(let id):
+                        if let nested = doc.group(id) { GroupRow(group: nested, actions: actions) }
+                    case .project(let id):
+                        if let project = doc.project(id) { ProjectRow(project: project, actions: actions) }
+                    }
                 }
-            }
-            .onMove(perform: metrics.isWebInterface ? nil : { source, destination in actions.reorder(in: .group(group.id), from: source, to: destination, visibleIDs: nil) })
-            .onInsert(of: metrics.isWebInterface ? [] : [.plainText]) { index, providers in
-                SidebarDrag.load(providers) { actions.insert($0, into: .group(group.id), at: metrics.isWebInterface ? actions.insertionIndex(index, in: .group(group.id), visibleIDs: projectIDs) : index) }
+            } else {
+                ForEach(doc.childGroups(of: group.id)) { child in
+                    GroupRow(group: child, actions: actions)
+                }
+                .onInsert(of: [.plainText]) { index, providers in
+                    SidebarDrag.load(providers) { actions.insertGroup($0, under: group.id, at: index) }
+                }
+                ForEach(projectIDs, id: \.self) { id in
+                    if let project = doc.project(id) {
+                        ProjectRow(project: project, actions: actions)
+                    }
+                }
+                .onMove { source, destination in actions.reorder(in: .group(group.id), from: source, to: destination, visibleIDs: nil) }
+                .onInsert(of: [.plainText]) { index, providers in
+                    SidebarDrag.load(providers) { actions.insert($0, into: .group(group.id), at: index) }
+                }
             }
         } label: {
             Label {
@@ -684,7 +701,7 @@ private struct SidebarTerminalRow: View {
         }
         .modifier(SidebarLabelAppearance(isGroup: false))
         .modifier(SidebarWebRow(kind: .terminal,
-            focused: actions.workspace.document.workspace.focusedPaneID == pane?.id))
+            focused: actions.workspace.document.workspace.focusedPaneID == pane?.id, project: project.id))
         .onHover { hovering = $0 }
         .tag(SidebarItem.tab(tab.id))
         .modifier(SidebarWebClick(single: { selectWebPane(individually: false) },
@@ -797,7 +814,7 @@ private struct SidebarFileRow: View {
             }
         }
         .modifier(SidebarWebRow(kind: .terminal,
-            focused: actions.workspace.document.workspace.focusedPaneID == pane.id))
+            focused: actions.workspace.document.workspace.focusedPaneID == pane.id, project: project.id))
         .modifier(SidebarWebDragSource(payload: SidebarDrag.payload(pane.id), name: pane.content.filePath ?? project.name))
         .onHover { hovering = $0 }
         .help(Text(verbatim: path))
