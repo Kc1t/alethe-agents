@@ -208,7 +208,7 @@ struct RightSidebar: View {
                     }
                 }
             }
-            .scrollIndicators(.hidden)
+            .scrollIndicators(.never)
             .scrollPosition($tabScroll)
             .onScrollGeometryChange(for: TabStripState.self) { geo in
                 TabStripState(offset: geo.contentOffset.x, content: geo.contentSize.width, visible: geo.visibleRect.width)
@@ -269,21 +269,6 @@ struct RightSidebar: View {
                 .help(Text("rightSidebar.web.mcpExpand"))
                 .accessibilityIdentifier("rightSidebar.maximize")
             }
-            Rectangle().fill(theme[.border])
-                .frame(width: metrics.size(1), height: metrics.size(14))
-                .padding(.horizontal, metrics.size(5))
-            Button {
-                environment.rightSidebarVisible = false
-            } label: {
-                Label { Text("rightSidebar.close") } icon: {
-                    Image(systemName: "sidebar.right")
-                        .resizable().scaledToFit()
-                        .frame(width: metrics.size(14), height: metrics.size(14))
-                }
-            }
-            .buttonStyle(AletheAnimatedRightSidebarTabStyle())
-            .help(Text("rightSidebar.close"))
-            .accessibilityIdentifier("rightSidebar.close")
         }
         .padding(.horizontal, metrics.size(10))
         .padding(.vertical, metrics.size(4))

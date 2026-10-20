@@ -52,6 +52,16 @@ struct SidebarDropRegion: Equatable, Sendable {
     let visual: CGRect
 }
 
+final class SidebarDropRegionStore {
+    var regions: [SidebarDropRegion] = []
+
+    func dropRegions(size: CGSize) -> [SidebarDropRegion] {
+        let bottom = regions.map(\.hit.maxY).max() ?? 0
+        let rect = CGRect(x: 0, y: bottom, width: size.width, height: max(0, size.height - bottom))
+        return regions + [SidebarDropRegion(target: .ungrouped, hit: rect, visual: rect)]
+    }
+}
+
 struct SidebarDropRegions: PreferenceKey {
     static let defaultValue: [SidebarDropRegion] = []
     static func reduce(value: inout [SidebarDropRegion], nextValue: () -> [SidebarDropRegion]) {
@@ -149,14 +159,10 @@ struct SidebarWebDropSurface: ViewModifier {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var state = SidebarWebDragState()
-    @State private var regions: [SidebarDropRegion] = []
+    /// Row frames change on every scroll tick; a plain reference keeps them out of SwiftUI's state so scrolling
+    /// does not re-render the list. The drop delegate reads them lazily.
+    @State private var store = SidebarDropRegionStore()
     @State private var size: CGSize = .zero
-
-    private var dropRegions: [SidebarDropRegion] {
-        let bottom = regions.map(\.hit.maxY).max() ?? 0
-        let rect = CGRect(x: 0, y: bottom, width: size.width, height: max(0, size.height - bottom))
-        return regions + [SidebarDropRegion(target: .ungrouped, hit: rect, visual: rect)]
-    }
 
     @ViewBuilder func body(content: Content) -> some View {
         if metrics.isWebInterface {
@@ -165,10 +171,10 @@ struct SidebarWebDropSurface: ViewModifier {
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
                 .environment(\.sidebarWebDrag, state)
                 .onPreferenceChange(SidebarDropRegions.self) { updated in
-                    let wasEnd = state.indicator.map { !regions.contains($0) && $0.target == .ungrouped } ?? false
-                    regions = updated
+                    let wasEnd = state.indicator.map { !store.regions.contains($0) && $0.target == .ungrouped } ?? false
+                    store.regions = updated
                     if let current = state.indicator {
-                        state.indicator = wasEnd ? dropRegions.last : updated.first { $0.target == current.target }
+                        state.indicator = wasEnd ? store.dropRegions(size: size).last : updated.first { $0.target == current.target }
                         if state.indicator == nil { state.edge = nil }
                     }
                 }
@@ -187,7 +193,7 @@ struct SidebarWebDropSurface: ViewModifier {
                 .overlay(alignment: .topLeading) {
                     if let region = state.indicator, state.edge == .inside {
                         RoundedRectangle(cornerRadius: metrics.radius(.sm))
-                            .fill(theme[.panelHover].opacity(region.target == .ungrouped && !regions.contains(region) ? 1 : 0))
+                            .fill(theme[.panelHover].opacity(region.target == .ungrouped && !store.regions.contains(region) ? 1 : 0))
                             .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm))
                                 .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
                             .frame(width: region.visual.width, height: region.visual.height)
@@ -197,7 +203,7 @@ struct SidebarWebDropSurface: ViewModifier {
                 }
                 .clipped()
                 .onDrop(of: SidebarDrag.webTypes, delegate: SidebarWebDropDelegate(
-                    state: state, regions: dropRegions, width: size.width, actions: actions, scrollStep: metrics.size(8)))
+                    state: state, store: store, size: size, width: size.width, actions: actions, scrollStep: metrics.size(8)))
                 .task {
                     state.watchCancellation()
                     // SwiftUI does not guarantee dropExited on Escape, release outside, or removal.
@@ -213,7 +219,8 @@ struct SidebarWebDropSurface: ViewModifier {
 
 private struct SidebarWebDropDelegate: DropDelegate {
     let state: SidebarWebDragState
-    let regions: [SidebarDropRegion]
+    let store: SidebarDropRegionStore
+    let size: CGSize
     let width: CGFloat
     let actions: SidebarActions
     let scrollStep: CGFloat
@@ -224,7 +231,7 @@ private struct SidebarWebDropDelegate: DropDelegate {
         let payload = state.source ?? info.itemProviders(for: SidebarDrag.webTypes).first?.suggestedName
         let source = payload.flatMap(SidebarDrag.parse)
         let files = info.hasItemsConforming(to: [.fileURL])
-        let candidates = regions.compactMap { region -> (SidebarDropRegion, Int)? in
+        let candidates = store.dropRegions(size: size).compactMap { region -> (SidebarDropRegion, Int)? in
             let rank: Int
             switch (source, region.target) {
             case (.project(let id), .project(let destination)):
