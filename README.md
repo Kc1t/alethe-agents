@@ -2,33 +2,35 @@
 
 <br />
 <div align="center">
-  <a href="https://github.com/Kc1t/alethe-agents">
+  <a href="https://github.com/Kc1t/alethe-agents-mac">
     <img src="./src/assets/theme-icons/elite-indigo.png" alt="Alethe Logo" width="160">
   </a>
 
-  <h1 align="center">Alethe</h1>
+  <h1 align="center">Alethe <sup>Mac Version</sup></h1>
 
   <p align="center">
-    <b>The multi-agent coding workspace.</b>
+    <b>The multi-agent coding workspace, native on macOS.</b>
     <br />
-    Run Claude Code, Codex, Copilot and your shells side by side — in one local-first desktop app.
+    Run Claude Code, Codex, Copilot and your shells side by side — in one local-first Mac app.
   </p>
 
   <p align="center">
-    <a href="https://github.com/Kc1t/alethe-agents/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Kc1t/alethe-agents/ci.yml?branch=main&label=ci&style=flat-square"></a>
-    <a href="https://github.com/Kc1t/alethe-agents/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/Kc1t/alethe-agents?style=flat-square"></a>
-    <a href="https://github.com/Kc1t/alethe-agents/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Kc1t/alethe-agents?style=flat-square"></a>
-    <a href="https://github.com/Kc1t/alethe-agents/graphs/contributors"><img alt="Contributors" src="https://img.shields.io/github/contributors/Kc1t/alethe-agents?style=flat-square"></a>
-    <a href="https://github.com/Kc1t/alethe-agents/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Kc1t/alethe-agents?style=flat-square"></a>
-    <a href="https://github.com/Kc1t/alethe-agents/issues"><img alt="Open issues" src="https://img.shields.io/github/issues/Kc1t/alethe-agents?style=flat-square"></a>
+    <img alt="Platform: macOS 26 or later" src="https://img.shields.io/badge/platform-macOS%2026%2B-lightgrey?style=flat-square&logo=apple&logoColor=white">
+    <img alt="Built with Swift 6 and SwiftUI" src="https://img.shields.io/badge/swift-6%20%C2%B7%20SwiftUI-orange?style=flat-square&logo=swift&logoColor=white">
+    <a href="./LICENSE"><img alt="License: AGPL-3.0-or-later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat-square"></a>
+    <a href="https://github.com/Kc1t/alethe-agents"><img alt="Windows and Linux live in Kc1t/alethe-agents" src="https://img.shields.io/badge/windows%20%26%20linux-Kc1t%2Falethe--agents-8957e5?style=flat-square"></a>
   </p>
 
   <p align="center">
-    <a href="https://github.com/Kc1t/alethe-agents/releases">Download</a>
+    <a href="#install">Install</a>
     ·
-    <a href="https://github.com/Kc1t/alethe-agents/issues/new?labels=bug">Report Bug</a>
+    <a href="#run-from-source">Build from source</a>
     ·
-    <a href="https://github.com/Kc1t/alethe-agents/issues/new?labels=enhancement">Request Feature</a>
+    <a href="https://github.com/Kc1t/alethe-agents">Windows &amp; Linux ↗</a>
+    ·
+    <a href="https://github.com/Kc1t/alethe-agents-mac/issues/new?labels=bug">Report Bug</a>
+    ·
+    <a href="https://github.com/Kc1t/alethe-agents-mac/issues/new?labels=enhancement">Request Feature</a>
     ·
     <a href="./SECURITY.md">Security</a>
     ·
@@ -38,15 +40,24 @@
   </p>
 </div>
 
+> [!NOTE]
+> **This is the Mac version of Alethe** — a native app written in Swift and SwiftUI, with libghostty terminals.
+> **Looking for Windows or Linux?** Those builds live in a separate repository:
+> **[Kc1t/alethe-agents](https://github.com/Kc1t/alethe-agents)** · [Downloads](https://github.com/Kc1t/alethe-agents/releases).
+> Both apps are the same product and share the same data model. This one follows the Windows/Linux app as its
+> baseline, and everything it does differently on purpose is listed in
+> [`AletheNative/DIVERGENCES.md`](AletheNative/DIVERGENCES.md).
+
 > [!IMPORTANT]
-> Alethe is an early public release. The desktop app is free, open source, and local-first, not
-> local-only: update checks and provider usage polling are on by default, while other network features
-> are optional or action-triggered. Manual GitHub Gist Sync is already available; first-party hosted
-> sync or cloud backup may be offered separately later. See the
-> [privacy and data-flow guide](./docs/PRIVACY.md).
+> The Mac version is in active development and has **no public release yet**: build it from source (see
+> [Run From Source](#run-from-source)). It is free, open source, and local-first, not local-only: network features such
+> as provider usage and GitHub Gist Sync are optional or action-triggered, and the Mac app has no update checker yet.
+> See the [privacy and data-flow guide](./docs/PRIVACY.md) (written for the shared product).
 
 <div align="center">
   <img src="./docs/assets/alethe-preview.gif" alt="Alethe multi-agent coding workspace preview" width="760">
+  <br />
+  <sub>Preview of the shared interface.</sub>
 </div>
 
 ## What Alethe Is
@@ -60,35 +71,41 @@ project layout, keeps its own session and history, and stays alive when you rear
 of that, Alethe manages the things agents share: their CLIs, their MCP servers, their skills, and the
 conversations you move between them.
 
-Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, React, and `xterm.js`.
-“Local-first” describes workspace persistence, not an internet-free guarantee; see
-[`docs/PRIVACY.md`](./docs/PRIVACY.md) for current network defaults, credentials, and retention.
+This repository is the **Mac version**: a native macOS app built with Swift 6, SwiftUI, AppKit, and libghostty. The
+**Windows and Linux version** — built with Tauri, Rust, React, and `xterm.js` — lives in its own repository,
+[Kc1t/alethe-agents](https://github.com/Kc1t/alethe-agents). “Local-first” describes workspace persistence, not an internet-free guarantee; see
+[`docs/PRIVACY.md`](./docs/PRIVACY.md) for network defaults, credentials, and retention.
 
-## Supported Platforms
+## Platforms
+
+Alethe is one product in two repositories. **macOS is this repository**; Windows and Linux are in
+[Kc1t/alethe-agents](https://github.com/Kc1t/alethe-agents).
 
 <table>
   <tr>
-    <th width="33.33%">macOS</th>
-    <th width="33.33%">Windows</th>
-    <th width="33.33%">Linux</th>
+    <th width="33.33%">macOS · <i>this repository</i></th>
+    <th width="33.33%">Windows · <a href="https://github.com/Kc1t/alethe-agents">other repository ↗</a></th>
+    <th width="33.33%">Linux · <a href="https://github.com/Kc1t/alethe-agents">other repository ↗</a></th>
   </tr>
   <tr>
     <td align="center">
-      <img src="./docs/screenshots/alethe-macos.png" alt="Alethe running on macOS" width="100%">
+      <img src="./docs/screenshots/alethe-macos.png" alt="Alethe on macOS" width="100%">
     </td>
     <td align="center">
-      <img src="./docs/screenshots/alethe-windows.png" alt="Alethe running on Windows" width="100%">
+      <a href="https://github.com/Kc1t/alethe-agents"><img src="./docs/screenshots/alethe-windows.png" alt="Alethe on Windows" width="100%"></a>
     </td>
     <td align="center">
-      <img src="./docs/screenshots/alethe-linux.png" alt="Alethe running on Linux" width="100%">
+      <a href="https://github.com/Kc1t/alethe-agents"><img src="./docs/screenshots/alethe-linux.png" alt="Alethe on Linux" width="100%"></a>
     </td>
   </tr>
   <tr>
-    <td align="center">Available on macOS</td>
-    <td align="center">Available on Windows</td>
-    <td align="center">Available on Linux</td>
+    <td align="center">Native Mac app — you are here</td>
+    <td align="center"><a href="https://github.com/Kc1t/alethe-agents/releases">Get Alethe for Windows ↗</a></td>
+    <td align="center"><a href="https://github.com/Kc1t/alethe-agents/releases">Get Alethe for Linux ↗</a></td>
   </tr>
 </table>
+
+<sub>The screenshots show the shared interface; the Mac app is built to match it.</sub>
 
 ## Agents
 
@@ -104,13 +121,12 @@ Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, Rea
 | **Mimo** | `mimo` | |
 | **Freebuff** | `freebuff` | |
 | **Shell** | pwsh / bash / zsh | The plain terminal, same pane model |
-| **WSL** | `wsl.exe` | The default distro, as a plain shell (Windows) |
+| **WSL** | `wsl.exe` | Windows only — see [Kc1t/alethe-agents](https://github.com/Kc1t/alethe-agents) |
 
-Missing CLIs can be installed, updated, and uninstalled from inside Alethe — it probes the machine
-for Node, npm, WinGet, Scoop, and Chocolatey and offers only the methods that actually work there,
-preferring each vendor's official installer. Already-installed CLIs are discovered across PATH,
-registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed at a custom path.
-A plugin can add an agent of its own to this list.
+Missing CLIs can be installed, updated, and uninstalled from inside Alethe, using each vendor's own macOS
+instructions (an install script, Homebrew, or npm). Already-installed CLIs are discovered on `PATH` and in the usual
+npm-global, nvm, Volta, and mise locations, and can be pointed at a custom path in Settings. Custom agents can be
+added in Settings too.
 
 Agents can optionally be routed through [9router](https://github.com/decolua/9router), a local proxy
 that spreads traffic across providers with automatic fallback. Alethe installs and runs a private,
@@ -149,35 +165,11 @@ only to terminals opened after it is switched on.
 
 **Extend it with plugins**
 
-- Features load as **plugins**, not hard-wired code. Official ones — Todo List, Git Control, Theme
-  Pack — ship inside the installer and can be switched off in Preferences ▸ Plugins, with their
-  surfaces appearing and disappearing without a restart.
-- A plugin can contribute a workspace pane, a sidebar tab, a command palette entry, a full theme, or
-  a new agent provider. It declares what it needs in its manifest, and the app refuses anything it
-  did not ask for.
-- **Plugin catalogue**: plugins published by other people are listed inside Alethe with their
-  permissions spelled out, and a listing that ships a package installs — and updates — in one click.
-  The index pins every package to a SHA-256 checksum, so what runs is what the listing was reviewed
-  against. An installed plugin arrives switched off and goes through a trust dialog before it runs.
-
-**Publishing a plugin**
-
-A plugin is a folder whose name matches the `id` in its `plugin.json`, next to a `main.js` bundle
-that binds against `window.alethe` (React included — never bundle your own). The manifest declares
-the tabs, commands and capabilities; the code implements them.
-
-1. **Try it locally.** Drop the folder into `<profile>/plugins/<id>/`, or use Preferences ▸ Plugins
-   ▸ *Import plugin*. It arrives switched off — enabling it goes through the trust dialog.
-2. **Ship a zip.** Zip the plugin folder, take its SHA-256, and attach it to a release:
-   `zip -r my-plugin.zip my-plugin && sha256sum my-plugin.zip`.
-3. **Get it listed.** Open a pull request against this repository adding one entry to
-   [`plugins.json`](plugins.json) with `id`, `name`, `downloadUrl` and — to make it installable from
-   inside Alethe — `package.url` and `package.sha256`. Re-hash whenever the zip changes.
-4. Once merged, the listing reaches everyone within six hours, or immediately on *Refresh*.
-
-Listing is a human reading your pull request, not an audit: the plugin still arrives disabled and
-still goes through the trust dialog. `docs/examples/notes-plugin/` is a working plugin in plain
-JavaScript with no build step; the [plugin guide](docs/PLUGINS.md) has the full contract.
+- Features load as **plugins**, not hard-wired code. The official ones — Todo List, Git Control, Theme Pack — are
+  built in and can be switched off in Settings, with their surfaces appearing and disappearing without a restart.
+- Third-party plugins use Apple's ExtensionKit. The JavaScript plugin format of the Windows/Linux app is **not**
+  supported on the Mac; how to build and publish those plugins is covered in the
+  [Windows/Linux plugin guide](https://github.com/Kc1t/alethe-agents/blob/main/docs/PLUGINS.md).
 
 **Stay in control**
 
@@ -195,15 +187,14 @@ JavaScript with no build step; the [plugin guide](docs/PLUGINS.md) has the full 
 - **Orchestration board**: a lead agent delegates units of work to Claude and Codex workers that
   Alethe runs in parallel — each optionally in its own git worktree, each reporting status, cost,
   tokens and diff on its card, and each able to ask you before it leaves its sandbox. Off by default.
-- **Local voice dictation** with an on-device model, and **cloud sync** of your preferences through
-  a GitHub sign-in — both optional.
+- **Voice dictation** with Apple's on-device speech recognition, and manual **GitHub Gist Sync** of your
+  preferences — both optional. First-party cloud sync is not part of the Mac version.
 - **Remote Control**: an authenticated LAN web view, paired by QR code, to follow and answer agents
   from your phone. It is off by default and uses unencrypted HTTP/WebSocket transport on the LAN, so
   enable it only on a trusted network. Clean profiles are read-only; answering agents requires a
   separate input opt-in, and shell input has its own additional opt-in.
-- Spotify Now Playing, using your own Spotify app credentials in **Preferences ▸ Spotify** with
-  `http://127.0.0.1:8888/callback` as the redirect URI. Current releases store those credentials in
-  local profile files; see the privacy guide before exporting or sharing profile data.
+- Spotify Now Playing, using your own Spotify app credentials in **Settings** with
+  `http://127.0.0.1:8888/callback` as the redirect URI. The secrets are kept in the macOS Keychain.
 
 ## Core Concepts
 
@@ -224,57 +215,48 @@ experience. Coherence over volume.
 
 ## Install
 
-Use the published installers from [Releases](https://github.com/Kc1t/alethe-agents/releases).
+The Mac version has **no public release yet**: builds are not notarized, and the first public DMG is on the
+[roadmap](#roadmap). For now, [build it from source](#run-from-source).
 
-> [!WARNING]
-> Windows builds are **not code-signed yet**, so Defender may flag `alethe.exe` as
-> `Trojan:Win32/Bearfoos.A!ml` and quarantine it. The `!ml` suffix denotes a machine-learning
-> heuristic rather than a publisher signature, and terminal-multiplexer behavior such as spawning
-> child processes and creating PTYs can produce false positives. Verify that the download came from
-> the official Releases page; do not bypass a warning for an artifact from another source.
-
-To recover it: **Windows Security → Virus & threat protection → Protection history → Actions →
-Restore**, then add an exclusion for `%LOCALAPPDATA%\Alethe` (and `src-tauri/target` if you build
-from source). Reports of incorrect detection go to
-[Microsoft Security Intelligence](https://www.microsoft.com/wdsi/filesubmission).
-
-macOS builds are not notarized yet either, so Gatekeeper may refuse to open the app or report it as
-damaged. Until notarization lands, move `Alethe.app` to `/Applications` and clear the quarantine flag:
+A build that is not notarized may be blocked by Gatekeeper, which can refuse to open the app or report it as damaged.
+Move `Alethe.app` to `/Applications` and clear the quarantine flag:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Alethe.app
 ```
 
-Prefix it with `sudo` if macOS asks for permission. Repeat it after installing each new version,
-since every fresh download is quarantined again. Only do this for a build downloaded from the
-official Releases page. Signing and notarization are on the [roadmap](#roadmap).
+Prefix it with `sudo` if macOS asks for permission, and repeat it after installing each new version, since every fresh
+download is quarantined again. Only do this for a build you made yourself or downloaded from this repository's
+Releases page.
+
+> [!NOTE]
+> **Windows or Linux?** Those installers are published in
+> [Kc1t/alethe-agents → Releases](https://github.com/Kc1t/alethe-agents/releases), together with the Windows Defender notes.
 
 ## Run From Source
 
-```sh
-git clone https://github.com/Kc1t/alethe-agents.git
-cd alethe-agents
-npm install
-npm run app
-```
-
-Requirements: Node.js 18+, Rust stable, Visual Studio Build Tools on Windows, Tauri system
-dependencies on Linux:
+Requirements: macOS 26 or later, Xcode 27 (Swift 6.4), [Zig](https://ziglang.org) 0.16, and Xcode's Metal Toolchain
+(`xcodebuild -downloadComponent MetalToolchain`).
 
 ```sh
-sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+git clone https://github.com/Kc1t/alethe-agents-mac.git
+cd alethe-agents-mac/AletheNative
+Vendor/ghostty/build.sh   # builds libghostty into Vendor/GhosttyKit (once; about 40 MB, git-ignored)
+Scripts/build.sh Debug    # → build/DerivedData/Build/Products/Debug/Alethe.app
+open build/DerivedData/Build/Products/Debug/Alethe.app
 ```
 
 ```sh
-npm run app          # desktop app with hot reload
-npm run dev          # frontend only
-npm run build        # typecheck + build frontend
-npm run tauri build  # installers → src-tauri/target/release/bundle/
+Scripts/test.sh           # string-catalog gate, divergence registry, package tests, and a build
+Scripts/make-dmg.sh       # a DMG (not notarized) → build/Alethe-macOS-universal.dmg
 ```
+
+Building the Windows or Linux app from source is covered in
+[Kc1t/alethe-agents](https://github.com/Kc1t/alethe-agents#run-from-source).
 
 ## Terminal Command
 
-Install the `alethe` command from **Settings ▸ Integrations ▸ Terminal command**:
+Install the `alethe` command from **Settings** (*Terminal command*):
 
 ```bash
 alethe                # opens the current folder as a project
@@ -282,27 +264,27 @@ alethe ~/some/project # opens the given folder
 ```
 
 If the folder is already a project, it is brought into the workspace instead of duplicated. If Alethe
-is already running, the existing window is focused. The command lands in `~/.local/bin/alethe`
-(macOS/Linux) or `%LOCALAPPDATA%\Alethe\bin\alethe.cmd` (Windows) — reinstall it after moving the app.
+is already running, the existing window is focused. The command lands in `~/.local/bin/alethe` — reinstall it
+after moving the app.
 
 ## Roadmap
 
-- [x] Multi-agent workspace with projects, groups, containers, and sub-tabs.
-- [x] Real PTYs with spawn, attach, resize, scrollback, and session resume.
-- [x] Agent install/update/uninstall, MCP and skills management.
-- [x] Releases for Windows, Linux, and macOS.
-- [ ] Windows release signing and macOS notarization.
-- [ ] Broader Linux/macOS validation on real machines.
-- [ ] First-party hosted cloud sync/backup (manual GitHub Gist Sync is already available).
+- [x] Native macOS app: libghostty terminals, projects, groups, containers, and sub-tabs.
+- [x] Session resume, agent install/update, MCP and skills management, Git, PR review, orchestration board, and remote control.
+- [ ] Full parity with the Windows/Linux interface — see the [parity matrix](docs/MAC_NATIVE_V2_PLAN.md) (§8).
+- [ ] Triage of the Windows/Linux changes since the last reviewed baseline ([`AletheNative/upstream-reports/`](AletheNative/upstream-reports/)).
+- [ ] Notarized public release (DMG) and in-app updates (Sparkle).
 
 ## Contributing
 
 Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup, project layout, and
 house rules. The easiest ways to help:
 
-- Pick an issue labeled [`good first issue`](https://github.com/Kc1t/alethe-agents/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or [`help wanted`](https://github.com/Kc1t/alethe-agents/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) — comment to claim it.
-- Report a bug with clear reproduction steps, or request a feature with the workflow it improves.
-- Improve docs, screenshots, and platform validation — Linux and macOS are the least tested.
+- Pick an [open issue](https://github.com/Kc1t/alethe-agents-mac/issues), report a bug with clear reproduction steps, or request a feature with the workflow it improves.
+- Improve docs, add native screenshots (the ones above show the shared interface), and test on different Macs and macOS versions.
+- Anything the Mac app does that the Windows/Linux app does not must be registered in
+  [`AletheNative/DIVERGENCES.md`](AletheNative/DIVERGENCES.md) — see the rule in [`CLAUDE.md`](CLAUDE.md).
+- Windows and Linux contributions belong in [Kc1t/alethe-agents](https://github.com/Kc1t/alethe-agents).
 
 For larger changes, open an issue first so the direction can be discussed.
 
@@ -363,7 +345,8 @@ https://github.com/user-attachments/assets/ae3aed75-2ead-43c4-a9ca-fd29d83b7e1d
 
 ## Contributors
 
-Thanks to everyone helping shape Alethe.
+Thanks to everyone helping shape Alethe. The native macOS app grew from the `mac-native-v2` branch started by
+[HayatoG](https://github.com/HayatoG); the contributors below shaped the product it follows.
 
 <p align="center">
 
@@ -426,5 +409,7 @@ the Alethe brand requires prior written permission from Kauã Miguel. See
 - Security reports: [`SECURITY.md`](SECURITY.md)
 - Privacy and data flows: [`docs/PRIVACY.md`](docs/PRIVACY.md)
 - Maintainer: [Kc1t](https://github.com/Kc1t)
-- Project: <https://github.com/Kc1t/alethe-agents>
-- Bugs and feature requests: <https://github.com/Kc1t/alethe-agents/issues>
+- Mac version (this repository): <https://github.com/Kc1t/alethe-agents-mac>
+- Windows and Linux version: <https://github.com/Kc1t/alethe-agents>
+- Mac bugs and feature requests: <https://github.com/Kc1t/alethe-agents-mac/issues>
+- Windows/Linux bugs and feature requests: <https://github.com/Kc1t/alethe-agents/issues>
