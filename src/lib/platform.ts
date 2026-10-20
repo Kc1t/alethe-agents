@@ -24,9 +24,31 @@ export function normalizeCwd(path: string): string {
   return unprefixed
 }
 
+type ModifierState = { ctrlKey: boolean; metaKey: boolean }
+
+/**
+ * The modifier that owns app shortcuts: Cmd on macOS, Ctrl elsewhere. On macOS a physical Ctrl
+ * chord belongs to the focused terminal (^C, ^W, ^E, ^V…) and Cmd+Ctrl chords belong to the OS,
+ * so neither counts. Elsewhere the Windows/Super key keeps counting as Ctrl, as it always has.
+ */
+export function isPrimaryModifier(event: ModifierState, mac: boolean = isMacOS()): boolean {
+  if (mac) return event.metaKey && !event.ctrlKey
+  return event.ctrlKey || event.metaKey
+}
+
+/**
+ * The modifier for shortcuts that stay on Ctrl on every platform, such as Ctrl+Tab: on macOS
+ * Cmd+Tab is the system app switcher.
+ */
+export function isControlModifier(event: ModifierState, mac: boolean = isMacOS()): boolean {
+  if (mac) return event.ctrlKey && !event.metaKey
+  return event.ctrlKey || event.metaKey
+}
+
 export function formatShortcut(shortcut: string, mac: boolean = isMacOS()): string {
   if (!mac) return shortcut
   return shortcut
+    .replace(/Ctrl\+(?=(?:Shift\+)?Tab\b)/gi, '⌃')
     .replace(/Ctrl\+/gi, '⌘')
     .replace(/Shift\+/gi, '⇧')
     .replace(/Alt\+/gi, '⌥')

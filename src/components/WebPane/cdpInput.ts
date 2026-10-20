@@ -1,3 +1,4 @@
+import { isControlModifier, isMacOS, isPrimaryModifier } from '../../lib/platform'
 import type { BrowserKeyInput, BrowserMouseInput } from '../../lib/tauri'
 
 const ALT = 1
@@ -105,8 +106,14 @@ export function toKeyInput(kind: BrowserKeyInput['kind'], event: KeySource): Bro
  * Keys that belong to Alethe rather than to the page. Without this the pane swallows the shortcuts
  * that move between panes, and the only way out is the mouse.
  */
-export function isAppShortcut(event: ModifierSource & { key: string }): boolean {
+export function isAppShortcut(
+  event: ModifierSource & { key: string },
+  mac: boolean = isMacOS(),
+): boolean {
   if (event.key === 'Escape') return true
-  if (!event.ctrlKey && !event.metaKey) return false
-  return ['Tab', 'w', 'W', 't', 'T', 'n', 'N', ',', 'k', 'K'].includes(event.key)
+  // Ctrl+Tab stays on Ctrl on macOS; any other physical Ctrl chord there is the page's own
+  // (Ctrl+K, Ctrl+N… are text-editing keys in macOS fields).
+  if (event.key === 'Tab') return isControlModifier(event, mac)
+  if (!isPrimaryModifier(event, mac)) return false
+  return ['w', 'W', 't', 'T', 'n', 'N', ',', 'k', 'K'].includes(event.key)
 }

@@ -40,6 +40,11 @@ Mac synced through: `v1.7.0` (`80e44a3`)
   - Files: `src/components/modals/MemoryAnalyticsModal.tsx`, `src-tauri/src/leftover_processes.rs`
 - `skip (Windows Job Objects; macOS terminals already end their process group)` · `platform` · Terminals run in a per-PTY Job Object so killing one ends orphaned descendants
   - Files: `src-tauri/src/process_tree.rs`
+- `skip (Tauri macOS build only; the Swift app has its own window, menu, dialogs and process environment)` · `platform` · fix(macos): run the Tauri build on macOS
+  - Files: `src-tauri/tauri.macos.conf.json`, `src-tauri/src/login_env.rs`, `src-tauri/src/macos_menu.rs`
+- `pending` · `contract` · fix(sync): require a configured Cloud sync server
+  - Files: `src-tauri/src/cloud_sync.rs`, `.env.example`
+  - Contract: the sync server URL comes from `ALETHE_SYNC_SERVER`; there is no `127.0.0.1:8787` default
 - `pending` · `contract` · MCP servers and skills saved per account and per project, carried by sync
   - Files: `src/lib/toolingManifest.ts`, `src/lib/toolingNotice.ts`, `src/components/ToolingManifestPanel/`
   - Contract: new tooling manifest in the synced payload; secret env and header values are never stored

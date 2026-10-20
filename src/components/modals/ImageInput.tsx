@@ -1,6 +1,7 @@
 import { Upload, X } from 'lucide-react'
 import { useRef } from 'react'
 
+import { showMessage } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import controls from './controls.module.css'
 
@@ -35,11 +36,11 @@ export function ImageInput({
   const onFileChange = async (file: File | undefined) => {
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      window.alert(t('image.mustBeImage'))
+      void showMessage(t('image.mustBeImage'), { kind: 'error' })
       return
     }
     if (file.size > MAX_IMAGE_BYTES) {
-      window.alert(t('image.tooLarge'))
+      void showMessage(t('image.tooLarge'), { kind: 'error' })
       return
     }
 

@@ -21,11 +21,6 @@ body {
   overflow: hidden;
 }
 
-[data-platform='macos'],
-[data-platform='macos'] body {
-  background: transparent;
-}
-
 button {
   font: inherit;
   color: inherit;

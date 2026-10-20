@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 
 import { splitCustomCliCommand } from './customAgents'
+import { isWindows } from './platform'
 import { ContributionList, useContributions } from './plugins/registry'
 import {
   AGENT_TYPE_LABELS,
@@ -45,15 +46,28 @@ export function findAgentProvider(id: AgentType): AgentProviderContribution | un
   return agentProviderContributions.get(id)
 }
 
+/**
+ * Whether new terminals of this type can run on this OS. WSL exists only on Windows. A WSL
+ * terminal that arrives through sync stays a known type; it just is not offered in pickers.
+ */
+export function isAgentTypeAvailable(id: AgentType, windows: boolean = isWindows()): boolean {
+  return id !== 'wsl' || windows
+}
+
 /** Built-ins first, then contributed providers in registration order. */
 export function allAgentTypes(): AgentType[] {
-  return [...ALL_AGENT_TYPES, ...agentProviderContributions.all().map((provider) => provider.id)]
+  return [
+    ...ALL_AGENT_TYPES,
+    ...agentProviderContributions.all().map((provider) => provider.id),
+  ].filter((id) => isAgentTypeAvailable(id))
 }
 
 /** Reactive `allAgentTypes()` — re-renders when a plugin adds or removes a provider. */
 export function useAgentTypes(): AgentType[] {
   const contributed = useContributions(agentProviderContributions)
-  return [...ALL_AGENT_TYPES, ...contributed.map((provider) => provider.id)]
+  return [...ALL_AGENT_TYPES, ...contributed.map((provider) => provider.id)].filter((id) =>
+    isAgentTypeAvailable(id),
+  )
 }
 
 export function agentLabel(id: AgentType): string {

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  createWheelScrollAccumulator,
   formatDroppedPaths,
   getTerminalScrollbackRows,
-  getWheelScrollLines,
+  getWheelScrollStep,
   normalizePastedText,
   shouldScrollHostScrollback,
 } from './terminalInput'
@@ -14,16 +15,78 @@ describe('normalizePastedText', () => {
   })
 })
 
-describe('getWheelScrollLines', () => {
-  it('always scrolls at least one line for pixel wheel events', () => {
-    expect(getWheelScrollLines({ deltaMode: 0, deltaY: 1 }, 18)).toBe(1)
-    expect(getWheelScrollLines({ deltaMode: 0, deltaY: -1 }, 18)).toBe(-1)
+describe('getWheelScrollStep', () => {
+  it('carries sub-line pixel deltas instead of rounding each one up to a line', () => {
+    expect(getWheelScrollStep({ deltaMode: 0, deltaY: 1 }, 18)).toEqual({
+      lines: 0,
+      remainderPx: 1,
+    })
+    expect(getWheelScrollStep({ deltaMode: 0, deltaY: 10 }, 18, 10)).toEqual({
+      lines: 1,
+      remainderPx: 2,
+    })
   })
 
   it('preserves larger wheel intent across delta modes', () => {
-    expect(getWheelScrollLines({ deltaMode: 0, deltaY: 40 }, 20)).toBe(2)
-    expect(getWheelScrollLines({ deltaMode: 1, deltaY: 3 }, 20)).toBe(3)
-    expect(getWheelScrollLines({ deltaMode: 2, deltaY: -1 }, 20)).toBe(-10)
+    expect(getWheelScrollStep({ deltaMode: 0, deltaY: 40 }, 20).lines).toBe(2)
+    expect(getWheelScrollStep({ deltaMode: 1, deltaY: 3 }, 20).lines).toBe(3)
+    expect(getWheelScrollStep({ deltaMode: 2, deltaY: -1 }, 20).lines).toBe(-10)
+  })
+
+  it('leaves line and page deltas untouched and drops any carried remainder', () => {
+    expect(getWheelScrollStep({ deltaMode: 1, deltaY: 3 }, 20, 15)).toEqual({
+      lines: 3,
+      remainderPx: 0,
+    })
+    expect(getWheelScrollStep({ deltaMode: 2, deltaY: 1 }, 20, 15)).toEqual({
+      lines: 10,
+      remainderPx: 0,
+    })
+  })
+
+  it('starts over when the scroll direction reverses', () => {
+    expect(getWheelScrollStep({ deltaMode: 0, deltaY: -5 }, 18, 17)).toEqual({
+      lines: 0,
+      remainderPx: -5,
+    })
+  })
+
+  it('ignores events without vertical movement', () => {
+    expect(getWheelScrollStep({ deltaMode: 0, deltaY: 0 }, 18, 7)).toEqual({
+      lines: 0,
+      remainderPx: 7,
+    })
+  })
+})
+
+describe('createWheelScrollAccumulator', () => {
+  it('scrolls a trackpad momentum burst by its real distance, not one line per event', () => {
+    const wheel = createWheelScrollAccumulator()
+    let lines = 0
+    for (let i = 0; i < 36; i += 1) lines += wheel.next({ deltaMode: 0, deltaY: 2 }, 18)
+    // 36 events × 2px = 72px = 4 lines of 18px (the old rounding scrolled 36 lines).
+    expect(lines).toBe(4)
+  })
+
+  it('scrolls upwards the same way', () => {
+    const wheel = createWheelScrollAccumulator()
+    let lines = 0
+    for (let i = 0; i < 9; i += 1) lines += wheel.next({ deltaMode: 0, deltaY: -4 }, 18)
+    expect(lines).toBe(-2)
+  })
+
+  it('keeps each terminal’s remainder separate', () => {
+    const first = createWheelScrollAccumulator()
+    const second = createWheelScrollAccumulator()
+    expect(first.next({ deltaMode: 0, deltaY: 12 }, 18)).toBe(0)
+    expect(second.next({ deltaMode: 0, deltaY: 12 }, 18)).toBe(0)
+    expect(first.next({ deltaMode: 0, deltaY: 12 }, 18)).toBe(1)
+  })
+
+  it('keeps mouse-wheel line steps exact', () => {
+    const wheel = createWheelScrollAccumulator()
+    expect(wheel.next({ deltaMode: 1, deltaY: 3 }, 18)).toBe(3)
+    expect(wheel.next({ deltaMode: 1, deltaY: -3 }, 18)).toBe(-3)
   })
 })
 

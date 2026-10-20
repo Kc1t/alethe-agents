@@ -2,7 +2,7 @@ import { Loader2, Mic, MicOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
-import { formatShortcut } from '../../lib/platform'
+import { formatShortcut, isPrimaryModifier } from '../../lib/platform'
 import { DEFAULT_SPEECH_MODEL_ID } from '../../lib/speech/audio'
 import { speechStartCapture, speechStopCapture, stopAndTranscribe, writePty } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -23,8 +23,8 @@ function activePtyId(): string | null {
 }
 
 function isDictationChord(e: KeyboardEvent): boolean {
-  const ctrl = e.ctrlKey || e.metaKey
-  return ctrl && !e.altKey && !e.shiftKey && (e.key === 'e' || e.key === 'E')
+  // Cmd+E on macOS: physical Ctrl+E is end-of-line in the terminal.
+  return isPrimaryModifier(e) && !e.altKey && !e.shiftKey && (e.key === 'e' || e.key === 'E')
 }
 
 /**

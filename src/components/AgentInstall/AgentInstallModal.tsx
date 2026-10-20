@@ -35,6 +35,7 @@ type Props = {
 const METHOD_LABEL_KEY = {
   native: 'agentInstall.method.native',
   npm: 'agentInstall.method.npm',
+  brew: 'agentInstall.method.brew',
   winget: 'agentInstall.method.winget',
   scoop: 'agentInstall.method.scoop',
   choco: 'agentInstall.method.choco',

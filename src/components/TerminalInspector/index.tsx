@@ -17,9 +17,10 @@ import { type ReactNode, useMemo, useState } from 'react'
 
 import { relaunchAgentPty } from '../../lib/agentRelaunch'
 import { graphifyRepoOf } from '../../lib/claudeMcpConfigs'
+import { confirmAction, showMessage } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import type { SubTab, Terminal } from '../../lib/types'
 import { getPtyCwd, openInBrowser, openInFileExplorer, openInVscode } from '../../lib/tauri'
+import type { SubTab, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -104,13 +105,15 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
   const openWithCwd = async (action: (path: string) => Promise<void>, label: string) => {
     const path = await resolveCwd()
     if (!path) {
-      window.alert(t('ui.terminal.noCwdAvailable', { label }))
+      await showMessage(t('ui.terminal.noCwdAvailable', { label }), { kind: 'warning' })
       return
     }
     try {
       await action(path)
     } catch (err) {
-      window.alert(t('ui.terminal.openFailed', { label, error: String(err) }))
+      await showMessage(t('ui.terminal.openFailed', { label, error: String(err) }), {
+        kind: 'error',
+      })
     }
   }
 
@@ -135,8 +138,9 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),
       )
     } catch (err) {
-      window.alert(
+      await showMessage(
         t('ui.terminal.openFailed', { label: t('ui.terminal.restart'), error: String(err) }),
+        { kind: 'error' },
       )
     }
   }
@@ -146,9 +150,9 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
     if (isFocusMode) setFocusedTerminal(null)
   }
 
-  const onDeletePane = () => {
+  const onDeletePane = async () => {
     const key = isWebPane ? 'webPane.confirmClose' : 'ui.markdown.confirmClose'
-    if (!window.confirm(t(key, { name: terminal.name }))) return
+    if (!(await confirmAction(t(key, { name: terminal.name })))) return
     deleteTerminal(projectId, terminal.id)
     if (isFocusMode) setFocusedTerminal(null)
   }

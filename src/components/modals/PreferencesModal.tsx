@@ -18,9 +18,11 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { isAgentTypeAvailable } from '../../lib/agentProviders'
 import { useT } from '../../lib/i18n'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { setSectionCollapsed } from '../../lib/settingsSections'
+import type { AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ErrorBoundary } from '../ErrorBoundary'
@@ -404,7 +406,11 @@ export function PreferencesModal() {
   const avatarUrl = getProfileImageUrl(preferences)
   const displayName = preferences.displayName || t('profile.fallbackName')
   const initial = getProfileInitial(displayName)
-  const enabledCount = Object.values(preferences.enabledAgents).filter(Boolean).length
+  // WSL stays enabled in saved preferences on macOS and Linux but cannot be used there, so it must
+  // not count towards keeping at least one agent enabled.
+  const enabledCount = Object.entries(preferences.enabledAgents).filter(
+    ([id, enabled]) => enabled && isAgentTypeAvailable(id as AgentType),
+  ).length
 
   useEffect(() => {
     if (!open) return

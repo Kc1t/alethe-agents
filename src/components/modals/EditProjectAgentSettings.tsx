@@ -2,10 +2,11 @@ import { AlertTriangle, CircleCheck, GitBranch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useGsdSyncFeatureEnabled } from '../../hooks/useGsdSyncSessions'
+import { agentLabel, isAgentEnabled, useAgentTypes } from '../../lib/agentProviders'
+import { confirmAction } from '../../lib/dialog'
 import { readableError } from '../../lib/errors'
 import { useT } from '../../lib/i18n'
 import { discoverProviderModels, gitInit, gitStatus } from '../../lib/tauri'
-import { agentLabel, isAgentEnabled, useAgentTypes } from '../../lib/agentProviders'
 import { type AgentType, type BuiltinAgentType, PROVIDER_MODELS } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -106,7 +107,7 @@ export function EditProjectAgentSettings({
 
   const handleInitGit = async () => {
     if (!cwd || gitInitBusy) return
-    if (!confirm(t('git.initOffer.confirm'))) return
+    if (!(await confirmAction(t('git.initOffer.confirm'), { kind: 'info' }))) return
     setGitInitBusy(true)
     try {
       await gitInit(cwd)
@@ -304,9 +305,9 @@ export function EditProjectAgentSettings({
           type="button"
           className={controls.btn}
           disabled={migratingWorktrees}
-          onClick={() => {
+          onClick={async () => {
             if (migratingWorktrees) return
-            if (!confirm(t('multiAgent.migrateExistingConfirm'))) return
+            if (!(await confirmAction(t('multiAgent.migrateExistingConfirm')))) return
             setMigratingWorktrees(true)
             void migrateProjectTerminalsToWorktrees(projectId, gsdWatcherEnabled).finally(() =>
               setMigratingWorktrees(false),

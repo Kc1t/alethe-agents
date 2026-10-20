@@ -1,0 +1,12 @@
+.message {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.input {
+  margin-top: 12px;
+}

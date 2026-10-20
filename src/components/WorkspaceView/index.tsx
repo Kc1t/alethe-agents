@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 import { useShallow } from 'zustand/react/shallow'
 
+import { isAgentTypeAvailable } from '../../lib/agentProviders'
 import { pickDirectory } from '../../lib/dialog'
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import {
@@ -38,8 +39,8 @@ import { AgentIcon } from '../icons/AgentIcons'
 import { PaneArea } from './PaneArea'
 import { PersistentPanelGroup as PanelGroup } from './PersistentPanelGroup'
 import { ProjectContainer } from './ProjectContainer'
+import { type WorkspaceEmptyAction, WorkspaceEmptyState } from './WorkspaceEmptyState'
 import { WorkspaceSurfaceProvider } from './workspaceSurface'
-import { WorkspaceEmptyState, type WorkspaceEmptyAction } from './WorkspaceEmptyState'
 import styles from './WorkspaceView.module.css'
 
 function resolveGroup(project: Project, groupsById: Map<string, Group>): Group | null {
@@ -908,7 +909,7 @@ function NoWorkspace({
     () =>
       (
         ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'shell', 'wsl'] as AgentType[]
-      ).filter((agent) => enabledAgents[agent]),
+      ).filter((agent) => enabledAgents[agent] && isAgentTypeAvailable(agent)),
     [enabledAgents],
   )
   const [quickAgent, setQuickAgent] = useState<AgentType>('claude')
