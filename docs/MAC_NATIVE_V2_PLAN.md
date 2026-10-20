@@ -3536,6 +3536,9 @@ non-notarized preview is published on the fork as `mac-native-v2-preview.1` (doc
 Status values: **Not started**, **In progress**, **Done**, **Replaced** (different native mechanism, same
 user outcome), **Won't port** (with reason). All rows start at the baseline `75083e2`.
 
+The matrix tracks what is ported. What the Mac app **has extra or does differently on purpose** is not a matrix
+row: it is registered in [`AletheNative/DIVERGENCES.md`](../AletheNative/DIVERGENCES.md) (rule 8 in `CLAUDE.md`).
+
 | ID | Feature | Phase | Status | Notes |
 |---|---|---|---|---|
 | HOME-1 | Home dashboard | P3 | Done | P3-15; no ASCII background (see P3-15 deviation), no avatar |
@@ -3666,11 +3669,21 @@ upstream changes, not merging them.
 4. Importer compatibility: when upstream bumps the `projects.json` version, add a fixture and extend
    `TauriImporter` in the next phase.
 5. Strings only land with code; the orphan test prevents translated-but-unimplemented debt.
+6. At every baseline bump, review `AletheNative/DIVERGENCES.md` against the new baseline: rows the baseline now
+   covers become `Converged` (and the Mac code that became redundant goes), and the `Propose to web` rows are
+   listed for the owner.
+7. When the Windows/Linux app is not `origin` (the Mac-only repository), add it as the `upstream` remote and run
+   `Scripts/upstream-watch.py --remote upstream`; without `--remote` the script prefers `upstream` when it exists.
 
 ### 9.4 Extraction to the new repository
 When the owner decides (Phase 8 or earlier): `git filter-repo --subdirectory-filter AletheNative` on a
 fresh clone of `mac-native-v2`, producing a repository whose root is the native app with history. The
 self-contained layout (ADR-7) makes this lossless.
+
+*2026-10-20 — the owner chose a clean snapshot instead:* the tracked tree of `mac-native-v2-ui-parity` was
+published, without history, as the standalone repository `Kc1t/alethe-agents-mac` (private, not a fork), keeping the
+web sources as a reference snapshot. In that repository the baseline is the `upstream` remote
+(`Kc1t/alethe-agents`), and divergences are tracked in `AletheNative/DIVERGENCES.md`.
 
 ## 10. Risks and mitigations
 

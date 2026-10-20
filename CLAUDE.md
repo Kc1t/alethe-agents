@@ -4,6 +4,14 @@
 > Contributing from outside? Start with [`CONTRIBUTING.md`](CONTRIBUTING.md) — setup, project
 > layout, house rules, and PR convention.
 
+> **This repository is the macOS version of Alethe.** The native app lives in `AletheNative/`. The Windows and Linux
+> app (Tauri, Rust, React) is a separate repository, [Kc1t/alethe-agents](https://github.com/Kc1t/alethe-agents), and
+> is the **baseline** this app follows; `src/` and `src-tauri/` here are a reference snapshot of it, and
+> Windows/Linux work belongs in that repository. Sections 2, 4 and 5 describe the baseline app; the rules in section 3
+> apply here too, except the web-only ones (the dev server, and the `main` / `mac-native-v2` / `fork` branch policy of
+> the baseline repository). In this repository `main` is the Mac app's main branch; "never push without explicit
+> authorization" and "no co-author lines" still apply.
+
 ## 1. What it is
 
 **Alethe** is a **Windows-first** desktop app that organizes, operates, and resumes multiple coding
@@ -71,6 +79,18 @@ path relative to the repository.
    the same task (plan/backlog checkboxes and parity matrix, architecture decisions, changelog,
    feature docs) **and** record the outcome in ai-memory (decisions, state of the work, gotchas,
    next steps) following the ai-memory skills. Work is not finished while either is stale.
+8. **Every Mac divergence is registered.** The Windows/Linux app is the baseline (remote `upstream`, last reviewed
+   commit in `AletheNative/UPSTREAM_BASELINE`). Anything the Mac app has that the baseline lacks, or does differently
+   on purpose — a feature, setting, shortcut, default, ordering, wording, confirmation, limit or persisted field — is a
+   *divergence*. Register it in [`AletheNative/DIVERGENCES.md`](AletheNative/DIVERGENCES.md) **in the same commit**
+   that introduces it (next free `MD-nnn`, every column filled), and tag the matching `AletheNative/CHANGELOG.md`
+   bullet `[Mac-only]` or `[Mac-different]` with that id. Parity is the default: never change baseline behavior
+   silently, even to improve it; if it is not plainly a Mac idiom, ask the owner first. A persisted-shape addition must
+   be optional, additive, ignored by the baseline's import/export and covered by a round-trip test. When the baseline
+   catches up, mark the row `Converged` and drop the redundant Mac code; when the Mac feature should reach
+   Windows/Linux, mark it `Propose to web` and build it in the other repository. `AletheNative/Scripts/check-divergences.py`
+   (run by `test.sh`) keeps the registry well formed but cannot spot a missing row — in review, always ask: *does this
+   give the Mac something the baseline lacks, or make it behave differently?*
 
 ## 4. Architecture at a glance
 
@@ -117,6 +137,10 @@ streaming through the Tauri events `pty://data/{id}` and `pty://exit/{id}`.
     branded install window (`Scripts/dmg/`, dmgbuild in `build/dmg-venv`). The app icon comes from
     `Scripts/make-app-icon.py` on Apple's 824/1024 grid; the runtime Dock icon (`AppIcon.swift`)
     follows the same grid. Publishing a preview: `docs/FORK_WORKFLOW.md`.
+  - Baseline: add the remote once with `git remote add upstream https://github.com/Kc1t/alethe-agents.git`, read
+    its files with `git show upstream/main:<path>`, and triage its changes with
+    `AletheNative/Scripts/upstream-watch.py --remote upstream` (plan §9). Divergences from it live in
+    `AletheNative/DIVERGENCES.md` (rule 8).
 
 ## 7. Going deeper
 
@@ -133,6 +157,8 @@ Versioned in this repo:
 - [`docs/THEMES.md`](docs/THEMES.md) — adding a theme, as a plugin or as a built-in.
 - [`docs/MAC_NATIVE_V2_PLAN.md`](docs/MAC_NATIVE_V2_PLAN.md) — native macOS (Swift) rewrite: decisions,
   phases/backlog, parity matrix, upstream tracking.
+- [`AletheNative/DIVERGENCES.md`](AletheNative/DIVERGENCES.md) — the registry of everything the Mac app has or does
+  differently from the Windows/Linux baseline (rule 8).
 - [`docs/DIAGNOSTICO_MATURIDADE_TECNICA.md`](docs/DIAGNOSTICO_MATURIDADE_TECNICA.md) — diagnostic of
   code organization, duplication, and performance, with prioritized recommendations.
 

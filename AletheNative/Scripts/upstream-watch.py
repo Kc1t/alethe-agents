@@ -17,8 +17,13 @@ changes, not merging them. This script lists, for <baseline>..<target>:
 and writes AletheNative/upstream-reports/<date>-<target>.md. Triage then moves each item into the
 plan's parity matrix (§8) and advances UPSTREAM_BASELINE in its own commit.
 
-    Scripts/upstream-watch.py [--baseline <rev>] [--target <rev>] [--no-fetch]
+    Scripts/upstream-watch.py [--remote <name>] [--baseline <rev>] [--target <rev>] [--no-fetch]
+
+The Windows/Linux app is the baseline. In the Mac-only repository add it once as a remote:
+    git remote add upstream https://github.com/Kc1t/alethe-agents.git
 """
+from __future__ import annotations
+
 import argparse
 import datetime
 import json
@@ -119,14 +124,17 @@ def bullets(items, empty="none") -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--baseline", default=(NATIVE / "UPSTREAM_BASELINE").read_text().strip())
-    parser.add_argument("--target", default="origin/main")
+    parser.add_argument("--remote", help="remote that holds the Windows/Linux app "
+                        "(default: 'upstream' when configured, otherwise 'origin')")
+    parser.add_argument("--target", help="revision to compare against (default: <remote>/main)")
     parser.add_argument("--no-fetch", action="store_true")
     args = parser.parse_args()
 
+    remote = args.remote or ("upstream" if "upstream" in git("remote").split() else "origin")
     if not args.no_fetch:
-        git("fetch", "--quiet", "origin")
+        git("fetch", "--quiet", remote)
     baseline = git("rev-parse", args.baseline).strip()
-    target = git("rev-parse", args.target).strip()
+    target = git("rev-parse", args.target or f"{remote}/main").strip()
     log = git("log", "--oneline", "--no-merges", f"{baseline}..{target}").strip().splitlines()
 
     old_cmds, new_cmds = commands(baseline), commands(target)
