@@ -64,6 +64,8 @@ struct SidebarDropRegion: Equatable, Sendable {
     weak var surface: NSView?
 
     func register(_ token: UUID, target: SidebarWebDropTarget, ancestors: [GroupID], unit: CGFloat, view: NSView) {
+        // List cells are reused: one view must never keep a stale registration under another token.
+        entries = entries.filter { $0.key == token ? false : $0.value.view != nil && $0.value.view !== view }
         entries[token] = Entry(target: target, ancestors: ancestors, unit: unit, view: view)
     }
 
@@ -317,7 +319,7 @@ private struct SidebarWebDropDelegate: DropDelegate {
             switch (source, region.target) {
             case (.project(let id), .project(let destination)):
                 guard id != destination else { return nil }; rank = 0
-            case (.project, .groupHeader), (.project, .ungrouped): rank = 1
+            case (.project, .groupHeader), (.project, .groupBody), (.project, .ungrouped): rank = 1
             case (.pane(let id), .project(let destination)):
                 guard actions.workspace.document.pane(id)?.project.id != destination else { return nil }; rank = 0
             case (.group(let id), .groupHeader(let destination)), (.group(let id), .groupBody(let destination)):
@@ -368,11 +370,28 @@ private struct SidebarWebDropDelegate: DropDelegate {
         return (region, edge)
     }
 
+    private static var logging: Bool { UserDefaults.standard.bool(forKey: "debug.sidebarDrop") }
+
+    /// Diagnostic for drop mismatches: `defaults write com.kc1t.alethe.mac debug.sidebarDrop -bool true`.
+    @MainActor private func log(_ event: String, _ info: DropInfo, _ resolved: (SidebarDropRegion, SidebarDropEdge)?) {
+        guard Self.logging else { return }
+        func r(_ rect: CGRect) -> String { "(\(Int(rect.minX)),\(Int(rect.minY)) \(Int(rect.width))x\(Int(rect.height)))" }
+        var lines = ["\(Date()) \(event) loc=(\(Int(info.location.x)),\(Int(info.location.y))) surface=\(Int(size.width))x\(Int(size.height)) source=\(state.source ?? "nil")"]
+        lines.append("  chosen=\(resolved.map { "\($0.0.target) edge=\($0.1) hit=\(r($0.0.hit))" } ?? "none")")
+        for region in store.dropRegions(size: size) { lines.append("  \(region.target) hit=\(r(region.hit)) visual=\(r(region.visual))") }
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appending(path: "Library/Application Support/com.kc1t.alethe.mac/logs/sidebar-drop.log")
+        let data = Data((lines.joined(separator: "\n") + "\n").utf8)
+        if let handle = try? FileHandle(forWritingTo: url) { handle.seekToEndOfFile(); handle.write(data); try? handle.close() }
+        else { try? data.write(to: url) }
+    }
+
     func dropEntered(info: DropInfo) { _ = dropUpdated(info: info) }
     func dropExited(info: DropInfo) { MainActor.assumeIsolated { state.indicator = nil; state.edge = nil } }
     func dropUpdated(info: DropInfo) -> DropProposal? {
         MainActor.assumeIsolated {
             let resolved = resolve(info)
+            if Self.logging, resolved?.0.target != state.indicator?.target || resolved?.1 != state.edge { log("update", info, resolved) }
             state.indicator = resolved?.0
             state.edge = resolved?.1
             scrollNearEdge()
@@ -384,6 +403,7 @@ private struct SidebarWebDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         MainActor.assumeIsolated {
             let resolved = resolve(info)
+            log("DROP", info, resolved)
             state.clear()
             guard let (region, placement) = resolved else { return false }
             let target = region.target
@@ -441,7 +461,7 @@ extension SidebarActions {
                 doc.dropGroup(id, beside: destination, edge: edge)
             case (.group(let id), .groupBody(let destination)):
                 doc.dropGroup(id, beside: destination, edge: .inside)
-            case (.project(let id), .groupHeader(let destination)):
+            case (.project(let id), .groupHeader(let destination)), (.project(let id), .groupBody(let destination)):
                 if doc.location(of: id) != .group(destination) { doc.moveProject(id, to: .group(destination), at: Int.max) }
             case (.project(let id), .ungrouped):
                 doc.moveProject(id, to: .ungrouped, at: Int.max)
