@@ -184,10 +184,9 @@ struct RightSidebar: View {
         }
     }
 
-    /// Tabs as a carousel: no scroll bar, soft edge fades and small chevrons only while tabs hide off-screen.
+    /// Tabs as a carousel: no scroll bar, small chevrons only while tabs hide off-screen (no gradients allowed).
     private var tabCarousel: some View {
-        let edge = metrics.size(14)
-        return HStack(spacing: metrics.size(2)) {
+        HStack(spacing: metrics.size(2)) {
             if tabStrip.canBack { carouselChevron("chevron.left") { pageTabs(-1) } }
             ScrollView(.horizontal) {
                 HStack(spacing: metrics.size(4)) {
@@ -213,15 +212,6 @@ struct RightSidebar: View {
             .onScrollGeometryChange(for: TabStripState.self) { geo in
                 TabStripState(offset: geo.contentOffset.x, content: geo.contentSize.width, visible: geo.visibleRect.width)
             } action: { _, state in tabStrip = state }
-            .mask {
-                HStack(spacing: 0) {
-                    LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
-                        .frame(width: tabStrip.canBack ? edge : 0)
-                    Rectangle()
-                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
-                        .frame(width: tabStrip.canForward ? edge : 0)
-                }
-            }
             .fixedSize(horizontal: false, vertical: true)
             .frame(height: metrics.size(26))
             .onChange(of: selected?.id) { _, id in

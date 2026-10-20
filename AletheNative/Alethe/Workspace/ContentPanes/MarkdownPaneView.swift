@@ -107,6 +107,7 @@ struct MarkdownFileContent: View {
                     .frame(maxWidth: metrics.isWebInterface ? .infinity : metrics.size(820), alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .webScrollStyle()
             .accessibilityIdentifier("markdown.rendered")
         }
     }

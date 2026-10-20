@@ -51,6 +51,7 @@ private struct MarkdownBlockView: View {
                     .foregroundStyle(theme[.textPrimary])
                     .padding(metrics.space(.m))
             }
+            .webScrollStyle()
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
             .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.borderSubtle]))
@@ -92,6 +93,7 @@ private struct MarkdownBlockView: View {
                 }
                 .overlay(Rectangle().strokeBorder(theme[.border]))
             }
+            .webScrollStyle()
         case .rule:
             Rectangle().fill(theme[.border]).frame(height: metrics.size(1))
         }
