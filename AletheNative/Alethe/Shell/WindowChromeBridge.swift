@@ -102,6 +102,7 @@ struct WindowChromeBridge: NSViewRepresentable {
                     savedTransparent = window.titlebarAppearsTransparent
                     savedFullSize = window.styleMask.contains(.fullSizeContentView)
                     window.toolbar = nil
+                    window.isMovableByWindowBackground = false
                     window.titleVisibility = .hidden
                     window.titlebarAppearsTransparent = true
                     window.styleMask.insert(.fullSizeContentView)

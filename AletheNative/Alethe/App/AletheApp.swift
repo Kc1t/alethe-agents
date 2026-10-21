@@ -32,6 +32,9 @@ struct AletheApp: App {
                     environment.openLaunchArguments()
                 }
         }
+        // The web title bar has its own `WindowDragRegion`; dragging by any background made AppKit start a window drag
+        // on title-bar clicks, so the top bar did nothing in a window that is not maximized.
+        .windowBackgroundDragBehavior(.disabled)
         .defaultSize(width: 1280, height: 800)
         .windowToolbarStyle(.unified)
         .commands {

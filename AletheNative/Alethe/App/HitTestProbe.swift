@@ -33,7 +33,7 @@ enum HitTestProbe {
                 for x in stride(from: 20 as CGFloat, to: min(window.frame.width, 900), by: 70) {
                     let point = NSPoint(x: x, y: window.frame.height - depth)
                     let hit = frameView.hitTest(point)
-                    lines.append("  y=top-\(Int(depth)) x=\(Int(x)): \(chain(hit))")
+                    lines.append("  y=top-\(Int(depth)) x=\(Int(x)) movesWindow=\(hit?.mouseDownCanMoveWindow ?? false): \(chain(hit))")
                 }
             }
         }
