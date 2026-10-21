@@ -136,7 +136,7 @@ struct CustomAgentsSection: View {
             HStack(spacing: metrics.size(10)) {
                 VStack(alignment: .leading, spacing: metrics.size(4)) {
                     customLabel("customAgentAccent").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
-                    AletheSelect(selection: optional(\.accentToken), options: CustomAgentDefinition.accents) { Text(verbatim: $0) }
+                    InterfaceSelect(selection: optional(\.accentToken), options: CustomAgentDefinition.accents, appearance: .customAgent) { Text(verbatim: $0) }
                 }
                 if let draft { CustomAgentIcon(definition: draft, previewFile: mode == "file" ? picked : nil).frame(width: metrics.size(36), height: metrics.size(36)) }
             }
@@ -156,8 +156,8 @@ struct CustomAgentsSection: View {
                 }
             }.padding(.horizontal, metrics.size(12)).padding(.vertical, metrics.size(10)).modifier(CustomAgentPanel())
             if mode == "preset" {
-                AletheSelect(selection: Binding { draft?.iconSpec?.key ?? "bot" } set: { draft?.iconSpec = .init(kind: "preset", key: $0) },
-                             options: CustomAgentDefinition.icons) { Text(verbatim: $0) }
+                InterfaceSelect(selection: Binding { draft?.iconSpec?.key ?? "bot" } set: { draft?.iconSpec = .init(kind: "preset", key: $0) },
+                             options: CustomAgentDefinition.icons, appearance: .customAgent) { Text(verbatim: $0) }
             } else if mode == "url" {
                 field("customAgentIcon", text: Binding { draft?.iconSpec?.href ?? "" } set: { draft?.iconSpec = .init(kind: "url", href: $0) })
                 hint("customAgentIconUrlHint")

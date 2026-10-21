@@ -59,7 +59,6 @@ struct SettingsPageForm<Content: View>: View {
             .foregroundStyle(theme[.fg])
             .toggleStyle(WebSettingsCheckboxStyle())
             .buttonStyle(AletheButtonStyle(size: .small))
-            .pickerStyle(.menu)
             .background(theme[.bgElevated])
         } else {
             AletheSettingsForm(content: content)

@@ -50244,6 +50244,102 @@
           }
         }
       }
+    },
+    "dropdown.model.custom" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use custom model: “{model}”"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar modelo personalizado: “{model}”"
+          }
+        }
+      }
+    },
+    "dropdown.model.empty" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No models found for “{query}”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nenhum modelo encontrado para “{query}”."
+          }
+        }
+      }
+    },
+    "dropdown.model.loading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading CLI models…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Carregando modelos da CLI…"
+          }
+        }
+      }
+    },
+    "dropdown.model.search" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search {count} {provider} models…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar entre {count} modelos de {provider}…"
+          }
+        }
+      }
+    },
+    "dropdown.model.select" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select a model ({provider})"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selecione um modelo ({provider})"
+          }
+        }
+      }
+    },
+    "dropdown.orchestration.custom" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Use \"{value}\""
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar \"{value}\""
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

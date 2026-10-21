@@ -251,8 +251,7 @@ struct AddBrowserSheet: View {
                     }
                 }
                 field("browser.resourceMode") {
-                    NewTerminalRowSelect(selection: $resourceMode, options: WebResourceMode.allCases,
-                        title: resourceLabel) { _ in Image(systemName: "memorychip").webProfileSized(14) }
+                    WebDropdown(selection: $resourceMode, options: WebResourceMode.allCases, accessibilityID: "newTerminal.rowSelect", appearance: .input) { Text(verbatim: resourceLabel($0)) }
                         .accessibilityLabel(Text("browser.resourceMode"))
                         .accessibilityIdentifier("browser.add.resourceMode")
                     resourceDescription.font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
@@ -279,8 +278,7 @@ struct AddBrowserSheet: View {
 
     private var zoomPicker: some View {
         field("browser.zoom") {
-            NewTerminalRowSelect(selection: $zoom, options: [0.75, 1, 1.25, 1.5],
-                title: { "\(Int($0 * 100))%" }) { _ in Image(systemName: "magnifyingglass").webProfileSized(14) }
+            WebDropdown(selection: $zoom, options: [0.75, 1, 1.25, 1.5], accessibilityID: "newTerminal.rowSelect", appearance: .input) { Text(verbatim: "\(Int($0 * 100))%") }
                 .accessibilityLabel(Text("browser.zoom"))
                 .accessibilityIdentifier("browser.add.zoom")
         }

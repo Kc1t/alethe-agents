@@ -36,7 +36,7 @@ struct OrchestrationRoutingSection: View {
                     }
                     Toggle(isOn: $settings.routing.allowOpusOnDeep) { label("routingAllowOpusOnDeep") }
                     OrchestrationField("routingOnBothCritical") {
-                        AletheSelect(selection: $settings.routing.onBothCritical, options: ["ask", "run-cheapest", "block"]) { value in
+                        InterfaceSelect(selection: $settings.routing.onBothCritical, options: ["ask", "run-cheapest", "block"]) { value in
                             label(value == "ask" ? "routingOnBothCriticalAsk" : value == "block" ? "routingOnBothCriticalBlock" : "routingOnBothCriticalRunCheapest")
                         }
                     }
@@ -67,7 +67,7 @@ struct OrchestrationRoutingSection: View {
         VStack(alignment: .leading, spacing: metrics.size(10)) {
             HStack(spacing: metrics.size(8)) {
                 Toggle(isOn: binding(index, \.enabled)) { Text(verbatim: String(index + 1)) }.toggleStyle(.checkbox)
-                AletheSelect(selection: binding(index, \.role), options: Array(Set(roleNames + [settings.routing.rules[index].role])).sorted()) { Text(verbatim: $0) }
+                InterfaceSelect(selection: binding(index, \.role), options: Array(Set(roleNames + [settings.routing.rules[index].role])).sorted()) { Text(verbatim: $0) }
                 Spacer(minLength: 0)
                 action("arrow.up", key: "routingRuleMoveUp", disabled: index == 0) { move(index, by: -1) }
                 action("arrow.down", key: "routingRuleMoveDown", disabled: index + 1 == settings.routing.rules.count) { move(index, by: 1) }
@@ -82,8 +82,8 @@ struct OrchestrationRoutingSection: View {
             label("routingMatchAny").font(metrics.font(size: 10)).foregroundStyle(theme[.fgMuted])
             ForEach(settings.routing.rules[index].gates.indices, id: \.self) { gateIndex in
                 HStack(spacing: metrics.size(8)) {
-                    AletheSelect(selection: gate(index, gateIndex, \.agent), options: ["claude", "codex"]) { Text(verbatim: orchestrationAgentName($0)) }
-                    AletheSelect(selection: gate(index, gateIndex, \.window), options: ["short", "week", "opus"]) { label("routingWindow" + $0.capitalized) }
+                    InterfaceSelect(selection: gate(index, gateIndex, \.agent), options: ["claude", "codex"]) { Text(verbatim: orchestrationAgentName($0)) }
+                    InterfaceSelect(selection: gate(index, gateIndex, \.window), options: ["short", "week", "opus"]) { label("routingWindow" + $0.capitalized) }
                     TextField(value: gate(index, gateIndex, \.below), format: .number.grouping(.never)) { label("routingRuleGateBelow") }
                         .modifier(ProjectGroupWebInput()).frame(width: metrics.size(80))
                     action("trash", key: "routingRuleGateRemove") {

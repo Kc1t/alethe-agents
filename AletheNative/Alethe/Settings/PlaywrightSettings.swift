@@ -41,11 +41,13 @@ struct PlaywrightOptions: View {
 
     var body: some View {
         if metrics.isWebInterface {
-            WebSelectRow(title: "settings.playwright.mode", selection: mode,
-                         options: [PlaywrightBrowserMode.shared, .dedicated]) {
-                $0 == .shared ? String(localized: "settings.playwright.mode.shared") : String(localized: "settings.playwright.mode.dedicated")
-            }
-            .accessibilityIdentifier("settings.playwright.mode")
+            HStack(spacing: metrics.size(12)) {
+                Text("settings.playwright.mode").font(metrics.font(size: 11))
+                Spacer(minLength: 0)
+                AletheWebChoiceSegments(selection: mode, options: [PlaywrightBrowserMode.shared, .dedicated], compact: true) {
+                    Text($0 == .shared ? "settings.playwright.mode.shared" : "settings.playwright.mode.dedicated")
+                }
+            }.accessibilityIdentifier("settings.playwright.mode")
         } else {
             Picker("settings.playwright.mode", selection: mode) {
                 Text("settings.playwright.mode.shared").tag(PlaywrightBrowserMode.shared)

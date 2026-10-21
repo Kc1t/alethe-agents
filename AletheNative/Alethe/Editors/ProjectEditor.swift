@@ -187,7 +187,7 @@ struct ProjectEditor: View {
             if !workspace.document.groups.isEmpty {
                 ProjectGroupWebField(title: "editor.project.group") {
                     WebDropdown(selection: $location,
-                                 options: [.ungrouped] + workspace.document.groups.map { .group($0.id) }) { value in
+                                 options: [.ungrouped] + workspace.document.groups.map { .group($0.id) }, appearance: .input) { value in
                         if case .group(let id) = value, let group = workspace.document.group(id) {
                             Text(verbatim: group.name)
                         } else { Text("sidebar.ungrouped") }

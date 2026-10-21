@@ -79,9 +79,8 @@ struct ConversationsSheet: View {
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("conversations.agent")
-                NewTerminalRowSelect(selection: $allProjects, options: [false, true],
-                    title: { $0 ? String(localized: "conversations.allProjects") : project?.name ?? "" }) { _ in
-                    Image(systemName: "folder").webProfileSized(16)
+                WebDropdown(selection: $allProjects, options: [false, true], accessibilityID: "newTerminal.rowSelect") { value in
+                    if value { Text("conversations.allProjects") } else { Text(verbatim: project?.name ?? "") }
                 }.accessibilityIdentifier("conversations.scope")
                 TextField("conversations.filter", text: $filter)
                     .modifier(ProjectGroupWebInput())

@@ -78,10 +78,10 @@ struct PluginMarketplaceWebView: View {
                 .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
                 .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md)).strokeBorder(theme[.border], lineWidth: metrics.size(1)))
             Spacer(minLength: 0)
-            Picker("settings.web.reference.market.sort", selection: $updated) {
-                Text("settings.web.reference.market.sortUpdated").tag(true)
-                Text("settings.web.reference.market.sortName").tag(false)
-            }.font(metrics.font(size: 11)).fixedSize().frame(height: metrics.size(28))
+            WebDropdown(selection: $updated, options: [true, false], appearance: .marketSort,
+                searchText: { String(localized: $0 ? "settings.web.reference.market.sortUpdated" : "settings.web.reference.market.sortName") }) {
+                Text($0 ? "settings.web.reference.market.sortUpdated" : "settings.web.reference.market.sortName")
+            }.frame(width: metrics.size(160)).accessibilityLabel(Text("settings.web.reference.market.sort")).font(metrics.font(size: 11)).fixedSize()
             Button { dismiss() } label: {
                 Image(systemName: "xmark").font(metrics.font(size: 16)).frame(width: metrics.size(30), height: metrics.size(30))
             }.buttonStyle(.plain).accessibilityLabel(Text("plugins.web.close"))

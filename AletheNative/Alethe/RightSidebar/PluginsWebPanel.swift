@@ -76,27 +76,28 @@ struct PluginsWebPanel: View {
             .overlay(alignment: .bottom) { Rectangle().fill(theme[.border]).frame(height: metrics.size(1)) }
             VStack(spacing: metrics.size(8)) {
                 HStack(spacing: metrics.size(8)) {
-                    Picker("plugins.web.status", selection: $status) {
-                        Text("plugins.web.all").tag("all")
-                        Text("settings.web.reference.market.installed").tag("installed")
-                        Text("plugins.web.available").tag("available")
-                        Text("settings.web.reference.market.stateEnabled").tag("enabled")
-                        Text("settings.web.reference.market.stateDisabled").tag("disabled")
-                        Text("plugins.web.updates").tag("updates")
+                    VStack(alignment: .leading, spacing: metrics.size(5)) {
+                        Text("plugins.web.status").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                        WebDropdown(selection: $status, options: ["all", "installed", "available", "enabled", "disabled", "updates"], appearance: .pluginFilter,
+                            searchText: { value in String(localized: String.LocalizationValue(["all": "plugins.web.all", "installed": "settings.web.reference.market.installed", "available": "plugins.web.available", "enabled": "settings.web.reference.market.stateEnabled", "disabled": "settings.web.reference.market.stateDisabled", "updates": "plugins.web.updates"][value] ?? "plugins.web.status")) }) { value in
+                            Text(LocalizedStringKey(["all": "plugins.web.all", "installed": "settings.web.reference.market.installed", "available": "plugins.web.available", "enabled": "settings.web.reference.market.stateEnabled", "disabled": "settings.web.reference.market.stateDisabled", "updates": "plugins.web.updates"][value] ?? "plugins.web.status"))
+                        }.accessibilityLabel(Text("plugins.web.status"))
                     }
-                    Picker("settings.web.reference.market.filterSource", selection: $source) {
-                        Text("plugins.web.all").tag("all")
-                        Text("settings.web.reference.market.sourceBundled").tag("bundled")
-                        Text("settings.web.reference.market.sourceLocal").tag("local")
-                        Text("plugins.web.catalog").tag("catalog")
+                    VStack(alignment: .leading, spacing: metrics.size(5)) {
+                        Text("settings.web.reference.market.filterSource").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                        WebDropdown(selection: $source, options: ["all", "bundled", "local", "catalog"], appearance: .pluginFilter,
+                            searchText: { value in String(localized: String.LocalizationValue(["all": "plugins.web.all", "bundled": "settings.web.reference.market.sourceBundled", "local": "settings.web.reference.market.sourceLocal", "catalog": "plugins.web.catalog"][value] ?? "settings.web.reference.market.filterSource")) }) { value in
+                            Text(LocalizedStringKey(["all": "plugins.web.all", "bundled": "settings.web.reference.market.sourceBundled", "local": "settings.web.reference.market.sourceLocal", "catalog": "plugins.web.catalog"][value] ?? "settings.web.reference.market.filterSource"))
+                        }.accessibilityLabel(Text("settings.web.reference.market.filterSource"))
                     }
                 }
-                Picker("settings.web.reference.market.sort", selection: $sort) {
-                    Text("plugins.web.relevance").tag("relevance")
-                    Text("settings.web.reference.market.sortName").tag("name")
-                    Text("settings.web.reference.market.installed").tag("installed")
-                    Text("settings.web.reference.market.sortUpdated").tag("updates")
-                }
+                VStack(alignment: .leading, spacing: metrics.size(5)) {
+                        Text("settings.web.reference.market.sort").font(metrics.font(size: 11)).foregroundStyle(theme[.fgMuted])
+                        WebDropdown(selection: $sort, options: ["relevance", "name", "installed", "updates"], appearance: .pluginFilter,
+                            searchText: { value in String(localized: String.LocalizationValue(["relevance": "plugins.web.relevance", "name": "settings.web.reference.market.sortName", "installed": "settings.web.reference.market.installed", "updates": "settings.web.reference.market.sortUpdated"][value] ?? "settings.web.reference.market.sort")) }) { value in
+                            Text(LocalizedStringKey(["relevance": "plugins.web.relevance", "name": "settings.web.reference.market.sortName", "installed": "settings.web.reference.market.installed", "updates": "settings.web.reference.market.sortUpdated"][value] ?? "settings.web.reference.market.sort"))
+                        }.accessibilityLabel(Text("settings.web.reference.market.sort"))
+                    }
                 if model.stale { Text("settings.web.reference.market.stale").foregroundStyle(theme[.statusWaiting]) }
                 if model.failed { Text("settings.web.reference.market.error").foregroundStyle(theme[.fgMuted]) }
                 Button("settings.web.reference.prefs.pluginsMarketplaceOpen") { selectedID = nil; marketplace = true }

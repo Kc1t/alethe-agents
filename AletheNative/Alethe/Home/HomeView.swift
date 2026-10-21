@@ -450,34 +450,26 @@ private struct QuickLaunch: View {
     @ViewBuilder private var agentControl: some View {
         Group {
             if metrics.isWebInterface {
-                Menu {
-                    ForEach(agents, id: \.self) { kind in
-                        Button { agent = kind } label: {
-                            Label { Text(verbatim: webAgentName(kind)) } icon: {
-                                if let image = AgentLogo.menuImage(for: kind.rawValue, isLight: theme.isLight,
-                                                                  side: metrics.size(19)) {
-                                    Image(nsImage: image).resizable().scaledToFit()
-                                        .frame(width: metrics.size(19), height: metrics.size(19))
-                                } else {
-                                    Image(systemName: "cpu").webProfileSized(19)
-                                        .frame(width: metrics.size(19), height: metrics.size(19))
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: metrics.size(6)) {
-                        AgentLogo(agent: agent.rawValue, size: 15,
-                                  templateColor: theme[AgentTokens.accent(for: agent.rawValue)])
+                WebDropdown(selection: $agent, options: agents, menuStyle: .homeAgent, trigger: { value, state in
+                    AnyView(HStack(spacing: metrics.size(6)) {
+                        AgentLogo(agent: value.rawValue, size: 15,
+                                  templateColor: theme[AgentTokens.accent(for: value.rawValue)])
                             .frame(width: metrics.size(15), height: metrics.size(15)).clipped()
                         Text("home.web.agent").foregroundStyle(theme[.fgMuted]).fixedSize()
-                        Text(verbatim: webAgentName(agent)).lineLimit(1)
+                        Text(verbatim: webAgentName(value)).lineLimit(1)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.down").webProfileSized(10).font(metrics.font(size: 10))
+                    }.modifier(HomeChoiceTrigger(open: state.open, agent: true)))
+                }) { kind in
+                    HStack(spacing: metrics.size(9)) {
+                        AgentLogo(agent: kind.rawValue, size: 19)
+                            .frame(width: metrics.size(19), height: metrics.size(19))
+                        Text(verbatim: webAgentName(kind)).frame(maxWidth: .infinity, alignment: .leading)
+                        if agent == kind {
+                            Image(systemName: "checkmark").font(metrics.font(size: 12)).foregroundStyle(theme[.accent])
+                        }
                     }
                 }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                .buttonStyle(HomeQuickFieldStyle(sans: true))
             } else {
                 AletheSelect(selection: $agent, options: agents) {
                     Text(verbatim: AgentLabels.name(for: $0.rawValue))
@@ -524,21 +516,20 @@ private struct QuickLaunch: View {
         if metrics.isWebInterface || descriptor?.unrestrictedFlag != nil {
             Group {
                 if metrics.isWebInterface {
-                    Menu {
-                        Button("home.quick.normal") { unrestricted = false }
-                        Button("home.quick.unrestricted") { unrestricted = true }
-                    } label: {
-                        HStack(spacing: metrics.size(5)) {
+                    WebDropdown(selection: $unrestricted, options: [false, true], menuStyle: .homeMode, trigger: { value, state in
+                        AnyView(HStack(spacing: metrics.size(5)) {
                             AletheStatusDot(.accent, side: 5)
                             Text("home.web.mode").foregroundStyle(theme[.fgMuted]).fixedSize()
-                            Text(unrestricted ? "home.quick.unrestricted" : "home.quick.normal").lineLimit(1)
+                            Text(value ? "home.quick.unrestricted" : "home.quick.normal").lineLimit(1)
                             Spacer(minLength: 0)
                             Image(systemName: "chevron.down").webProfileSized(10).font(metrics.font(size: 10))
+                        }.modifier(HomeChoiceTrigger(open: state.open)))
+                    }) { value in
+                        HStack(spacing: metrics.size(8)) {
+                            AletheStatusDot(.accent, side: 5)
+                            Text(value ? "home.quick.unrestricted" : "home.quick.normal")
                         }
-                    }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                    .buttonStyle(HomeQuickFieldStyle())
-                    .frame(width: compactToolbar ? nil : metrics.size(132))
+                    }.frame(width: compactToolbar ? nil : metrics.size(132))
                 } else {
                     Picker("home.quick.mode", selection: $unrestricted) {
                         Text("home.quick.normal").tag(false)

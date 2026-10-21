@@ -25,7 +25,7 @@ extension BranchTestingSheet {
                             .accessibilityIdentifier("branchTest.error")
                     }
                     ProjectGroupWebField(title: "branchTest.branch") {
-                        WebDropdown(selection: Bindable(model).branch, options: model.branches) { Text(verbatim: $0) }
+                        WebDropdown(selection: Bindable(model).branch, options: model.branches, appearance: .input) { Text(verbatim: $0) }
                             .accessibilityIdentifier("branchTest.branch")
                     }
                     ProjectGroupWebField(title: "branchTest.commands") {
