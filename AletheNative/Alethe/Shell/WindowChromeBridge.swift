@@ -28,11 +28,9 @@ struct WindowChromeBridge: NSViewRepresentable {
 
     final class ChromeView: NSView {
         var web = false
-        var barHeight: CGFloat = 40
+        var barHeight: CGFloat = 32
         var trafficLightTrailingEdgeChanged: (@MainActor (CGFloat) -> Void)?
         private var previousTrailingEdge: CGFloat?
-        private var hiddenBeforeFullScreen: [NSWindow.ButtonType: Bool] = [:]
-        private var previousFullScreen: Bool?
         private var previousWeb: Bool?
         private var savedToolbar: NSToolbar?
         private var savedTitleVisibility: NSWindow.TitleVisibility = .visible
@@ -120,39 +118,34 @@ struct WindowChromeBridge: NSViewRepresentable {
                     savedLightHosts.removeAll()
                     savedLightFrames.removeAll()
                     savedLightVisibility.removeAll()
-                    hiddenBeforeFullScreen.removeAll()
-                    previousFullScreen = nil
                 }
                 previousWeb = web
             }
             positionLights()
         }
 
+        /// SwiftUI drops pointer events inside the title-bar safe-area band of a full-size content view, which
+        /// left the whole web title bar dead in windowed mode. The bar ignores that inset anyway, so cancel it
+        /// where it exists; native full screen has no title bar and needs no correction.
+        private func syncTitleBarSafeArea() {
+            guard let window, let content = window.contentView else { return }
+            let titleBar = web ? max(0, window.frame.height - window.contentLayoutRect.height) : 0
+            guard content.additionalSafeAreaInsets.top != -titleBar else { return }
+            content.additionalSafeAreaInsets = NSEdgeInsets(top: -titleBar, left: 0, bottom: 0, right: 0)
+        }
+
         private func positionLights() {
+            syncTitleBarSafeArea()
             guard web, let window else { return }
-            let fullScreen = window.styleMask.contains(.fullScreen)
-            let fullScreenChanged = previousFullScreen != fullScreen
-            defer { previousFullScreen = fullScreen }
             var trailingEdge: CGFloat = 0
             for (index, kind) in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].enumerated() {
                 guard let button = window.standardWindowButton(kind) else { continue }
                 // SwiftUI hides the system title-bar host when its toolbar is hidden. Keep the
                 // real buttons in our overlay so their target/actions and accessibility survive.
-                if fullScreen {
-                    // Give the buttons back to the system title bar so the menu-bar reveal still
-                    // shows them (exit full screen, minimize); our overlay would hide them.
-                    if let host = savedLightHosts[kind]?.view, button.superview !== host {
-                        host.addSubview(button)
-                        if let frame = savedLightFrames[kind] { button.frame = frame }
-                    }
-                    button.isHidden = savedLightVisibility[kind] ?? false
-                    continue
-                }
+                // Native full screen hides them by default; the web bar keeps them on screen there too.
                 if button.superview !== self { addSubview(button) }
-                if fullScreenChanged, previousFullScreen == true {
-                    button.isHidden = savedLightVisibility[kind] ?? false
-                }
-                let scale = barHeight / 40
+                if button.isHidden { button.isHidden = false }
+                let scale = barHeight / 32
                 let origin = NSPoint(x: (12 + CGFloat(index) * 20) * scale,
                                      y: (barHeight - button.frame.height) / 2)
                 if button.frame.origin != origin { button.setFrameOrigin(origin) }

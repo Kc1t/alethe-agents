@@ -58,7 +58,7 @@ struct MainWindow: View {
             if metrics.isWebInterface { sidebarVisible.toggle() }
         }
         .overlay {
-            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(40),
+            WindowChromeBridge(web: metrics.isWebInterface, barHeight: metrics.size(32),
                                trafficLightTrailingEdge: $webTrafficLightTrailingEdge)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .ignoresSafeArea(.container, edges: .top)

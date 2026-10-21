@@ -9,6 +9,12 @@ baseline lacks is tagged `[Mac-only]`, one about a baseline feature that works d
 
 ## [Unreleased]
 
+### Title bar
+- Web interface: the title bar's buttons, menus and pills now respond in a normal (non-full-screen) window. They
+  were dead there because SwiftUI drops pointer events inside the title-bar safe-area band; the window now cancels
+  that inset while a title bar exists.
+- The three window buttons are vertically centered in the 32pt bar and stay visible in native full screen.
+
 ### Debug builds
 - A Debug build now runs as `com.kc1t.alethe.mac.debug` ("Alethe Debug"): its own data folder, preferences, Keychain
   service and permissions, so it never touches the installed app's profile, and both can run side by side. It has a
