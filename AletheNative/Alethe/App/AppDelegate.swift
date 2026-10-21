@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor func applicationDidFinishLaunching(_ notification: Notification) {
+        HitTestProbe.scheduleIfEnabled()
         ImagePasteMonitor.install { [weak self] in self?.environment?.metrics }
     }
 

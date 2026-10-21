@@ -19,6 +19,7 @@ struct SidebarListAppearance: ViewModifier {
                 .listItemTint(.clear)
                 .contentMargins(.horizontal, 0, for: .scrollContent)
                 .scrollContentBackground(.hidden)
+                .webScrollStyle()
                 .environment(\.defaultMinListRowHeight, 0)
                 .contentMargins(.top, metrics.size(4), for: .scrollContent)
                 .contentMargins(.bottom, metrics.size(10), for: .scrollContent)
