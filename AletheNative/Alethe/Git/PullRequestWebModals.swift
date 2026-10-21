@@ -62,9 +62,8 @@ struct GitPullRequestReviewWebModal: View {
             VStack(alignment: .leading, spacing: metrics.size(14)) {
                 GitPullRequestWebCard(pr: pr)
                 ProjectGroupWebField(title: "pullRequests.reviewAgent") {
-                    NewTerminalRowSelect(selection: $agent, options: agents,
-                                         title: { AgentLabels.name(for: $0.rawValue) }) { kind in
-                        AgentLogo(agent: kind.rawValue, size: 16)
+                    WebDropdown(selection: $agent, options: agents, accessibilityID: "newTerminal.rowSelect") { kind in
+                        Text(verbatim: AgentLabels.name(for: kind.rawValue))
                     }
                 }
                 ProjectGroupWebField(title: "pullRequests.reviewModel") {

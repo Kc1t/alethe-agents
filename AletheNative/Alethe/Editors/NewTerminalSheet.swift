@@ -39,6 +39,7 @@ struct NewTerminalSheet: View {
     /// Model passed with the agent's model flag (P3-5); empty is the agent's default.
     @State private var model = ""
     @State private var models: [String] = []
+    @State private var modelsLoading = false
     /// Run the agent in its own worktree (P4-9); shells never get one.
     @State private var ownWorktree = false
     @State private var worktreeMode: WorktreeMode = .gitWorktree
@@ -421,47 +422,31 @@ struct NewTerminalSheet: View {
     private var webAdvanced: some View {
         VStack(alignment: .leading, spacing: metrics.size(10)) {
             if targetPane == nil {
-                Picker("newTerminal.project", selection: $projectID) {
-                    ForEach(workspace.document.projects) { project in
-                        Text(verbatim: project.name).tag(Optional(project.id))
-                    }
-                }
+                WebDropdown(selection: $projectID, options: workspace.document.projects.map { Optional($0.id) }) { id in
+                    Text(verbatim: workspace.document.projects.first { Optional($0.id) == id }?.name ?? "")
+                }.accessibilityLabel(Text("newTerminal.project"))
                 .onChange(of: projectID) { _, _ in
                     folder = project?.folder ?? ""
                     gridID = project?.shownGridID
                     loadWorktreeDefaults()
                 }
                 if let project, !project.namedGrids.isEmpty {
-                    Picker("newTerminal.grid", selection: $gridID) {
-                        Text("projectGrid.main").tag(ProjectGridID?.none)
-                        ForEach(project.namedGrids) { grid in
-                            Text(verbatim: grid.name).tag(Optional(grid.id))
-                        }
-                    }.accessibilityIdentifier("newTerminal.grid")
+                    NewTerminalRowSelect(selection: $gridID,
+                        options: [ProjectGridID?.none] + project.namedGrids.map { Optional($0.id) },
+                        title: { id in id.flatMap { key in project.namedGrids.first { $0.id == key }?.name } ?? String(localized: "projectGrid.main") }) { id in
+                        Image(systemName: id == nil ? "terminal" : "square.grid.2x2").font(metrics.font(size: 15))
+                    }.accessibilityLabel(Text("newTerminal.grid")).accessibilityIdentifier("newTerminal.grid")
                 }
             }
             if ModelDiscovery.modelFlag(for: agent) != nil {
                 LabeledContent("newTerminal.model") {
                     HStack {
-                        TextField(text: $model) { Text("newTerminal.model.default") }
-                            .labelsHidden()
-                            .accessibilityIdentifier("newTerminal.model")
-                        if !models.isEmpty {
-                            Menu {
-                                Button("newTerminal.model.defaultItem") { model = "" }
-                                Divider()
-                                ForEach(models, id: \.self) { id in
-                                    Button { model = id } label: { Text(verbatim: id) }
-                                }
-                            } label: {
-                                Image(systemName: "chevron.up.chevron.down")
-                            }
-                            .menuStyle(.borderlessButton)
-                            .fixedSize()
+                        WebModelDropdown(selection: $model, models: models, provider: AgentLabels.name(for: agent.rawValue),
+                            loading: modelsLoading, includesDefault: true)
                             .accessibilityLabel(Text("newTerminal.model.choices"))
                             .accessibilityIdentifier("newTerminal.model.choices")
-                        }
-                    }
+                    }.accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("newTerminal.model")
                 }
                 .task(id: agent) { await discoverModels() }
             }
@@ -481,10 +466,9 @@ struct NewTerminalSheet: View {
                 }
                 .accessibilityIdentifier("newTerminal.worktree")
                 if ownWorktree {
-                    Picker(selection: $worktreeMode) {
-                        Text("newTerminal.worktree.mode.gitWorktree").tag(WorktreeMode.gitWorktree)
-                        Text("newTerminal.worktree.mode.localCopy").tag(WorktreeMode.localCopy)
-                    } label: { Text("newTerminal.worktree.mode") }
+                    WebDropdown(selection: $worktreeMode, options: [.gitWorktree, .localCopy]) {
+                        Text($0 == .gitWorktree ? "newTerminal.worktree.mode.gitWorktree" : "newTerminal.worktree.mode.localCopy")
+                    }.accessibilityLabel(Text("newTerminal.worktree.mode"))
                         .accessibilityIdentifier("newTerminal.worktreeMode")
                 }
                 if let worktreeError {
@@ -618,6 +602,8 @@ struct NewTerminalSheet: View {
 
     /// The agent's models, looked up off the main thread; never blocks the sheet.
     private func discoverModels() async {
+        modelsLoading = true
+        defer { modelsLoading = false }
         models = []
         let executable = descriptor?.cliCommand.flatMap {
             environment.launchers.resolve($0, override: environment.preferences?.document.cliPaths?[agent.rawValue])

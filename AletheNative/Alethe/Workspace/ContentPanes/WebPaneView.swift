@@ -102,7 +102,7 @@ struct WebPaneView: View {
     }
 
     private var optionsMenu: some View {
-        Menu {
+        WebMenu {
             Toggle(isOn: Binding(get: { page.options.javascriptEnabled }, set: { update { $0.javascriptEnabled = $1 }($0) })) {
                 Text("web.javascript")
             }
@@ -111,11 +111,20 @@ struct WebPaneView: View {
             Button("web.zoomOut") { update { options, _ in options.zoom = max(options.zoom - 0.1, WebPaneOptions.zoomRange.lowerBound) }(()) }
             Button("web.actualSize") { update { options, _ in options.zoom = 1 }(()) }
             Divider()
+            if metrics.isWebInterface {
+                ForEach([WebResourceMode.appFirst, .balanced, .keepAlive], id: \.self) { mode in
+                    Button { update { $0.resourceMode = $1 }(mode) } label: {
+                        WebMenuCheckRow(title: Text(mode == .appFirst ? "web.mode.appFirst" : mode == .balanced ? "web.mode.balanced" : "web.mode.keepAlive"),
+                            symbol: "memorychip", selected: mode == page.options.resourceMode)
+                    }
+                }
+            } else {
             Picker(selection: Binding(get: { page.options.resourceMode }, set: { update { $0.resourceMode = $1 }($0) })) {
                 Text("web.mode.appFirst").tag(WebResourceMode.appFirst)
                 Text("web.mode.balanced").tag(WebResourceMode.balanced)
                 Text("web.mode.keepAlive").tag(WebResourceMode.keepAlive)
             } label: { Text("web.mode") }
+            }
         } label: {
             Image(systemName: "slider.horizontal.3")
         }

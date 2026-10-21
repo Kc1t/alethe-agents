@@ -43,6 +43,7 @@ struct ProjectEditorAdvanced: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var models: [String] = []
+    @State private var modelsLoading = false
     @State private var confirming = false
     @State private var migrating = false
     @State private var failure: String?
@@ -68,11 +69,24 @@ struct ProjectEditorAdvanced: View {
                 }
             }
             ProjectGroupWebField(title: "editor.advanced.provider") {
-                AletheSelect(selection: $draft.provider, options: environment.agentRegistry.descriptors.filter { !$0.isShell }.map { $0.kind.rawValue }) { value in
-                    Text(verbatim: environment.agentRegistry.descriptor(for: .init(rawValue: value))?.displayName ?? value)
+                Group {
+                    if metrics.isWebInterface {
+                        WebConflictProviderChoices(selection: $draft.provider,
+                            options: environment.agentRegistry.descriptors.filter { !$0.isShell }.map { $0.kind.rawValue }) { value in
+                            environment.agentRegistry.descriptor(for: .init(rawValue: value))?.displayName ?? value
+                        }
+                    } else {
+                        AletheSelect(selection: $draft.provider, options: environment.agentRegistry.descriptors.filter { !$0.isShell }.map { $0.kind.rawValue }) { value in
+                            Text(verbatim: environment.agentRegistry.descriptor(for: .init(rawValue: value))?.displayName ?? value)
+                        }
+                    }
                 }.onChange(of: draft.provider) { _, _ in draft.model = "" }
             }
             ProjectGroupWebField(title: "editor.advanced.model") {
+                if metrics.isWebInterface {
+                    WebModelDropdown(selection: $draft.model, models: models, provider: draft.provider.uppercased(), loading: modelsLoading)
+                        .accessibilityLabel(Text("editor.advanced.model"))
+                } else {
                 HStack(spacing: metrics.size(6)) {
                     TextField(text: $draft.model) { Text("editor.advanced.model") }.modifier(ProjectGroupWebInput())
                     if !models.isEmpty {
@@ -81,6 +95,7 @@ struct ProjectEditorAdvanced: View {
                         } label: { Image(systemName: "chevron.down").font(metrics.font(size: 12)) }
                         .accessibilityLabel(Text("editor.advanced.model"))
                     }
+                }
                 }
             }
             if project != nil {
@@ -93,6 +108,8 @@ struct ProjectEditorAdvanced: View {
             if let failure { Text(verbatim: failure).font(metrics.font(size: 11)).foregroundStyle(theme[.statusStopped]) }
         }
         .task(id: draft.provider) {
+            modelsLoading = true
+            defer { modelsLoading = false }
             let kind = AgentKind(rawValue: draft.provider)
             models = []
             if let cli = environment.agentRegistry.descriptor(for: kind)?.cliCommand,

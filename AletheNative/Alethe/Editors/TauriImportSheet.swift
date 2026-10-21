@@ -59,10 +59,9 @@ struct TauriImportSheet: View {
             } else {
                 Section {
                     if profiles.count > 1 {
-                        NewTerminalRowSelect(selection: $profileID, options: profiles.map { Optional($0.id) },
-                            title: { id in profiles.first { Optional($0.id) == id }?.name ?? "" }) { _ in
-                            Image(systemName: "person").webProfileSized(16)
-                        }
+                        WebDropdown(selection: $profileID, options: profiles.map { Optional($0.id) }, accessibilityID: "newTerminal.rowSelect") { id in
+                            Text(verbatim: profiles.first { Optional($0.id) == id }?.name ?? "")
+                        }.accessibilityLabel(Text("import.profile"))
                         .accessibilityIdentifier("import.profile")
                     }
                     Toggle(isOn: $includePreferences) {

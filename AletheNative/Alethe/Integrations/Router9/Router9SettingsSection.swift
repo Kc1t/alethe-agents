@@ -34,11 +34,14 @@ struct Router9SettingsSection: View {
                 installRow
                 if controller.status?.managed.installed == true, controller.status?.external.installed == true {
                     if metrics.isWebInterface {
-                        WebSelectRow(title: "router9.source", selection: binding(\.source),
-                                     options: [AletheModel.Router9Source.managed, .external]) {
-                            $0 == .managed ? String(localized: "router9.source.managed") : String(localized: "router9.source.external")
-                        }
-                        .accessibilityIdentifier("router9.source")
+                        VStack(alignment: .leading, spacing: metrics.size(6)) {
+                            Text("router9.source").font(metrics.font(size: 11, weight: .semibold))
+                                .foregroundStyle(theme[.fgMuted])
+                            AletheWebChoiceSegments(selection: binding(\.source),
+                                options: [AletheModel.Router9Source.managed, .external]) {
+                                Text($0 == .managed ? "router9.source.managed" : "router9.source.external")
+                            }
+                        }.accessibilityIdentifier("router9.source")
                     } else {
                         Picker(selection: binding(\.source)) {
                             Text("router9.source.managed").tag(AletheModel.Router9Source.managed)

@@ -13,6 +13,9 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
     @ViewBuilder let icon: (Selection) -> Icon
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     @State private var open = false
     @State private var active = 0
     @State private var hovering = false
@@ -50,7 +53,16 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
                           lineWidth: metrics.size(1)))
         .accessibilityIdentifier("newTerminal.rowSelect")
         .focused($focused)
-        .onHover { hovering = $0 }
+        .opacity(enabled ? 1 : 0.55)
+        .onDisappear { open = false }
+        .onChange(of: enabled) { _, value in if !value { open = false } }
+        .onKeyPress(.space) {
+            if open { chooseActive() } else { showOptions() }
+            return .handled
+        }
+        .onKeyPress(.home) { guard open else { return .ignored }; active = 0; return .handled }
+        .onKeyPress(.end) { guard open else { return .ignored }; active = options.count - 1; return .handled }
+        .onHover { hovering = $0 && enabled }
         .onKeyPress(.downArrow) { move(1); return .handled }
         .onKeyPress(.upArrow) { move(-1); return .handled }
         .onKeyPress(.return) {
@@ -64,8 +76,11 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
         }
         .onKeyPress(.tab) { open = false; return .ignored }
         .onAppear { if autofocus { focused = true } }
-        .anchorPreference(key: NewTerminalDropdownKey.self, value: .bounds) { anchor in
-            open ? [NewTerminalDropdown(anchor: anchor, content: AnyView(dropdown), height: dropdownHeight, dismiss: { open = false })] : []
+        .background {
+            WebDropdownPortal(open: open && enabled, height: dropdownHeight, metrics: metrics,
+                minimumWidth: 0, maximumWidth: .infinity, gap: 6, rowSelect: true,
+                content: AnyView(dropdown.environment(\.metrics, metrics).environment(\.theme, theme).environment(\.locale, locale).environment(\.colorScheme, colorScheme)),
+                dismiss: { restoreFocus in open = false; if restoreFocus { focused = true } })
         }
         .animation(metrics.reducesMotion ? nil : .easeOut(duration: 0.12), value: open)
     }
@@ -115,16 +130,18 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
                 }.padding(metrics.size(5))
             }
             .frame(maxHeight: dropdownHeight)
+            .foregroundStyle(theme[.fg])
             .background(theme[.bgElevated], in: RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 14)))
             .overlay(RoundedRectangle(cornerRadius: metrics.size(metrics.style == .clean ? 4 : 14))
-                .strokeBorder(theme[.borderStrong], lineWidth: metrics.size(1)))
-            .shadow(color: theme.shadow(.lg).color.color, radius: metrics.size(16), y: metrics.size(8))
+                .strokeBorder(theme[metrics.style == .clean ? .border : .borderStrong], lineWidth: metrics.size(1)))
+            .shadow(color: theme.shadow(.lg).color.color.opacity(metrics.style == .clean ? 0 : 1), radius: metrics.size(16), y: metrics.size(8))
             .onAppear { proxy.scrollTo(active) }
             .onChange(of: active) { _, index in proxy.scrollTo(index) }
         }
     }
 
     private func showOptions() {
+        guard enabled else { return }
         active = options.firstIndex(of: selection) ?? 0
         focused = true
         open = true

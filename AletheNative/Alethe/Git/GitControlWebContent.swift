@@ -86,7 +86,7 @@ extension GitControlSheet {
             webDivider
             HStack(spacing: metrics.size(6)) {
                 Image(systemName: "arrow.triangle.branch").font(metrics.font(size: 13))
-                Menu {
+                WebMenu {
                     ForEach(model.branches) { item in
                         Button { model.switchBranch(item.name) } label: { Text(verbatim: item.name) }.disabled(item.isCurrent)
                     }

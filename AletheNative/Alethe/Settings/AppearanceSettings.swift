@@ -24,7 +24,7 @@ struct AppearanceSettings: View {
                     HStack(spacing: metrics.size(12)) {
                         Text(verbatim: tab.title)
                         Spacer(minLength: 0)
-                        AletheSelect(selection: Binding {
+                        InterfaceSelect(selection: Binding {
                             host.viewPlacements.side(of: tab.id, in: tabs) ?? tab.side
                         } set: { side in
                             Task { try? await host.moveSidebarTab(tab.id, to: side, at: .max) }
@@ -222,7 +222,7 @@ struct AppearanceSettings: View {
                 header: { Text("settings.web.reference.prefs.appIconTheme") }
                 footer: { Text("settings.web.reference.prefs.appIconThemeDesc") }
             Section {
-                AletheSelect(selection: Binding {
+                InterfaceSelect(selection: Binding {
                     environment.preferences?.document.terminalTheme ?? ""
                 } set: { value in environment.preferences?.update { $0.terminalTheme = value.isEmpty ? nil : value } },
                     options: [""] + environment.themeCatalog.themes.map(\.id)) { id in
@@ -265,7 +265,7 @@ struct AppearanceSettings: View {
             } header: { Text("settings.web.reference.prefs.uiZoom") }
               footer: { Text("settings.web.reference.prefs.uiZoomDesc") }
             Section {
-                AletheSelect(selection: Binding {
+                InterfaceSelect(selection: Binding {
                     environment.preferences?.document.topbarStyle ?? "classic"
                 } set: { value in environment.preferences?.update { $0.topbarStyle = value } },
                     options: ["classic", "three-areas"]) { style in
@@ -274,7 +274,7 @@ struct AppearanceSettings: View {
                 .accessibilityLabel(Text("settings.web.reference.prefs.topbarStyle"))
                 Button("settings.toolbar") { showingToolbar = true }
                     .accessibilityIdentifier("settings.toolbar.open")
-                AletheSelect(selection: Binding { environment.interfaceStyle } set: { environment.interfaceStyle = $0 }, options: InterfaceStyle.allCases) { style in
+                InterfaceSelect(selection: Binding { environment.interfaceStyle } set: { environment.interfaceStyle = $0 }, options: InterfaceStyle.allCases) { style in
                     Text(style.title)
                 }
                 .accessibilityLabel(Text("settings.appearance.interface"))

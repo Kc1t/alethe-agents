@@ -118,12 +118,12 @@ struct OrchestrationSettings: View {
 
     private func choice(_ key: String, selection: Binding<String>, values: [String], prefix: String) -> some View {
         OrchestrationField(key) {
-            AletheSelect(selection: selection, options: values) { label(prefix + $0) }
+            InterfaceSelect(selection: selection, options: values) { label(prefix + $0) }
         }
     }
     private func provider(_ key: String, selection: Binding<String?>, empty: String) -> some View {
         OrchestrationField(key) {
-            AletheSelect(selection: Binding { selection.wrappedValue ?? "" } set: { selection.wrappedValue = $0.isEmpty ? nil : $0 },
+            InterfaceSelect(selection: Binding { selection.wrappedValue ?? "" } set: { selection.wrappedValue = $0.isEmpty ? nil : $0 },
                          options: [""] + OrchestrationSkill.providers) { value in
                 if value.isEmpty { label(empty) } else { Text(verbatim: orchestrationAgentName(value)) }
             }
@@ -195,15 +195,24 @@ private struct OrchestrationRoleRow: View {
                 TextField(text: $draft) { label("orchestrationRoleName") }.modifier(ProjectGroupWebInput())
                     .frame(width: metrics.size(96))
                     .onChange(of: draft) { _, value in if !invalid { binding(\.name).wrappedValue = value } }
-                AletheSelect(selection: optional(\.orchestrator), options: ["", "claude", "codex"]) { value in
+                InterfaceSelect(selection: optional(\.orchestrator), options: ["", "claude", "codex"],
+                    optionDisabled: { value in roles.contains { $0 != role && $0.name == role.name && ($0.orchestrator ?? "") == value } }) { value in
                     if value.isEmpty { label("orchestrationOrchestratorAny") } else { Text(verbatim: orchestrationAgentName(value)) }
                 }.frame(width: metrics.size(88))
-                AletheSelect(selection: Binding { role.agent } set: { agent in
+                InterfaceSelect(selection: Binding { role.agent } set: { agent in
                     var next = role; next.agent = agent; next.model = nil; next.effort = nil; next.readOnly = false; save(next)
                 }, options: ["codex", "claude"]) { Text(verbatim: orchestrationAgentName($0)) }.frame(width: metrics.size(104))
+                if metrics.isWebInterface {
+                    WebDropdown(selection: optional(\.model), options: [""] + (role.model.map { [$0] } ?? []),
+                        searchable: true, searchText: { $0 }, customValue: { $0 },
+                        customOptionLabel: { String(localized: "dropdown.orchestration.custom").replacingOccurrences(of: "{value}", with: $0) }) { value in
+                        if value.isEmpty { label("orchestrationCliDefault") } else { Text(verbatim: value) }
+                    }.frame(width: metrics.size(120)).accessibilityLabel(label("orchestrationModel"))
+                } else {
                 TextField(text: optional(\.model), prompt: label("orchestrationCliDefault")) { label("orchestrationModel") }
                     .modifier(ProjectGroupWebInput()).frame(width: metrics.size(120))
-                AletheSelect(selection: optional(\.effort), options: ["", "low", "medium", "high", "xhigh", "max"]) { value in
+                }
+                InterfaceSelect(selection: optional(\.effort), options: ["", "low", "medium", "high", "xhigh", "max"]) { value in
                     if value.isEmpty { label("orchestrationModelDefault") } else { Text(verbatim: value) }
                 }.frame(width: metrics.size(96))
                 Toggle(isOn: binding(\.readOnly)) { label("orchestrationReadOnly") }.labelsHidden()
@@ -214,7 +223,7 @@ private struct OrchestrationRoleRow: View {
                         binding(\.timeoutSeconds).wrappedValue = seconds
                     }
                 }) { label("orchestrationBudget") }.modifier(ProjectGroupWebInput()).frame(width: metrics.size(88))
-                AletheSelect(selection: optional(\.fallback), options: [""] + fallbackNames) { value in
+                InterfaceSelect(selection: optional(\.fallback), options: [""] + fallbackNames) { value in
                     if value.isEmpty { label("orchestrationFallbackNone") } else { Text(verbatim: value) }
                 }.frame(width: metrics.size(104))
                 Button(action: remove) { Image(systemName: "trash").font(metrics.font(size: 14)) }

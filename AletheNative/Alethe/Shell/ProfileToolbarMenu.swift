@@ -71,12 +71,18 @@ struct ProfileToolbarMenu: View {
     }
 
     private var nativeMenu: some View {
-        Menu {
+        WebMenu {
             if sidebar {
                 Button("leftSidebar.preferences") { openSettings() }
-                Divider()
+                WebMenuDivider()
             }
             ForEach(environment.profiles?.document.ordered(defaultName: AppEnvironment.defaultProfileName) ?? []) { entry in
+                if metrics.isWebInterface {
+                    Button { if entry.id != environment.profileID { switching = entry } } label: {
+                        WebMenuCheckRow(title: Text(verbatim: environment.profileName(entry)), symbol: "person",
+                                        selected: entry.id == environment.profileID)
+                    }
+                } else {
                 Toggle(isOn: Binding {
                     entry.id == environment.profileID
                 } set: { chosen in
@@ -84,8 +90,9 @@ struct ProfileToolbarMenu: View {
                 }) {
                     Text(verbatim: environment.profileName(entry))
                 }
+                }
             }
-            Divider()
+            WebMenuDivider()
             Button("profiles.menu.manage") {
                 environment.settingsTab = .profiles
                 openSettings()

@@ -367,27 +367,27 @@ private struct TodoWebProjectPicker: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        Menu {
-            Button("rightSidebar.todo.noProject") { choose("") }
-            ForEach(projects) { project in
-                Button { choose(project.id.rawValue) } label: { Text(verbatim: project.name) }
+        WebDropdown(selection: Binding(get: { selected }, set: choose), options: [""] + projects.map { $0.id.rawValue },
+            menuStyle: .todo, trigger: { value, state in
+                AnyView(HStack(spacing: metrics.size(compact ? 4 : 5)) {
+                    Image(systemName: "folder").resizable().scaledToFit()
+                        .frame(width: metrics.size(compact ? 11 : 13), height: metrics.size(compact ? 11 : 13))
+                        .foregroundStyle(theme[.fgFaint])
+                    Group {
+                        if let project = projects.first(where: { $0.id.rawValue == value }) { Text(verbatim: project.name) }
+                        else { Text("rightSidebar.todo.noProject") }
+                    }.lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, metrics.size(compact ? 4 : 8))
+                        .foregroundStyle(theme[.fgMuted])
+                    Image(systemName: "chevron.down").font(metrics.font(size: 11)).foregroundStyle(theme[.fgFaint])
+                }
+                .font(metrics.font(size: compact ? 10 : 11))
+                .padding(.horizontal, metrics.size(compact ? 6 : 7)).frame(height: metrics.size(compact ? 21 : 26))
+                .modifier(WebTodoChoiceSurface(compact: compact, state: state)))
+            }) { value in
+                if let project = projects.first(where: { $0.id.rawValue == value }) { Text(verbatim: project.name) }
+                else { Text("rightSidebar.todo.noProject") }
             }
-        } label: {
-            HStack(spacing: metrics.size(compact ? 4 : 5)) {
-                Image(systemName: "folder").resizable().scaledToFit()
-                    .frame(width: metrics.size(compact ? 11 : 13), height: metrics.size(compact ? 11 : 13))
-                Group {
-                    if let project = projects.first(where: { $0.id.rawValue == selected }) { Text(verbatim: project.name) }
-                    else { Text("rightSidebar.todo.noProject") }
-                }.lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.down").font(metrics.font(size: 8))
-            }
-            .font(metrics.font(size: compact ? 10 : 11)).foregroundStyle(theme[compact ? .fgFaint : .fgMuted])
-            .padding(.horizontal, metrics.size(compact ? 6 : 7)).frame(height: metrics.size(compact ? 21 : 26))
-            .background(theme[.bgSunken].opacity(compact ? 0.72 : 1), in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
-            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.sm)).strokeBorder(theme[.border].opacity(compact ? 0 : 1), lineWidth: metrics.size(1)))
-        }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityLabel(Text("todos.new.toProject"))
     }

@@ -59,11 +59,11 @@ extension MergeCenterSheet {
             Group {
             if model.stage == .analyze {
                 ProjectGroupWebField(title: "merge.source") {
-                    WebDropdown(selection: Bindable(model).source, options: model.branches) { Text(verbatim: $0) }
+                    WebDropdown(selection: Bindable(model).source, options: model.branches, appearance: .input) { Text(verbatim: $0) }
                         .accessibilityIdentifier("merge.source")
                 }
                 ProjectGroupWebField(title: "merge.target") {
-                    WebDropdown(selection: Bindable(model).target, options: model.branches) { Text(verbatim: $0) }
+                    WebDropdown(selection: Bindable(model).target, options: model.branches, appearance: .input) { Text(verbatim: $0) }
                         .accessibilityIdentifier("merge.target")
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: metrics.size(6)), count: 3), spacing: metrics.size(6)) {
@@ -92,9 +92,8 @@ extension MergeCenterSheet {
                     }
                 }
             } else if model.stage == .prepare {
-                NewTerminalRowSelect(selection: $agent, options: agents,
-                                     title: { AgentLabels.name(for: $0.rawValue) }) { kind in
-                    AgentLogo(agent: kind.rawValue, size: 16)
+                WebDropdown(selection: $agent, options: agents, accessibilityID: "newTerminal.rowSelect", appearance: .input) { kind in
+                    Text(verbatim: AgentLabels.name(for: kind.rawValue))
                 }
                 .accessibilityIdentifier("merge.agent")
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: metrics.size(6)), count: 2), spacing: metrics.size(6)) {

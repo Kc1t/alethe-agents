@@ -200,6 +200,28 @@ struct AgentSettingsRow: View {
                 Button("agentInstall.installEllipsis") { sheet = .install }
                     .disabled(environment.installer.isBusy)
                     .accessibilityIdentifier("settings.agent.install.\(agent.kind.rawValue)")
+            } else if metrics.isWebInterface {
+                HStack(spacing: metrics.size(8)) {
+                    if let version, let latest, AgentVersions.isOutdated(version, latest: latest),
+                       AgentInstallCatalog.npmPackage(for: agent.kind) != nil {
+                        Button { sheet = .update } label: {
+                            HStack(spacing: metrics.size(6)) {
+                                Image(systemName: "arrow.up.circle").font(metrics.font(size: 13))
+                                Text("agentInstall.updateEllipsis")
+                            }
+                        }.buttonStyle(AletheInstallActionStyle(.quiet))
+                    }
+                    Button { sheet = .uninstall } label: {
+                        HStack(spacing: metrics.size(6)) {
+                            Image(systemName: "trash").font(metrics.font(size: 13))
+                            Text("agentInstall.uninstallEllipsis")
+                        }
+                    }.buttonStyle(AletheInstallActionStyle(.danger))
+                }
+                .fixedSize().disabled(environment.installer.isBusy)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(Text("agentInstall.manage"))
+                .accessibilityIdentifier("settings.agent.manage.\(agent.kind.rawValue)")
             } else {
                 Menu {
                     if let version, let latest, AgentVersions.isOutdated(version, latest: latest),

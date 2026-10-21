@@ -15,6 +15,16 @@ baseline lacks is tagged `[Mac-only]`, one about a baseline feature that works d
   that inset while a title bar exists.
 - The three window buttons are vertically centered in the 32pt bar and stay visible in native full screen.
 
+### Select and dropdown parity (sel)
+- Web interface: use themed choice lists in settings, plugin filters, Home, Todos, browser and Git dialogs,
+  project editors and New Terminal. Match the web's trigger sizes, option rows, theme colors and Clean styling;
+  keep agent-provider cards, language cards and segmented controls where the web uses them.
+- Search CLI models, enter custom model IDs and navigate choices with the keyboard. Choice lists open above
+  when needed, stay inside their owning window and dismiss with Escape or an outside click, including in
+  sidebars and title-bar panels. The macOS interface retains its existing controls.
+- [Mac-different] Raw HTML select counterparts keep their web trigger styling and use the shared themed
+  listbox instead of browser-engine option menus. (MD-022)
+
 ### Debug builds
 - A Debug build now runs as `com.kc1t.alethe.mac.debug` ("Alethe Debug"): its own data folder, preferences, Keychain
   service and permissions, so it never touches the installed app's profile, and both can run side by side. It has a

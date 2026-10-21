@@ -86,7 +86,7 @@ struct DictationSettingsSections: View {
         } header: { Text("dictation.settings.mode") }
           footer: { Text("dictation.settings.modeDescription") }
         Section {
-            AletheSelect(selection: $settings.microphone, options: [""] + settings.microphones.map(\.uniqueID)) { id in
+            InterfaceSelect(selection: $settings.microphone, options: [""] + settings.microphones.map(\.uniqueID)) { id in
                 if id.isEmpty { Text("dictation.settings.systemMicrophone") }
                 else { Text(verbatim: settings.microphones.first { $0.uniqueID == id }?.localizedName ?? id) }
             }
@@ -97,7 +97,7 @@ struct DictationSettingsSections: View {
           footer: { Text("dictation.settings.microphoneDescription") }
         Section {
             VStack(alignment: .leading, spacing: metrics.size(12)) {
-                AletheSelect(selection: $settings.language, options: [""] + settings.locales.map(\.identifier)) { id in
+                InterfaceSelect(selection: $settings.language, options: [""] + settings.locales.map(\.identifier)) { id in
                     if id.isEmpty { Text("dictation.settings.interfaceLanguage") }
                     else { Text(verbatim: Locale.current.localizedString(forIdentifier: id) ?? id) }
                 }.frame(maxWidth: metrics.size(360)).accessibilityIdentifier("dictation.settings.language")

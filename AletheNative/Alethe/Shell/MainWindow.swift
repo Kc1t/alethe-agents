@@ -102,6 +102,7 @@ struct MainWindow: View {
         .overlay { if metrics.isWebInterface { InAppToastHost() } }
         .gitWebModalLayer()
         .webDialogLayer()
+        .modifier(WebChoiceActionLayer())
     }
 
     private func closeTitleBarNews() {
@@ -254,7 +255,6 @@ struct MainWindow: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .modifier(WebTitleBarPopoverLayer())
-        .modifier(WebContextMenuLayer())
         .background(theme[.bg])
         .ignoresSafeArea(.container, edges: .top)
         .toolbarVisibility(.hidden, for: .windowToolbar)
