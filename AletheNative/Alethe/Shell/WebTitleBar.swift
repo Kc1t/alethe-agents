@@ -1,4 +1,5 @@
 import AletheDesign
+import AletheFoundation
 import AletheModel
 import SwiftUI
 
@@ -49,6 +50,7 @@ struct WebTitleBar: View {
             .frame(width: threeAreas ? max(trafficLightTrailingEdge + metrics.size(96), metrics.size(sidebarVisible ? leftWidth : 38)) : nil)
             .fixedSize(horizontal: !threeAreas, vertical: false)
             .overlay(alignment: .trailing) { theme[.border].frame(width: metrics.size(1)) }
+            if AppIdentity.isDebugBuild { DebugBuildBadge().padding(.leading, metrics.size(8)) }
             if let workspace = environment.workspace, !workspace.document.workspace.tabs.isEmpty {
                 WorkspaceTabBar(workspace: workspace)
                     .layoutPriority(-1)

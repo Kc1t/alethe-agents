@@ -18,7 +18,7 @@ struct AletheApp: App {
 
     var body: some Scene {
         // A single main window: ⌘N belongs to "New Project", not to a second workspace window.
-        Window(AppIdentity.productName, id: "main") {
+        Window(AppIdentity.displayName, id: "main") {
             MainWindow()
                 .environment(environment)
                 .environment(\.theme, environment.theme)

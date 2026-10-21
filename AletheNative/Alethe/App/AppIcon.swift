@@ -1,3 +1,4 @@
+import AletheFoundation
 import AletheModel
 import AppKit
 
@@ -37,8 +38,25 @@ enum AppIcon {
             shadow.shadowBlurRadius = rect.width * 24 / 1024
             shadow.set()
             art.draw(in: frame)
+            if AppIdentity.isDebugBuild { drawDebugBand(in: frame) }
             return true
         }
+    }
+}
+
+extension AppIcon {
+    /// The red "DEBUG" band of the Debug bundle icon, for theme icons that replace it at run time.
+    fileprivate static func drawDebugBand(in frame: NSRect) {
+        let band = NSRect(x: frame.minX, y: frame.minY + frame.height * 0.20, width: frame.width, height: frame.height * 0.20)
+        NSGraphicsContext.saveGraphicsState()
+        NSBezierPath(roundedRect: frame, xRadius: frame.width * 0.225, yRadius: frame.width * 0.225).addClip()
+        NSColor(red: 0.91, green: 0.27, blue: 0.18, alpha: 1).setFill()
+        band.fill()
+        let font = NSFont.systemFont(ofSize: band.height * 0.62, weight: .heavy)
+        let text = NSAttributedString(string: "DEBUG", attributes: [.font: font, .foregroundColor: NSColor.white])
+        let size = text.size()
+        text.draw(at: NSPoint(x: band.midX - size.width / 2, y: band.midY - size.height / 2))
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
 

@@ -1,4 +1,5 @@
 #if DEBUG
+import AletheFoundation
 import AletheModel
 import AppKit
 
@@ -231,7 +232,7 @@ enum SidebarDragSelfTest {
 
     private static func write(_ lines: [String]) {
         let url = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/com.kc1t.alethe.mac/logs/sidebar-drag-selftest.log")
+            .appending(path: "Library/Application Support/\(AppIdentity.bundleIdentifier)/logs/sidebar-drag-selftest.log")
         try? Data((lines.joined(separator: "\n") + "\n").utf8).write(to: url)
     }
 }

@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../.."
 APP=build/DerivedData/Build/Products/Debug/Alethe.app
 [[ -x build/mousedrag ]] || swiftc -O -o build/mousedrag Scripts/dev/mousedrag.swift
 DATA="/private/tmp/alethe-smoke-$$"
-trap 'osascript -e "quit app id \"com.kc1t.alethe.mac\"" >/dev/null 2>&1 || true; rm -rf "$DATA"' EXIT
+trap 'osascript -e "quit app id \"com.kc1t.alethe.mac.debug\"" >/dev/null 2>&1 || true; rm -rf "$DATA"' EXIT
 
 open -n "$APP" --args -AletheDataRoot "$DATA" -AletheUITestSeed panes -AppleLanguages "(en)"
 for _ in $(seq 1 40); do

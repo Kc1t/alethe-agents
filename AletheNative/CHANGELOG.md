@@ -9,6 +9,12 @@ baseline lacks is tagged `[Mac-only]`, one about a baseline feature that works d
 
 ## [Unreleased]
 
+### Debug builds
+- A Debug build now runs as `com.kc1t.alethe.mac.debug` ("Alethe Debug"): its own data folder, preferences, Keychain
+  service and permissions, so it never touches the installed app's profile, and both can run side by side. It has a
+  red "DEBUG" app icon and a DEBUG badge in the title bar. `Scripts/dev/seed-debug-profile.sh` copies the production
+  data over once, when you want the Debug app to start with your real projects.
+
 ### Sidebar drag and drop
 - Web interface: dragging projects, groups and terminals in the left sidebar no longer uses the macOS drag
   session. It follows the web's pointer drag instead: 8px to start, a floating drag preview that is never

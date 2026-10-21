@@ -1,4 +1,5 @@
 import AletheDesign
+import AletheFoundation
 import AletheModel
 import AppKit
 import Observation
@@ -190,7 +191,7 @@ final class SidebarWebDragState {
         lines.append("  plan=\(plan.map { "\($0.action) mark=\($0.mark) fill=\($0.fill.map { "\($0)" } ?? "nil")" } ?? "none")")
         for region in geometry?.regions() ?? [] { lines.append("  \(region.target) hit=\(r(region.hit)) visual=\(r(region.visual))") }
         let url = FileManager.default.homeDirectoryForCurrentUser
-            .appending(path: "Library/Application Support/com.kc1t.alethe.mac/logs/sidebar-drop.log")
+            .appending(path: "Library/Application Support/\(AppIdentity.bundleIdentifier)/logs/sidebar-drop.log")
         let data = Data((lines.joined(separator: "\n") + "\n").utf8)
         if let handle = try? FileHandle(forWritingTo: url) {
             handle.seekToEndOfFile()
