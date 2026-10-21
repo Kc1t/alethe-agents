@@ -29,7 +29,9 @@ struct HomeBackdrop: View {
 
     var body: some View {
         GeometryReader { geometry in
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: metrics.reducesMotion || scenePhase != .active)) { timeline in
+            // Every frame redraws ~26k glyphs on the main thread; 30 fps kept it busy enough to starve event handling in a
+            // large window, so the ambient flow runs at 10 fps.
+            TimelineView(.animation(minimumInterval: 1.0 / 10, paused: metrics.reducesMotion || scenePhase != .active)) { timeline in
                 Canvas { context, _ in
                     draw(in: context, size: geometry.size,
                          time: metrics.reducesMotion ? nil : timeline.date.timeIntervalSinceReferenceDate * 1_000)
