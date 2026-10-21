@@ -16,6 +16,6 @@ fi
 APP="build/DerivedData/Build/Products/Release/Alethe.app"
 OUT="build/Alethe-macOS-universal.dmg"
 rm -f "$OUT"
-"$VENV/bin/dmgbuild" -s Scripts/dmg/settings.py -D app="$APP" -D dmg_dir="$(pwd)/Scripts/dmg" "Alethe" "$OUT" >/dev/null
+"$VENV/bin/dmgbuild" -s Scripts/dmg/settings.py -D app="$APP" "Alethe" "$OUT" >/dev/null
 echo "Built: $(pwd)/$OUT"
 shasum -a 256 "$OUT"

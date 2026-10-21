@@ -9,6 +9,10 @@ baseline lacks is tagged `[Mac-only]`, one about a baseline feature that works d
 
 ## [Unreleased]
 
+### Installer
+- The installer window uses a solid light background with larger icons. Finder on macOS 26 does not draw picture
+  backgrounds, so the previous artwork never showed and the window fell back to the default dark gray.
+
 ### Title bar
 - Web interface: the title bar's buttons, menus and pills now respond in a normal (non-full-screen) window. They
   were dead there because SwiftUI drops pointer events inside the title-bar safe-area band; the window now cancels
