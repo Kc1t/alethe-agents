@@ -16,7 +16,6 @@ enum AppIcon {
         guard theme != applied else { return }
         if theme == .default {
             // nil restores the bundle's AppIcon, already on Apple's grid and in every resolution.
-            // A Debug build sets its own red-band icon explicitly instead of trusting the Dock's icon cache.
             NSApp.applicationIconImage = AppIdentity.isDebugBuild
                 ? Bundle.main.url(forResource: "AppIconDebug", withExtension: "icns").flatMap { NSImage(contentsOf: $0) }
                 : nil
@@ -48,7 +47,6 @@ enum AppIcon {
 }
 
 extension AppIcon {
-    /// The red "DEBUG" band of the Debug bundle icon, for theme icons that replace it at run time.
     fileprivate static func drawDebugBand(in frame: NSRect) {
         let band = NSRect(x: frame.minX, y: frame.minY + frame.height * 0.20, width: frame.width, height: frame.height * 0.20)
         NSGraphicsContext.saveGraphicsState()
