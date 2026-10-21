@@ -51,7 +51,7 @@ extension AppIcon {
         let band = NSRect(x: frame.minX, y: frame.minY + frame.height * 0.20, width: frame.width, height: frame.height * 0.20)
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(roundedRect: frame, xRadius: frame.width * 0.225, yRadius: frame.width * 0.225).addClip()
-        NSColor(red: 0.91, green: 0.27, blue: 0.18, alpha: 1).setFill()
+        NSColor.systemRed.setFill()
         band.fill()
         let font = NSFont.systemFont(ofSize: band.height * 0.62, weight: .heavy)
         let text = NSAttributedString(string: "DEBUG", attributes: [.font: font, .foregroundColor: NSColor.white])
