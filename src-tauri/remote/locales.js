@@ -11,6 +11,12 @@ export const messages = {
     'chat.emptyTitle': 'Start a conversation with {agent}',
     'chat.emptyHint':
       'Describe a task or ask a question below. Replies will appear here automatically.',
+    'chat.noSessionTitle': 'No agent session found',
+    'chat.noSessionDescription':
+      'No Claude Code or Codex session was found in this terminal yet. Start a session in this terminal in Alethe.',
+    'chat.sessionId': 'Session {id}',
+    'chat.sessionModel': 'Model: {model}',
+    'chat.sessionTokens': '{tokens} tokens',
     'chat.agentPlaceholder': 'Message {agent}…',
     'chat.mobileHint': 'Use the send button to send · Enter adds a line on mobile',
     'chat.viewLabel': 'Conversation view',
@@ -47,7 +53,8 @@ export const messages = {
     'home.chatCount': '{count} chat',
     'home.chatCountPlural': '{count} chats',
     'home.description': 'Choose a shared terminal and continue your work from this device.',
-    'home.emptyDescription': 'Open a terminal in Alethe or allow remote access to an existing one.',
+    'home.emptyDescription':
+      'Open Claude Code or Codex in a terminal in Alethe, select Show on remote devices for that tab, then pair this device from Remote Control.',
     'home.emptyTitle': 'No shared chats yet',
     'home.noMatchesDescription': 'Try a project, group, agent, or terminal name.',
     'home.noMatchesTitle': 'No matching chats',
@@ -112,6 +119,12 @@ export const messages = {
     'chat.emptyTitle': 'Comece uma conversa com {agent}',
     'chat.emptyHint':
       'Descreva uma tarefa ou faça uma pergunta abaixo. As respostas aparecerão aqui automaticamente.',
+    'chat.noSessionTitle': 'Nenhuma sessão do agente encontrada',
+    'chat.noSessionDescription':
+      'Nenhuma sessão do Claude Code ou Codex foi encontrada neste terminal ainda. Inicie uma sessão neste terminal no Alethe.',
+    'chat.sessionId': 'Sessão {id}',
+    'chat.sessionModel': 'Modelo: {model}',
+    'chat.sessionTokens': '{tokens} tokens',
     'chat.agentPlaceholder': 'Mensagem para {agent}…',
     'chat.mobileHint': 'Toque no botão para enviar · Enter pula uma linha no celular',
     'chat.viewLabel': 'Visualização da conversa',
@@ -150,7 +163,7 @@ export const messages = {
     'home.description':
       'Escolha um terminal compartilhado e continue seu trabalho neste dispositivo.',
     'home.emptyDescription':
-      'Abra um terminal no Alethe ou permita o acesso remoto a um terminal existente.',
+      'Abra o Claude Code ou o Codex em um terminal no Alethe, selecione Mostrar em dispositivos remotos para essa aba e pareie este dispositivo em Controle remoto.',
     'home.emptyTitle': 'Nenhuma conversa compartilhada',
     'home.noMatchesDescription': 'Busque pelo nome de um projeto, grupo, agente ou terminal.',
     'home.noMatchesTitle': 'Nenhuma conversa encontrada',
@@ -214,6 +227,12 @@ export const messages = {
     'chat.reconnecting': '正在重新连接… 你的草稿仍安全保留在这里。',
     'chat.emptyTitle': '开始与 {agent} 对话',
     'chat.emptyHint': '在下方描述任务或提问。回复会自动出现在这里。',
+    'chat.noSessionTitle': '未找到智能体会话',
+    'chat.noSessionDescription':
+      '此终端中尚未找到 Claude Code 或 Codex 会话。请在 Alethe 的此终端中启动一个会话。',
+    'chat.sessionId': '会话 {id}',
+    'chat.sessionModel': '模型：{model}',
+    'chat.sessionTokens': '{tokens} 个令牌',
     'chat.agentPlaceholder': '向 {agent} 发送消息…',
     'chat.mobileHint': '使用发送按钮发送 · 在手机上按 Enter 换行',
     'chat.viewLabel': '对话视图',
@@ -248,7 +267,8 @@ export const messages = {
     'home.chatCount': '{count} 个对话',
     'home.chatCountPlural': '{count} 个对话',
     'home.description': '选择一个已共享的终端，从这台设备继续工作。',
-    'home.emptyDescription': '在 Alethe 中打开终端，或允许远程访问已有终端。',
+    'home.emptyDescription':
+      '在 Alethe 的终端中打开 Claude Code 或 Codex，为该标签页选择“显示到远程设备”，然后从“远程控制”配对此设备。',
     'home.emptyTitle': '还没有共享对话',
     'home.noMatchesDescription': '试试项目、分组、智能体或终端名称。',
     'home.noMatchesTitle': '没有匹配的对话',

@@ -91,6 +91,8 @@ pub(crate) struct RemoteQuestionOption {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TranscriptSnapshot {
     pub session_id: Option<String>,
+    pub model: Option<String>,
+    pub total_tokens: Option<u64>,
     pub revision: u64,
     pub unchanged: bool,
     pub messages: Vec<HandoffEvent>,
@@ -535,6 +537,8 @@ pub(crate) fn transcript_snapshot(
     let Ok((id, path, _)) = resolved else {
         return Ok(TranscriptSnapshot {
             session_id: None,
+            model: None,
+            total_tokens: None,
             revision: 0,
             unchanged: false,
             messages: Vec::new(),
@@ -549,11 +553,14 @@ pub(crate) fn transcript_snapshot(
     if revision != 0 && since == Some(revision) {
         return Ok(TranscriptSnapshot {
             session_id: Some(id),
+            model: None,
+            total_tokens: None,
             revision,
             unchanged: true,
             messages: Vec::new(),
         });
     }
+    let metadata = crate::agent_cost::transcript_metadata(&path, provider.as_str());
     let mut messages = match provider {
         Provider::Claude => claude_events(&path)?,
         Provider::Codex => codex_events(&path)?,
@@ -563,6 +570,8 @@ pub(crate) fn transcript_snapshot(
     }
     Ok(TranscriptSnapshot {
         session_id: Some(id),
+        model: metadata.0,
+        total_tokens: metadata.1,
         revision,
         unchanged: false,
         messages,
@@ -978,6 +987,53 @@ mod tests {
             question_set_id: None,
             questions: None,
         }
+    }
+
+    fn temporary_transcript(contents: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "alethe-remote-transcript-{}.jsonl",
+            nanoid::nanoid!(8)
+        ));
+        fs::write(&path, contents).expect("write transcript fixture");
+        path
+    }
+
+    #[test]
+    fn transcript_snapshot_metadata_serializes_when_available() {
+        let path = temporary_transcript(
+            r#"{"message":{"model":"claude-sonnet-4-5","usage":{"input_tokens":100,"output_tokens":20}}}"#,
+        );
+        let (model, total_tokens) = crate::agent_cost::transcript_metadata(&path, "claude");
+        let snapshot = TranscriptSnapshot {
+            session_id: Some("session-1".into()),
+            model,
+            total_tokens,
+            revision: 1,
+            unchanged: false,
+            messages: Vec::new(),
+        };
+        let value = serde_json::to_value(snapshot).expect("serialize transcript snapshot");
+        let _ = fs::remove_file(path);
+        assert_eq!(value["model"], "claude-sonnet-4-5");
+        assert_eq!(value["totalTokens"], 120);
+    }
+
+    #[test]
+    fn transcript_snapshot_metadata_serializes_null_when_unavailable() {
+        let path = temporary_transcript("{}\n");
+        let (model, total_tokens) = crate::agent_cost::transcript_metadata(&path, "claude");
+        let snapshot = TranscriptSnapshot {
+            session_id: Some("session-1".into()),
+            model,
+            total_tokens,
+            revision: 1,
+            unchanged: false,
+            messages: Vec::new(),
+        };
+        let value = serde_json::to_value(snapshot).expect("serialize transcript snapshot");
+        let _ = fs::remove_file(path);
+        assert!(value["model"].is_null());
+        assert!(value["totalTokens"].is_null());
     }
 
     fn mixed_events() -> Vec<HandoffEvent> {

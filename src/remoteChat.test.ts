@@ -26,9 +26,14 @@ const response = (data: unknown, status = 200) => ({
 const snapshot = (
   messages: { role: string; text: string; questionSetId?: string; questions?: unknown[] }[] = [],
   revision = 1,
+  metadata: { sessionId?: string | null; model?: string | null; totalTokens?: number | null } = {},
 ) => ({
   supported: true,
   agent: 'codex',
+  sessionId: 'session-1',
+  model: null,
+  totalTokens: null,
+  ...metadata,
   messages,
   revision,
 })
@@ -43,6 +48,7 @@ function harness() {
     connectionState = 'live';
     return { openChat, loadTranscript, setChatView, stopTranscriptPolling, renderHome,
       chatSession, setConnectionState, renderTranscript, renderMarkdown, messages,
+      setState: (value) => { state = value },
       setReadOnly: (value) => { readOnly = value },
       setTranscript: (value) => { transcript = value; renderTranscript() },
       updateChatFeedback,
@@ -92,6 +98,68 @@ describe('remote mobile conversations', () => {
       expect(document.querySelector('#messages')).toHaveAttribute('aria-busy', 'false')
     },
   )
+
+  it('renders the selected session model and token total with the conversation', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(
+        snapshot([{ role: 'assistant', text: 'Session reply' }], 7, {
+          sessionId: 'session-selected',
+          model: 'gpt-5-codex',
+          totalTokens: 1234,
+        }),
+      ),
+    )
+    ui.openChat('codex')
+    await settle()
+    expect(document.querySelector('#messages')).toHaveTextContent('Session reply')
+    expect(document.querySelector('#session-metadata')).toHaveTextContent('Session session-')
+    expect(document.querySelector('#session-metadata')).toHaveTextContent('Model: gpt-5-codex')
+    // Formatted in the app's language, not the device's.
+    expect(document.querySelector('#session-metadata')).toHaveTextContent('1,234 tokens')
+  })
+
+  it('does not invent unavailable session metadata', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(
+        snapshot([{ role: 'assistant', text: 'Session reply' }], 2, {
+          model: null,
+          totalTokens: null,
+        }),
+      ),
+    )
+    ui.openChat('codex')
+    await settle()
+    expect(document.querySelector('#session-metadata')).toHaveTextContent('Session session-')
+    expect(document.querySelector('#session-metadata')).not.toHaveTextContent('Model:')
+    expect(document.querySelector('#session-metadata')).not.toHaveTextContent('tokens')
+  })
+
+  it('shows setup guidance when no transcript session exists', async () => {
+    fetchMock.mockResolvedValueOnce(
+      response(snapshot([], 0, { sessionId: null, model: null, totalTokens: null })),
+    )
+    ui.openChat('codex')
+    await settle()
+    expect(document.querySelector('.messages-empty')).toHaveTextContent('No agent session found')
+    expect(document.querySelector('.messages-empty')).toHaveTextContent(
+      'Start a session in this terminal in Alethe',
+    )
+  })
+
+  it('shows the unsupported transcript state separately', () => {
+    ui.openChat('shell')
+    ui.setChatView('messages')
+    ui.setTranscript({ supported: false, agent: 'shell', messages: [] })
+    expect(document.querySelector('#messages')).toHaveTextContent('only Claude Code and Codex')
+  })
+
+  it('shows concrete setup steps in the home empty state', () => {
+    ui.setState({ projects: [] })
+    ui.renderHome()
+    expect(document.querySelector('.empty-state')).toHaveTextContent('Claude Code or Codex')
+    expect(document.querySelector('.empty-state')).toHaveTextContent('Show on remote devices')
+    expect(document.querySelector('.empty-state')).toHaveTextContent('Remote Control')
+  })
 
   it('shows the outgoing message immediately, prevents duplicate sends, and reconciles a reply', async () => {
     ui.openChat('codex')
@@ -523,6 +591,11 @@ describe('remote mobile conversations', () => {
       'chat.reconnecting',
       'chat.emptyTitle',
       'chat.emptyHint',
+      'chat.noSessionTitle',
+      'chat.noSessionDescription',
+      'chat.sessionId',
+      'chat.sessionModel',
+      'chat.sessionTokens',
       'chat.agentPlaceholder',
       'chat.mobileHint',
       'chat.viewLabel',
@@ -546,6 +619,7 @@ describe('remote mobile conversations', () => {
       'home.status.question',
       'home.status.draft',
       'home.status.ended',
+      'home.emptyDescription',
     ] as const) {
       expect(ui.messages.en[key]).toBe(en[key])
       expect(ui.messages['pt-BR'][key]).toBe(ptBR[key])

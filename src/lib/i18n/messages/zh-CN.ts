@@ -263,7 +263,8 @@ export const zhCN: Record<MessageKey, string> = {
   'home.chatCount': '{count} 聊天',
   'home.chatCountPlural': '{count} 聊天',
   'home.description': '选择一个共享终端，并从此设备继续您的工作。',
-  'home.emptyDescription': '在 Alethe 中打开终端，或允许远程访问已存在的终端。',
+  'home.emptyDescription':
+    '在 Alethe 的终端中打开 Claude Code 或 Codex，为该标签页选择“显示到远程设备”，然后从“远程控制”配对此设备。',
   'home.emptyTitle': '还没有共享聊天',
   'home.noMatchesDescription': '试试项目、组、代理或终端名称。',
   'home.noMatchesTitle': '没有匹配的聊天',
@@ -289,6 +290,12 @@ export const zhCN: Record<MessageKey, string> = {
   'chat.reconnecting': '正在重新连接… 你的草稿仍安全保留在这里。',
   'chat.emptyTitle': '开始与 {agent} 对话',
   'chat.emptyHint': '在下方描述任务或提问。回复会自动出现在这里。',
+  'chat.noSessionTitle': '未找到智能体会话',
+  'chat.noSessionDescription':
+    '此终端中尚未找到 Claude Code 或 Codex 会话。请在 Alethe 的此终端中启动一个会话。',
+  'chat.sessionId': '会话 {id}',
+  'chat.sessionModel': '模型：{model}',
+  'chat.sessionTokens': '{tokens} 个令牌',
   'chat.agentPlaceholder': '向 {agent} 发送消息…',
   'chat.mobileHint': '使用发送按钮发送 · 在手机上按 Enter 换行',
   'chat.viewLabel': '对话视图',
