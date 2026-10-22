@@ -10,6 +10,7 @@ mod backup;
 mod browser_pane;
 mod browser_session;
 mod cdp;
+mod child_env;
 mod claude_sessions;
 mod claude_usage;
 mod cli_launch;

@@ -174,6 +174,7 @@ pub fn command_builder_for_terminal(
         builder.env("OPENTUI_FORCE_EXPLICIT_WIDTH", "false");
     }
     scrub_editor_environment(&mut builder);
+    crate::child_env::scrub_pty(&mut builder);
     builder.env_remove("EDITOR");
     builder.env_remove("VISUAL");
     builder.env_remove("CLAUDECODE");

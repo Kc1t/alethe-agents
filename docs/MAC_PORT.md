@@ -36,6 +36,8 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `skip (Linux AppImage only; the Mac app does not ship as an AppImage)` · `platform` · fix(pty): keep AppImage env out of terminals
+  - Files: `src-tauri/src/child_env.rs`, `src-tauri/src/cli_resolver.rs`
 - `pending` · `ui` · feat(memory): list leftover processes and end orphaned terminal children
   - Files: `src/components/modals/MemoryAnalyticsModal.tsx`, `src-tauri/src/leftover_processes.rs`
 - `skip (Windows Job Objects; macOS terminals already end their process group)` · `platform` · Terminals run in a per-PTY Job Object so killing one ends orphaned descendants

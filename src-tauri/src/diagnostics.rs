@@ -53,7 +53,7 @@ pub fn open_in_file_explorer(path: String) -> Result<(), String> {
         } else {
             target.clone()
         };
-        Command::new("xdg-open").arg(dir.as_os_str()).spawn()
+        crate::child_env::scrub_command(Command::new("xdg-open").arg(dir.as_os_str())).spawn()
     };
 
     result.map(|_| ()).map_err(|e| e.to_string())
@@ -115,7 +115,7 @@ pub fn open_in_browser(target: String) -> Result<(), String> {
     let result = Command::new("open").arg(open_target).spawn();
 
     #[cfg(all(unix, not(target_os = "macos")))]
-    let result = Command::new("xdg-open").arg(open_target).spawn();
+    let result = crate::child_env::scrub_command(Command::new("xdg-open").arg(open_target)).spawn();
 
     result.map(|_| ()).map_err(|e| e.to_string())
 }
@@ -766,7 +766,7 @@ pub fn open_data_folder(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let result = Command::new("open").arg(&path).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
-    let result = Command::new("xdg-open").arg(&path).spawn();
+    let result = crate::child_env::scrub_command(Command::new("xdg-open").arg(&path)).spawn();
 
     result.map(|_| ()).map_err(|error| error.to_string())
 }
@@ -786,7 +786,7 @@ pub fn open_spawn_log(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let result = Command::new("open").arg(&path).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
-    let result = Command::new("xdg-open").arg(&path).spawn();
+    let result = crate::child_env::scrub_command(Command::new("xdg-open").arg(&path)).spawn();
 
     result.map(|_| ()).map_err(|error| error.to_string())
 }
@@ -848,7 +848,7 @@ pub fn open_logs_folder(app: AppHandle) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let result = Command::new("open").arg(&path).spawn();
     #[cfg(all(unix, not(target_os = "macos")))]
-    let result = Command::new("xdg-open").arg(&path).spawn();
+    let result = crate::child_env::scrub_command(Command::new("xdg-open").arg(&path)).spawn();
 
     result.map(|_| ()).map_err(|error| error.to_string())
 }

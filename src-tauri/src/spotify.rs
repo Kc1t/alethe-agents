@@ -635,8 +635,7 @@ pub async fn spotify_login(
     }
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open")
-            .arg(&auth_url)
+        crate::child_env::scrub_command(std::process::Command::new("xdg-open").arg(&auth_url))
             .spawn()
             .map_err(|e| format!("open browser: {e}"))?;
     }
