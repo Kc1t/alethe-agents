@@ -125,3 +125,59 @@ Some entries refer to unchanged callers that now inherit the shared dropdown fix
 - `AletheNative/DIVERGENCES.md`
 - `AletheNative/Packages/AletheKit/Sources/AletheDesign/Components+SelectDropdown.swift`
 - `AletheNative/SELECT_PARITY.md`
+
+## sel2: settings row surfaces and measured menus
+
+The follow-up removes the unconditional sunken card from **both** `AletheSettingsForm` and
+`SettingsPageForm` (the latter renders the reported Appearance page). `Components+SettingsRows.swift`
+defines an explicit `ContainerValues.settingsRowSurface`, defaulting to standalone. Both form renderers
+read it from `ForEach(subviews:)`. Pages opt individual rows into their web card; no view reflection or
+model changes are involved. The native Form path never applies the surface modifier.
+
+Baseline sources are read from `origin/main`, without checkout. All selectors below are in
+`src/components/modals/` unless a different root is given.
+
+| Rows | Surface and source selector |
+|---|---|
+| Appearance terminal theme, topbar style, interface choice, toolbar action | Standalone; `preferences/AppearancePage.tsx`, `PreferencesModal.module.css .sectionBody`, `ui/Dropdown.module.css .trigger`. Existing Mac-specific controls retain their choices. |
+| Appearance zoom and opacity | Standalone group; `.zoomControl` / `.opacityControl`. Each button/value owns its 40pt box; the zoom value now has its missing border and background. |
+| Theme, icon and visual-style grids | Standalone grid; `.themeGrid`, `.appIconGrid`, `.visualStyleGrid`. Existing tiles own their surfaces. |
+| Sidebar placement | Standalone; `.viewPlacementRow` has 6pt vertical padding and an inter-row separator. Dropdown uses its intrinsic width. |
+| Account profile, language and account-management actions | Standalone; `.profileEditor`, `.choiceGrid`, `.secondaryButton`. Language remains a choice-button group, not a select. |
+| Archived groups/projects | Individual cards: `.optionRow` (10pt/12pt); empty messages: `.emptyState` (18pt, dashed border). |
+| Remote reach and security choices | Individual cards: `RemoteControlSettingsFields.module.css .setting` / `.settingRow` (10pt/12pt). Reach label is 11pt muted; security title is 12pt medium, caption 10.5pt muted with 2pt gap. Dropdown width is intrinsic, matching the Dropdown flex child rather than applying the raw `select` rule. Existing values, disabled rules and identifiers retained. |
+| Remote service, pairing and devices | Individual cards: `preferences/RemoteControlPage.module.css .statusCard` / `.device` (12pt). Hints, links and revoke-all action stand alone. |
+| Multiagent project and tick action | Standalone; `preferences/MultiagentPage.module.css .toolbar`. Project has no extra left label. |
+| Multiagent queue / metrics | Individual `.taskRow` (8pt/10pt) and `.metricCard` (8pt/10pt). Metrics paint at each grid item, not around the grid. |
+| Multiagent traces, audit, autocommit and messages | Standalone; `.traceRow`, `.auditRow`, `.autocommitRow`, `.emptyNote`, `.mutedNote`. |
+| Worker shortcuts and rule sets | Standalone outer stacks; existing `.shortcut` / `.ruleSet` equivalent cards remain on individual items. |
+| Orchestration skill, limits, role table and actions | Standalone; `preferences/OrchestrationPage.module.css .limits`, `.roles`, `.roleRow`, shared `controls.module.css .field`. |
+| Routing presets, globals and advanced rules | Standalone section; `preferences/RoutingSection.module.css .presets`, `.globals`, `.rules`. Existing individual `.rule` cards remain self-painted. |
+| Voice enabled/mode, microphone and model/download controls | Standalone; `preferences/VoiceDictationSection.tsx`, `.segmented`, `.dictationMicSelect` (360pt). Existing native speech-language/model controls retain their data. |
+| Feature / Playwright controls | Standalone; `onboarding/FeaturesStep.module.css .row` / option fields. Mode remains segments. |
+| 9router source and connection fields | Standalone; `src/components/Router9/Router9Settings.tsx` / its module CSS. Source remains segments, not a dropdown. |
+| Plugins | Individual installed plugin `.row` cards (12pt); catalog, install fields, marketplace button and empty messages stand alone (`preferences/PluginsPage.module.css`). |
+| Terminal agents and shell path | Individual cards; `.agentList label`, `.cliPathRow`, `.shellPathRow` (10pt/12pt). Font, spawn concurrency and resource controls stand alone. |
+| About version / updates | Version card only: `.versionCard` (12pt/14pt); updates/actions are standalone `.updateBlock`. |
+| Toolbar item list | Individual items: `TopbarSettingsModal.module.css .item` (8pt/10pt, panel background); restore action stands alone. |
+
+Existing port-only rows without a web equivalent (interface-style choice, toolbar restore, native speech
+model download/language, resource-policy extras and focus-border preferences) remain standalone unless
+they already draw their own controls. Their behavior is unchanged; no new divergence is introduced.
+Existing MD-022 still covers themed lists for raw HTML select counterparts.
+
+`WebDropdown` measures its full non-lazy option stack and search box; only that content plus actual
+padding/spacing determines menu height, capped by the existing maximum. `NewTerminalRowSelect` likewise
+measures its stack, including per-option details. No row-count height estimate remains in either family.
+Both use `WebDropdownPortal`, which attaches an NSHostingView directly above the owning window content;
+it does not require an ancestor preference layer. SettingsView retains its existing dropdown layer;
+Git, project/group, integration and New Terminal modal wrappers retain theirs. The remaining direct
+`AletheSelect` callers are native branches; all web select callers continue through WebDropdown.
+
+Validation: `check-strings.py`, `check-divergences.py` (22 rows), Swift syntax-only parsing and
+`git diff --check` pass. No build is attempted: the reviewer must build outside the nested sandbox and
+verify the screenshot case, short/long/searchable menus, live zoom, keyboard operation and window edges
+on macOS 26.6. No app restart, staging, commit, push, schema changes or new divergence rows.
+
+No ai-memory skill or connector is available in this session. This existing versioned audit records the
+outcome and review handoff in its place; ai-memory synchronization remains for an equipped session.

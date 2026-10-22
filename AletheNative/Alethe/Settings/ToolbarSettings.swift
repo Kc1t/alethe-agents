@@ -17,6 +17,7 @@ struct ToolbarSettings: View {
                         environment.preferences?.update { $0.setToolbarItem(item, shown: shown) }
                     })
                     .accessibilityIdentifier("settings.toolbar.\(item.rawValue)")
+                    .settingsRowSurface(.toolbar)
                 }
             } footer: {
                 Text("settings.toolbar.help")

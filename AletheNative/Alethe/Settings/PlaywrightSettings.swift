@@ -48,6 +48,7 @@ struct PlaywrightOptions: View {
                     Text($0 == .shared ? "settings.playwright.mode.shared" : "settings.playwright.mode.dedicated")
                 }
             }.accessibilityIdentifier("settings.playwright.mode")
+                .settingsRowSurface(.standalone)
         } else {
             Picker("settings.playwright.mode", selection: mode) {
                 Text("settings.playwright.mode.shared").tag(PlaywrightBrowserMode.shared)
@@ -110,6 +111,7 @@ struct PlaywrightOptions: View {
                   prompt: Text("settings.playwright.browserPath.placeholder"))
             .webFieldSurface()
             .accessibilityIdentifier("settings.playwright.browserPath")
+                .settingsRowSurface(.standalone)
     }
 
     private func status(_ state: PlaywrightBrowser.State) -> Text {

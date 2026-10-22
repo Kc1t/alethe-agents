@@ -55,6 +55,7 @@ struct OrchestrationRoutingSection: View {
                     Text(verbatim: String(localized: "settings.orchestration.routingAdvanced").replacingOccurrences(of: "{count}", with: String(settings.routing.rules.count)))
                 }
             }
+            .settingsRowSurface(.standalone)
         } header: { label("orchestrationRouting") } footer: { label("orchestrationRoutingDesc") }
     }
 

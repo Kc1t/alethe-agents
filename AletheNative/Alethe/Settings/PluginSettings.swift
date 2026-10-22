@@ -23,7 +23,9 @@ struct PluginSettings: View {
         SettingsPageForm("plugins") {
             Section {
                 if let plugins = environment.plugins, !plugins.records.isEmpty {
-                    ForEach(plugins.records) { record in PluginInstalledWebRow(record: record, host: plugins) }
+                    ForEach(plugins.records) { record in
+                        PluginInstalledWebRow(record: record, host: plugins).settingsRowSurface(.plugin)
+                    }
                 } else if webModel.local.isEmpty { Text("settings.plugins.empty") }
                 ForEach(webModel.local) { manifest in
                     HStack(spacing: metrics.size(16)) {
@@ -45,7 +47,7 @@ struct PluginSettings: View {
                         }
                         Spacer(minLength: 0)
                         Button("settings.web.reference.market.uninstall", role: .destructive) { uninstallID = manifest.id }
-                    }.padding(metrics.size(2))
+                    }.settingsRowSurface(.plugin)
                 }
             } header: { Text("settings.web.reference.prefs.pluginsInstalledTitle") }
               footer: { Text("settings.web.reference.prefs.pluginsInstalledDesc") }

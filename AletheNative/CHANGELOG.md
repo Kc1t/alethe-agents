@@ -13,6 +13,13 @@ baseline lacks is tagged `[Mac-only]`, one about a baseline feature that works d
 - The installer window uses a solid light background with larger icons. Finder on macOS 26 does not draw picture
   backgrounds, so the previous artwork never showed and the window fell back to the default dark gray.
 
+### Settings and modal select layout (sel2)
+- Web interface: remove extra cards around standalone settings controls, including terminal theme, topbar
+  style, toolbar actions, zoom and opacity. Keep cards on the individual option, device, plugin and metric
+  rows that have them in the web app. Remote security choices now use the web's labeled dropdowns.
+- Size dropdown lists from their measured contents, including searchable lists and New Terminal's detailed
+  choices, so short menus have no empty band below their options. The macOS interface keeps its controls.
+
 ### Title bar
 - Web interface: the title bar's buttons, menus and pills now respond in a normal (non-full-screen) window. They
   were dead there because SwiftUI drops pointer events inside the title-bar safe-area band; the window now cancels

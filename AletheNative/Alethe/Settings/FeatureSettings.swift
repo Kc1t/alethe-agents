@@ -29,6 +29,7 @@ struct FeatureSettings: View {
                         Text("settings.orchestration.agentsPanel")
                         Text("settings.orchestration.agentsPanelDetail")
                     }.accessibilityIdentifier("settings.feature.agentsPanel")
+                .settingsRowSurface(.standalone)
                 }
             } footer: {
                 Text("settings.features.help")
@@ -88,6 +89,7 @@ struct FeatureRow: View {
             Text(feature.detail)
         }
         .accessibilityIdentifier("settings.feature.\(feature.rawValue)")
+                .settingsRowSurface(.standalone)
         if showsOptions, isOn.wrappedValue {
             FeatureOptions(feature: feature)
         }

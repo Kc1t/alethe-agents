@@ -17,7 +17,7 @@ struct AgentSettings: View {
         AletheSettingsForm {
             Section {
                 ForEach(agents) { agent in
-                    AgentSettingsRow(agent: agent)
+                    AgentSettingsRow(agent: agent).settingsRowSurface(.agent)
                 }
             } footer: {
                 Text("settings.agents.footer")
