@@ -63,6 +63,7 @@ import {
 } from '../../lib/orchestratorRuns'
 import { resolveShortcuts, renderShortcut, shortcutsForJob } from '../../lib/orchestratorShortcuts'
 import { nativeSubagentJobs } from '../../lib/orchestratorSubagents'
+import { shouldAutoFit } from '../../lib/orchestratorViewPolicy'
 import { basename } from '../../lib/paths'
 import {
   listenOrchestratorJobs,
@@ -836,6 +837,8 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const world = useRef<HTMLDivElement | null>(null)
   const pan = useRef<{ id: number; x: number; y: number } | null>(null)
   const moved = useRef(false)
+  const pointerOverBoard = useRef(false)
+  const fitNextLayout = useRef(false)
   // Elapsed time on a running job is derived from its start, so the pane has to re-render on its
   // own between events: a worker that reports nothing for a minute would otherwise look frozen.
   const [, setTick] = useState(0)
@@ -1046,11 +1049,9 @@ export const OrchestratorPane = memo(function OrchestratorPane({
 
   const activeKey = activeGroup ? plannerKey(activeGroup) : null
   useLayoutEffect(() => {
-    moved.current = false
-  }, [activeKey])
-
-  useLayoutEffect(() => {
-    if (moved.current) return
+    const forced = fitNextLayout.current
+    fitNextLayout.current = false
+    if (!shouldAutoFit(moved.current, pointerOverBoard.current, forced)) return
     fit()
   }, [activeKey, graph.width, graph.height, fit])
 
@@ -1059,10 +1060,10 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     const element = board.current
     if (!element) return
     const onWheel = (event: WheelEvent) => {
+      moved.current = true
       if (!event.ctrlKey && !event.metaKey) return
       event.preventDefault()
       const rect = element.getBoundingClientRect()
-      moved.current = true
       setView((prev) =>
         zoomAt(prev, Math.exp(-event.deltaY / 400), {
           x: event.clientX - rect.left,
@@ -1078,7 +1079,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     const element = board.current
     if (!element || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => {
-      if (!moved.current) fit()
+      if (shouldAutoFit(moved.current, pointerOverBoard.current)) fit()
     })
     observer.observe(element)
     return () => observer.disconnect()
@@ -1136,6 +1137,12 @@ export const OrchestratorPane = memo(function OrchestratorPane({
 
   const openPlanner = (key: string) => {
     setSelectedPlanner(key)
+    // Re-selecting the active planner changes no layout dependency, so a fit armed here would
+    // fire on a later graph change and undo a pan made in between.
+    if (key !== activeKey) {
+      moved.current = false
+      fitNextLayout.current = true
+    }
     setInspecting(null)
   }
 
@@ -1512,6 +1519,16 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                   backgroundPosition: `${view.x}px ${view.y}px`,
                 }}
                 onPointerDown={startPan}
+                onPointerDownCapture={() => {
+                  moved.current = true
+                }}
+                onPointerEnter={() => {
+                  pointerOverBoard.current = true
+                }}
+                onPointerLeave={() => {
+                  pointerOverBoard.current = false
+                  if (!moved.current) fit()
+                }}
                 onPointerMove={movePan}
                 onPointerUp={endPan}
                 onPointerCancel={endPan}
@@ -1681,7 +1698,10 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                     className={styles.zoomBtn}
                     title={t('orchestrator.zoomFitTitle')}
                     onPointerDown={(event) => event.stopPropagation()}
-                    onClick={fit}
+                    onClick={() => {
+                      moved.current = false
+                      fit()
+                    }}
                   >
                     {t('orchestrator.zoomFit')}
                   </button>
