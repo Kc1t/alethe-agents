@@ -420,6 +420,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Terminal clipboard events now use bounded paste writes instead of bypassing them through xterm's
   keyboard input path. Failed or slow paste writes no longer automatically restart the live agent session,
   and read-only terminals reject clipboard input.
+- **Switching accounts no longer overwrites the new account's plugin data.** The Todo list and
+  other plugin data were kept from the previous account after a switch, and the next change saved
+  them over the new account's. Switching now reloads the app, as creating or deleting an account
+  already did.
 
 - **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
   server or watcher it already has running on the board (for example after reopening the app, or
