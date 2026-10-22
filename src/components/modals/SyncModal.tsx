@@ -53,6 +53,7 @@ export function SyncModal() {
   const language = useProjectsStore((s) => s.preferences.language)
   const hydrate = useProjectsStore((s) => s.hydrate)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
+  const pushToast = useUiStore((s) => s.pushToast)
 
   const [status, setStatus] = useState<GithubSyncStatus | null>(null)
   const [token, setToken] = useState('')
@@ -125,9 +126,13 @@ export function SyncModal() {
     try {
       const next = await githubSyncPush()
       setStatus(next)
-      setNotice(t('sync.github.pushDone'))
+      const message = t('sync.github.pushDone')
+      setNotice(message)
+      pushToast({ title: message, body: '' })
     } catch (e) {
-      setError(mapError(e))
+      const message = mapError(e)
+      setError(message)
+      pushToast({ title: message, body: '' })
     } finally {
       setBusy(null)
     }
@@ -141,12 +146,15 @@ export function SyncModal() {
     try {
       const next = await githubSyncPull()
       setStatus(next)
-      // Regrava projects.json/activity-stats.json em disco → re-hidrata o store
-
+      // Rewrites projects.json/activity-stats.json on disk and rehydrates the store
       await hydrate()
-      setNotice(t('sync.github.pullDone'))
+      const message = t('sync.github.pullDone')
+      setNotice(message)
+      pushToast({ title: message, body: '' })
     } catch (e) {
-      setError(mapError(e))
+      const message = mapError(e)
+      setError(message)
+      pushToast({ title: message, body: '' })
     } finally {
       setBusy(null)
     }
@@ -178,9 +186,13 @@ export function SyncModal() {
       const payload = await buildCloudPayload(useProjectsStore.getState().preferences)
       const next = await cloudSyncPush(payload)
       setCloudStatus(next)
-      setNotice(t('sync.cloud.pushDone'))
+      const message = t('sync.cloud.pushDone')
+      setNotice(message)
+      pushToast({ title: message, body: '' })
     } catch (e) {
-      setError(mapError(e))
+      const message = mapError(e)
+      setError(message)
+      pushToast({ title: message, body: '' })
     } finally {
       setCloudBusy(null)
     }
@@ -194,14 +206,20 @@ export function SyncModal() {
       const payload = await cloudSyncPull()
       const applied = await applyCloudPayload(payload, setPreferences)
       if (!applied) {
-        setError(t('sync.error.malformed_payload'))
+        const message = t('sync.error.malformed_payload')
+        setError(message)
+        pushToast({ title: message, body: '' })
         return
       }
       const next = await cloudSyncStatus()
       setCloudStatus(next)
-      setNotice(t('sync.cloud.pullDone'))
+      const message = t('sync.cloud.pullDone')
+      setNotice(message)
+      pushToast({ title: message, body: '' })
     } catch (e) {
-      setError(mapError(e))
+      const message = mapError(e)
+      setError(message)
+      pushToast({ title: message, body: '' })
     } finally {
       setCloudBusy(null)
     }
@@ -241,7 +259,7 @@ export function SyncModal() {
       <p className={styles.subtitle}>{t('sync.subtitle')}</p>
 
       <div className={styles.grid}>
-        {/* ---- GitHub (funcional) ---- */}
+        {/* ---- GitHub ---- */}
         <section className={styles.card}>
           <header className={styles.cardHead}>
             <span className={styles.cardIcon}>
