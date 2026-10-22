@@ -63,6 +63,7 @@ import {
 } from '../../lib/orchestratorRuns'
 import { resolveShortcuts, renderShortcut, shortcutsForJob } from '../../lib/orchestratorShortcuts'
 import { nativeSubagentJobs } from '../../lib/orchestratorSubagents'
+import { workerSettingDisplay } from '../../lib/orchestratorWorkerDisplay'
 import { basename } from '../../lib/paths'
 import {
   listenOrchestratorJobs,
@@ -173,15 +174,6 @@ function canStop(job: OrchestratorJob): boolean {
   return (
     !job.native && (job.status === 'queued' || job.status === 'running' || job.status === 'blocked')
   )
-}
-
-/** What the planner chose to run a worker on; either part can be given without the other. */
-function modelTitle(job: OrchestratorJob, t: TFunction): string {
-  if (job.model && job.effort) {
-    return t('orchestrator.modelEffortTitle', { model: job.model, effort: job.effort })
-  }
-  if (job.model) return t('orchestrator.modelTitle', { model: job.model })
-  return t('orchestrator.effortTitle', { effort: job.effort ?? '' })
 }
 
 function laneTitle(lane: RunLane, t: TFunction): string | undefined {
@@ -386,11 +378,41 @@ function WorkerNode({
           {job.role && (
             <span title={t('orchestrator.roleTitle', { role: job.role })}>{job.role}</span>
           )}
-          {(job.model || job.effort) && (
-            <span title={modelTitle(job, t)}>
-              {[job.model, job.effort].filter(Boolean).join(' · ')}
-            </span>
-          )}
+          {(() => {
+            const settings = workerSettingDisplay(job)
+            const sourceTitle = (field: typeof settings.model) => {
+              if (field.source === 'cli') return t('orchestrator.settingFromCli')
+              if (field.source === 'role')
+                return t('orchestrator.settingFromRole', { role: field.role ?? job.role ?? '' })
+              if (field.source === 'fallback')
+                return t('orchestrator.settingFromFallback', { role: field.role ?? '' })
+              return t('orchestrator.settingFromPlanner')
+            }
+            const display = (field: typeof settings.model) => (
+              <span className={field.source === 'cli' ? styles.settingDefault : undefined}>
+                {field.value ?? t('orchestrator.cliDefault')}
+                {field.source === 'role' && (
+                  <small className={styles.settingMarker}>
+                    {t('orchestrator.settingRoleMarker')}
+                  </small>
+                )}
+                {field.source === 'fallback' && (
+                  <small className={styles.settingMarker}>
+                    {t('orchestrator.settingFallbackMarker')}
+                  </small>
+                )}
+              </span>
+            )
+            const title = [
+              t('orchestrator.modelSourceTitle', { source: sourceTitle(settings.model) }),
+              t('orchestrator.effortSourceTitle', { source: sourceTitle(settings.effort) }),
+            ].join('\n')
+            return (
+              <span className={styles.workerSettings} title={title}>
+                {display(settings.model)} · {display(settings.effort)}
+              </span>
+            )
+          })()}
           {job.readOnly && (
             <span className={styles.metaIcon} title={t('orchestrator.readOnlyTitle')}>
               <Eye size={9} aria-hidden />
@@ -1553,20 +1575,23 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           data-verdict={edge.note.verdict}
                           style={{ left: edge.note.x, top: edge.note.y }}
                         >
-                          {t(
-                            edge.note.verdict === 'fallback'
-                              ? 'orchestrator.routingFallback'
-                              : edge.note.verdict === 'ignored'
-                                ? 'orchestrator.routingIgnored'
-                                : 'orchestrator.routingChosen',
-                            {
-                              agent: edge.note.agent,
-                              window: edge.note.window,
-                              used: String(edge.note.used),
-                              from: edge.note.from ?? '',
-                              to: edge.note.to ?? '',
-                            },
-                          )}
+                          {edge.note.verdict === 'rule'
+                            ? t('orchestrator.routingRule', { role: edge.note.role })
+                            : t(
+                                edge.note.verdict === 'fallback'
+                                  ? 'orchestrator.routingFallback'
+                                  : edge.note.verdict === 'ignored'
+                                    ? 'orchestrator.routingIgnored'
+                                    : 'orchestrator.routingChosen',
+                                {
+                                  agent: edge.note.agent,
+                                  window: edge.note.window,
+                                  used: String(edge.note.used),
+                                  from:
+                                    edge.note.verdict === 'fallback' ? (edge.note.from ?? '') : '',
+                                  to: edge.note.verdict === 'fallback' ? (edge.note.to ?? '') : '',
+                                },
+                              )}
                         </span>
                       ) : null,
                     )}

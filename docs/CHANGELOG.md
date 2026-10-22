@@ -54,6 +54,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   sentence with a send phrase such as "thanks Jev" or "send it" and it fires as soon as
   the phrase is recognised, and a pause of about two seconds sends by itself. Releasing
   F9 or clicking the stop button still works.
+- **Worker cards now show each worker's model and effort**, including whether each value came from
+  the planner, a role, a fallback role, or the CLI default.
+
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with
@@ -421,6 +424,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   keyboard input path. Failed or slow paste writes no longer automatically restart the live agent session,
   and read-only terminals reject clipboard input.
 
+- **Routing rules now show their role on the orchestrator board**, instead of an incomplete
+  usage label.
 - **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
   server or watcher it already has running on the board (for example after reopening the app, or
   from a new planner terminal) now reuses that running shell and adopts it under the new planner,

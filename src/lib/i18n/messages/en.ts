@@ -2527,10 +2527,15 @@ export const en = {
   'orchestrator.settingsNotApplied': 'Orchestration settings were not applied',
   'orchestrator.settingsNotAppliedBody':
     'Planners keep the previous roles and limits until this is fixed: {error}',
-  'orchestrator.modelTitle': 'Runs on {model}, as the planner asked',
-  'orchestrator.effortTitle': 'Runs with {effort} reasoning effort, as the planner asked',
-  'orchestrator.modelEffortTitle':
-    'Runs on {model} with {effort} reasoning effort, as the planner asked',
+  'orchestrator.cliDefault': 'CLI default',
+  'orchestrator.settingFromCli': 'CLI default',
+  'orchestrator.settingFromPlanner': 'set by planner',
+  'orchestrator.settingFromRole': 'from role {role}',
+  'orchestrator.settingFromFallback': 'fallback role {role}',
+  'orchestrator.settingRoleMarker': 'R',
+  'orchestrator.settingFallbackMarker': 'F',
+  'orchestrator.modelSourceTitle': 'Model: {source}',
+  'orchestrator.effortSourceTitle': 'Effort: {source}',
   'orchestrator.readOnly': 'read-only',
   'orchestrator.readOnlyTitle':
     'Started in a read-only sandbox: it reads files and runs commands but cannot write',
@@ -2634,6 +2639,7 @@ export const en = {
   'orchestrator.routingChosen': 'chosen · {agent} {window} {used}%',
   'orchestrator.routingIgnored': 'ignored hint · {agent} {window} {used}%',
   'orchestrator.routingFallback': 'fallback · {from} → {to} · {agent} {window} {used}%',
+  'orchestrator.routingRule': 'rule · {role}',
   'orchestrator.askIn': 'in {path}',
   'orchestrator.askHint':
     'Declining lets it carry on down another path. Aborting ends its turn here.',

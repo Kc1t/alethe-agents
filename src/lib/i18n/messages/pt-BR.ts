@@ -2560,10 +2560,15 @@ export const ptBR: Record<MessageKey, string> = {
   'orchestrator.settingsNotApplied': 'As configurações de orquestração não foram aplicadas',
   'orchestrator.settingsNotAppliedBody':
     'O planner continua com os papéis e limites anteriores até isso ser corrigido: {error}',
-  'orchestrator.modelTitle': 'Roda no {model}, como o planner pediu',
-  'orchestrator.effortTitle': 'Roda com esforço de raciocínio {effort}, como o planner pediu',
-  'orchestrator.modelEffortTitle':
-    'Roda no {model} com esforço de raciocínio {effort}, como o planner pediu',
+  'orchestrator.cliDefault': 'padrão da CLI',
+  'orchestrator.settingFromCli': 'padrão da CLI',
+  'orchestrator.settingFromPlanner': 'definido pelo planner',
+  'orchestrator.settingFromRole': 'do papel {role}',
+  'orchestrator.settingFromFallback': 'papel alternativo {role}',
+  'orchestrator.settingRoleMarker': 'P',
+  'orchestrator.settingFallbackMarker': 'A',
+  'orchestrator.modelSourceTitle': 'Modelo: {source}',
+  'orchestrator.effortSourceTitle': 'Esforço: {source}',
   'orchestrator.readOnly': 'somente leitura',
   'orchestrator.readOnlyTitle':
     'Iniciado em sandbox somente leitura: lê arquivos e roda comandos, mas não escreve',
@@ -2667,6 +2672,7 @@ export const ptBR: Record<MessageKey, string> = {
   'orchestrator.routingChosen': 'escolhido · {agent} {window} {used}%',
   'orchestrator.routingIgnored': 'hint ignorado · {agent} {window} {used}%',
   'orchestrator.routingFallback': 'fallback · {from} → {to} · {agent} {window} {used}%',
+  'orchestrator.routingRule': 'regra · {role}',
   'orchestrator.askIn': 'em {path}',
   'orchestrator.askHint':
     'Recusar deixa ele seguir por outro caminho. Abortar encerra o turno dele.',
