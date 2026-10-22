@@ -1,4 +1,4 @@
-import { AppWindow, ChevronDown, Search, X } from 'lucide-react'
+import { AppWindow, ChevronDown, ChevronRight, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { type FeatureDefinition, FEATURES } from '../../../lib/features'
@@ -7,7 +7,6 @@ import { enableOrchestratorFeature } from '../../../lib/orchestratorUsageAccess'
 import type { FeatureId } from '../../../lib/types'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { FEATURE_ICONS } from '../../icons/featureIcons'
-import { AiMemoryPanel } from '../preferences/AiMemoryPanel'
 import styles from './FeaturesStep.module.css'
 
 type GroupId = 'workspace' | 'agents' | 'others'
@@ -56,14 +55,13 @@ function matches(feature: FeatureDefinition, needle: string, t: TFunction): bool
 type FeaturesStepProps = {
   expandSecondaryByDefault?: boolean
   showPlaywrightAdvanced?: boolean
-  /** Install and run state for ai-memory under its switch; Preferences only, not onboarding. */
-  showAiMemoryPanel?: boolean
+  onAiMemorySettings?: () => void
 }
 
 export function FeaturesStep({
   expandSecondaryByDefault = false,
   showPlaywrightAdvanced = false,
-  showAiMemoryPanel = false,
+  onAiMemorySettings,
 }: FeaturesStepProps = {}) {
   const t = useT()
   const enabledFeatures = useProjectsStore((s) => s.preferences.enabledFeatures)
@@ -134,7 +132,7 @@ export function FeaturesStep({
               const active = enabledFeatures[feature.id]
               const Icon = FEATURE_ICONS[feature.id]
               return (
-                <div key={feature.id}>
+                <div key={feature.id} data-setting-id={`feature-${feature.id}`}>
                   <button
                     type="button"
                     className={styles.row}
@@ -161,6 +159,16 @@ export function FeaturesStep({
                       <b />
                     </span>
                   </button>
+                  {feature.id === 'aiMemory' && onAiMemorySettings ? (
+                    <button
+                      type="button"
+                      className={styles.settingsLink}
+                      onClick={onAiMemorySettings}
+                    >
+                      {t('onboarding.openAiMemorySettings')}
+                      <ChevronRight size={13} aria-hidden="true" />
+                    </button>
+                  ) : null}
 
                   {feature.id === 'playwright' && active ? (
                     <>
@@ -202,11 +210,6 @@ export function FeaturesStep({
                         </label>
                       ) : null}
                     </>
-                  ) : null}
-                  {showAiMemoryPanel && feature.id === 'aiMemory' && active ? (
-                    <div className={styles.subPanel}>
-                      <AiMemoryPanel />
-                    </div>
                   ) : null}
                 </div>
               )
