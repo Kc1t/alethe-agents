@@ -30,6 +30,8 @@ struct WebDropdown<Value: Hashable, Label: View>: View {
     @State private var typeAheadTime = Date.distantPast
     @State private var search = ""
     @FocusState private var searchFocused: Bool
+    @State private var optionsHeight: CGFloat = 0
+    @State private var searchHeight: CGFloat = 0
     @State private var open = false
     @State private var active = 0
     @State private var hovering = false
@@ -152,7 +154,10 @@ struct WebDropdown<Value: Hashable, Label: View>: View {
     }
     private var choices: [Value] { visibleOptions + (custom.map { [$0] } ?? []) }
     private var menuHeight: CGFloat {
-        metrics.size(min(menuStyle.maximumHeight, max(40, CGFloat(choices.count) * (menuStyle.optionHeight + menuStyle.gap) - menuStyle.gap + (searchable ? 34 : 0) + menuStyle.padding * 2 + (custom != nil ? 3 : 0) + 2)))
+        let limit = metrics.size(menuStyle.maximumHeight)
+        guard optionsHeight > 0 else { return limit }
+        return min(limit, optionsHeight + metrics.size(menuStyle.padding * 2)
+                   + (searchable ? searchHeight + metrics.size(4) : 0))
     }
 
     private var menu: some View {
@@ -160,6 +165,7 @@ struct WebDropdown<Value: Hashable, Label: View>: View {
             VStack(spacing: metrics.size(4)) {
                 if searchable {
                     searchBox
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { searchHeight = $0 }
                 }
                 ScrollView {
                     VStack(spacing: metrics.size(menuStyle.gap)) {
@@ -173,6 +179,8 @@ struct WebDropdown<Value: Hashable, Label: View>: View {
                                 .padding(.horizontal, metrics.size(8)).frame(maxWidth: .infinity)
                         }
                     }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { optionsHeight = $0 }
                 }.webScrollStyle()
             }
             .padding(metrics.size(menuStyle.padding))
@@ -305,21 +313,28 @@ struct WebSelectRow<Value: Hashable>: View {
     var detail: LocalizedStringKey?
     @Binding var selection: Value
     let options: [Value]
+    var triggerWidth: CGFloat? = 220
+    var titleSize: CGFloat = 13
+    var titleWeight: Font.Weight = .regular
+    var titleToken: ThemeToken = .fg
+    var detailSize: CGFloat = 10
+    var spacing: CGFloat = 16
     let optionTitle: (Value) -> String
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack(alignment: .center, spacing: metrics.size(16)) {
+        HStack(alignment: .center, spacing: metrics.size(spacing)) {
             VStack(alignment: .leading, spacing: metrics.size(2)) {
-                Text(title).font(metrics.font(size: 13))
+                Text(title).font(metrics.font(size: titleSize, weight: titleWeight)).foregroundStyle(theme[titleToken])
                 if let detail {
-                    Text(detail).font(metrics.font(size: 10)).foregroundStyle(theme[.textSecondary])
+                    Text(detail).font(metrics.font(size: detailSize)).foregroundStyle(theme[.fgMuted])
                 }
             }
             Spacer(minLength: 0)
             WebDropdown(selection: $selection, options: options) { Text(verbatim: optionTitle($0)) }
-                .frame(width: metrics.size(220))
+                .frame(width: triggerWidth.map { metrics.size($0) })
+                .fixedSize(horizontal: triggerWidth == nil, vertical: false)
         }
     }
 }

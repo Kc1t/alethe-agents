@@ -16,6 +16,7 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
     @Environment(\.isEnabled) private var enabled
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
+    @State private var contentHeight: CGFloat = 0
     @State private var open = false
     @State private var active = 0
     @State private var hovering = false
@@ -86,7 +87,7 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
     }
 
     private var dropdownHeight: CGFloat {
-        metrics.size(min(320, CGFloat(options.count) * (detail(selection) == nil ? 38 : 52) + 10))
+        min(metrics.size(320), contentHeight > 0 ? contentHeight : metrics.size(320))
     }
 
     private var dropdown: some View {
@@ -128,6 +129,8 @@ struct NewTerminalRowSelect<Selection: Hashable, Icon: View>: View {
                         .accessibilityIdentifier("newTerminal.rowSelect.option.\(index)")
                     }
                 }.padding(metrics.size(5))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
             }
             .frame(maxHeight: dropdownHeight)
             .foregroundStyle(theme[.fg])

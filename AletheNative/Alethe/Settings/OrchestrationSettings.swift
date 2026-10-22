@@ -34,6 +34,7 @@ struct OrchestrationSettings: View {
                            values: ["ask", "automatic", "never"], prefix: "orchestrationSkillSwitch.")
                     provider("orchestrationSkillPreferred", selection: binding(\.skill.preferredProvider), empty: "orchestrationSkillProviderAuto")
                 }
+                .settingsRowSurface(.standalone)
                 hint("orchestrationSkillHint")
             } header: { label("orchestrationSkill") } footer: { label("orchestrationSkillDesc") }
             Section {

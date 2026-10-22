@@ -92,6 +92,7 @@ struct RemoteSettings: View {
                 Text(verbatim: statusLine)
             }
             .accessibilityIdentifier("settings.remote.enabled")
+                .settingsRowSurface(.remote)
             #if DEBUG
             if UserDefaults.standard.string(forKey: "AletheDataRoot") != nil {
                 // UI tests read what the controller and its hub hold, not just what the form shows.
@@ -116,12 +117,13 @@ struct RemoteSettings: View {
     private var reachSection: some View {
         Section {
             if metrics.isWebInterface {
-                WebSelectRow(title: "settings.web.reference.remote.reachTitle", detail: "settings.remote.reach.help",
-                             selection: Binding(get: { remote.useTailscale }, set: { tailscale in update { $0.useTailscale = tailscale } }),
-                             options: tailscaleAvailable || remote.useTailscale ? [false, true] : [false]) {
+                WebSelectRow(title: "settings.web.reference.remote.reachTitle", selection: Binding(get: { remote.useTailscale }, set: { tailscale in update { $0.useTailscale = tailscale } }),
+                             options: tailscaleAvailable || remote.useTailscale ? [false, true] : [false],
+                             triggerWidth: nil, titleSize: 11, titleToken: .fgMuted, spacing: 10) {
                     $0 ? String(localized: "settings.remote.reach.tailscale") : String(localized: "settings.remote.reach.lan")
                 }
                 .accessibilityIdentifier("settings.remote.reach")
+                .settingsRowSurface(.option)
             } else {
             Picker(selection: Binding(get: { remote.useTailscale }, set: { tailscale in update { $0.useTailscale = tailscale } })) {
                 Text("settings.remote.reach.lan").tag(false)
@@ -179,6 +181,7 @@ struct RemoteSettings: View {
                      : String(localized: "settings.remote.pairing.closedHint"))
             }
             .accessibilityIdentifier("settings.remote.pairing")
+            .settingsRowSurface(.remote)
         } header: {
             Text("settings.remote.pairing")
         }
@@ -189,12 +192,16 @@ struct RemoteSettings: View {
             if metrics.isWebInterface {
                 WebSelectRow(title: "settings.remote.maxDevices", detail: "settings.remote.maxDevices.help",
                              selection: Binding(get: { remote.maxDevices }, set: { value in update { $0.maxDevices = value } }),
-                             options: Array(RemotePreferences.maxDevicesRange)) { "\($0)" }
+                             options: Array(RemotePreferences.maxDevicesRange), triggerWidth: nil,
+                             titleSize: 12, titleWeight: .medium, detailSize: 10.5, spacing: 14) { "\($0)" }
                     .accessibilityIdentifier("settings.remote.maxDevices")
+                .settingsRowSurface(.option)
                 WebSelectRow(title: "settings.remote.expiry", detail: "settings.remote.expiry.help",
                              selection: Binding(get: { remote.sessionExpirySecs }, set: { value in update { $0.sessionExpirySecs = value } }),
-                             options: Self.expiryOptions(including: remote.sessionExpirySecs)) { Self.expiryLabel($0) }
+                             options: Self.expiryOptions(including: remote.sessionExpirySecs), triggerWidth: nil,
+                             titleSize: 12, titleWeight: .medium, detailSize: 10.5, spacing: 14) { Self.expiryLabel($0) }
                     .accessibilityIdentifier("settings.remote.expiry")
+                .settingsRowSurface(.option)
             } else {
             Picker(selection: Binding(get: { remote.maxDevices }, set: { value in update { $0.maxDevices = value } })) {
                 ForEach(Array(RemotePreferences.maxDevicesRange), id: \.self) { count in
@@ -215,6 +222,25 @@ struct RemoteSettings: View {
             }
             .accessibilityIdentifier("settings.remote.expiry")
             }
+            if metrics.isWebInterface {
+                WebSelectRow(title: "settings.remote.readOnly", detail: "settings.remote.readOnly.help",
+                             selection: Binding(get: { remote.readOnly }, set: { value in update { $0.readOnly = value } }),
+                             options: [true, false], triggerWidth: nil, titleSize: 12, titleWeight: .medium,
+                             detailSize: 10.5, spacing: 14) {
+                    String(localized: $0 ? "settings.remote.readOnly.on" : "settings.remote.readOnly.off")
+                }
+                .accessibilityIdentifier("settings.remote.readOnly")
+                .settingsRowSurface(.option)
+                WebSelectRow(title: "settings.remote.shellInput", detail: "settings.remote.shellInput.help",
+                             selection: Binding(get: { remote.allowShellInput }, set: { value in update { $0.allowShellInput = value } }),
+                             options: [false, true], triggerWidth: nil, titleSize: 12, titleWeight: .medium,
+                             detailSize: 10.5, spacing: 14) {
+                    String(localized: $0 ? "settings.remote.shellInput.on" : "settings.remote.shellInput.off")
+                }
+                .disabled(remote.readOnly)
+                .accessibilityIdentifier("settings.remote.shellInput")
+                .settingsRowSurface(.option)
+            } else {
             Toggle(isOn: Binding(get: { remote.readOnly }, set: { value in update { $0.readOnly = value } })) {
                 Text("settings.remote.readOnly")
                 Text("settings.remote.readOnly.help")
@@ -226,6 +252,7 @@ struct RemoteSettings: View {
             }
             .disabled(remote.readOnly)
             .accessibilityIdentifier("settings.remote.shellInput")
+            }
         } header: {
             Text("settings.remote.security")
         } footer: {
@@ -259,6 +286,7 @@ struct RemoteSettings: View {
                     Text(verbatim: detail(of: device))
                 }
                 .accessibilityIdentifier("settings.remote.device")
+                .settingsRowSurface(.remote)
             }
             if !devices.isEmpty {
                 Button("settings.remote.revokeAll", role: .destructive) { confirmRevokeAll = true }

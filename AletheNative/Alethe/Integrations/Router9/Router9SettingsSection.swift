@@ -42,6 +42,7 @@ struct Router9SettingsSection: View {
                                 Text($0 == .managed ? "router9.source.managed" : "router9.source.external")
                             }
                         }.accessibilityIdentifier("router9.source")
+                .settingsRowSurface(.standalone)
                     } else {
                         Picker(selection: binding(\.source)) {
                             Text("router9.source.managed").tag(AletheModel.Router9Source.managed)
@@ -162,6 +163,7 @@ struct Router9SettingsSection: View {
         TextField(value: portBinding, format: .number.grouping(.never)) { Text("router9.port") }
             .webFieldSurface()
             .accessibilityIdentifier("router9.port")
+                .settingsRowSurface(.standalone)
         Toggle(isOn: binding(\.autoStart)) {
             Text("router9.autoStart")
             Text("router9.autoStart.help")

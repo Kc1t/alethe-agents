@@ -128,7 +128,7 @@ struct WebOrganizationSettings: View {
     var body: some View {
         SettingsPageForm("organization") {
             Section {
-                if groups.isEmpty { Text("settings.web.reference.prefs.archivedGroupsEmpty") }
+                if groups.isEmpty { Text("settings.web.reference.prefs.archivedGroupsEmpty").settingsRowSurface(.empty) }
                 ForEach(groups) { group in
                     HStack(spacing: metrics.size(14)) {
                         VStack(alignment: .leading, spacing: metrics.size(4)) {
@@ -144,12 +144,12 @@ struct WebOrganizationSettings: View {
                         Button { deleting = group } label: { Image(systemName: "trash").webProfileSized(14) }
                             .foregroundStyle(theme[.statusStopped])
                             .accessibilityLabel(Text("settings.organization.deleteGroup"))
-                    }
+                    }.settingsRowSurface(.option)
                 }
             } header: { Text("settings.web.reference.prefs.archivedGroupsTitle") }
               footer: { Text("settings.web.reference.prefs.archivedGroupsDesc") }
             Section {
-                if projects.isEmpty { Text("settings.web.reference.prefs.archivedProjectsEmpty") }
+                if projects.isEmpty { Text("settings.web.reference.prefs.archivedProjectsEmpty").settingsRowSurface(.empty) }
                 ForEach(projects) { project in
                     HStack {
                         Text(verbatim: project.name)
@@ -157,7 +157,7 @@ struct WebOrganizationSettings: View {
                         Button("settings.web.reference.prefs.restoreProject") {
                             environment.workspace?.update { $0.updateProject(project.id) { $0.archived = false } }
                         }
-                    }
+                    }.settingsRowSurface(.option)
                 }
             } header: { Text("settings.web.reference.prefs.archivedProjectsTitle") }
               footer: { Text("settings.web.reference.prefs.archivedProjectsDesc") }
@@ -209,11 +209,11 @@ struct WebTerminalSettings: View {
                 footer: { Text("settings.web.reference.prefs.spawnConcurrencyDesc") }
             Section {
                 ForEach(AgentRegistry.builtin.descriptors.filter { !$0.isShell }) { agent in
-                    AgentSettingsRow(agent: agent)
+                    AgentSettingsRow(agent: agent).settingsRowSurface(.agent)
                 }
             } header: { Text("settings.web.reference.prefs.agentsTitle") }
               footer: { Text("settings.agents.footer") }
-            Section { ShellPathField() }
+            Section { ShellPathField().settingsRowSurface(.option) }
                 header: { Text("settings.web.reference.prefs.shell") }
                 footer: { Text("settings.web.reference.prefs.shellDesc") }
             Section { TerminalFontField() }
@@ -243,6 +243,7 @@ struct WebTerminalSettings: View {
                     Text("settings.general.startClean")
                     Text("settings.general.startClean.help")
                 }.accessibilityIdentifier("settings.startClean")
+                .settingsRowSurface(.option)
             } header: { Text("settings.web.reference.prefs.resetSession") }
               footer: { Text("settings.web.reference.prefs.resetSessionDesc") }
         }
@@ -275,6 +276,7 @@ struct WebAboutSettings: View {
                     Text(verbatim: "v" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"))
                         .font(metrics.font(size: 15, weight: .bold).monospacedDigit())
                 }
+                .settingsRowSurface(.version)
             } header: { Text("settings.web.reference.prefs.aboutVersionTitle") }
               footer: { Text("settings.web.reference.prefs.aboutVersionDesc") }
             Section {

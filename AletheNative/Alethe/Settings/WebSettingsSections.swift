@@ -31,11 +31,7 @@ struct SettingsPageForm<Content: View>: View {
                                 VStack(alignment: .leading, spacing: metrics.size(8)) {
                                     ForEach(subviews: section.content) { row in
                                         row.frame(maxWidth: .infinity, alignment: .leading)
-                                            .padding(.horizontal, metrics.size(12))
-                                            .padding(.vertical, metrics.size(10))
-                                            .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
-                                            .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
-                                                .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
+                                            .modifier(AletheSettingsRowSurfaceModifier(row.containerValues.settingsRowSurface))
                                     }
                                 }
                             }

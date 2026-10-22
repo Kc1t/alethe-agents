@@ -32,6 +32,7 @@ struct AppearanceSettings: View {
                             Text(side == .left ? "settings.web.reference.prefs.viewPlacementLeft"
                                  : "settings.web.reference.prefs.viewPlacementRight")
                         }
+                        .fixedSize(horizontal: metrics.isWebInterface, vertical: false)
                         .accessibilityLabel(Text(verbatim: tab.title))
                     }
                     .font(metrics.font(size: 13))
@@ -41,6 +42,7 @@ struct AppearanceSettings: View {
                         if index > 0 { theme[.borderSubtle].frame(height: metrics.size(1)) }
                     }
                     .accessibilityIdentifier("settings.viewPlacement.\(tab.id)")
+                .settingsRowSurface(.standalone)
                 }
             }
         } else {
@@ -201,6 +203,7 @@ struct AppearanceSettings: View {
             Section {
                 WebVisualStyleGrid()
                 .accessibilityIdentifier("settings.style")
+                .settingsRowSurface(.standalone)
             } header: { Text("settings.web.reference.prefs.visualStyle") }
               footer: { Text("settings.web.reference.prefs.visualStyleDesc") }
             Section {
@@ -213,6 +216,7 @@ struct AppearanceSettings: View {
                     Text("settings.appearance.reduceMotion.help")
                 }
                 .accessibilityIdentifier("settings.reduceMotion")
+                .settingsRowSurface(.option)
             } header: { Text("settings.web.reference.prefs.motion") }
               footer: { Text("settings.web.reference.prefs.motionDesc") }
             Section { ThemeGrid() }
@@ -237,7 +241,7 @@ struct AppearanceSettings: View {
             Section {
                 HStack(spacing: metrics.size(8)) {
                     Button { environment.preferences?.update { $0.zoom(by: -1) } } label: {
-                        Image(systemName: "minus").webProfileSized(14)
+                        Image(systemName: "minus").webProfileSized(15)
                     }
                     .disabled(uiScale <= PreferencesDocument.uiScaleRange.lowerBound)
                     .accessibilityLabel(Text("menu.view.zoomOut"))
@@ -245,20 +249,25 @@ struct AppearanceSettings: View {
                     Text(verbatim: uiScale.formatted(.percent.precision(.fractionLength(0))))
                         .font(metrics.monoFont(size: 12, weight: .semibold))
                         .frame(maxWidth: .infinity)
+                        .frame(height: metrics.size(40))
+                        .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                            .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                         .id(uiScale)
                         .accessibilityIdentifier("settings.zoom.value")
                     Button { environment.preferences?.update { $0.zoom(by: 1) } } label: {
-                        Image(systemName: "plus").webProfileSized(14)
+                        Image(systemName: "plus").webProfileSized(15)
                     }
                     .disabled(uiScale >= PreferencesDocument.uiScaleRange.upperBound)
                     .accessibilityLabel(Text("menu.view.zoomIn"))
                     .accessibilityIdentifier("settings.zoom.in")
                     Button { environment.preferences?.update { $0.uiScale = 1 } } label: {
-                        Image(systemName: "arrow.counterclockwise").webProfileSized(14)
+                        Image(systemName: "arrow.counterclockwise").webProfileSized(15)
                     }
                     .disabled(uiScale == 1)
                     .accessibilityLabel(Text("menu.view.actualSize"))
                     .accessibilityIdentifier("settings.zoom.reset")
+                .settingsRowSurface(.standalone)
                 }
                 .buttonStyle(SettingsZoomButtonStyle())
                 .frame(maxWidth: metrics.size(320))
@@ -274,11 +283,13 @@ struct AppearanceSettings: View {
                 .accessibilityLabel(Text("settings.web.reference.prefs.topbarStyle"))
                 Button("settings.toolbar") { showingToolbar = true }
                     .accessibilityIdentifier("settings.toolbar.open")
+                .settingsRowSurface(.standalone)
                 InterfaceSelect(selection: Binding { environment.interfaceStyle } set: { environment.interfaceStyle = $0 }, options: InterfaceStyle.allCases) { style in
                     Text(style.title)
                 }
                 .accessibilityLabel(Text("settings.appearance.interface"))
                 .accessibilityIdentifier("settings.interface")
+                .settingsRowSurface(.standalone)
             } header: { Text("settings.web.reference.prefs.topbarStyle") }
               footer: { Text("settings.web.reference.prefs.topbarStyleDesc") }
             Section { viewPlacementRows }
@@ -295,6 +306,8 @@ struct AppearanceSettings: View {
                         .font(metrics.monoFont(size: 12, weight: .bold))
                         .frame(width: metrics.size(56), height: metrics.size(40))
                         .background(theme[.bgSunken], in: RoundedRectangle(cornerRadius: metrics.radius(.md)))
+                        .overlay(RoundedRectangle(cornerRadius: metrics.radius(.md))
+                            .strokeBorder(theme[.border], lineWidth: metrics.size(1)))
                     Button { environment.preferences?.update { $0.windowOpacity = 1 } } label: {
                         Image(systemName: "arrow.counterclockwise").webProfileSized(15)
                     }

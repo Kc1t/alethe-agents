@@ -64,11 +64,13 @@ struct MultiagentSettings: View {
         Section {
             HStack(spacing: metrics.space(.m)) {
                 if metrics.isWebInterface {
-                    WebSelectRow(title: "settings.multiagent.project", selection: $model.projectID,
+                    WebDropdown(selection: $model.projectID,
                                  options: [String?.none] + projects.map { Optional($0.id.rawValue) }) { id in
-                        id.flatMap { id in projects.first { $0.id.rawValue == id }?.name } ?? String(localized: "settings.multiagent.project.none")
+                        Text(verbatim: id.flatMap { id in projects.first { $0.id.rawValue == id }?.name } ?? String(localized: "settings.multiagent.project.none"))
                     }
+                    .accessibilityLabel(Text("settings.multiagent.project"))
                     .accessibilityIdentifier("multiagent.project")
+                .settingsRowSurface(.standalone)
                 } else {
                 Picker(selection: $model.projectID) {
                     Text("settings.multiagent.project.none").tag(String?.none)
@@ -100,6 +102,7 @@ struct MultiagentSettings: View {
             } else {
                 ForEach(Array(model.tasks.enumerated()), id: \.element.id) { index, task in
                     TaskRow(task: task, index: index, titles: model.titles) { cancelling = task }
+                        .settingsRowSurface(.task)
                 }
             }
         } header: {
@@ -137,6 +140,7 @@ struct MultiagentSettings: View {
                         }
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("multiagent.metric.\(metric.id)")
+                        .modifier(AletheSettingsRowSurfaceModifier(.metric))
                     }
                 }
             }
@@ -161,6 +165,7 @@ struct MultiagentSettings: View {
                 ForEach(Array(model.traces.enumerated()), id: \.offset) { index, event in
                     TraceRow(event: event) { model.correlationFilter = event.correlationID }
                         .accessibilityIdentifier("multiagent.trace.\(index)")
+                .settingsRowSurface(.standalone)
                 }
             }
         } header: {
@@ -189,6 +194,7 @@ struct MultiagentSettings: View {
                 ForEach(Array(model.history.enumerated()), id: \.element.hash) { index, commit in
                     AuditRow(commit: commit)
                         .accessibilityIdentifier("multiagent.audit.\(index)")
+                .settingsRowSurface(.standalone)
                 }
             }
         } header: {
@@ -276,6 +282,7 @@ private struct TaskRow: View {
             if task.status == .running {
                 Button("settings.multiagent.cancel", action: onCancel)
                     .accessibilityIdentifier("multiagent.task.\(index).cancel")
+                .settingsRowSurface(.standalone)
             }
         }
         .accessibilityIdentifier("multiagent.task.\(index)")

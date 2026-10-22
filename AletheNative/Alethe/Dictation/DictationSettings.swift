@@ -93,6 +93,7 @@ struct DictationSettingsSections: View {
             .frame(maxWidth: metrics.size(360))
             .disabled(!settings.enabled || environment.dictation.machine.isActive)
             .accessibilityIdentifier("dictation.settings.microphone")
+                .settingsRowSurface(.standalone)
         } header: { Text("dictation.settings.microphone") }
           footer: { Text("dictation.settings.microphoneDescription") }
         Section {
@@ -101,6 +102,7 @@ struct DictationSettingsSections: View {
                     if id.isEmpty { Text("dictation.settings.interfaceLanguage") }
                     else { Text(verbatim: Locale.current.localizedString(forIdentifier: id) ?? id) }
                 }.frame(maxWidth: metrics.size(360)).accessibilityIdentifier("dictation.settings.language")
+                .settingsRowSurface(.standalone)
                 Text(settings.installed ? "dictation.settings.ready" : "dictation.settings.missing")
                 if let progress = settings.progress { ProgressView(value: progress) }
                 Button("dictation.settings.download") { Task { await settings.download(locale: environment.dictationLocale) } }
