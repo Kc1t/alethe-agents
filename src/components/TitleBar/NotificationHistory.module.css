@@ -1,0 +1,97 @@
+.root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.trigger {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.popover {
+  position: fixed;
+  z-index: 30;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(420px, calc(100vh - 48px));
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.clear {
+  color: var(--fg-muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.clear:hover {
+  color: var(--fg);
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.item strong,
+.item span {
+  overflow-wrap: anywhere;
+}
+
+.item strong {
+  font-weight: 600;
+}
+
+.item span,
+.item time,
+.empty {
+  color: var(--fg-muted);
+}
+
+.item time {
+  font-size: 10px;
+}
+
+.empty {
+  margin: 12px 0 4px;
+  font-size: 11px;
+}

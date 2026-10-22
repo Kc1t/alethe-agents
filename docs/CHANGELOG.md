@@ -54,6 +54,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   sentence with a send phrase such as "thanks Jev" or "send it" and it fires as soon as
   the phrase is recognised, and a pause of about two seconds sends by itself. Releasing
   F9 or clicking the stop button still works.
+- **Notifications stay within reach after their toasts disappear.** Open the title-bar bell to
+  browse recent notifications and clear the history from any view.
+
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with
