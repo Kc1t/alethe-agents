@@ -18,6 +18,7 @@ import controls from '../controls.module.css'
 import styles from './RemoteControlPage.module.css'
 import { SettingsSection } from './primitives'
 import { RemoteControlSettingsFields } from '../RemoteControlSettingsFields'
+import { RemotePairingQr } from '../RemotePairingQr'
 
 export function RemoteControlPage() {
   const t = useT()
@@ -69,6 +70,7 @@ export function RemoteControlPage() {
 
   const enabled = info?.enabled === true
   const pairingOpen = info?.pairing_open === true
+  const hasPairingCredentials = Boolean(pairingOpen && info?.qr_svg && info.pairing_url)
 
   return (
     <>
@@ -153,9 +155,11 @@ export function RemoteControlPage() {
             <div>
               <strong>{pairingOpen ? t('remote.pairingOpen') : t('remote.pairingClosed')}</strong>
               <p>
-                {pairingOpen
+                {pairingOpen && !hasPairingCredentials
                   ? t('remote.pairingCountdown', { seconds: String(info?.pairing_expires_in ?? 0) })
-                  : t('remote.pairingClosedHint')}
+                  : pairingOpen
+                    ? null
+                    : t('remote.pairingClosedHint')}
               </p>
             </div>
             <button
@@ -169,6 +173,15 @@ export function RemoteControlPage() {
               {pairingOpen ? t('remote.pairingClose') : t('remote.pairingOpenAction')}
             </button>
           </div>
+          {pairingOpen && info?.qr_svg && info.pairing_url ? (
+            <div className={styles.pairingCredentials}>
+              <RemotePairingQr
+                qrSvg={info.qr_svg}
+                pairingUrl={info.pairing_url}
+                expiresIn={info.pairing_expires_in}
+              />
+            </div>
+          ) : null}
         </SettingsSection>
       ) : null}
 

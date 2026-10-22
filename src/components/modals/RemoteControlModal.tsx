@@ -17,6 +17,7 @@ import controls from './controls.module.css'
 import { Modal } from './Modal'
 import styles from './RemoteControlModal.module.css'
 import { RemoteControlSettingsFields } from './RemoteControlSettingsFields'
+import { RemotePairingQr } from './RemotePairingQr'
 
 export function RemoteControlModal() {
   const t = useT()
@@ -140,32 +141,25 @@ export function RemoteControlModal() {
           <div className={styles.step}>
             <span className={styles.stepEyebrow}>{t('remote.modalPairEyebrow')}</span>
             <div className={styles.contentGrid}>
-              <section className={styles.qrCard}>
-                {pairingOpen && info?.qr_svg ? (
-                  <>
-                    <img
-                      className={styles.qr}
-                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(info.qr_svg)}`}
-                      alt={t('remote.qrAlt')}
-                    />
-                    <span className={styles.scanHint}>
-                      {t('remote.pairingCountdown', { seconds: String(info.pairing_expires_in) })}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className={styles.scanHint}>{t('remote.pairingClosedHint')}</span>
-                    <button
-                      type="button"
-                      className={`${controls.btn} ${controls.btnPrimary}`}
-                      onClick={() => void run(openRemoteControlPairing)}
-                      disabled={busy}
-                    >
-                      {t('remote.pairingOpenAction')}
-                    </button>
-                  </>
-                )}
-              </section>
+              {pairingOpen && info?.qr_svg && info.pairing_url ? (
+                <RemotePairingQr
+                  qrSvg={info.qr_svg}
+                  pairingUrl={info.pairing_url}
+                  expiresIn={info.pairing_expires_in}
+                />
+              ) : (
+                <section className={styles.qrCard}>
+                  <span className={styles.scanHint}>{t('remote.pairingClosedHint')}</span>
+                  <button
+                    type="button"
+                    className={`${controls.btn} ${controls.btnPrimary}`}
+                    onClick={() => void run(openRemoteControlPairing)}
+                    disabled={busy}
+                  >
+                    {t('remote.pairingOpenAction')}
+                  </button>
+                </section>
+              )}
 
               <section className={styles.details}>
                 <div className={styles.metric}>
@@ -178,14 +172,6 @@ export function RemoteControlModal() {
                       ? t('remote.deviceSingular')
                       : t('remote.devicePlural')}
                   </span>
-                </div>
-                <div className={styles.urlBlock}>
-                  <span className={styles.metricLabel}>{t('remote.urlLabel')}</span>
-                  <code>
-                    {pairingOpen && info?.pairing_url
-                      ? info.pairing_url
-                      : t('remote.hiddenAddressPlaceholder')}
-                  </code>
                 </div>
                 <button
                   type="button"
