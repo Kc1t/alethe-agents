@@ -184,6 +184,13 @@ function modelTitle(job: OrchestratorJob, t: TFunction): string {
   return t('orchestrator.effortTitle', { effort: job.effort ?? '' })
 }
 
+function quotaWindowLabel(window: string, t: TFunction): string {
+  if (window === '5h') return t('orchestrator.quotaWindowSession')
+  if (window === 'week') return t('orchestrator.quotaWindowWeekly')
+  if (window === 'opus') return t('orchestrator.quotaWindowOpus')
+  return t('orchestrator.quotaWindowModel', { model: window })
+}
+
 function laneTitle(lane: RunLane, t: TFunction): string | undefined {
   if (lane === 'interrupted') return t('orchestrator.interruptedTitle')
   if (lane === 'blocked') return t('orchestrator.blockedTitle')
@@ -1393,11 +1400,13 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                 title={t('orchestrator.quotaWarningTitle', {
                   agent: warning.agent,
                   pct: warning.pct,
+                  window: quotaWindowLabel(warning.window, t),
                 })}
               >
                 {t('orchestrator.quotaWarning', {
                   agent: warning.agent,
                   pct: warning.pct,
+                  window: quotaWindowLabel(warning.window, t),
                   resets: warning.resetsAt
                     ? formatReset(warning.resetsAt, t('orchestrator.quotaResetsNow'))
                     : '—',

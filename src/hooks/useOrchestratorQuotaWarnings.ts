@@ -10,6 +10,17 @@ export type QuotaWarning = {
   agent: 'claude' | 'codex'
   pct: number
   resetsAt: string | null
+  window: string
+}
+
+export function quotaWarningForFitness(
+  agent: QuotaWarning['agent'],
+  fitness: AgentFitness,
+): QuotaWarning | null {
+  const raw = fitness.windows[fitness.worst] ?? fitness.used
+  return fitness.rateLimited || raw >= USAGE_FALLBACK_THRESHOLD
+    ? { agent, pct: Math.round(raw), resetsAt: fitness.resetsAt, window: fitness.worst }
+    : null
 }
 
 export function useOrchestratorQuotaWarnings(): QuotaWarning[] {
@@ -33,9 +44,7 @@ export function useOrchestratorQuotaWarnings(): QuotaWarning[] {
 
     const report = async (agent: 'claude' | 'codex', fitness: AgentFitness) => {
       await setAgentFitness(agent, fitness).catch(() => undefined)
-      return fitness.rateLimited || fitness.used >= USAGE_FALLBACK_THRESHOLD
-        ? { agent, pct: fitness.used, resetsAt: fitness.resetsAt }
-        : null
+      return quotaWarningForFitness(agent, fitness)
     }
 
     const check = async () => {

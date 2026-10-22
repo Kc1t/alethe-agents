@@ -421,6 +421,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   keyboard input path. Failed or slow paste writes no longer automatically restart the live agent session,
   and read-only terminals reject clipboard input.
 
+- **Orchestrator quota warnings now identify the limit that triggered them** and use raw utilization
+  so their threshold matches the usage indicators.
 - **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
   server or watcher it already has running on the board (for example after reopening the app, or
   from a new planner terminal) now reuses that running shell and adopts it under the new planner,
