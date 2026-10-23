@@ -939,6 +939,11 @@ mod tests {
 
     #[test]
     fn tailscale_mode_without_a_detected_ip_fails_closed_to_an_unbindable_host() {
+        // Only meaningful where Tailscale is absent (CI). A dev machine with a
+        // live tailnet legitimately resolves a 100.x address here.
+        if super::super::util::tailscale_ip().is_some() {
+            return;
+        }
         let hub = RemoteHub::new();
         hub.set_use_tailscale(true);
 
