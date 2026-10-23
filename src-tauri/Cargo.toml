@@ -55,9 +55,9 @@ cpal = "0.15"
 # On-device STT (Parakeet / Whisper / …). Build script downloads prebuilt libs when unset.
 sherpa-onnx = "1.13.6"
 tiny_http = "0.12"
-# keyring v3 não habilita NENHUM backend de plataforma por padrão — sem uma
-# feature explícita ele usa um store mock e todo get_password() falha. Os
-# backends nativos são declarados por plataforma abaixo (macos/windows/linux).
+# keyring v3 enables NO platform backend by default: without an explicit
+# feature it uses a mock store and every get_password() fails. The native
+# backends are declared per platform below (macos/windows/linux).
 keyring = { version = "3", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 dirs-next = "2"
@@ -74,27 +74,27 @@ regex = "1"
 # without rewriting the credentials, hooks and project tables around it.
 toml_edit = "0.22"
 
-# Impede execuções paralelas do Alethe (pré-requisito da guarda de
-# monotonicidade de `save_projects` em projects.rs). Só compila em desktop —
-# a crate não suporta mobile.
+# Prevents parallel Alethe instances (a prerequisite of the `save_projects`
+# monotonicity guard in projects.rs). Desktop only: the crate does not support
+# mobile.
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
 
-# Dependências só-macOS para o bridge nativo do Ghostty (embutir surfaces de
-# terminal numa NSView sobre a WebView do Tauri). Versões alinhadas com as que
-# o Tauri 2.11 já traz na árvore, pra não duplicar.
+# macOS-only dependencies for the native Ghostty bridge (embedding terminal
+# surfaces in an NSView over the Tauri WebView). Versions match the ones
+# Tauri 2.11 already brings into the tree, so they are not duplicated.
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
-# Backend do Keychain (onde o Claude Code guarda o token OAuth no macOS).
+# Keychain backend (where Claude Code stores its OAuth token on macOS).
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
 
-# Dependências só-Windows (registro + Win32). Em Linux/macOS o `winreg` nem
-# compila, então ficam atrás de `cfg(windows)`; o código que as usa já é gated.
+# Windows-only dependencies (registry + Win32). `winreg` does not even compile on
+# Linux/macOS, so they sit behind `cfg(windows)`; the code that uses them is gated too.
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-# Backend do Windows Credential Manager.
+# Windows Credential Manager backend.
 keyring = { version = "3", default-features = false, features = ["windows-native"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
@@ -108,9 +108,9 @@ windows-sys = { version = "0.61", features = [
   "Win32_UI_WindowsAndMessaging",
 ] }
 
-# Backend do Secret Service (GNOME Keyring / KWallet) no Linux. A variante
-# `sync-secret-service` + `crypto-rust` não precisa de tokio nem de libs de
-# sistema pra criptografia da sessão D-Bus.
+# Secret Service backend (GNOME Keyring / KWallet) on Linux. The
+# `sync-secret-service` + `crypto-rust` variant needs neither tokio nor system
+# libraries for the D-Bus session encryption.
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 # Match the webkit2gtk version Tauri already pulls so we can enable media-stream
@@ -125,8 +125,8 @@ zbus = "5"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
-# app inteiro durante uma sessão de HMR. Release segue abort (binário menor).
+# In dev, unwind lets a command panic become an Err instead of taking the whole
+# app down during an HMR session. Release keeps abort (smaller binary).
 [profile.dev]
 panic = "unwind"
 
