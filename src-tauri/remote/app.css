@@ -13,8 +13,12 @@
 html {
   min-height: 100%;
   background: var(--bg);
+  /* No double-tap zoom: this is an app surface, the terminal has its own pinch. */
+  /* No page zoom (pinch or double tap): it breaks the layout. Text size has its own buttons and the terminal its own pinch. */
+  touch-action: pan-x pan-y;
 }
 body {
+  overflow-x: hidden;
   min-width: 320px;
   min-height: 100vh;
   min-height: 100dvh;
@@ -614,6 +618,12 @@ svg {
   background: var(--bg-sunken);
   overscroll-behavior: contain;
 }
+/* Fitted to the screen width: only vertical scrolling, no sideways pan. Manual
+   font sizes (+/- or pinch) keep horizontal scrolling for wide output. */
+.terminal-viewport.is-fitted {
+  overflow-x: hidden;
+  touch-action: pan-y;
+}
 .terminal-host {
   display: inline-block;
   min-width: 100%;
@@ -842,41 +852,154 @@ svg {
 .composer {
   position: relative;
   display: grid;
-  grid-template-areas: 'error error' 'input send' 'hint hint';
-  grid-template-columns: minmax(0, 1fr) 46px;
+  grid-template-areas: 'error error error' 'attach input send';
+  grid-template-columns: 46px minmax(0, 1fr) 46px;
   align-items: end;
   gap: 0.4rem 0.5rem;
 }
-.composer textarea {
+.composer:has(.attach-button[hidden]) {
+  grid-template-areas: 'error error' 'input send';
+  grid-template-columns: minmax(0, 1fr) 46px;
+}
+.composer .attach-button {
+  grid-area: attach;
+}
+.attach-button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-elevated);
+  color: var(--fg-muted);
+}
+.attach-button[hidden] {
+  display: none;
+}
+.attach-button:hover {
+  color: var(--fg);
+}
+.attach-button:disabled {
+  opacity: 0.5;
+}
+.attach-button svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+.composer .composer-field {
   grid-area: input;
 }
 .composer .send-button {
   grid-area: send;
 }
-.composer textarea {
-  width: 100%;
+.composer-field {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  min-height: 46px;
-  max-height: 128px;
-  overflow-y: auto;
-  resize: none;
-  padding: 0.72rem 0.78rem;
   border: 1px solid var(--border);
   border-radius: 11px;
-  outline: 0;
   background: var(--bg-elevated);
+}
+.composer-field:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+.composer-photos {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.45rem 0.45rem 0;
+}
+.composer-photos:empty {
+  display: none;
+}
+.composer-photo {
+  position: relative;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.composer-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.composer-photo.is-uploading img {
+  opacity: 0.45;
+}
+.composer-photo .send-loader {
+  position: absolute;
+  inset: 0;
+  display: block;
+  margin: auto;
+  color: var(--fg);
+}
+.composer-photo button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.65);
+  color: #fff;
+}
+.composer-photo button svg {
+  width: 13px;
+  height: 13px;
+}
+.composer textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  /* The field's 2px of border plus this is the 46px of the buttons. */
+  height: 44px;
+  min-height: 44px;
+  max-height: 128px;
+  overflow-y: hidden;
+  resize: none;
+  padding: calc((44px - 1.45em) / 2) 0.78rem;
+  border: 0;
+  border-radius: 11px;
+  outline: 0;
+  background: transparent;
   color: var(--fg);
   font-size: 1rem;
   line-height: 1.45;
   caret-color: var(--accent);
 }
-.composer textarea:focus {
-  border-color: var(--accent-border);
-  box-shadow: 0 0 0 3px var(--accent-ring);
-}
 .composer textarea::placeholder {
+  overflow: hidden;
   color: var(--fg-faint);
   opacity: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-pending.is-queued {
+  cursor: pointer;
+}
+.msg-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+.msg-photos img {
+  width: 96px;
+  height: 96px;
+  border-radius: 8px;
+  object-fit: cover;
 }
 .send-button {
   display: grid;
@@ -911,12 +1034,6 @@ svg {
 }
 .send-button.is-loading .send-loader {
   display: block;
-}
-.composer-hint {
-  grid-area: hint;
-  color: var(--fg-faint);
-  font-size: 0.68rem;
-  line-height: 1.4;
 }
 .composer-error {
   grid-area: error;
@@ -1112,15 +1229,6 @@ svg {
   .chat-page {
     padding-bottom: 1.5rem;
   }
-  .composer-hint {
-    display: block;
-    color: var(--fg-faint);
-    font-size: 0.7rem;
-    grid-area: hint;
-  }
-  .composer {
-    grid-template-areas: 'error error' 'input send' 'hint hint';
-  }
   .composer-wrap {
     margin-right: 0;
     margin-left: 0;
@@ -1155,7 +1263,8 @@ svg {
     font-size: 0.66rem;
   }
   .terminal-viewport {
-    padding: 0.45rem 0.5rem;
+    padding: 0.35rem max(0.25rem, env(safe-area-inset-right)) 0.35rem
+      max(0.25rem, env(safe-area-inset-left));
   }
   .composer-wrap {
     margin: 0;
@@ -1483,4 +1592,44 @@ svg {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
+}
+
+.onboarding {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: end center;
+  padding: 1rem max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom))
+    max(1rem, env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+.onboarding-card {
+  width: min(100%, 420px);
+  padding: 1.1rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-sm);
+}
+.onboarding-card h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+.onboarding-card ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding-left: 1.1rem;
+  color: var(--fg-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.onboarding-done {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--accent);
+  border-radius: 11px;
+  background: var(--accent);
+  color: var(--accent-on);
 }
