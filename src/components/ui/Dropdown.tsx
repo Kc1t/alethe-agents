@@ -1,3 +1,4 @@
+import { FocusScope } from '@radix-ui/react-focus-scope'
 import { ChevronDown, Search } from 'lucide-react'
 import {
   type KeyboardEvent,
@@ -273,83 +274,97 @@ export function Dropdown({
       </button>
       {open && !disabled
         ? createPortal(
-            <div
-              ref={menuRef}
-              className={styles.menu}
-              data-alethe-dropdown-menu=""
-              style={{
-                left: position.left,
-                top: position.top,
-                width: position.width,
-                maxHeight: position.maxHeight,
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              onMouseDown={(event) => event.stopPropagation()}
-              onWheel={(event) => event.stopPropagation()}
+            // The menu is portaled out of any modal dialog, whose focus trap would pull focus
+            // back from the search box. An untrapped scope pauses that trap while the menu is open.
+            <FocusScope
+              asChild
+              trapped={false}
+              onMountAutoFocus={(event) => event.preventDefault()}
+              onUnmountAutoFocus={(event) => event.preventDefault()}
             >
-              {searchable ? (
-                <div className={styles.searchBox}>
-                  <Search size={13} aria-hidden="true" />
-                  <input
-                    ref={searchRef}
-                    className={styles.searchInput}
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    onKeyDown={handleSearchKeyDown}
-                    placeholder={searchPlaceholder}
-                    aria-label={searchPlaceholder ?? ariaLabel}
-                    aria-controls={listboxId}
-                    aria-activedescendant={activeOptionId}
-                  />
-                </div>
-              ) : null}
-              <div className={styles.options} id={listboxId} role="listbox" aria-label={ariaLabel}>
-                {visibleOptions.map((option, index) => (
-                  <button
-                    key={option.value}
-                    id={`${listboxId}-option-${index}`}
-                    type="button"
-                    role="option"
-                    aria-selected={option.value === value}
-                    disabled={option.disabled}
-                    tabIndex={-1}
-                    className={`${styles.option} ${option.value === value ? styles.optionSelected : ''} ${index === activeIndex ? styles.optionActive : ''}`}
-                    title={typeof option.label === 'string' ? option.label : undefined}
-                    onMouseEnter={() => {
-                      if (!option.disabled) setActiveIndex(index)
-                    }}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      if (!option.disabled) choose(option.value)
-                    }}
-                  >
-                    <span>{option.label}</span>
-                  </button>
-                ))}
-                {showCustomOption ? (
-                  <button
-                    id={`${listboxId}-option-${visibleOptions.length}`}
-                    type="button"
-                    role="option"
-                    aria-selected={value === search.trim()}
-                    tabIndex={-1}
-                    className={`${styles.option} ${styles.customOption} ${activeIndex === visibleOptions.length ? styles.optionActive : ''}`}
-                    onMouseEnter={() => setActiveIndex(visibleOptions.length)}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      choose(search.trim())
-                    }}
-                  >
-                    <span>{customOptionLabel?.(search.trim()) ?? search.trim()}</span>
-                  </button>
-                ) : null}
-                {visibleOptions.length === 0 && !showCustomOption ? (
-                  <div className={styles.empty} role="status">
-                    {typeof emptyLabel === 'function' ? emptyLabel(search.trim()) : emptyLabel}
+              <div
+                ref={menuRef}
+                className={styles.menu}
+                data-alethe-dropdown-menu=""
+                style={{
+                  left: position.left,
+                  top: position.top,
+                  width: position.width,
+                  maxHeight: position.maxHeight,
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onMouseDown={(event) => event.stopPropagation()}
+                onWheel={(event) => event.stopPropagation()}
+              >
+                {searchable ? (
+                  <div className={styles.searchBox}>
+                    <Search size={13} aria-hidden="true" />
+                    <input
+                      ref={searchRef}
+                      className={styles.searchInput}
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      onKeyDown={handleSearchKeyDown}
+                      placeholder={searchPlaceholder}
+                      aria-label={searchPlaceholder ?? ariaLabel}
+                      aria-controls={listboxId}
+                      aria-activedescendant={activeOptionId}
+                    />
                   </div>
                 ) : null}
+                <div
+                  className={styles.options}
+                  id={listboxId}
+                  role="listbox"
+                  aria-label={ariaLabel}
+                >
+                  {visibleOptions.map((option, index) => (
+                    <button
+                      key={option.value}
+                      id={`${listboxId}-option-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={option.value === value}
+                      disabled={option.disabled}
+                      tabIndex={-1}
+                      className={`${styles.option} ${option.value === value ? styles.optionSelected : ''} ${index === activeIndex ? styles.optionActive : ''}`}
+                      title={typeof option.label === 'string' ? option.label : undefined}
+                      onMouseEnter={() => {
+                        if (!option.disabled) setActiveIndex(index)
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        if (!option.disabled) choose(option.value)
+                      }}
+                    >
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                  {showCustomOption ? (
+                    <button
+                      id={`${listboxId}-option-${visibleOptions.length}`}
+                      type="button"
+                      role="option"
+                      aria-selected={value === search.trim()}
+                      tabIndex={-1}
+                      className={`${styles.option} ${styles.customOption} ${activeIndex === visibleOptions.length ? styles.optionActive : ''}`}
+                      onMouseEnter={() => setActiveIndex(visibleOptions.length)}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        choose(search.trim())
+                      }}
+                    >
+                      <span>{customOptionLabel?.(search.trim()) ?? search.trim()}</span>
+                    </button>
+                  ) : null}
+                  {visibleOptions.length === 0 && !showCustomOption ? (
+                    <div className={styles.empty} role="status">
+                      {typeof emptyLabel === 'function' ? emptyLabel(search.trim()) : emptyLabel}
+                    </div>
+                  ) : null}
+                </div>
               </div>
-            </div>,
+            </FocusScope>,
             document.body,
           )
         : null}
