@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { backupNotes, exportProfileState } from '../../lib/backup'
 import { saveFile } from '../../lib/dialog'
 import { intlLocale, useT } from '../../lib/i18n'
 import { isOrchestratorShellPty } from '../../lib/orchestratorShells'
@@ -23,7 +24,6 @@ import {
 import {
   createProfile,
   deleteProfile,
-  exportProfileBackup,
   listProfileSummaries,
   type ProfileSummary,
   renameProfile,
@@ -233,9 +233,9 @@ export function ProfilesModal() {
         filters: [{ name: t('profiles.backupFileType'), extensions: ['zip'] }],
       })
       if (!targetPath) return
-      await exportProfileBackup(pendingDelete.id, targetPath)
+      const report = await exportProfileState(targetPath, pendingDelete.id)
       setBackupReady(true)
-      setNotice(t('profiles.backupReady'))
+      setNotice([t('profiles.backupReady'), backupNotes(report)].filter(Boolean).join(' '))
     } catch (err) {
       setError(mapError(err))
     } finally {

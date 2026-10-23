@@ -183,16 +183,38 @@ export async function agentCliVersion(agent: string): Promise<string | null> {
   return invoke<string | null>('agent_cli_version', { agent })
 }
 
-export async function exportBackup(targetPath: string): Promise<void> {
-  await invoke('export_backup', { targetPath })
+export type BackupReport = {
+  skipped: string[]
+  embeddedImages: number
+  imageLinksKept: string[]
 }
 
-export async function exportProfileBackup(profileId: string, targetPath: string): Promise<void> {
-  await invoke('export_profile_backup', { profileId, targetPath })
+export type ImportReport = {
+  localStorage: Record<string, string>
+  profileName: string | null
 }
 
-export async function importBackup(sourcePath: string): Promise<void> {
-  await invoke('import_backup', { sourcePath })
+export async function exportBackup(
+  targetPath: string,
+  localStorage: Record<string, string> = {},
+): Promise<BackupReport> {
+  return invoke<BackupReport>('export_backup', { targetPath, extras: { localStorage } })
+}
+
+export async function exportProfileBackup(
+  profileId: string,
+  targetPath: string,
+  localStorage: Record<string, string> = {},
+): Promise<BackupReport> {
+  return invoke<BackupReport>('export_profile_backup', {
+    profileId,
+    targetPath,
+    extras: { localStorage },
+  })
+}
+
+export async function importBackup(sourcePath: string): Promise<ImportReport> {
+  return invoke<ImportReport>('import_backup', { sourcePath })
 }
 
 export type GithubSyncStatus = {

@@ -308,6 +308,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   panel now list each model-scoped weekly limit, such as Fable, below the Opus row, and the
   orchestrator counts them when it checks Claude's remaining quota
   ([#208](https://github.com/Kc1t/alethe-agents/issues/208)).
+- **A fuller About page.** Preferences → About now shows who builds Alethe, with links to the
+  creator's GitHub, YouTube, Instagram, and LinkedIn; shortcuts to report a bug, request a feature,
+  or open a pull request; and the license, privacy notes, source code, data folder, and logs.
+  **Older versions** lists earlier releases from GitHub and installs the chosen one through the
+  signed updater after offering a backup; releases from before signed updates link to their
+  installer instead.
 
 ### Changed
 
@@ -327,7 +333,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   since Cmd+Tab belongs to macOS.
 - WSL is no longer offered as an agent on macOS and Linux.
 - Memory warnings say "system memory" instead of "Windows memory" on every platform.
-
+- **Backups restore the whole profile.** An export now also carries the profile name, the terminal
+  prompt history, open Markdown tabs, and folded settings sections, and saves the profile photo and
+  project logos that were only links inside the file. Importing puts all of it back, and a
+  notification says what the backup holds.
 - Plugin Market profiles now open in a modal without adding workspace panes or requiring a project.
   The sidebar and preferences catalogue share status/source filters, sorting, result counts, and
   accent-insensitive multiword search across names, authors, descriptions, repositories, and permissions.
@@ -407,6 +416,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Exporting a backup no longer stops at a permission error.** Files the embedded browser keeps
+  locked while Alethe is open are left out, and any other file in use is skipped and named in the
+  confirmation instead of failing the whole export.
 - Closing or killing a terminal on Windows now also ends the dev servers and background jobs it
   started, even when the shell that launched them had already exited. Each terminal runs inside its
   own Job Object, so a `npm run dev` left behind by an agent no longer keeps holding memory.

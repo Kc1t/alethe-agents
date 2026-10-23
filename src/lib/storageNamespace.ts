@@ -47,3 +47,29 @@ export function writeScopedStorage(key: string, value: string): void {
 export function removeScopedStorage(key: string): void {
   localStorage.removeItem(scopedStorageKey(key))
 }
+
+export function scopedStorageSnapshot(namespace: string = activeNamespace): Record<string, string> {
+  const prefix = `${STORAGE_PREFIX}:${namespace}:`
+  const entries: Record<string, string> = {}
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index)
+    if (!key?.startsWith(prefix)) continue
+    const value = localStorage.getItem(key)
+    if (value !== null) entries[key.slice(prefix.length)] = value
+  }
+  return entries
+}
+
+export function restoreScopedStorage(entries: Record<string, string>): number {
+  let restored = 0
+  for (const [key, value] of Object.entries(entries)) {
+    if (typeof value !== 'string') continue
+    try {
+      writeScopedStorage(key, value)
+      restored += 1
+    } catch {
+      // A full quota keeps what fits; the rest is local convenience state.
+    }
+  }
+  return restored
+}

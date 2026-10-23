@@ -1,7 +1,8 @@
-import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
+import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater'
 
 import { flushProjectsState } from '../stores/projectsStore'
+import { downloadRelease, installDownloadedRelease } from './tauri/releases'
 
 export type UpdateInfo = {
   version: string
@@ -39,9 +40,30 @@ export async function installPendingUpdate(
   // again costs one request and keeps the button honest instead of failing on a lost reference.
   if (!pending) pending = await check()
   if (!pending) throw new Error('No update is pending: it may already be installed.')
+  await pending.download(progressReporter(onProgress))
+  // Installing exits the process on Windows, so nothing after it can save.
+  await flushProjectsState().catch(() => {})
+  await pending.install()
+
+  await relaunch()
+}
+
+export async function installRelease(
+  version: string,
+  onProgress?: (progress: UpdateProgress) => void,
+): Promise<void> {
+  await downloadRelease(version, progressReporter(onProgress))
+  await flushProjectsState().catch(() => {})
+  await installDownloadedRelease()
+  await relaunch()
+}
+
+function progressReporter(
+  onProgress?: (progress: UpdateProgress) => void,
+): (event: DownloadEvent) => void {
   let total = 0
   let downloaded = 0
-  await pending.download((event) => {
+  return (event) => {
     switch (event.event) {
       case 'Started':
         total = event.data.contentLength ?? 0
@@ -55,10 +77,5 @@ export async function installPendingUpdate(
         onProgress?.({ downloaded: total, total })
         break
     }
-  })
-  // Installing exits the process on Windows, so nothing after it can save.
-  await flushProjectsState().catch(() => {})
-  await pending.install()
-
-  await relaunch()
+  }
 }

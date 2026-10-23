@@ -70,6 +70,7 @@ mod project_detector;
 mod projects;
 mod provider_common;
 mod pty;
+mod release_install;
 mod remote;
 mod resource_manager;
 mod resources;
@@ -230,6 +231,7 @@ pub fn run() {
         .manage(router9::Router9Process::default())
         .manage(ai_memory::AiMemoryProcess::default())
         .manage(speech::SpeechState::default())
+        .manage(release_install::PendingRelease::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -456,6 +458,8 @@ pub fn run() {
             backup::export_backup,
             backup::export_profile_backup,
             backup::import_backup,
+            release_install::download_release,
+            release_install::install_downloaded_release,
             github_sync::github_sync_status,
             github_sync::github_sync_set_token,
             github_sync::github_sync_logout,

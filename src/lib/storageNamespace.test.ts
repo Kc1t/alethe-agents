@@ -4,7 +4,9 @@ import {
   getStorageNamespace,
   readScopedStorage,
   removeScopedStorage,
+  restoreScopedStorage,
   scopedStorageKey,
+  scopedStorageSnapshot,
   setStorageNamespace,
   writeScopedStorage,
 } from './storageNamespace'
@@ -69,5 +71,29 @@ describe('writeScopedStorage and removeScopedStorage', () => {
     expect(localStorage.getItem('alethe:default:foo')).toBe('value')
     removeScopedStorage('foo')
     expect(localStorage.getItem('alethe:default:foo')).toBeNull()
+  })
+})
+
+describe('scopedStorageSnapshot', () => {
+  it("keeps one profile's keys, without their prefix", () => {
+    localStorage.setItem('alethe:default:promptHistory:pty-1', '["npm test"]')
+    localStorage.setItem('alethe:default:preferences.collapsedSections', '{"app-info":true}')
+    localStorage.setItem('alethe:work:promptHistory:pty-2', '["ls"]')
+    localStorage.setItem('alethe:bootAppearance', '{}')
+
+    expect(scopedStorageSnapshot()).toEqual({
+      'promptHistory:pty-1': '["npm test"]',
+      'preferences.collapsedSections': '{"app-info":true}',
+    })
+    expect(scopedStorageSnapshot('work')).toEqual({ 'promptHistory:pty-2': '["ls"]' })
+  })
+})
+
+describe('restoreScopedStorage', () => {
+  it('writes the entries under the active profile', () => {
+    setStorageNamespace('work')
+    expect(restoreScopedStorage({ 'promptHistory:pty-1': '["npm test"]' })).toBe(1)
+    expect(localStorage.getItem('alethe:work:promptHistory:pty-1')).toBe('["npm test"]')
+    expect(localStorage.getItem('alethe:default:promptHistory:pty-1')).toBeNull()
   })
 })

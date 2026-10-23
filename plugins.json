@@ -11,6 +11,31 @@
       "version": "1.0.0",
       "minApiVersion": 1,
       "capabilities": ["ui.sidebarTab", "ui.command"]
+    },
+    {
+      "id": "alethe.jev",
+      "name": "Jev",
+      "description": "Voice commands for the workspace and Ctrl+E dictation into the focused terminal.",
+      "author": "Alethe",
+      "repo": "Kc1t/alethe-jev",
+      "downloadUrl": "https://github.com/Kc1t/alethe-jev/releases/latest",
+      "version": "1.0.0",
+      "minApiVersion": 2,
+      "capabilities": [
+        "ui.overlay",
+        "ui.settings",
+        "ui.sidebarTab",
+        "workspace.read",
+        "workspace.control",
+        "terminal.write",
+        "invoke:speech_*",
+        "invoke:jev_decide",
+        "listen:speech*"
+      ],
+      "package": {
+        "url": "https://github.com/Kc1t/alethe-jev/releases/download/v1.0.0/alethe-jev-1.0.0.zip",
+        "sha256": "e4f26fdd8cad32f296677562ba4af4ef78b6f43dfd95e7fd5fa3c6bec1b83d11"
+      }
     }
   ]
 }

@@ -383,6 +383,37 @@ export function PreferencesModal() {
         description: t('prefs.aboutUpdatesDesc'),
         keywords: 'update atualização atualizar upgrade nova versão release check 更新 升级 版本',
       },
+      {
+        category: 'about',
+        target: 'app-creator',
+        label: t('prefs.aboutCreatorTitle'),
+        description: t('prefs.aboutCreatorDesc'),
+        keywords: 'creator author owner maintainer kc1t kaua miguel criador autor dono 作者 维护者',
+      },
+      {
+        category: 'about',
+        target: 'app-older-versions',
+        label: t('prefs.aboutOlderTitle'),
+        description: t('prefs.aboutOlderDesc'),
+        keywords:
+          'downgrade older previous version rollback release versão anterior antiga voltar 降级 旧版本 回滚',
+      },
+      {
+        category: 'about',
+        target: 'app-contribute',
+        label: t('prefs.aboutContributeTitle'),
+        description: t('prefs.aboutContributeDesc'),
+        keywords:
+          'contribute pull request pr issue bug feature github open source contribuir relatar 贡献 问题 拉取请求',
+      },
+      {
+        category: 'about',
+        target: 'app-info',
+        label: t('prefs.aboutInfoTitle'),
+        description: t('prefs.aboutInfoDesc'),
+        keywords:
+          'license privacy source code data folder logs licença privacidade código pasta dados 许可证 隐私 源代码 日志',
+      },
     ],
     [t],
   )

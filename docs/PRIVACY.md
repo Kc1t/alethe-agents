@@ -53,8 +53,15 @@ messages, or payloads supplied by app features.
 
 - **Backup export/import** writes a ZIP to a location the user chooses. A profile export includes the
   profile tree, including persisted integration secrets and handoff/MCP artifacts, except `.log` and
-  `.tmp` files and embedded-webview runtime data. Profile `spawn.log` is therefore excluded. Treat
-  exported backups as sensitive and delete old copies yourself.
+  `.tmp` files, embedded-webview runtime data, the shared browser session (`browser-session/`), MCP
+  configuration backups (`mcp/backups/`), downloaded models and tools (`speech-models/`, `tools/`),
+  and the device-bound Alethe Cloud files (`cloud_sync.json`, `sync-state.json`). Profile `spawn.log`
+  is therefore excluded. A file another program holds open is skipped and named instead of failing
+  the export. The archive also carries `alethe-backup.json` with the profile name and the profile's
+  local interface state (terminal prompt history, open Markdown tabs, folded settings sections), and
+  the exported `projects.json` embeds the profile photo and project, group, and tab icons that were
+  stored as links, so exporting downloads those images. Importing restores all of it. Treat exported
+  backups as sensitive and delete old copies yourself.
 - **Log export** writes the files in the root `logs/` directory to a user-chosen ZIP. Review and redact
   it before sharing. It does not include profile `spawn.log`.
 - **Delete profile** removes that profile directory; Alethe prevents deletion of the last profile.
@@ -111,6 +118,8 @@ does not necessarily mean it sends a request before the stated trigger.
 | Surface | Exact current default | What happens and where data goes |
 |---|---|---|
 | Automatic update check | **On** | Once app state hydrates, Alethe checks `https://github.com/Kc1t/alethe-agents/releases/latest/download/latest.json`. Download and installation happen only after the user accepts an available update; updater artifacts are signature-checked by the configured Tauri updater key. This is separate from platform publisher signing: current Windows installers are not code-signed and macOS builds are not notarized. There is currently no preference that disables the startup check. |
+| Older versions | **On demand** | Clicking **Show older versions** in Preferences → About requests the release list from `https://api.github.com/repos/Kc1t/alethe-agents/releases`. Installing one downloads that release's `latest.json` and installer from `https://github.com/Kc1t/alethe-agents/releases`, checked against the same Tauri updater key as an update, and only after the user confirms. |
+| Backup export | **On demand** | Exporting a backup downloads the images that the profile photo and project, group, and tab icons reference by URL, to embed them in the archive. A link that cannot be downloaded stays a link. |
 | Provider usage polling | **On** | While the title bar is mounted, Alethe schedules Claude, Codex, and Antigravity usage reads shortly after startup and every five minutes; ticks are skipped while the window is unfocused/hidden. The three topbar indicators default visible. Claude sends its bearer credential to `https://api.anthropic.com/api/oauth/usage`; Antigravity sends its bearer credential to `https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels`; Codex sends its bearer credential to `https://chatgpt.com/backend-api/wham/usage` and, when reset credits are available, to `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits` for their titles and expiry, falling back to a short-lived `codex app-server` subprocess when that read fails. While the orchestrator or agent canvas is open, they also read Codex usage every minute through the same 60-second cache as the title bar, so all three share at most one Codex read per minute. The current visibility preferences hide indicators but do not gate the polling effects. |
 | Discord Rich Presence | **On** | Every 30 seconds, Alethe sends generic activity text (Alethe and the current app view, not project names) to the local Discord desktop IPC client. Discord controls any onward network publication under the Discord account's settings and terms. It can be disabled in Preferences. |
 | Spotify Now Playing | **Off / unconfigured** | No Spotify request succeeds on a clean profile because credentials and OAuth tokens are absent. Connecting opens Spotify authorization, temporarily listens only on `127.0.0.1:8888`, exchanges/refreshes tokens at `accounts.spotify.com`, and polls current or recent playback at `api.spotify.com` when a Now Playing widget is enabled. Returned cover-image URLs may cause requests to Spotify's image host. |

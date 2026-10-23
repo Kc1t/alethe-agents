@@ -1,0 +1,187 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.appMark {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  background: var(--fg);
+  mask: url('../../../assets/alethe-mark.svg') center / contain no-repeat;
+  -webkit-mask: url('../../../assets/alethe-mark.svg') center / contain no-repeat;
+}
+
+.creatorCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.creatorPhoto {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.creatorCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.creatorCopy strong {
+  color: var(--fg);
+  font-size: 14px;
+}
+
+.creatorCopy span {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.creatorCopy p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.linkRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.linkRow svg {
+  color: var(--fg-muted);
+}
+
+.note {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.releaseList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.releaseItem {
+  background: var(--bg-sunken);
+}
+
+.releaseItem + .releaseItem {
+  border-top: 1px solid var(--border);
+}
+
+.releaseRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.releaseMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.releaseVersion {
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.releaseDate {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 12px 12px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+.confirmText {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.confirmText svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--status-waiting);
+}
+
+.confirmActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.infoList {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.infoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-sunken);
+  font-size: 12px;
+}
+
+.infoRow + .infoRow {
+  border-top: 1px solid var(--border);
+}
+
+.infoRow dt {
+  color: var(--fg-muted);
+}
+
+.infoRow dd {
+  margin: 0;
+  min-width: 0;
+}
