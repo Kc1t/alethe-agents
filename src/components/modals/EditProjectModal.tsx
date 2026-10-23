@@ -1,6 +1,7 @@
 import { Bot, GitBranch, GitMerge, Palette } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import { confirmAction, showMessage } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import {
   detectProjectStack,
@@ -12,8 +13,8 @@ import {
   worktreeRemove,
 } from '../../lib/tauri'
 import { type AgentType, GROUP_COLORS } from '../../lib/types'
-import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useMergeStore } from '../../stores/mergeStore'
+import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Dropdown } from '../ui/Dropdown'
 import { ColorPalettePopover } from './ColorPalettePopover'
@@ -81,7 +82,7 @@ export function EditProjectModal() {
       const list = await worktreeList(repoPath)
       setWorktrees(list)
     } catch (err) {
-      console.error('Falha ao listar worktrees:', err)
+      console.error('Failed to list worktrees:', err)
     } finally {
       setLoadingWorktrees(false)
     }
@@ -162,13 +163,15 @@ export function EditProjectModal() {
   const handleRemoveWorktree = async (agentId: string) => {
     const repoPath = project.terminals[0]?.cwd
     if (!repoPath) return
-    if (confirm(`Tem certeza que deseja excluir o ambiente do agente "${agentId}"?`)) {
+    if (await confirmAction(t('crud.editProjectConfirmRemoveAgentEnv', { name: agentId }))) {
       try {
         await worktreeRemove(repoPath, agentId, true)
         void loadWorktrees(repoPath)
       } catch (err) {
-        console.error('Falha ao excluir worktree:', err)
-        alert('Erro ao excluir: ' + err)
+        console.error('Failed to delete worktree:', err)
+        void showMessage(t('crud.editProjectRemoveAgentEnvFailed', { error: String(err) }), {
+          kind: 'error',
+        })
       }
     }
   }
@@ -188,8 +191,8 @@ export function EditProjectModal() {
       setNewAgentName('')
       void loadWorktrees(repoPath)
     } catch (err) {
-      console.error('Falha ao criar ambiente de agente:', err)
-      alert(String(err))
+      console.error('Failed to create agent environment:', err)
+      void showMessage(String(err), { kind: 'error' })
     } finally {
       setCreatingAgent(false)
     }

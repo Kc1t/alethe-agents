@@ -44,7 +44,7 @@ export function isOverlayPresent(): boolean {
 /**
  * Hides every native surface until the returned handle is released.
  *
- * Some things that cover a pane leave no queryable node behind — a native `confirm()`, a drag in
+ * Some things that cover a pane leave no queryable node behind — a native dialog, a drag in
  * progress, a panel resize. Those call this instead of relying on the observer.
  */
 export function suspendNativeSurfaces(): () => void {

@@ -15,8 +15,10 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { confirmAction } from '../../lib/dialog'
 import { readableError } from '../../lib/errors'
 import { type MessageKey, useT } from '../../lib/i18n'
+import { formatShortcut } from '../../lib/platform'
 import {
   getPtyCwd,
   gitCommit,
@@ -154,7 +156,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
     }
     if (status.staged.length === 0) {
       if (allStageable.length === 0) return
-      if (!window.confirm(t('git.confirm.stageAllCommit'))) return
+      if (!(await confirmAction(t('git.confirm.stageAllCommit')))) return
     }
     await run(async () => {
       if (status.staged.length === 0) await gitStage(status.repoRoot, allStageable)
@@ -238,6 +240,9 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
   const total =
     status.staged.length + status.changes.length + status.untracked.length + status.conflicts.length
   const syncTitle = t('git.sync.title', { ahead: status.ahead, behind: status.behind })
+  const commitPlaceholder = t('git.commit.placeholder', {
+    shortcut: formatShortcut('Ctrl+Enter'),
+  })
 
   return (
     <div className={styles.panel} aria-busy={busy}>
@@ -300,8 +305,8 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
           onKeyDown={(event) => {
             if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') void commit()
           }}
-          placeholder={t('git.commit.placeholder')}
-          aria-label={t('git.commit.placeholder')}
+          placeholder={commitPlaceholder}
+          aria-label={commitPlaceholder}
           rows={2}
         />
         <div className={styles.commitRow}>
@@ -406,8 +411,9 @@ function ChangeGroup({
   if (items.length === 0) return null
   const paths = uniquePaths(items)
   const primaryTitle = kind === 'staged' ? t('git.unstageAll') : t('git.stageAll')
-  const confirmDiscard = (selected: string[]) => {
-    if (onDiscard && window.confirm(t('git.confirm.discard', { count: selected.length })))
+  const confirmDiscard = async (selected: string[]) => {
+    if (!onDiscard) return
+    if (await confirmAction(t('git.confirm.discard', { count: selected.length })))
       onDiscard(selected)
   }
   return (

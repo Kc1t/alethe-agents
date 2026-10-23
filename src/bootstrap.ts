@@ -5,8 +5,8 @@ if (import.meta.env.DEV) {
 }
 
 // Mark the platform as soon as the bundled entry starts evaluating, before
-// styles and React, to avoid an opaque first paint behind rounded macOS window
-// corners. App.tsx confirms the value later; see reset.css.
+// styles and React, so the first paint already leaves room for the macOS
+// traffic lights (see TitleBar.module.css).
 document.documentElement.dataset.platform = /Macintosh|Mac OS X/i.test(navigator.userAgent)
   ? 'macos'
   : 'other'

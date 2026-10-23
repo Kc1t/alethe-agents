@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Voice dictation opens the microphone. Without this key macOS terminates the app the
+	     first time it does. Merged into the bundle's Info.plist by Tauri. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Alethe uses the microphone for voice dictation into terminals and agents.</string>
+</dict>
+</plist>

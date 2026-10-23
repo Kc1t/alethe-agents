@@ -1,3 +1,4 @@
+import { confirmAction } from './dialog'
 import type { TFunction } from './i18n'
 import type { Preferences } from './types'
 
@@ -10,7 +11,7 @@ type RemoteConsentPreferences = Pick<
   | 'remoteUseTailscale'
 >
 
-type Confirm = (message: string) => boolean
+type Confirm = (message: string) => boolean | Promise<boolean>
 
 type SetPreferences = (patch: Partial<Preferences>) => void
 
@@ -46,15 +47,15 @@ export function remoteControlEnableConfirmation(
  * requires informed consent, disabling never asks. Returns whether the
  * preference changed.
  */
-export function requestRemoteControlPreference(
+export async function requestRemoteControlPreference(
   nextEnabled: boolean,
   preferences: RemoteConsentPreferences,
   setPreferences: SetPreferences,
   t: TFunction,
-  confirm: Confirm = (message) => window.confirm(message),
-): boolean {
+  confirm: Confirm = (message) => confirmAction(message),
+): Promise<boolean> {
   if (nextEnabled === preferences.remoteEnabled) return false
-  if (nextEnabled && !confirm(remoteControlEnableConfirmation(preferences, t))) return false
+  if (nextEnabled && !(await confirm(remoteControlEnableConfirmation(preferences, t)))) return false
 
   setPreferences({ remoteEnabled: nextEnabled })
   return true

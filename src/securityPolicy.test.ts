@@ -145,6 +145,8 @@ describe('production renderer security policy', () => {
       'core:window:allow-start-dragging',
       'core:window:allow-is-focused',
       'core:window:allow-is-minimized',
+      'core:window:allow-is-fullscreen',
+      'core:window:allow-internal-toggle-maximize',
       'core:window:allow-set-icon',
       'core:window:allow-set-title',
       'core:webview:allow-create-webview',

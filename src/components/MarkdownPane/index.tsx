@@ -1,8 +1,8 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
+  ClipboardCopy,
   FileCode,
   FileText,
-  ClipboardCopy,
   FolderOpen,
   GripVertical,
   Maximize2,
@@ -15,23 +15,24 @@ import {
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
-import { pathSegments } from '../../lib/paths'
+import { confirmAction } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
+import { pathSegments } from '../../lib/paths'
 import {
   listenFileChanged,
   openInFileExplorer,
   readTextFile,
-  writeTextFile,
-  writeClipboardText,
   unwatchFile,
   watchFile,
+  writeClipboardText,
+  writeTextFile,
 } from '../../lib/tauri'
+import { isLightTheme } from '../../lib/themes'
+import type { Terminal as TerminalEntry } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import type { Terminal as TerminalEntry } from '../../lib/types'
-import { MarkdownRenderer } from './MarkdownRenderer'
 import styles from './MarkdownPane.module.css'
-import { isLightTheme } from '../../lib/themes'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 const markdownPaneScrollPositions = new Map<string, number>()
 
@@ -155,8 +156,8 @@ export const MarkdownPane = memo(function MarkdownPane({
     paneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
   }, [focusReq, terminal.id])
 
-  const onDelete = () => {
-    if (window.confirm(t('ui.markdown.confirmClose', { name: terminal.name }))) {
+  const onDelete = async () => {
+    if (await confirmAction(t('ui.markdown.confirmClose', { name: terminal.name }))) {
       deleteTerminal(projectId, terminal.id)
       if (isFocusMode) setFocusedTerminal(null)
     }

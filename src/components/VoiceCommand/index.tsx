@@ -3,6 +3,7 @@ import { type CSSProperties, useCallback, useEffect, useRef, useState } from 're
 
 import { agentLabel } from '../../lib/agentProviders'
 import { type TFunction, useT } from '../../lib/i18n'
+import { isPrimaryModifier } from '../../lib/platform'
 import { DEFAULT_SPEECH_MODEL_ID } from '../../lib/speech/audio'
 import { createSpeechEndpoint, vadSpeechEnded } from '../../lib/speech/endpoint'
 import {
@@ -73,8 +74,7 @@ function tailOf(text: string): string {
 }
 
 function isOpenChord(e: KeyboardEvent): boolean {
-  const ctrl = e.ctrlKey || e.metaKey
-  return ctrl && e.shiftKey && !e.altKey && (e.code === 'Space' || e.key === ' ')
+  return isPrimaryModifier(e) && e.shiftKey && !e.altKey && (e.code === 'Space' || e.key === ' ')
 }
 
 function readWorkspace(): VoiceWorkspace {

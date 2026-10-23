@@ -3,14 +3,16 @@ import type React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useGsdSyncSessionsWatcher } from '../../hooks/useGsdSyncSessions'
+import { confirmAction } from '../../lib/dialog'
 import { type MessageKey, useT } from '../../lib/i18n'
+import { evaluateMergeGuard } from '../../lib/pullRequestMerge'
 import {
   detectProjectStack,
   type DiffSummaryEntry,
   gitDiffSummary,
-  gitStatus,
   githubPrFind,
   githubPrMerge,
+  gitStatus,
   type GsdProcedureStep,
   healthProbe,
   type HealthProbeResult,
@@ -26,7 +28,6 @@ import {
   worktreeRemove,
   writePty,
 } from '../../lib/tauri'
-import { evaluateMergeGuard } from '../../lib/pullRequestMerge'
 import type { AgentType } from '../../lib/types'
 import { MERGE_BUSY_PHASES, type MergePhase, useMergeStore } from '../../stores/mergeStore'
 import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
@@ -502,7 +503,7 @@ export function SidebarMergePanel() {
     if (!proj) return
     const repo = getProjectRepoRoot(proj)
     if (!repo) return
-    if (!confirm(t('merge.rejectConfirm', { branch: item.branchName }))) return
+    if (!(await confirmAction(t('merge.rejectConfirm', { branch: item.branchName })))) return
     // Same here: only closes the detail popup after the native confirm passes.
     setCenterModalOpen(false)
 
@@ -707,7 +708,8 @@ export function SidebarMergePanel() {
     const repo = proj ? getProjectRepoRoot(proj) : ''
     if (!repo) return
 
-    if (!confirm(t('merge.prMergeConfirm', { number: pr.number, title: pr.title }))) return
+    if (!(await confirmAction(t('merge.prMergeConfirm', { number: pr.number, title: pr.title }))))
+      return
 
     try {
       const latestOpenPrs = await githubPrFind(repo, pr.headBranch)

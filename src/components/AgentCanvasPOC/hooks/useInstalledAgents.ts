@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { CORE_AGENTS } from '../../../lib/agentCanvasConfig'
 import { AGENT_LIBRARY } from '../../../lib/agentLibrary'
+import { confirmAction } from '../../../lib/dialog'
 import { useT } from '../../../lib/i18n'
 import {
   economyAgentsEnabled,
@@ -26,12 +27,12 @@ export function useInstalledAgents(session: Session | null) {
     listInstalledAgents(session.folder)
       .then((list) => {
         console.log(
-          '[AgentCanvasPOC] agents instalados:',
-          list.map((a) => a.name).join(', ') || '(nenhum)',
+          '[AgentCanvasPOC] installed agents:',
+          list.map((a) => a.name).join(', ') || '(none)',
         )
         setInstalled(list)
       })
-      .catch((err) => console.error('[AgentCanvasPOC] falha listando agents:', err))
+      .catch((err) => console.error('[AgentCanvasPOC] failed to list agents:', err))
   }, [session])
 
   useEffect(() => {
@@ -69,7 +70,7 @@ export function useInstalledAgents(session: Session | null) {
         setRestartHint(true)
         refreshInstalled()
       })
-      .catch((err) => console.error('[AgentCanvasPOC] falha togglando modo economia:', err))
+      .catch((err) => console.error('[AgentCanvasPOC] failed to toggle economy mode:', err))
   }, [session, economyOn, refreshInstalled])
 
   const installAgent = useCallback(
@@ -84,37 +85,37 @@ export function useInstalledAgents(session: Session | null) {
         force,
       })
         .then((path) => {
-          console.log('[AgentCanvasPOC] agent instalado:', path)
+          console.log('[AgentCanvasPOC] agent installed:', path)
           setRestartHint(true)
           refreshInstalled()
         })
-        .catch((err) => {
+        .catch(async (err) => {
           if (String(err) === 'conflict') {
-            if (window.confirm(t('ws.confirmOverwriteForeignAgent', { name }))) {
+            if (await confirmAction(t('ws.confirmOverwriteForeignAgent', { name }))) {
               installAgent(name, true)
             }
             return
           }
-          console.error('[AgentCanvasPOC] falha instalando agent:', err)
+          console.error('[AgentCanvasPOC] failed to install agent:', err)
         })
     },
     [session, refreshInstalled, t],
   )
 
   const uninstallAgent = useCallback(
-    (agent: InstalledAgent) => {
+    async (agent: InstalledAgent) => {
       if (!session) return
       const msg = agent.from_alethe
         ? t('ws.confirmRemoveAgent', { name: agent.name })
         : t('ws.confirmRemoveForeignAgent', { name: agent.name })
-      if (!window.confirm(msg)) return
+      if (!(await confirmAction(msg))) return
       uninstallAgentCmd(session.folder, agent.name, true)
         .then(() => {
-          console.log('[AgentCanvasPOC] agent removido:', agent.name)
+          console.log('[AgentCanvasPOC] agent removed:', agent.name)
           setRestartHint(true)
           refreshInstalled()
         })
-        .catch((err) => console.error('[AgentCanvasPOC] falha removendo agent:', err))
+        .catch((err) => console.error('[AgentCanvasPOC] failed to remove agent:', err))
     },
     [session, refreshInstalled, t],
   )

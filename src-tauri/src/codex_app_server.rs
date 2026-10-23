@@ -77,8 +77,12 @@ pub fn codex_app_server_start(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    #[cfg(windows)]
-    command.env("Path", cli_resolver::rebuilt_path());
+    // The rebuilt PATH also carries the node version-manager dirs an npm-installed codex needs
+    // for its `#!/usr/bin/env node` line.
+    command.env(
+        if cfg!(windows) { "Path" } else { "PATH" },
+        cli_resolver::rebuilt_path(),
+    );
 
     crate::git_control::hide_console(&mut command);
     let mut child = command

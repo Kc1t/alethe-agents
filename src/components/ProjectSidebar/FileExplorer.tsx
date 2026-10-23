@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { confirmAction, promptText } from '../../lib/dialog'
 import { readableError } from '../../lib/errors'
 import { writeFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
@@ -31,10 +32,10 @@ import {
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Modal } from '../modals/Modal'
-import { buildGitExplorerIndex, getGitEntryStatus, type GitExplorerIndex } from './fileExplorerGit'
 import { ContextMenu, type MenuItem } from './ContextMenu'
-import { FileIcon } from './FileIcon'
 import styles from './FileExplorer.module.css'
+import { buildGitExplorerIndex, getGitEntryStatus, type GitExplorerIndex } from './fileExplorerGit'
+import { FileIcon } from './FileIcon'
 
 type FileExplorerProps = {
   projectId: string
@@ -162,9 +163,11 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
 
   const renameEntry = async (entry: DirectoryEntry) => {
     setMenu(null)
-    const nextName = window
-      .prompt(t('files.renamePrompt', { name: entry.name }), entry.name)
-      ?.trim()
+    const nextName = (
+      await promptText(t('files.renamePrompt', { name: entry.name }), {
+        defaultValue: entry.name,
+      })
+    )?.trim()
     if (!nextName || nextName === entry.name) return
     try {
       await renameFilesystemEntry(entry.path, nextName)
@@ -178,11 +181,11 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
   const deleteEntry = async (entry: DirectoryEntry) => {
     setMenu(null)
     if (
-      !window.confirm(
+      !(await confirmAction(
         t(entry.is_dir ? 'files.deleteFolderConfirm' : 'files.deleteFileConfirm', {
           name: entry.name,
         }),
-      )
+      ))
     )
       return
     try {
@@ -291,12 +294,7 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
       />
 
       {menu ? (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          items={menuItems}
-          onClose={() => setMenu(null)}
-        />
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
       ) : null}
 
       <FilePreviewModal

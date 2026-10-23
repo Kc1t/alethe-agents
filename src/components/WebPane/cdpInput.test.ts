@@ -123,4 +123,12 @@ describe('isAppShortcut', () => {
     expect(isAppShortcut({ ...noModifiers, key: 'Tab' })).toBe(false)
     expect(isAppShortcut({ ...noModifiers, ctrlKey: true, key: 'a' })).toBe(false)
   })
+
+  it('uses Cmd on macOS and leaves physical Ctrl chords to the page, except Ctrl+Tab', () => {
+    expect(isAppShortcut({ ...noModifiers, metaKey: true, key: 'w' }, true)).toBe(true)
+    expect(isAppShortcut({ ...noModifiers, ctrlKey: true, key: 'w' }, true)).toBe(false)
+    expect(isAppShortcut({ ...noModifiers, ctrlKey: true, key: 'k' }, true)).toBe(false)
+    expect(isAppShortcut({ ...noModifiers, ctrlKey: true, key: 'Tab' }, true)).toBe(true)
+    expect(isAppShortcut({ ...noModifiers, metaKey: true, key: 'Tab' }, true)).toBe(false)
+  })
 })

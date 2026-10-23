@@ -29,12 +29,12 @@ import { useRouter9Runtime } from '../../hooks/useRouter9Runtime'
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { loadClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
-import { getCachedKimiUsage } from '../../lib/kimiUsageCache'
 import { useT } from '../../lib/i18n'
-import { useSidebarViews } from '../../lib/viewPlacement'
+import { getCachedKimiUsage } from '../../lib/kimiUsageCache'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
-import { formatShortcut } from '../../lib/platform'
+import { formatShortcut, isMacOS } from '../../lib/platform'
 import { codexHeadlineWindow, hasCodexWindow, killPty, remoteControlInfo } from '../../lib/tauri'
+import { useSidebarViews } from '../../lib/viewPlacement'
 import { usePomodoroStore } from '../../stores/pomodoroStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -443,6 +443,35 @@ export function TitleBar() {
   }, [setKimiUsage, usageAccess.kimi])
 
   const win = getCurrentWindow()
+  // macOS draws its own traffic lights over the bar (titleBarStyle "Overlay" in
+  // tauri.macos.conf.json); the bar leaves room for them, except in full screen, where the system
+  // hides them.
+  const nativeWindowControls = isMacOS()
+  const [fullscreen, setFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (!nativeWindowControls) return
+    const appWindow = getCurrentWindow()
+    let cancelled = false
+    let unlisten: (() => void) | undefined
+    const sync = () => {
+      void appWindow
+        .isFullscreen()
+        .then((value) => {
+          if (!cancelled) setFullscreen(value)
+        })
+        .catch(() => undefined)
+    }
+    sync()
+    void appWindow.onResized(sync).then((fn) => {
+      if (cancelled) fn()
+      else unlisten = fn
+    })
+    return () => {
+      cancelled = true
+      unlisten?.()
+    }
+  }, [nativeWindowControls])
 
   useEffect(() => {
     const update = (focused: boolean) => {
@@ -472,6 +501,7 @@ export function TitleBar() {
     <div
       className={styles.bar}
       data-style={preferences.topbarStyle}
+      data-traffic-lights={nativeWindowControls && !fullscreen ? '' : undefined}
       data-tauri-drag-region
       style={
         {
@@ -992,33 +1022,37 @@ export function TitleBar() {
             )}
           </button>
         ) : null}
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win.minimize()}
-          title={t('ui.titlebar.minimize')}
-          aria-label={t('ui.titlebar.minimize')}
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win.toggleMaximize()}
-          title={t('ui.titlebar.maximize')}
-          aria-label={t('ui.titlebar.maximize')}
-        >
-          <Maximize2 size={12} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.windowBtn} ${styles.close}`}
-          onClick={() => void requestAppClose()}
-          title={t('ui.titlebar.close')}
-          aria-label={t('ui.titlebar.close')}
-        >
-          <X size={14} />
-        </button>
+        {nativeWindowControls ? null : (
+          <>
+            <button
+              type="button"
+              className={styles.windowBtn}
+              onClick={() => void win.minimize()}
+              title={t('ui.titlebar.minimize')}
+              aria-label={t('ui.titlebar.minimize')}
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              type="button"
+              className={styles.windowBtn}
+              onClick={() => void win.toggleMaximize()}
+              title={t('ui.titlebar.maximize')}
+              aria-label={t('ui.titlebar.maximize')}
+            >
+              <Maximize2 size={12} />
+            </button>
+            <button
+              type="button"
+              className={`${styles.windowBtn} ${styles.close}`}
+              onClick={() => void requestAppClose()}
+              title={t('ui.titlebar.close')}
+              aria-label={t('ui.titlebar.close')}
+            >
+              <X size={14} />
+            </button>
+          </>
+        )}
       </div>
       {tabMenu ? (
         <ContextMenu

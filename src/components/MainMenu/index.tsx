@@ -20,7 +20,7 @@ import { useRef } from 'react'
 import { useOnClickOutside } from '../../hooks/useOnClickOutside'
 import { useOnEscape } from '../../hooks/useOnEscape'
 import { announceBackup, exportProfileState, importProfileState } from '../../lib/backup'
-import { pickFile, saveFile } from '../../lib/dialog'
+import { confirmAction, pickFile, saveFile, showMessage } from '../../lib/dialog'
 import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
 import { useT } from '../../lib/i18n'
 import {
@@ -63,19 +63,19 @@ export function MainMenu() {
       await fn()
     } catch (err) {
       console.error(err)
-      window.alert(t('common.errorPrefix', { message: String(err) }))
+      await showMessage(t('common.errorPrefix', { message: String(err) }), { kind: 'error' })
     }
     closeMainMenu()
   }
 
   const reset = async () => {
-    if (!window.confirm(t('menu.confirmReset'))) return
+    if (!(await confirmAction(t('menu.confirmReset')))) return
     await resetAppData()
     window.location.reload()
   }
 
   const factoryReset = async () => {
-    if (!window.confirm(t('menu.confirmFactoryReset'))) return
+    if (!(await confirmAction(t('menu.confirmFactoryReset')))) return
     await wipeAllAppData()
     try {
       localStorage.clear()
@@ -234,7 +234,7 @@ export function MainMenu() {
               filters: [{ name: t('menu.backupFilter'), extensions: ['zip'] }],
             })
             if (!source) return
-            if (!window.confirm(t('menu.confirmImport'))) return
+            if (!(await confirmAction(t('menu.confirmImport')))) return
             const currentPtyIds = new Set(
               projects.flatMap((project) =>
                 project.terminals.flatMap((terminal) =>

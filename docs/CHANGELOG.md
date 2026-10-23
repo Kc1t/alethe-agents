@@ -317,6 +317,22 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **macOS window.** The window uses the native macOS title bar with the traffic-light buttons on the
+  left, instead of Windows-style minimize, maximize and close buttons on the right. The custom
+  rounded transparent window is gone, and the default window is 1280×800.
+- **macOS menu.** Quit (Cmd+Q) now asks for confirmation and saves the workspace like the window's
+  close button. Cmd+W is left to Alethe, so it closes a pane instead of the whole app.
+- **Cloud sync server.** GitHub sign-in for Cloud sync no longer falls back to a local test server
+  (`127.0.0.1:8787`). Builds set the server with `ALETHE_SYNC_SERVER`; without one, sign-in reports
+  that sync is not configured instead of failing with a connection error.
+- **macOS keyboard.** App shortcuts use Cmd instead of Ctrl, and shortcut hints show ⌘. In a
+  terminal, Ctrl chords always reach the shell (Ctrl+C interrupts, Ctrl+R searches history),
+  Cmd+C copies and never interrupts, and Cmd+V pastes. Option+Left/Right jump by word,
+  Option+Delete deletes a word, Cmd+Left/Right go to the start or end of the line and Cmd+Delete
+  clears it, as in Terminal.app. Option still types accented characters. Ctrl+Tab switches tabs,
+  since Cmd+Tab belongs to macOS.
+- WSL is no longer offered as an agent on macOS and Linux.
+- Memory warnings say "system memory" instead of "Windows memory" on every platform.
 - **Backups restore the whole profile.** An export now also carries the profile name, the terminal
   prompt history, open Markdown tabs, and folded settings sections, and saves the profile photo and
   project logos that were only links inside the file. Importing puts all of it back, and a
@@ -406,6 +422,22 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Closing or killing a terminal on Windows now also ends the dev servers and background jobs it
   started, even when the shell that launched them had already exited. Each terminal runs inside its
   own Job Object, so a `npm run dev` left behind by an agent no longer keeps holding memory.
+- **macOS: "Alethe is damaged" on launch.** The macOS bundle is now ad-hoc signed, so its resources
+  are sealed and Gatekeeper no longer reports a downloaded copy as damaged. It also declares the
+  microphone usage that voice dictation needs.
+- **macOS: agent CLIs not found when Alethe is opened from Finder or the Dock.** Alethe loads the
+  login shell's environment (`PATH`, `LANG` and the rest of `~/.zprofile` and `~/.zshrc`) at
+  start-up, so Homebrew, nvm, pnpm, volta and `~/.local/bin` installs are found, and terminals run
+  in a UTF-8 locale. Plain shell tabs start as login shells, as Terminal.app does.
+- **macOS: memory shown as 0 MB available.** Available memory now comes from the kernel's memory
+  pressure level. The previous figure subtracted compressed memory and often reached 0, which showed
+  a critical-memory warning and blocked new terminals.
+- **macOS: confirmations always answered "Cancel".** The webview on macOS ignores the browser's
+  `confirm()` dialog, so closing the app and other confirmations did nothing. They use the native
+  or in-app dialog instead.
+- **macOS: background services left running after Quit.** Terminals, the browser session and the
+  local services now stop when the app quits from the menu, not only from the window's close button.
+
 - Claude panes reopen on the conversation they were on when the project folder has a space, an
   underscore, an accent or other punctuation in its path. Alethe looked for the saved conversation
   in the wrong directory, treated it as gone and started a new chat on every launch.

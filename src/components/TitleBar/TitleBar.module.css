@@ -714,6 +714,22 @@
   border-right: 1px solid var(--border);
 }
 
+/* macOS: room for the system traffic lights drawn over the bar's left edge. */
+.bar[data-traffic-lights] .barStart {
+  padding-left: 72px;
+}
+
+.bar[data-style='three-areas'][data-traffic-lights] {
+  grid-template-columns: minmax(146px, var(--topbar-left-width)) minmax(0, 1fr) minmax(
+      38px,
+      var(--topbar-right-width)
+    );
+}
+
+.bar[data-style='three-areas'][data-traffic-lights] .barStart {
+  padding-left: 78px;
+}
+
 .bar[data-style='three-areas'] .title {
   display: none;
 }
