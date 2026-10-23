@@ -8,10 +8,15 @@ const SESSION_KEY = 'alethe.remote.session'
 const FONT_SIZE_KEY = 'alethe.remote.fontSize'
 const CHAT_VIEW_KEY = 'alethe.remote.chatView'
 const DRAFTS_KEY = 'alethe.remote.drafts.v1'
+const ONBOARDING_KEY = 'alethe.remote.onboarding.v1'
 const TRANSCRIPT_POLL_MS = 1500
 const APPEARANCE_SYNC_MS = 10_000
 const WORKSPACE_SYNC_MS = 5_000
 const FONT_SIZE_MIN = 7
+// Auto-fit may go below the manual minimum: a desktop PTY is often 120+
+// columns, and on a ~380px phone that only fits around 5px. Overflowing
+// instead is what made the terminal pan sideways.
+const AUTO_FIT_FONT_MIN = 4
 const FONT_SIZE_MAX = 22
 const DEFAULT_PTY_SIZE = { cols: 80, rows: 24 }
 const MAX_SAVED_DRAFTS = 20
@@ -35,6 +40,8 @@ const icons = {
   search:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
   send: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
+  close:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>',
   stop: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
   terminal:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3m6 0h4"/></svg>',
@@ -69,7 +76,25 @@ const agentIconAssets = {
 }
 const knownAgents = new Set(Object.keys(agentLetters))
 
-let sessionToken = sessionStorage.getItem(SESSION_KEY) || ''
+// Kept in localStorage (not sessionStorage) so closing the tab does not drop
+// a remembered device; the desktop decides how long the token stays valid.
+const readSavedSession = () => {
+  try {
+    return localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+const writeSavedSession = (value) => {
+  try {
+    if (value) localStorage.setItem(SESSION_KEY, value)
+    else localStorage.removeItem(SESSION_KEY)
+    sessionStorage.removeItem(SESSION_KEY)
+  } catch {
+    // Storage blocked: the session lives only as long as this page.
+  }
+}
+let sessionToken = readSavedSession()
 let wsBase = null
 let readOnly = false
 let state = { groups: [], projects: [] }
@@ -117,6 +142,8 @@ function chatSession(ptyId = selected) {
         : '',
       sending: false,
       error: '',
+      photos: [],
+      queued: [],
       pending: [],
       waitingSince: 0,
       waitingForAssistantAfter: null,
@@ -180,6 +207,8 @@ function agentName(agent) {
 }
 
 class SessionError extends Error {}
+/** A remembered device came back after a restart and must enter the PIN. */
+class PinRequiredError extends Error {}
 
 async function readError(response) {
   try {
@@ -195,6 +224,7 @@ async function api(path, options = {}) {
     headers: { ...(options.headers || {}), Authorization: `Bearer ${sessionToken}` },
   })
   if (response.status === 401) throw new SessionError(await readError(response))
+  if (response.status === 423) throw new PinRequiredError()
   if (!response.ok) throw new Error(await readError(response))
   return response.status === 204 ? null : response.json()
 }
@@ -211,13 +241,13 @@ async function pair() {
   if (!response.ok) throw new SessionError(await readError(response))
   const paired = await response.json()
   sessionToken = paired.sessionToken
-  sessionStorage.setItem(SESSION_KEY, sessionToken)
+  writeSavedSession(sessionToken)
   history.replaceState(null, '', location.pathname)
 }
 
 function dropSession() {
   sessionToken = ''
-  sessionStorage.removeItem(SESSION_KEY)
+  writeSavedSession('')
   if (reconnectTimer) window.clearTimeout(reconnectTimer)
   reconnectTimer = null
   if (socket) {
@@ -529,10 +559,23 @@ function terminalTheme() {
   return appearance.colorScheme === 'light' ? { ...base, ...LIGHT_ANSI } : base
 }
 
+let terminalResizeObserver = null
+
 function disposeTerminal() {
+  terminalResizeObserver?.disconnect()
+  terminalResizeObserver = null
   if (terminal) terminal.dispose()
   terminal = null
   pendingWrites = []
+}
+
+/** Paints every row again. xterm draws a write only once it has measured
+ *  the cells; a scrollback that lands before that (font still loading, box
+ *  not laid out yet) stays black until the next output, e.g. a keystroke. */
+function repaintTerminal() {
+  if (!terminal) return
+  terminal.refresh(0, terminal.rows - 1)
+  updateJumpButton()
 }
 
 function mountTerminal() {
@@ -569,6 +612,16 @@ function mountTerminal() {
   }
   applyTerminalFit()
   scheduleTerminalFit()
+  const viewport = document.querySelector('#terminal-viewport')
+  if (viewport && window.ResizeObserver) {
+    terminalResizeObserver = new ResizeObserver(() => scheduleTerminalFit())
+    terminalResizeObserver.observe(viewport)
+  }
+  document.fonts?.ready.then(() => {
+    if (terminal !== instance) return
+    applyTerminalFit()
+    repaintTerminal()
+  })
 }
 
 function cellMetrics() {
@@ -590,15 +643,18 @@ function applyTerminalFit() {
   const widthRatio = metrics ? metrics.width / terminal.options.fontSize : 0.6
   const heightRatio = metrics ? metrics.height / terminal.options.fontSize : 1.2
   if (autoFitFont) {
-    const target = Math.floor(available / (ptySize.cols * widthRatio))
-    fontSize = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, target))
+    // Quarter-pixel steps: whole pixels left up to a column's worth of empty
+    // space on the right edge.
+    const target = Math.floor((available / (ptySize.cols * widthRatio)) * 4) / 4
+    fontSize = Math.min(FONT_SIZE_MAX, Math.max(AUTO_FIT_FONT_MIN, target))
   }
+  viewport.classList.toggle('is-fitted', autoFitFont)
   if (!fontSize) fontSize = 12
   if (terminal.options.fontSize !== fontSize) terminal.options.fontSize = fontSize
   const visibleRows = Math.floor(availableHeight / (fontSize * heightRatio))
   const rows = Math.max(ptySize.rows, Math.min(visibleRows || ptySize.rows, 200))
   if (terminal.cols !== ptySize.cols || terminal.rows !== rows) terminal.resize(ptySize.cols, rows)
-  updateJumpButton()
+  repaintTerminal()
 }
 
 function scheduleTerminalFit() {
@@ -641,9 +697,13 @@ function resetTerminal(text) {
     pendingWrites = [content]
     return
   }
-  terminal.reset()
-  terminal.write(content)
-  terminal.scrollToBottom()
+  const instance = terminal
+  instance.reset()
+  instance.write(content, () => {
+    if (terminal !== instance) return
+    instance.scrollToBottom()
+    repaintTerminal()
+  })
 }
 
 function terminalIsAtBottom() {
@@ -690,6 +750,107 @@ function bindTerminalGestures() {
   viewport.addEventListener('touchend', () => {
     pinchStart = 0
   })
+  viewport.addEventListener('click', (event) => {
+    const session = chatSession()
+    if (!session.queued.length || !terminal) return
+    const screen = viewport.querySelector('.xterm-screen')
+    const metrics = cellMetrics()
+    if (!screen || !metrics) return
+    const row = Math.floor((event.clientY - screen.getBoundingClientRect().top) / metrics.height)
+    const buffer = terminal.buffer.active
+    const line = buffer.getLine(buffer.viewportY + row)?.translateToString(true) || ''
+    if (isQueuedLine(line, session)) void editQueued(selected, session)
+  })
+}
+
+const QUEUE_MARKERS = ['to edit queued messages', 'to send now']
+
+/** The queued block Claude Code draws: its hint lines, or a line of the
+ *  text this phone queued. */
+function isQueuedLine(line, session) {
+  // Older prompts in the history look the same; only while a queue is up.
+  if (!terminalShowsQueue()) return false
+  const text = withoutImageTags(line).toLowerCase()
+  if (QUEUE_MARKERS.some((marker) => text.includes(marker))) return true
+  if (text.length < 8) return false
+  // The queued text as Claude Code draws it, possibly wrapped: a tapped row
+  // is a slice of it.
+  return session.queued.some((item) => withoutImageTags(item.text).toLowerCase().includes(text))
+}
+
+function terminalShowsQueue() {
+  if (!terminal) return false
+  const buffer = terminal.buffer.active
+  for (let row = 0; row < terminal.rows; row += 1) {
+    const line =
+      buffer
+        .getLine(buffer.baseY + row)
+        ?.translateToString(true)
+        .toLowerCase() || ''
+    if (QUEUE_MARKERS.some((marker) => line.includes(marker))) return true
+  }
+  return false
+}
+
+/** Messages leave Claude Code's queue once its turn ends; after that a tap
+ *  has nothing to take back. */
+function forgetConsumedQueue(session) {
+  if (!session.queued.length || terminalShowsQueue()) return
+  const settled = Date.now() - 1_500
+  session.queued = session.queued.filter((item) => item.sentAt > settled)
+}
+
+/** Takes the messages this phone queued in Claude Code back into the box,
+ *  photos included, like the up arrow on the computer. */
+async function editQueued(ptyId, session) {
+  if (session.sending || connectionState !== 'live' || !session.queued.length) return
+  const items = session.queued.slice()
+  // ctrl+u clears one wrapped row at a time: count rows generously, extra
+  // rounds on an empty box do nothing.
+  const lines = items.reduce((total, item) => total + Math.ceil(item.text.length / 20) + 1, 0)
+  session.sending = true
+  session.error = ''
+  updateComposer()
+  try {
+    await api('/api/agent-control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ptyId, action: 'edit_queued', lines: lines + 2 }),
+    })
+    session.queued = session.queued.filter((item) => !items.includes(item))
+    session.pending = session.pending.filter(
+      (item) => !items.some((queued) => queued.pending === item),
+    )
+    const draft = session.draft.trim()
+    session.draft = [...items.map((item) => item.text).filter(Boolean), draft]
+      .filter(Boolean)
+      .join('\n')
+    persistDraft(ptyId, session.draft)
+    session.photos = [
+      ...items.flatMap((item) => item.photos.map((photo) => ({ ...photo, uploading: false }))),
+      ...session.photos,
+    ].slice(0, MAX_PHOTOS)
+    session.controlNotice = 'chat.queueEditing'
+  } catch (error) {
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
+    session.error = t('chat.queueEditError', { message: error.message || error })
+  } finally {
+    session.sending = false
+    if (selected === ptyId) {
+      const input = document.querySelector('#message')
+      if (input) {
+        input.value = session.draft
+        input.dispatchEvent(new Event('input'))
+        input.focus()
+      }
+      updateComposer()
+      updateChatFeedback()
+      if (chatView === 'messages') renderTranscript()
+    }
+  }
 }
 
 function subscribeSocket(ptyId) {
@@ -874,7 +1035,7 @@ function pendingMarkup() {
     .pending.filter((item) => !item.confirmed)
     .map(
       (item) =>
-        `<article class="msg msg-pending" data-role="user"><span class="msg-role">${t('role.user')} · ${t(item.sending ? 'chat.sending' : 'chat.sent')}</span><div class="msg-body">${renderMarkdown(item.text)}</div></article>`,
+        `<article class="msg msg-pending${chatSession().queued.some((queued) => queued.pending === item) ? ' is-queued' : ''}" data-role="user"><span class="msg-role">${t('role.user')} · ${t(item.sending ? 'chat.sending' : 'chat.sent')}</span>${item.photos?.length ? `<div class="msg-photos">${item.photos.map((url) => `<img src="${escapeHtml(url)}" alt="">`).join('')}</div>` : ''}${item.text ? `<div class="msg-body">${renderMarkdown(item.text)}</div>` : ''}</article>`,
     )
     .join('')
 }
@@ -963,9 +1124,14 @@ async function loadTranscript(ptyId) {
     for (const pending of session.pending) {
       const matches = (data.messages || [])
         .map((message, index) => ({ ...message, index }))
-        .filter((message) => message.role === 'user' && message.text.trim() === pending.text)
+        .filter(
+          (message) =>
+            message.role === 'user' &&
+            withoutImageTags(message.text) === withoutImageTags(pending.text),
+        )
       const match = matches[pending.occurrence]
       if (match) {
+        session.queued = session.queued.filter((item) => item.pending !== pending)
         pending.confirmed = true
         pending.answered = data.messages
           .slice(match.index + 1)
@@ -1201,10 +1367,29 @@ function composerMarkup() {
     ? t('chat.agentPlaceholder', { agent: agentName(findChat(selected)?.agent) })
     : t('chat.sendPlaceholder')
   return `<div class="composer-wrap"><form class="composer" id="composer">
-    <label class="sr-only" for="message">${escapeHtml(placeholder)}</label><textarea id="message" rows="1" autocomplete="off" aria-describedby="composer-error composer-hint" placeholder="${escapeHtml(placeholder)}">${escapeHtml(chatSession().draft)}</textarea>
+    <button class="attach-button" type="button" aria-label="${t('chat.attachPhoto')}"${canAttachPhoto() ? '' : ' hidden'}>${icons.fontLarger}</button><input class="sr-only" id="photo-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
+    <div class="composer-field"><div class="composer-photos" id="composer-photos">${composerPhotosMarkup()}</div><label class="sr-only" for="message">${escapeHtml(placeholder)}</label><textarea id="message" rows="1" autocomplete="off" aria-describedby="composer-error" placeholder="${escapeHtml(placeholder)}">${escapeHtml(chatSession().draft)}</textarea></div>
     <button class="send-button" type="submit" aria-label="${t('chat.send')}"><span class="send-icon">${icons.send}</span><span class="send-loader" aria-hidden="true"></span></button>
-    <p class="composer-error" id="composer-error" role="alert"></p><p class="composer-hint" id="composer-hint">${t('chat.mobileHint')}</p>
+    <p class="composer-error" id="composer-error" role="alert"></p>
   </form></div>`
+}
+
+function composerPhotosMarkup(session = chatSession()) {
+  return session.photos
+    .map(
+      (photo, index) =>
+        `<figure class="composer-photo${photo.uploading ? ' is-uploading' : ''}"><img src="${escapeHtml(photo.url)}" alt=""><button type="button" data-remove-photo="${index}" aria-label="${t('chat.removePhoto')}">${icons.close}</button>${photo.uploading ? '<span class="send-loader" aria-hidden="true"></span>' : ''}</figure>`,
+    )
+    .join('')
+}
+
+/** Claude Code and Codex put `[Image #N]` in the stored prompt, which the
+ *  phone never typed; drop it so a sent message still finds its echo. */
+function withoutImageTags(text) {
+  return String(text || '')
+    .replace(/\[image[^\]]*\]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function viewSwitchMarkup() {
@@ -1279,6 +1464,10 @@ function renderChat() {
   document
     .querySelector('#messages')
     .addEventListener('scroll', updateMessagesJump, { passive: true })
+  document.querySelector('#messages').addEventListener('click', (event) => {
+    const bubble = event.target.closest('.msg-pending.is-queued')
+    if (bubble && chatSession().waitingSince) void editQueued(selected, chatSession())
+  })
   document.querySelector('#messages-latest').addEventListener('click', () => {
     const list = document.querySelector('#messages')
     list.scrollTop = list.scrollHeight
@@ -1329,16 +1518,142 @@ function updateComposer() {
   const input = form.querySelector('#message')
   const button = form.querySelector('.send-button')
   input.readOnly = session.sending || session.ended
+  // With an empty box the button doubles as "send now" for a message Claude
+  // Code queued while busy (its ctrl+x ctrl+s, which a phone cannot type).
+  const hasPhotos = session.photos.length > 0
+  const sendNow = !input.value.trim() && !hasPhotos && canSendNow()
   button.disabled =
     session.sending ||
     session.ended ||
     connectionState !== 'live' ||
-    !input.value.trim() ||
-    (chatView === 'messages' && supportsMessages() && !transcript)
+    session.photos.some((photo) => photo.uploading) ||
+    (!input.value.trim() && !hasPhotos && !sendNow) ||
+    (chatView === 'messages' && supportsMessages() && !transcript && !sendNow)
   button.classList.toggle('is-loading', session.sending)
   button.setAttribute('aria-label', t(session.sending ? 'chat.sending' : 'chat.send'))
+  const attach = form.querySelector('.attach-button')
+  if (attach)
+    attach.disabled =
+      session.sending ||
+      session.ended ||
+      connectionState !== 'live' ||
+      session.photos.length >= MAX_PHOTOS
+  const photos = form.querySelector('#composer-photos')
+  const photosKey = session.photos.map((photo) => `${photo.url}:${photo.uploading}`).join('|')
+  if (photos && photos.dataset.key !== photosKey) {
+    photos.dataset.key = photosKey
+    photos.innerHTML = composerPhotosMarkup(session)
+  }
   form.setAttribute('aria-busy', String(session.sending))
   form.querySelector('#composer-error').textContent = session.error
+}
+
+const SEND_NOW_DOUBLE_TAP_MS = 2_000
+const PHOTO_MAX_EDGE = 1600
+const PHOTO_QUALITY = 0.85
+const PHOTO_MAX_BYTES = 4 * 1024 * 1024
+const MAX_PHOTOS = 6
+
+function canAttachPhoto(ptyId = selected) {
+  return !readOnly && ['claude', 'codex'].includes(findChat(ptyId)?.agent)
+}
+
+/** Re-encodes a phone photo as a JPEG no wider than PHOTO_MAX_EDGE, so a 12 MP
+ *  camera shot uploads in a few hundred KB. Falls back to the original file
+ *  when the browser cannot decode it. */
+async function preparePhoto(file) {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+    const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', PHOTO_QUALITY))
+    if (blob) return blob
+  } catch {
+    // Unsupported format for createImageBitmap: send the file as is.
+  }
+  return file
+}
+
+/** Uploads the photo right away (so sending is quick) but keeps it in the box:
+ *  it only reaches the agent together with the message. */
+async function attachPhoto(ptyId, session, file) {
+  const photo = { id: '', url: URL.createObjectURL(file), uploading: true }
+  session.photos.push(photo)
+  session.error = ''
+  updateComposer()
+  try {
+    const prepared = await preparePhoto(file)
+    if (prepared.size > PHOTO_MAX_BYTES) throw new Error(t('chat.photoTooLarge'))
+    const uploaded = await api(`/api/attachment?ptyId=${encodeURIComponent(ptyId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': prepared.type || 'application/octet-stream' },
+      body: prepared,
+    })
+    photo.id = uploaded.id
+    photo.uploading = false
+  } catch (error) {
+    removePhoto(session, photo)
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
+    session.error = t('chat.photoError', { message: error.message || error })
+  } finally {
+    if (selected === ptyId) updateComposer()
+  }
+}
+
+function removePhoto(session, photo) {
+  session.photos = session.photos.filter((item) => item !== photo)
+  URL.revokeObjectURL(photo.url)
+}
+
+function canSendNow(ptyId = selected) {
+  return !readOnly && findChat(ptyId)?.agent === 'claude'
+}
+
+async function sendQueuedNow(ptyId, session) {
+  const now = Date.now()
+  if (now - (session.sendNowArmedAt || 0) > SEND_NOW_DOUBLE_TAP_MS) {
+    session.sendNowArmedAt = now
+    session.controlNotice = 'chat.sendNowArmed'
+    updateChatFeedback()
+    window.setTimeout(() => {
+      if (session.controlNotice !== 'chat.sendNowArmed') return
+      session.controlNotice = ''
+      if (selected === ptyId) updateChatFeedback()
+    }, SEND_NOW_DOUBLE_TAP_MS)
+    return
+  }
+  session.sendNowArmedAt = 0
+  session.sending = true
+  session.error = ''
+  updateComposer()
+  try {
+    await api('/api/agent-control', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ptyId, action: 'send_now' }),
+    })
+    session.controlNotice = 'chat.sendNowSent'
+    void loadTranscript(ptyId)
+  } catch (error) {
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
+    session.error = t('chat.sendNowError', { message: error.message || error })
+  } finally {
+    session.sending = false
+    if (selected === ptyId) {
+      updateComposer()
+      updateChatFeedback()
+    }
+  }
 }
 
 function bindComposer() {
@@ -1348,7 +1663,18 @@ function bindComposer() {
   const session = chatSession(ptyId)
   const autoGrow = () => {
     input.style.height = 'auto'
-    input.style.height = `${Math.min(input.scrollHeight, 128)}px`
+    if (!input.value) {
+      // A long placeholder would wrap and grow the box past the buttons.
+      input.style.height = ''
+      input.style.overflowY = 'hidden'
+      return
+    }
+    // border-box: scrollHeight leaves out the borders, which would add a scrollbar.
+    const height = input.scrollHeight + input.offsetHeight - input.clientHeight
+    input.style.height = `${Math.min(height, 128)}px`
+    // Only scrollable once it hits the cap; a sub-pixel overflow otherwise
+    // reserves a scrollbar on a box that has nothing to scroll.
+    input.style.overflowY = height > 128 ? 'auto' : 'hidden'
   }
   input.addEventListener('input', () => {
     session.draft = input.value
@@ -1363,6 +1689,23 @@ function bindComposer() {
   })
   autoGrow()
   updateComposer()
+  const photoInput = form.querySelector('#photo-input')
+  form.querySelector('.attach-button')?.addEventListener('click', () => {
+    if (session.sending || connectionState !== 'live') return
+    photoInput.click()
+  })
+  photoInput?.addEventListener('change', () => {
+    const files = [...(photoInput.files || [])].slice(0, MAX_PHOTOS - session.photos.length)
+    photoInput.value = ''
+    for (const file of files) void attachPhoto(ptyId, session, file)
+  })
+  form.querySelector('#composer-photos')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-remove-photo]')
+    if (!button || session.sending) return
+    const photo = session.photos[Number(button.dataset.removePhoto)]
+    if (photo) removePhoto(session, photo)
+    updateComposer()
+  })
   input.addEventListener('keydown', (event) => {
     if (
       event.key === 'Enter' &&
@@ -1377,8 +1720,20 @@ function bindComposer() {
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
     const text = input.value.trim()
+    const photos = session.photos.slice()
     if (
-      !text ||
+      !text &&
+      !photos.length &&
+      canSendNow(ptyId) &&
+      !session.sending &&
+      connectionState === 'live'
+    ) {
+      await sendQueuedNow(ptyId, session)
+      return
+    }
+    if (
+      (!text && !photos.length) ||
+      photos.some((photo) => photo.uploading) ||
       session.sending ||
       session.ended ||
       connectionState !== 'live' ||
@@ -1387,13 +1742,19 @@ function bindComposer() {
       return
     session.sending = true
     session.error = ''
+    const key = withoutImageTags(text)
+    // A message sent while a turn runs is the one Claude Code queues.
+    const busy = !!session.waitingSince
     const pending = {
       text,
+      photos: photos.map((photo) => photo.url),
       sending: true,
       occurrence:
         (transcript?.messages || []).filter(
-          (message) => message.role === 'user' && message.text.trim() === text,
-        ).length + session.pending.filter((item) => item.text === text && !item.confirmed).length,
+          (message) => message.role === 'user' && withoutImageTags(message.text) === key,
+        ).length +
+        session.pending.filter((item) => withoutImageTags(item.text) === key && !item.confirmed)
+          .length,
     }
     if (supportsMessages(ptyId)) session.pending.push(pending)
     updateComposer()
@@ -1404,7 +1765,7 @@ function bindComposer() {
       await api('/api/message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ptyId, text }),
+        body: JSON.stringify({ ptyId, text, attachments: photos.map((photo) => photo.id) }),
         signal: request.signal,
       })
       pending.sending = false
@@ -1412,11 +1773,15 @@ function bindComposer() {
       session.waitingSince = session.pending.length ? Date.now() : 0
       session.draft = ''
       persistDraft(ptyId, '')
+      // Their object URLs stay alive: the pending bubble still shows them.
+      session.photos = session.photos.filter((photo) => !photos.includes(photo))
+      if (canSendNow(ptyId) && (busy || chatView === 'terminal'))
+        session.queued.push({ text, photos, pending, sentAt: Date.now() })
       if (selected === ptyId) {
         const currentInput = document.querySelector('#message')
         if (currentInput) {
           currentInput.value = ''
-          currentInput.style.height = 'auto'
+          currentInput.style.height = ''
         }
         void loadTranscript(ptyId)
       }
@@ -1451,6 +1816,36 @@ function openChat(ptyId) {
       ? 'messages'
       : 'terminal'
   renderChat()
+  showOnboardingOnce()
+}
+
+/** First visit on this device: how sending works from a phone, once. */
+function showOnboardingOnce() {
+  if (readOnly || document.querySelector('.onboarding')) return
+  try {
+    if (localStorage.getItem(ONBOARDING_KEY)) return
+  } catch {
+    return
+  }
+  const tips = ['onboarding.enter', 'onboarding.send', 'onboarding.sendNow', 'onboarding.photo']
+  const overlay = document.createElement('div')
+  overlay.className = 'onboarding'
+  overlay.innerHTML = `<section class="onboarding-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <h2 id="onboarding-title">${escapeHtml(t('onboarding.title'))}</h2>
+    <ul>${tips.map((key) => `<li>${escapeHtml(t(key))}</li>`).join('')}</ul>
+    <button type="button" class="onboarding-done">${escapeHtml(t('onboarding.done'))}</button>
+  </section>`
+  const close = () => {
+    try {
+      localStorage.setItem(ONBOARDING_KEY, '1')
+    } catch {
+      // Storage blocked: the tip simply shows again next time.
+    }
+    overlay.remove()
+  }
+  overlay.querySelector('.onboarding-done').addEventListener('click', close)
+  document.body.append(overlay)
+  overlay.querySelector('.onboarding-done').focus()
 }
 function connectSocket() {
   if (!wsBase || !sessionToken) return
@@ -1488,6 +1883,10 @@ function connectSocket() {
       return
     }
     if (message.type === 'error') {
+      if (message.reason === 'pin_required') {
+        renderPinPrompt()
+        return
+      }
       if (message.reason === 'expired' || message.reason === 'unauthorized') {
         renderSessionLost(message.message)
         return
@@ -1511,6 +1910,8 @@ function connectSocket() {
       writeTerminal(message.text || '')
       if (stick) scrollTerminalToEnd()
       else updateJumpButton()
+      if (chatSession().queued.length)
+        window.setTimeout(() => forgetConsumedQueue(chatSession()), 300)
       return
     }
     if (message.type === 'pty_exit') {
@@ -1591,6 +1992,20 @@ function syncViewportMetrics() {
   scheduleTerminalFit()
 }
 
+/** Browsers that ignore user-scalable=no (Samsung Internet, iOS Safari)
+ *  still zoom on a pinch; cancel it at the gesture. */
+function blockPinchZoom() {
+  const cancel = (event) => event.preventDefault()
+  document.addEventListener('gesturestart', cancel, { passive: false })
+  document.addEventListener(
+    'touchmove',
+    (event) => {
+      if (event.touches.length > 1) event.preventDefault()
+    },
+    { passive: false },
+  )
+}
+
 function startViewportSync() {
   const viewport = window.visualViewport
   syncViewportMetrics()
@@ -1606,14 +2021,20 @@ async function boot() {
   await syncAppearance(false)
   startAppearanceSync()
   startViewportSync()
+  blockPinchZoom()
   startRemoteLifecycle()
   renderLoading()
   if (pairingToken) {
     try {
       await pair()
     } catch (error) {
-      renderPairingRequired(error.message)
-      return
+      // A browser that reopens the tab reloads the QR link, whose token was
+      // spent on the first pairing; a saved session still gets this device in.
+      if (!sessionToken) {
+        renderPairingRequired(error.message)
+        return
+      }
+      history.replaceState(null, '', location.pathname)
     }
   }
   if (!sessionToken) {
@@ -1628,12 +2049,54 @@ async function boot() {
     renderHome()
     connectSocket()
   } catch (error) {
+    if (error instanceof PinRequiredError) {
+      renderPinPrompt()
+      return
+    }
     if (error instanceof SessionError) {
       renderSessionLost(error.message)
       return
     }
     renderConnectionUnavailable(error.message || error)
   }
+}
+
+function renderPinPrompt(notice = '') {
+  stateView = null
+  disposeTerminal()
+  stopTranscriptPolling()
+  app.innerHTML = `<div class="state-page"><form class="state-content pin-form" id="pin-form"><img class="state-logo" src="/brand-icon.png?v=${encodeURIComponent(appearance.appIconTheme)}" alt="" data-brand-icon><span class="state-brand">${t('brand.remote')}</span><h1>${t('pin.title')}</h1><p>${t('pin.description')}</p><label class="sr-only" for="pin-input">${t('pin.label')}</label><input class="pin-input" id="pin-input" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="••••"><p class="pin-notice" role="alert">${escapeHtml(notice)}</p><button class="primary-button" type="submit"><span>${t('pin.submit')}</span></button></form></div>`
+  rendered = true
+  const form = document.querySelector('#pin-form')
+  const input = document.querySelector('#pin-input')
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/\D/g, '').slice(0, 8)
+  })
+  input.focus()
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const button = form.querySelector('button')
+    button.disabled = true
+    try {
+      const response = await fetch(`${httpBase}/api/unlock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ pin: input.value }),
+      })
+      if (response.status === 204) {
+        location.reload()
+        return
+      }
+      if (response.status === 403) {
+        const { remaining } = await response.json()
+        renderPinPrompt(t('pin.wrong', { remaining }))
+        return
+      }
+      renderSessionLost(await readError(response))
+    } catch (error) {
+      renderPinPrompt(t('pin.error', { message: error.message || error }))
+    }
+  })
 }
 
 void boot()

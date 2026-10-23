@@ -62,6 +62,15 @@ pub fn remote_control_set_session_expiry(session_expiry_secs: u64) -> RemoteInfo
     remote.info()
 }
 
+/// Sets the PIN that guards remembered devices, or clears it (which also
+/// forgets every remembered device).
+#[tauri::command]
+pub fn remote_control_set_pin(pin: Option<String>) -> Result<RemoteInfo, String> {
+    let remote = hub();
+    remote.set_pin(pin.as_deref())?;
+    Ok(remote.info())
+}
+
 #[tauri::command]
 pub fn remote_control_set_read_only(read_only: bool) -> RemoteInfo {
     let remote = hub();

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 
+import { SESSION_PERMANENT } from '../components/modals/RemoteControlSettingsFields'
+import { translate } from '../lib/i18n'
 import {
   listenRemoteAutoDisabled,
   listenRemoteMessages,
@@ -11,7 +13,6 @@ import {
   setRemoteControlSessionExpiry,
   setRemoteControlShellInput,
 } from '../lib/tauri'
-import { translate } from '../lib/i18n'
 import { flushProjectsState, useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
@@ -41,12 +42,14 @@ export function useRemoteControlService() {
     const sequence = ++syncSequence.current
     const requestId = nextRemoteControlRequestId()
 
-    // Remote Control is intentionally session-scoped. A saved preference must
-    // not silently reopen a network listener after the app is restarted.
+    // Remote Control is session-scoped: a saved "on" does not reopen the
+    // listener after a restart. The one exception is the opt-in permanent
+    // session, which only exists behind a PIN and whose whole point is that the
+    // phone reconnects after a restart.
     let wanted = enabled
     if (!startupSyncedRef.current) {
       startupSyncedRef.current = true
-      if (enabled) {
+      if (enabled && expiry !== SESSION_PERMANENT) {
         useProjectsStore.getState().setPreferences({ remoteEnabled: false })
         wanted = false
       }
