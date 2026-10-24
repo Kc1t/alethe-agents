@@ -44538,13 +44538,13 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ holds %2$@% of current memory."
+            "value" : "%1$@ holds %2$@%% of current memory."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@ concentra %2$@% da memória atual."
+            "value" : "%1$@ concentra %2$@%% da memória atual."
           }
         }
       }
