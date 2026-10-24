@@ -17,7 +17,7 @@ struct MemoryIndicator: View {
     var body: some View {
         Button { showsDetails.toggle() } label: {
             if webTitleBar {
-                Text(verbatim: String(format: "%.0f MB", monitor.appMB + monitor.terminalsMB))
+                Text(verbatim: Self.pillText(count: monitor.aiTerminalCount, totalMB: monitor.appMB + monitor.terminalsMB))
                     .font(metrics.monoFont(size: 11))
                     .monospacedDigit()
             } else {
@@ -32,7 +32,9 @@ struct MemoryIndicator: View {
             }
         }
         .help(Text("memory.indicator.help"))
-        .accessibilityLabel(Text(String(format: String(localized: "memory.indicator.accessibility"), webTitleBar ? String(format: "%.0f MB", monitor.appMB + monitor.terminalsMB) : Self.format(monitor.terminalsMB))))
+        .accessibilityLabel(Text(Self.accessibilityText(
+            memory: webTitleBar ? String(format: "%.0f MB", monitor.appMB + monitor.terminalsMB) : Self.format(monitor.terminalsMB),
+            count: monitor.aiTerminalCount)))
         .accessibilityIdentifier("memory.indicator")
         .popover(isPresented: $showsDetails, arrowEdge: .bottom) {
             MemoryDetails()
@@ -42,9 +44,33 @@ struct MemoryIndicator: View {
         }
     }
 
+    /// The web title bar's pill: `5 | 6000 MB`, or just the memory when no AI terminal runs.
+    static func pillText(count: Int, totalMB: Double) -> String {
+        let memory = String(format: "%.0f MB", totalMB)
+        return count > 0 ? "\(count) | \(memory)" : memory
+    }
+
+    static func accessibilityText(memory: String, count: Int) -> String {
+        let usage = String(format: String(localized: "memory.indicator.accessibility"), memory)
+        return count > 0 ? String(format: String(localized: "memory.indicator.accessibility.ai"), usage, count) : usage
+    }
+
     static func format(_ megabytes: Double) -> String {
         Measurement(value: megabytes, unit: UnitInformationStorage.megabytes)
             .formatted(.byteCount(style: .memory))
+    }
+}
+
+/// The memory panel's tabs: the existing breakdown, and the AI terminals with what they started.
+enum MemoryTab: String, CaseIterable, Identifiable {
+    case overview, ai
+    var id: String { rawValue }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .overview: "memModal.tab.overview"
+        case .ai: "memModal.tab.ai"
+        }
     }
 }
 
@@ -53,9 +79,32 @@ private struct MemoryDetails: View {
     @Environment(\.theme) private var theme
     @Environment(\.metrics) private var metrics
 
+    @State private var tab: MemoryTab = .overview
+
     private var monitor: ResourceMonitor { environment.resources }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: metrics.space(.l)) {
+            Picker(selection: $tab) {
+                ForEach(MemoryTab.allCases) { Text($0.title).tag($0) }
+            } label: {
+                Text("memory.tab.accessibility")
+            }
+            .pickerStyle(.segmented).labelsHidden()
+            .accessibilityIdentifier("memory.tabs")
+            if tab == .ai {
+                ScrollView { AIProcessList() }.frame(maxHeight: metrics.size(360))
+            } else {
+                overview
+            }
+        }
+        .padding(metrics.space(.xl))
+        .frame(width: metrics.size(340))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("memory.details")
+    }
+
+    private var overview: some View {
         VStack(alignment: .leading, spacing: metrics.space(.l)) {
             HStack {
                 Circle().fill(theme[monitor.pressure.token]).frame(width: metrics.size(8), height: metrics.size(8))
@@ -105,10 +154,6 @@ private struct MemoryDetails: View {
             ResourcePolicyPicker()
             SettingsLink { Text("memory.settings") }
         }
-        .padding(metrics.space(.xl))
-        .frame(width: metrics.size(340))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("memory.details")
     }
 
     private func name(of tab: TabID) -> String {

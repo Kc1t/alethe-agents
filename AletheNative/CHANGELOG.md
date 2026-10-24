@@ -9,6 +9,12 @@ baseline lacks is tagged `[Mac-only]`, one about a baseline feature that works d
 
 ## [Unreleased]
 
+### Memory panel
+- [Mac-only] The RAM pill shows how many AI terminals are running (`5 | 6000 MB`), and the memory panel has an AI
+  terminals tab. It lists each running agent with its memory, the processes it started (dev servers such as an API
+  and a front end) with their memory and listening ports, and buttons to kill a session or one of its processes,
+  after a confirmation. See MD-023.
+
 ### Installer
 - The installer window uses a solid light background with larger icons. Finder on macOS 26 does not draw picture
   backgrounds, so the previous artwork never showed and the window fell back to the default dark gray.

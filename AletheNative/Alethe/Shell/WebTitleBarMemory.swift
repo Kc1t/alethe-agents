@@ -16,7 +16,8 @@ struct WebTitleBarMemoryPill: View {
         let available = environment.resources.system.availableMB
         let pressure: ThemeToken = available < 512 ? .statusOffline : available < 1024 ? .statusWorking : available < 2048 ? .statusWaiting : .borderStrong
         Button { NotificationCenter.default.post(name: .aletheOpenTitleBarMemory, object: nil) } label: {
-            Text(verbatim: String(format: "%.0f MB", environment.resources.appMB + environment.resources.terminalsMB))
+            Text(verbatim: MemoryIndicator.pillText(count: environment.resources.aiTerminalCount,
+                                                    totalMB: environment.resources.appMB + environment.resources.terminalsMB))
                 .font(metrics.monoFont(size: 11)).monospacedDigit()
                 .foregroundStyle(theme[hovering ? .fg : .fgMuted])
                 .padding(.horizontal, metrics.size(8)).padding(.vertical, metrics.size(2))
@@ -30,7 +31,9 @@ struct WebTitleBarMemoryPill: View {
         // ramPillPulse: high pressure 1.5 s, critical 0.8 s (TitleBar.module.css).
         .webOpacityPulse(period: available < 256 ? 0.8 : 1.5, active: available < 512)
         .help(Text("titlebar.memory.open"))
-        .accessibilityLabel(Text(verbatim: String(format: String(localized: "memory.indicator.accessibility"), MemoryIndicator.format(environment.resources.appMB + environment.resources.terminalsMB))))
+        .accessibilityLabel(Text(MemoryIndicator.accessibilityText(
+            memory: MemoryIndicator.format(environment.resources.appMB + environment.resources.terminalsMB),
+            count: environment.resources.aiTerminalCount)))
         .accessibilityIdentifier("memory.indicator")
     }
 }
@@ -43,6 +46,7 @@ struct WebTitleBarMemory: View {
     @Environment(\.metrics) private var metrics
     @Environment(\.theme) private var theme
     @State private var hoverIndex: Int?
+    @State private var tab: MemoryTab = .overview
 
     private enum Level { case healthy, warning, critical }
     private var history: [ResourceMonitor.Sample] { environment.resources.history }
@@ -72,16 +76,11 @@ struct WebTitleBarMemory: View {
             Text("memModal.title")
         } content: {
             VStack(alignment: .leading, spacing: metrics.size(12)) {
-                if let crash = environment.diagnostics.crashNotice { crashPanel(crash) }
-                healthPanel
-                summary
-                historyPanel
-                HStack(alignment: .top, spacing: metrics.size(12)) {
-                    bottlenecksPanel.frame(maxWidth: .infinity)
-                    compositionPanel.frame(maxWidth: .infinity)
+                tabStrip
+                switch tab {
+                case .overview: overview
+                case .ai: aiPanel
                 }
-                runtimePanel
-                samplesPanel
             }
         } footer: {
             Spacer(minLength: 0)
@@ -93,6 +92,60 @@ struct WebTitleBarMemory: View {
             .accessibilityIdentifier("memory.clearHistory")
         }
         .accessibilityIdentifier("memory.details")
+    }
+
+    // MARK: Tabs
+
+    private var tabStrip: some View {
+        HStack(spacing: metrics.size(4)) {
+            ForEach(MemoryTab.allCases) { item in
+                Button { tab = item } label: {
+                    HStack(spacing: metrics.size(6)) {
+                        Text(item.title)
+                        if item == .ai {
+                            Text(verbatim: "\(environment.resources.aiTerminalCount)")
+                                .font(metrics.monoFont(size: 10, weight: .bold))
+                                .padding(.horizontal, metrics.size(6)).padding(.vertical, metrics.size(1))
+                                .background(theme[.bgSunken], in: Capsule())
+                        }
+                    }
+                    .font(metrics.font(size: 12, weight: tab == item ? .semibold : .regular))
+                    .foregroundStyle(theme[tab == item ? .fg : .fgMuted])
+                    .padding(.horizontal, metrics.size(12)).padding(.vertical, metrics.size(6))
+                    .background(tab == item ? theme[.bgSunken] : Color.clear, in: RoundedRectangle(cornerRadius: metrics.radius(.sm)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(tab == item ? .isSelected : [])
+                .accessibilityIdentifier("memory.tab.\(item.rawValue)")
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("memory.tabs")
+    }
+
+    @ViewBuilder private var overview: some View {
+        if let crash = environment.diagnostics.crashNotice { crashPanel(crash) }
+        healthPanel
+        summary
+        historyPanel
+        HStack(alignment: .top, spacing: metrics.size(12)) {
+            bottlenecksPanel.frame(maxWidth: .infinity)
+            compositionPanel.frame(maxWidth: .infinity)
+        }
+        runtimePanel
+        samplesPanel
+    }
+
+    private var aiPanel: some View {
+        let sessions = environment.resources.terminals.filter(\.isAgent)
+        return panel {
+            panelHeader("memModal.tab.ai", subtitle: format("memory.ai.header", "\(sessions.count)",
+                                                           mb(sessions.reduce(0) { $0 + $1.memoryMB }))) {
+                Image(systemName: "sparkles").font(metrics.font(size: 16))
+            }
+            AIProcessList()
+        }
     }
 
     // MARK: Panels

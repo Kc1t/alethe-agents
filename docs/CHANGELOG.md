@@ -10,6 +10,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Memory panel (macOS)
+- The RAM pill shows the number of running AI terminals before the memory total (`5 | 6000 MB`). The memory panel
+  gains an AI terminals tab with each agent's memory, the processes it started with their memory and listening
+  ports, and buttons to kill a session or one process.
+
 ### Dialog parity
 - Conversations, handoff, session cost, diagnostics, remote pairing, link preview, import, layout
   design, GSD activity, welcome and crash dialogs now use themed window overlays in the web interface.

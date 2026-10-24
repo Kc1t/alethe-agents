@@ -15,6 +15,11 @@ final class ResourceMonitor {
     struct TerminalUsage: Identifiable, Equatable {
         let tab: TabID
         let memoryMB: Double
+        let pid: pid_t
+        /// An agent (Claude, Codex...) rather than a plain shell.
+        let isAgent: Bool
+        /// What runs below the terminal's own process (dev servers, language servers...).
+        let children: [ProcessNode]
         var id: TabID { tab }
     }
 
@@ -45,6 +50,8 @@ final class ResourceMonitor {
     private(set) var candidateCount = 0
 
     var terminalsMB: Double { terminals.reduce(0) { $0 + $1.memoryMB } }
+    /// Running terminals that host an AI agent, for the `N | X MB` pill.
+    var aiTerminalCount: Int { terminals.filter(\.isAgent).count }
 
     static let interval: Duration = .seconds(5)
 
@@ -88,12 +95,14 @@ final class ResourceMonitor {
                 let parents = ProcessTree.currentParents()
                 var memory: [pid_t: Double] = [:]
                 var counts: [pid_t: Int] = [:]
+                var children: [pid_t: [ProcessNode]] = [:]
                 for pid in processes where pid > 0 {
                     let descendants = ProcessTree.descendants(of: pid, parents: parents)
                     counts[pid] = descendants.count
                     memory[pid] = descendants.reduce(0) { $0 + SystemResources.footprintMB(of: $1) }
+                    children[pid] = ProcessInspector.children(of: pid, parents: parents)
                 }
-                return Reading(parents: parents, memory: memory, counts: counts,
+                return Reading(parents: parents, memory: memory, counts: counts, children: children,
                               system: SystemResources.memory(), appMB: SystemResources.footprintMB(of: getpid()))
             }.value
             guard environment.workspace === workspace else { return }
@@ -105,6 +114,7 @@ final class ResourceMonitor {
         let parents: [pid_t: pid_t]
         let memory: [pid_t: Double]
         let counts: [pid_t: Int]
+        let children: [pid_t: [ProcessNode]]
         let system: SystemResources.Memory
         let appMB: Double
     }
@@ -126,7 +136,10 @@ final class ResourceMonitor {
             guard view.processID <= 0 || sample.memory[view.processID] != nil else { continue }
             let memory = sample.memory[view.processID] ?? 0
             if view.processID > 0 { processCount += sample.counts[view.processID] ?? 0 }
-            usage.append(TerminalUsage(tab: tab, memoryMB: memory))
+            let agent = document.paneHolding(tab)?.pane.tabs.first { $0.id == tab }?.agent
+            usage.append(TerminalUsage(tab: tab, memoryMB: memory, pid: view.processID,
+                                       isAgent: agent != nil && agent != "shell",
+                                       children: sample.children[view.processID] ?? []))
             let quiet = Double(view.quietFor.components.seconds)
             runtimes.append(TerminalRuntime(
                 tab: tab, isShell: document.paneHolding(tab)?.pane.tabs.first { $0.id == tab }?.agent == "shell",
