@@ -19,6 +19,7 @@ public final class TerminalPaneView: NSView {
     public let tap: TerminalIOTap
     private let activity = TerminalActivity()
     private let forceKill = ForceKillState()
+    private let forceKillNotice: Data
     private let grid: GridSizeState
     /// Find bar state (⌘F).
     public let search = TerminalSearch()
@@ -75,6 +76,7 @@ public final class TerminalPaneView: NSView {
         let grid = GridSizeState(launch.size)
         self.grid = grid
         let notice = Data("\r\n\u{1b}[33m[\(forceKillNotice)]\u{1b}[0m\r\n".utf8)
+        self.forceKillNotice = notice
         session = InMemoryTerminalSession(
             write: { data in
                 tap.input(data)
@@ -422,6 +424,14 @@ public final class TerminalPaneView: NSView {
         search.selected = nil
     }
 
+    /// Kills the whole process tree like a double ⌃C does: prints the notice and marks the terminal
+    /// force-killed (so it shows the restart overlay instead of restarting by itself).
+    public func forceKillTree() {
+        guard forceKill.trigger() else { return }
+        forceKill.session?.receive(forceKillNotice)
+        ProcessTree.kill(process.pid)
+    }
+
     /// Ends the process group: SIGHUP, then SIGKILL if it outlives the grace period.
     public func terminate() {
         process.terminate()
@@ -509,6 +519,15 @@ private final class ForceKillState: @unchecked Sendable {
             let fire = !state.triggered && state.detector.register(input, at: .now)
             if fire { state.triggered = true }
             return fire
+        }
+    }
+
+    /// Marks the terminal force-killed; false when it already was.
+    func trigger() -> Bool {
+        state.withLock { state in
+            guard !state.triggered else { return false }
+            state.triggered = true
+            return true
         }
     }
 
