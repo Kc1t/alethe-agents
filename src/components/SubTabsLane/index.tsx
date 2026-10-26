@@ -1,9 +1,10 @@
 import { Plus, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 
+import { confirmAction } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { useProjectsStore } from '../../stores/projectsStore'
 import type { SubTab } from '../../lib/types'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import styles from './SubTabsLane.module.css'
 
@@ -54,10 +55,12 @@ export function SubTabsLane({
               <button
                 type="button"
                 className={styles.close}
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation()
                   if (
-                    window.confirm(t('ui.subtabs.confirmCloseTab', { name: tab.name || tab.type }))
+                    await confirmAction(
+                      t('ui.subtabs.confirmCloseTab', { name: tab.name || tab.type }),
+                    )
                   )
                     onClose(tab.id)
                 }}

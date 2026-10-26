@@ -54,6 +54,12 @@ fn prepare(app: &AppHandle, state: &OrchestratorState) {
             "Path".to_string(),
             crate::orchestrator_core::path_without_store_aliases(&cli_resolver::rebuilt_path()),
         ));
+        // Workers run `npm test`, `git` and an npm-installed codex, all of which need the
+        // user's PATH, not the one launchd gave the app.
+        #[cfg(not(windows))]
+        launcher
+            .env
+            .push(("PATH".to_string(), cli_resolver::rebuilt_path()));
         core.set_launcher(launcher);
     }
     if let Some(program) = cli_resolver::find_windows_cli_launcher("claude") {

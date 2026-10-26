@@ -21,7 +21,7 @@ import {
 
 import { relaunchAgentPty } from '../../lib/agentRelaunch'
 import { graphifyRepoOf } from '../../lib/claudeMcpConfigs'
-import { pickFile, saveFile } from '../../lib/dialog'
+import { confirmAction, pickFile, promptText, saveFile, showMessage } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import {
   getPtyCwd,
@@ -196,8 +196,13 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       kind: 'item',
       label: t('ui.sidebar.quickRename'),
       icon: <Pencil size={14} />,
-      onClick: () => {
-        const name = window.prompt(t('ui.sidebar.newNamePrompt'), project.name)?.trim()
+      onClick: async () => {
+        const name = (
+          await promptText(t('ui.sidebar.newNamePrompt'), {
+            title: t('ui.sidebar.quickRename'),
+            defaultValue: project.name,
+          })
+        )?.trim()
         if (name) actions.renameProject(project.id, name)
       },
     },
@@ -250,7 +255,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
                 actions.createGraphifyPane(project.id, repoPath)
                 setActiveView('workspace')
               } else {
-                alert('Adicione um terminal ao projeto primeiro para obter a raiz do repositório.')
+                void showMessage(t('graphify.needsTerminal'), { kind: 'warning' })
               }
             },
           },
@@ -260,16 +265,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       kind: 'item',
       label: project.groupId ? t('ui.sidebar.removeFromGroup') : t('ui.sidebar.moveToGroup'),
       icon: <MoveRight size={14} />,
-      onClick: () => {
+      onClick: async () => {
         if (project.groupId) {
           actions.moveProjectToGroup(project.id, null)
         } else if (groups.length === 0) {
-          window.alert(t('ui.sidebar.createGroupFirst'))
+          await showMessage(t('ui.sidebar.createGroupFirst'))
         } else {
           const list = groups.map((g, i) => `${i + 1}. ${g.name}`).join('\n')
-          const pick = window.prompt(
+          const pick = await promptText(
             t('ui.sidebar.moveProjectToWhichGroup', { name: project.name, list }),
-            '1',
+            { title: t('ui.sidebar.moveToGroup'), defaultValue: '1' },
           )
           const idx = pick ? Number(pick) - 1 : -1
           if (idx >= 0 && idx < groups.length) {
@@ -310,9 +315,9 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       label: t('ui.sidebar.deleteProject'),
       icon: <Trash2 size={14} />,
       danger: true,
-      onClick: () => {
+      onClick: async () => {
         if (
-          window.confirm(
+          await confirmAction(
             t('ui.sidebar.confirmDeleteProject', {
               name: project.name,
               count: project.terminals.length,
@@ -351,8 +356,13 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     {
       kind: 'item',
       label: t('ui.sidebar.quickRename'),
-      onClick: () => {
-        const name = window.prompt(t('ui.sidebar.newNamePrompt'), group.name)?.trim()
+      onClick: async () => {
+        const name = (
+          await promptText(t('ui.sidebar.newNamePrompt'), {
+            title: t('ui.sidebar.quickRename'),
+            defaultValue: group.name,
+          })
+        )?.trim()
         if (name) actions.renameGroup(group.id, name)
       },
     },
@@ -369,7 +379,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     {
       kind: 'item',
       label: group.parentGroupId ? t('ui.sidebar.makeRootGroup') : t('ui.sidebar.moveToOtherGroup'),
-      onClick: () => {
+      onClick: async () => {
         if (group.parentGroupId) {
           actions.moveGroupToParent(group.id, null)
         } else {
@@ -378,13 +388,13 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
           const descendants = collectDescendants(group.id, allGroups)
           const candidates = allGroups.filter((g) => g.id !== group.id && !descendants.has(g.id))
           if (candidates.length === 0) {
-            window.alert(t('ui.sidebar.noEligibleParentGroups'))
+            await showMessage(t('ui.sidebar.noEligibleParentGroups'))
             return
           }
           const list = candidates.map((g, i) => `${i + 1}. ${g.name}`).join('\n')
-          const pick = window.prompt(
+          const pick = await promptText(
             t('ui.sidebar.moveGroupAsSubgroupOf', { name: group.name, list }),
-            '1',
+            { title: t('ui.sidebar.moveToOtherGroup'), defaultValue: '1' },
           )
           const idx = pick ? Number(pick) - 1 : -1
           if (idx >= 0 && idx < candidates.length) {
@@ -425,9 +435,9 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       kind: 'item',
       label: t('ui.sidebar.deleteGroupAndProjects'),
       danger: true,
-      onClick: () => {
+      onClick: async () => {
         if (
-          window.confirm(
+          await confirmAction(
             t('ui.sidebar.confirmDeleteGroupCascade', {
               name: group.name,
               count: group.projectIds.length,
@@ -458,13 +468,15 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
   ) => {
     const path = await resolveTerminalCwd(term)
     if (!path) {
-      window.alert(t('ui.terminal.noCwdAvailable', { label }))
+      await showMessage(t('ui.terminal.noCwdAvailable', { label }), { kind: 'warning' })
       return
     }
     try {
       await action(path)
     } catch (err) {
-      window.alert(t('ui.terminal.openFailed', { label, error: String(err) }))
+      await showMessage(t('ui.terminal.openFailed', { label, error: String(err) }), {
+        kind: 'error',
+      })
     }
   }
 
@@ -489,14 +501,15 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),
       )
     } catch (err) {
-      window.alert(
+      await showMessage(
         t('ui.terminal.openFailed', { label: t('ui.terminal.restart'), error: String(err) }),
+        { kind: 'error' },
       )
     }
   }
 
-  const confirmAndDeleteTerminal = (projectId: string, term: Terminal) => {
-    if (window.confirm(t('ui.sidebar.confirmDeleteTerminal', { name: term.name }))) {
+  const confirmAndDeleteTerminal = async (projectId: string, term: Terminal) => {
+    if (await confirmAction(t('ui.sidebar.confirmDeleteTerminal', { name: term.name }))) {
       void actions.deleteTerminalWithWorktreeCleanup(projectId, term.id)
     }
   }
@@ -600,8 +613,13 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         kind: 'item',
         label: t('ui.sidebar.rename'),
         icon: <Pencil size={14} />,
-        onClick: () => {
-          const name = window.prompt(t('ui.sidebar.newNamePrompt'), term.name)?.trim()
+        onClick: async () => {
+          const name = (
+            await promptText(t('ui.sidebar.newNamePrompt'), {
+              title: t('ui.sidebar.rename'),
+              defaultValue: term.name,
+            })
+          )?.trim()
           if (name) actions.renameTerminal(projectId, term.id, name)
         },
       },

@@ -26,13 +26,13 @@ function t(locale: Locale) {
 }
 
 describe.each(['en', 'pt-BR'] as const)('remote control consent (%s)', (locale) => {
-  it('confirms a false-to-true change with the configured exposure details', () => {
+  it('confirms a false-to-true change with the configured exposure details', async () => {
     const confirm = vi.fn(() => true)
     const setPreferences = vi.fn()
 
-    expect(
+    await expect(
       requestRemoteControlPreference(true, preferences(), setPreferences, t(locale), confirm),
-    ).toBe(true)
+    ).resolves.toBe(true)
 
     expect(confirm).toHaveBeenCalledOnce()
     const message = confirm.mock.calls[0][0]
@@ -44,10 +44,10 @@ describe.each(['en', 'pt-BR'] as const)('remote control consent (%s)', (locale) 
     expect(setPreferences).toHaveBeenCalledWith({ remoteEnabled: true })
   })
 
-  it('leaves the preference off when confirmation is cancelled', () => {
+  it('leaves the preference off when confirmation is cancelled', async () => {
     const setPreferences = vi.fn()
 
-    expect(
+    await expect(
       requestRemoteControlPreference(
         true,
         preferences(),
@@ -55,15 +55,15 @@ describe.each(['en', 'pt-BR'] as const)('remote control consent (%s)', (locale) 
         t(locale),
         vi.fn(() => false),
       ),
-    ).toBe(false)
+    ).resolves.toBe(false)
     expect(setPreferences).not.toHaveBeenCalled()
   })
 
-  it('disables immediately without asking for confirmation', () => {
+  it('disables immediately without asking for confirmation', async () => {
     const confirm = vi.fn()
     const setPreferences = vi.fn()
 
-    expect(
+    await expect(
       requestRemoteControlPreference(
         false,
         preferences({ remoteEnabled: true }),
@@ -71,10 +71,23 @@ describe.each(['en', 'pt-BR'] as const)('remote control consent (%s)', (locale) 
         t(locale),
         confirm,
       ),
-    ).toBe(true)
+    ).resolves.toBe(true)
 
     expect(confirm).not.toHaveBeenCalled()
     expect(setPreferences).toHaveBeenCalledWith({ remoteEnabled: false })
+  })
+})
+
+describe('remote control consent async confirmation', () => {
+  it('waits for an asynchronous confirmation before enabling', async () => {
+    const setPreferences = vi.fn()
+
+    await expect(
+      requestRemoteControlPreference(true, preferences(), setPreferences, t('en'), () =>
+        Promise.resolve(true),
+      ),
+    ).resolves.toBe(true)
+    expect(setPreferences).toHaveBeenCalledWith({ remoteEnabled: true })
   })
 })
 

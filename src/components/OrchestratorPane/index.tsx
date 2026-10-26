@@ -64,6 +64,7 @@ import {
 import { resolveShortcuts, renderShortcut, shortcutsForJob } from '../../lib/orchestratorShortcuts'
 import { nativeSubagentJobs } from '../../lib/orchestratorSubagents'
 import { basename } from '../../lib/paths'
+import { isMacOS } from '../../lib/platform'
 import {
   listenOrchestratorJobs,
   openOrchestrationWindow,
@@ -1661,7 +1662,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                 )}
 
                 <div className={styles.hint}>
-                  <span>{t('orchestrator.canvasHint')}</span>
+                  <span>{t('orchestrator.canvasHint', { key: isMacOS() ? '⌘' : 'Ctrl' })}</span>
                   <span>{t('orchestrator.forestHint')}</span>
                 </div>
 

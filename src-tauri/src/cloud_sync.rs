@@ -13,11 +13,30 @@ const USER_AGENT: &str = "Alethe";
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const GITHUB_ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
-const DEFAULT_SERVER_URL: &str = "http://127.0.0.1:8787";
 const DEFAULT_GITHUB_CLIENT_ID: &str = "Ov23liE8HEZvJ3LGIbIp";
 
-fn server_url() -> String {
-    std::env::var("ALETHE_SYNC_SERVER").unwrap_or_else(|_| DEFAULT_SERVER_URL.to_string())
+/// The sync server that turns a GitHub token into an Alethe session, from the environment (a
+/// `.env` file works too) or baked in at build time. There is no default: the old fallback,
+/// `http://127.0.0.1:8787`, only exists on a developer machine, so every sign-in elsewhere
+/// authorized on GitHub and then failed to connect.
+fn server_url() -> Option<String> {
+    resolve_server_url(
+        std::env::var("ALETHE_SYNC_SERVER").ok(),
+        option_env!("ALETHE_SYNC_SERVER"),
+    )
+}
+
+fn resolve_server_url(runtime: Option<String>, built_in: Option<&str>) -> Option<String> {
+    let clean =
+        |url: &str| Some(url.trim().trim_end_matches('/').to_string()).filter(|u| !u.is_empty());
+    runtime
+        .as_deref()
+        .and_then(clean)
+        .or_else(|| built_in.and_then(clean))
+}
+
+fn require_server_url() -> Result<String, String> {
+    server_url().ok_or_else(|| "not_configured".to_string())
 }
 
 fn github_client_id() -> String {
@@ -90,7 +109,7 @@ fn save_config(app: &AppHandle, cfg: &CloudConfig) -> Result<(), String> {
 
 fn status_from(cfg: &CloudConfig) -> CloudSyncStatus {
     CloudSyncStatus {
-        configured: !github_client_id().is_empty(),
+        configured: !github_client_id().is_empty() && server_url().is_some(),
         connected: !cfg.token.trim().is_empty(),
         login: cfg.login.clone(),
         name: cfg.name.clone(),
@@ -122,6 +141,9 @@ pub fn cloud_sync_status(app: AppHandle) -> Result<CloudSyncStatus, String> {
 #[tauri::command]
 pub async fn cloud_sync_device_start() -> Result<CloudDeviceStart, String> {
     let client_id = github_client_id();
+    // Checked before GitHub is asked for a code, so the user is never sent to authorize a
+    // sign-in that cannot finish.
+    require_server_url()?;
     if client_id.is_empty() {
         return Err("not_configured".to_string());
     }
@@ -167,6 +189,7 @@ pub async fn cloud_sync_device_finish(
     if client_id.is_empty() {
         return Err("not_configured".to_string());
     }
+    let server = require_server_url()?;
     let client = reqwest::Client::new();
     let mut wait = interval.max(5);
     let deadline = now_ms() + expires_in.min(900) * 1000;
@@ -210,7 +233,7 @@ pub async fn cloud_sync_device_finish(
     };
 
     let resp = client
-        .post(format!("{}/auth/github", server_url()))
+        .post(format!("{server}/auth/github"))
         .header("User-Agent", USER_AGENT)
         .json(&json!({ "access_token": access_token }))
         .send()
@@ -259,15 +282,13 @@ pub async fn cloud_sync_push(app: AppHandle, payload: Value) -> Result<CloudSync
     if cfg.token.trim().is_empty() {
         return Err("not_connected".to_string());
     }
+    let server = require_server_url()?;
     let client = reqwest::Client::new();
-    let resp = bearer(
-        client.put(format!("{}/sync/preferences", server_url())),
-        &cfg.token,
-    )
-    .json(&json!({ "payload": payload }))
-    .send()
-    .await
-    .map_err(|e| format!("request failed: {e}"))?;
+    let resp = bearer(client.put(format!("{server}/sync/preferences")), &cfg.token)
+        .json(&json!({ "payload": payload }))
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
     if !resp.status().is_success() {
         return Err(server_error(resp).await);
     }
@@ -282,14 +303,12 @@ pub async fn cloud_sync_pull(app: AppHandle) -> Result<Value, String> {
     if cfg.token.trim().is_empty() {
         return Err("not_connected".to_string());
     }
+    let server = require_server_url()?;
     let client = reqwest::Client::new();
-    let resp = bearer(
-        client.get(format!("{}/sync/preferences", server_url())),
-        &cfg.token,
-    )
-    .send()
-    .await
-    .map_err(|e| format!("request failed: {e}"))?;
+    let resp = bearer(client.get(format!("{server}/sync/preferences")), &cfg.token)
+        .send()
+        .await
+        .map_err(|e| format!("request failed: {e}"))?;
     if resp.status().as_u16() == 404 {
         return Err("no_remote".to_string());
     }
@@ -304,4 +323,35 @@ pub async fn cloud_sync_pull(app: AppHandle) -> Result<Value, String> {
     cfg.last_pull_ms = Some(now_ms());
     save_config(&app, &cfg)?;
     Ok(payload)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_server_url;
+
+    #[test]
+    fn no_server_url_means_sync_is_not_configured() {
+        assert_eq!(resolve_server_url(None, None), None);
+        assert_eq!(resolve_server_url(Some("  ".into()), None), None);
+    }
+
+    #[test]
+    fn the_runtime_server_url_wins_over_the_built_in_one() {
+        assert_eq!(
+            resolve_server_url(
+                Some("https://sync.example/".into()),
+                Some("https://built.in")
+            ),
+            Some("https://sync.example".to_string())
+        );
+        assert_eq!(
+            resolve_server_url(None, Some("https://built.in")),
+            Some("https://built.in".to_string())
+        );
+        // An empty `ALETHE_SYNC_SERVER=` copied from `.env.example` must not hide the built-in one.
+        assert_eq!(
+            resolve_server_url(Some(String::new()), Some("https://built.in")),
+            Some("https://built.in".to_string())
+        );
+    }
 }

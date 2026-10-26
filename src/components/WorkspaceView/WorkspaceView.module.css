@@ -378,6 +378,8 @@
 .emptyFolderAction,
 .emptySecondaryAction {
   min-height: 34px;
+  /* Without it these buttons inherit the browser's 16px and outgrow the rest of the card. */
+  font-size: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--fg);

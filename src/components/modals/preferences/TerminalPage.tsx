@@ -2,8 +2,12 @@ import { Activity, Minus, Plus, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 
 import { cliPathMatchesAgent } from '../../../lib/agentCliPath'
-import { agentLabel, resolveAgentCliCommand } from '../../../lib/agentProviders'
-import { pickFile } from '../../../lib/dialog'
+import {
+  agentLabel,
+  isAgentTypeAvailable,
+  resolveAgentCliCommand,
+} from '../../../lib/agentProviders'
+import { confirmAction, pickFile } from '../../../lib/dialog'
 import { useT, useTDynamic } from '../../../lib/i18n'
 import { isMacOS, isWindows } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
@@ -112,7 +116,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       return
     }
 
-    if (count > 1 && !window.confirm(t('prefs.resetSessionConfirm', { count }))) return
+    if (count > 1 && !(await confirmAction(t('prefs.resetSessionConfirm', { count })))) return
     setResetting(true)
     try {
       const { resumed, total } = await resetLastSession()
@@ -191,7 +195,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
         description={t('prefs.agentsDesc')}
       >
         <div className={styles.agentList}>
-          {AGENTS.map((agent) => {
+          {AGENTS.filter((agent) => isAgentTypeAvailable(agent.id)).map((agent) => {
             const checked = preferences.enabledAgents[agent.id]
             const disabled = checked && enabledCount === 1
             return (

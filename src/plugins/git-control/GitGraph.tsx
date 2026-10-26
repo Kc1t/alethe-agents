@@ -11,6 +11,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { ContextMenu, type MenuItem } from '../../components/ProjectSidebar/ContextMenu'
+import { confirmAction, promptText } from '../../lib/dialog'
 import { readableError } from '../../lib/errors'
 import { type MessageKey, useT } from '../../lib/i18n'
 import {
@@ -23,7 +25,6 @@ import {
   writeClipboardText,
 } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
-import { ContextMenu, type MenuItem } from '../../components/ProjectSidebar/ContextMenu'
 import styles from './GitGraph.module.css'
 import { GitGraphCommitDetail } from './GitGraphCommitDetail'
 import { GitGraphList } from './GitGraphList'
@@ -100,8 +101,10 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
       kind: 'item',
       label: t('git.graph.menu.createBranch'),
       icon: <GitBranchPlus size={13} />,
-      onClick: () => {
-        const name = window.prompt(t('git.graph.menu.createBranchPrompt'))
+      onClick: async () => {
+        const name = await promptText(t('git.graph.menu.createBranchPrompt'), {
+          title: t('git.graph.menu.createBranch'),
+        })
         if (name && name.trim()) {
           void runAction(
             () => gitCreateBranchFromCommit(repoRoot, hash, name.trim()),
@@ -147,8 +150,8 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
       kind: 'item',
       label: t('git.graph.menu.resetHard'),
       icon: <RotateCcw size={13} />,
-      onClick: () => {
-        if (window.confirm(t('git.graph.menu.resetHardConfirm'))) {
+      onClick: async () => {
+        if (await confirmAction(t('git.graph.menu.resetHardConfirm'))) {
           void runAction(() => gitResetToCommit(repoRoot, hash, 'hard'), 'git.graph.menu.resetDone')
         }
       },

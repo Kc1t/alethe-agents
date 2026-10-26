@@ -42,6 +42,9 @@ mod jev;
 mod kimi_usage;
 mod leftover_processes;
 mod logging;
+#[cfg(target_os = "macos")]
+mod macos_menu;
+mod login_env;
 mod mcp_agents;
 mod mcp_catalog;
 mod mcp_health;
@@ -89,7 +92,6 @@ mod supervisor;
 mod telemetry;
 mod validation;
 mod webview_media;
-mod window_style;
 #[cfg(windows)]
 mod windows_webview;
 mod worktrees;
@@ -132,6 +134,10 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // First, while this is the only thread: every later lookup and child process reads the
+    // environment this loads. A no-op outside macOS.
+    login_env::hydrate();
+
     // bugs conhecidos no Wayland — escala fracionada quebrando layout,
 
     // ("Error 71") em alguns drivers de GPU — documentados oficialmente em
@@ -234,6 +240,13 @@ pub fn run() {
             plugin_assets::serve(ctx.app_handle(), &request)
         });
 
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .menu(macos_menu::build)
+            .on_menu_event(macos_menu::handle_event);
+    }
+
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -282,10 +295,6 @@ pub fn run() {
 
             cli_launch::capture_cold_start(app.handle());
             event_bus::set_app_handle(app.handle().clone());
-            // Cantos arredondados no macOS (no-op nas outras plataformas). A
-
-            window_style::apply_rounded_corners(app.handle());
-
             crash_watch::start(app.handle().clone());
             resources::start(
                 app.handle().clone(),
@@ -412,6 +421,8 @@ pub fn run() {
             ghostty_bridge::ghostty_spawn,
             ghostty_bridge::ghostty_sync_frame,
             ghostty_bridge::ghostty_set_hidden,
+            ghostty_bridge::ghostty_set_focus,
+            ghostty_bridge::ghostty_surface_exited,
             ghostty_bridge::ghostty_kill,
             ghostty_bridge::ghostty_kill_all,
             ghostty_bridge::ghostty_debug_send_read,
@@ -650,7 +661,9 @@ pub fn run() {
         .run(move |_app_handle, event| {
             // emitir `Exit`; esperar esse evento deixa shells/agentes vivos
 
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+            // macOS ends the app through `NSApp terminate:` (Dock > Quit, logout, shutdown) with
+            // `Exit` alone, never `ExitRequested`, so both run the teardown. It is idempotent.
+            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
                 pty::kill_all_sessions_background(&sessions_for_exit);
                 browser_session::kill_running_session(
                     &_app_handle.state::<browser_session::BrowserSessionState>(),

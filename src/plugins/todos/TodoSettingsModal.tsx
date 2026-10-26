@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 
 import controls from '../../components/modals/controls.module.css'
 import { Modal } from '../../components/modals/Modal'
-import { pickDirectory } from '../../lib/dialog'
+import { confirmAction, pickDirectory, showMessage } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { ensureTodoTemplate } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -65,14 +65,14 @@ export function TodoSettingsModal() {
       })
       closeModal()
     } catch (error) {
-      window.alert(t('todo.templateError', { message: String(error) }))
+      await showMessage(t('todo.templateError', { message: String(error) }), { kind: 'error' })
     } finally {
       setSaving(false)
     }
   }
 
-  const resetDefault = () => {
-    if (!window.confirm(t('todo.resetDefaultConfirm'))) return
+  const resetDefault = async () => {
+    if (!(await confirmAction(t('todo.resetDefaultConfirm')))) return
     resetTodosToDefault()
     closeModal()
   }

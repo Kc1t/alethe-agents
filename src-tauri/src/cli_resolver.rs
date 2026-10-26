@@ -25,7 +25,15 @@ pub fn default_shell() -> String {
         std::env::var("SHELL")
             .ok()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "/bin/bash".to_string())
+            .unwrap_or_else(|| {
+                // zsh has been the macOS login shell since Catalina; bash is the Linux default.
+                if cfg!(target_os = "macos") {
+                    "/bin/zsh"
+                } else {
+                    "/bin/bash"
+                }
+                .to_string()
+            })
     }
 }
 
@@ -129,6 +137,12 @@ pub fn command_builder_for_terminal(
             };
             if is_powershell(&shell) {
                 builder.arg("-NoLogo");
+            } else if cfg!(target_os = "macos")
+                && command_line.is_none_or(|line| line.trim().is_empty())
+            {
+                // Like Terminal.app and iTerm: a new tab is a login shell, so `.zprofile` (where
+                // Homebrew's installer puts its PATH) runs, not just `.zshrc`.
+                builder.arg("-l");
             }
             // An orchestrator shell: the line runs through the shell and the PTY ends with it, so
             // the board can tell a running service from one that exited.
@@ -242,17 +256,20 @@ fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
             dirs.push(home.join(".cargo").join("bin"));
             // Official Grok Build installer links into ~/.grok/bin.
             dirs.push(home.join(".grok").join("bin"));
+            // The OpenCode, MiMo and Kimi install scripts each keep a bin dir of their own and
+            // only add it to a shell profile, which this process never re-reads.
+            dirs.push(home.join(".opencode").join("bin"));
+            dirs.push(home.join(".mimocode").join("bin"));
+            dirs.push(home.join(".kimi-code").join("bin"));
         }
-        // App .app lançado via Finder/DMG não roda como login shell: herda o
-        // PATH mínimo do Launch Services (sem .zshrc/.zprofile), então CLIs
-        // instaladas via `brew install` ficam invisíveis pro `which` acima
-        // mesmo estando no disco. Cobrir os prefixos padrão do Homebrew
-        // (Apple Silicon e Intel) como fallback fixo.
+        // An app started from Finder is not a login shell: it inherits Launch Services' minimal
+        // PATH (no .zshrc/.zprofile), so CLIs installed with `brew install` are invisible to
+        // `which` above even though they are on disk. The default Homebrew prefixes (Apple
+        // Silicon and Intel) are covered as a fixed fallback.
         dirs.extend(homebrew_dirs());
-        // Linux user-scoped installers (nvm, bun, npm --prefix, pnpm, volta) —
-        // invisible under the minimal PATH a desktop menu inherits.
-        #[cfg(target_os = "linux")]
-        dirs.extend(linux_user_bin_dirs());
+        // User-scoped installers (nvm, bun, npm --prefix, pnpm, volta, fnm) — invisible under the
+        // minimal PATH a desktop menu or launchd hands a GUI app.
+        dirs.extend(unix_user_bin_dirs());
         for dir in dirs {
             let candidate = dir.join(command);
             if candidate.is_file() {
@@ -288,6 +305,7 @@ pub struct InstallToolchain {
     pub winget: bool,
     pub scoop: bool,
     pub choco: bool,
+    pub brew: bool,
     pub bun: bool,
     pub pnpm: bool,
 }
@@ -363,6 +381,9 @@ pub async fn probe_install_toolchain() -> InstallToolchain {
             winget: has("winget"),
             scoop: has("scoop"),
             choco: has("choco"),
+            // Found on PATH or under the fixed Homebrew prefixes `resolve_cli_launcher` falls back
+            // to, so a Finder-launched app still sees it.
+            brew: cfg!(not(windows)) && has("brew"),
             bun: has("bun"),
             pnpm: has("pnpm"),
         }
@@ -384,19 +405,20 @@ fn homebrew_dirs() -> Vec<PathBuf> {
     ]
 }
 
-/// Standard user bin dirs for Linux package managers. Desktop menus launch the
-/// app with a minimal PATH, so agents installed via `npm --prefix`, bun, pnpm,
-/// volta or nvm are invisible to `which`; these are the default install roots
-/// for each tool (mirrors `agent_search_dirs` on Windows and the fixed Homebrew
-/// fallback on macOS).
-#[cfg(target_os = "linux")]
-fn linux_user_bin_dirs() -> Vec<PathBuf> {
+/// Standard user bin dirs for Unix package managers. Linux desktop menus and macOS launchd start
+/// the app with a minimal PATH, so agents installed via `npm --prefix`, bun, pnpm, volta, fnm or
+/// nvm are invisible to `which`; these are the default install roots for each tool (mirrors
+/// `agent_search_dirs` on Windows).
+#[cfg(unix)]
+fn unix_user_bin_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::<PathBuf>::new();
     if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
         dirs.push(home.join(".npm-global").join("bin"));
         dirs.push(home.join(".bun").join("bin"));
         dirs.push(home.join(".volta").join("bin"));
         dirs.push(home.join(".local").join("share").join("pnpm"));
+        // pnpm's default PNPM_HOME on macOS.
+        dirs.push(home.join("Library").join("pnpm"));
     }
     if let Some(volta_home) = env::var_os("VOLTA_HOME").map(PathBuf::from) {
         dirs.push(volta_home.join("bin"));
@@ -404,10 +426,20 @@ fn linux_user_bin_dirs() -> Vec<PathBuf> {
     if let Some(pnpm_home) = env::var_os("PNPM_HOME").map(PathBuf::from) {
         dirs.push(pnpm_home);
     }
-    let fnm_root = env::var_os("FNM_DIR").map(PathBuf::from).or_else(|| {
-        env::var_os("HOME").map(|h| PathBuf::from(h).join(".local").join("share").join("fnm"))
-    });
-    if let Some(root) = fnm_root {
+    // Without FNM_DIR, fnm uses the XDG data dir; older macOS releases used Application Support.
+    let fnm_roots: Vec<PathBuf> = match env::var_os("FNM_DIR") {
+        Some(dir) => vec![PathBuf::from(dir)],
+        None => env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| {
+                vec![
+                    home.join(".local").join("share").join("fnm"),
+                    home.join("Library").join("Application Support").join("fnm"),
+                ]
+            })
+            .unwrap_or_default(),
+    };
+    for root in fnm_roots {
         dirs.extend(fnm_alias_bin_dirs(&root));
     }
     // nvm installs one versioned bin dir per node release; pick every one
@@ -443,9 +475,9 @@ fn linux_user_bin_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// fnm on Linux keeps one symlink per alias under `<root>/aliases`, each pointing at an installed
+/// fnm on Unix keeps one symlink per alias under `<root>/aliases`, each pointing at an installed
 /// node version. The `default` alias is the version a new shell gets, so it goes first.
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 fn fnm_alias_bin_dirs(root: &std::path::Path) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(root.join("aliases")) else {
         return Vec::new();
@@ -462,7 +494,30 @@ fn fnm_alias_bin_dirs(root: &std::path::Path) -> Vec<PathBuf> {
 /// Looks for the VS Code launcher (`code`) in common locations plus PATH.
 /// Returns the first one that exists.
 pub fn find_vscode_launcher() -> Option<PathBuf> {
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
+    {
+        // `/usr/local/bin/code` is only on PATH from a shell; a Finder launch still finds the
+        // launcher inside the app bundle.
+        which::which("code").ok().or_else(|| {
+            let app_bin = "Contents/Resources/app/bin/code";
+            let mut roots = vec![PathBuf::from("/Applications")];
+            if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
+                roots.push(home.join("Applications"));
+            }
+            roots
+                .iter()
+                .flat_map(|root| {
+                    [
+                        "Visual Studio Code.app",
+                        "Visual Studio Code - Insiders.app",
+                    ]
+                    .map(|app| root.join(app).join(app_bin))
+                })
+                .find(|candidate| candidate.is_file())
+        })
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         which::which("code").ok()
     }
@@ -699,7 +754,10 @@ pub(crate) fn build_rebuilt_path() -> String {
             .map(|value| env::split_paths(&value).collect())
             .unwrap_or_default();
         #[cfg(not(windows))]
-        paths.extend(homebrew_dirs());
+        {
+            paths.extend(homebrew_dirs());
+            paths.extend(unix_user_bin_dirs());
+        }
         return dedupe_paths(paths)
             .into_iter()
             .map(|path| path.to_string_lossy().to_string())
@@ -1166,6 +1224,15 @@ mod tests {
         assert!(!argv.iter().any(|arg| arg == "-Command" || arg == "-lc"), "{argv:?}");
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_plain_shell_is_a_login_shell_on_macos() {
+        let argv = argv_of(
+            &command_builder_for_terminal(None, Some("/bin/zsh"), &[], None, false).unwrap(),
+        );
+        assert_eq!(argv, vec!["/bin/zsh".to_string(), "-l".to_string()]);
+    }
+
     #[test]
     fn recognizes_powershell_by_file_stem() {
         for shell in [
@@ -1188,8 +1255,8 @@ mod tests {
         let shell = if cfg!(windows) { "nu.exe" } else { "/bin/zsh" };
         let builder = command_builder_for_terminal(None, Some(shell), &[], None, false).unwrap();
         assert_eq!(builder.get_argv()[0], shell);
-        // A non-PowerShell shell must not inherit PowerShell's switches.
-        assert_eq!(builder.get_argv().len(), 1);
+        // A non-PowerShell shell must not inherit PowerShell's switches. On macOS it gets `-l`.
+        assert!(!argv_of(&builder).iter().any(|arg| arg == "-NoLogo"));
     }
 
     #[test]
@@ -1282,7 +1349,31 @@ mod tests {
         assert!(find_windows_cli_launcher("non_existent_binary_xyz_123").is_none());
     }
 
-    #[cfg(target_os = "linux")]
+    /// `probe_install_toolchain` reports `brew` through the launcher lookup, so both default
+    /// Homebrew prefixes must be on its fallback list even when PATH lacks them.
+    #[cfg(not(windows))]
+    #[test]
+    fn brew_is_looked_up_under_both_homebrew_prefixes() {
+        let candidates: Vec<PathBuf> = homebrew_dirs()
+            .into_iter()
+            .map(|dir| dir.join("brew"))
+            .collect();
+        assert!(candidates.contains(&PathBuf::from("/opt/homebrew/bin/brew")));
+        assert!(candidates.contains(&PathBuf::from("/usr/local/bin/brew")));
+    }
+
+    #[test]
+    fn install_toolchain_serializes_brew_for_the_frontend() {
+        let toolchain = InstallToolchain {
+            brew: true,
+            ..InstallToolchain::default()
+        };
+        let json = serde_json::to_value(&toolchain).expect("serialize toolchain");
+        assert_eq!(json["brew"], serde_json::Value::Bool(true));
+        assert_eq!(json["npm"], serde_json::Value::Bool(false));
+    }
+
+    #[cfg(unix)]
     #[test]
     fn fnm_aliases_resolve_to_their_bin_dirs_with_the_default_first() {
         let root = std::env::temp_dir().join(format!("alethe-fnm-{}", std::process::id()));
@@ -1301,12 +1392,12 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// With the Linux user-bin-dirs fallback, an agent installed via
+    /// With the Unix user-bin-dirs fallback, an agent installed via
     /// `npm --prefix ~/.npm-global` is found even under a minimal desktop-menu
     /// PATH.
-    #[cfg(target_os = "linux")]
+    #[cfg(unix)]
     #[test]
-    fn linux_user_bin_dirs_finds_npm_global_agents() {
+    fn unix_user_bin_dirs_finds_npm_global_agents() {
         let home = std::env::temp_dir().join("alethe-audit-home");
         let npm_global = home.join(".npm-global").join("bin");
         std::fs::create_dir_all(&npm_global).expect("create npm-global dir");
@@ -1322,7 +1413,7 @@ mod tests {
         let found = find_windows_cli_launcher("fake-agent-audit");
         assert!(
             found.is_some(),
-            "linux_user_bin_dirs should find npm-global installs: {found:?}"
+            "unix_user_bin_dirs should find npm-global installs: {found:?}"
         );
         if let Some(h) = original_home {
             std::env::set_var("HOME", h);

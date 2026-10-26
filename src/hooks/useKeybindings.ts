@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 import { APP_SHELL_ID } from '../lib/appShell'
 import { getLocale, translate } from '../lib/i18n'
+import { isControlModifier, isMacOS, isPrimaryModifier } from '../lib/platform'
 import {
   MAX_RECENT_PROJECT_TABS,
   selectActiveContainer,
@@ -14,6 +15,7 @@ import { useUiStore } from '../stores/uiStore'
 
 export function useKeybindings() {
   useEffect(() => {
+    const mac = isMacOS()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         const ui = useUiStore.getState()
@@ -35,7 +37,11 @@ export function useKeybindings() {
         target &&
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
 
-      const ctrl = e.ctrlKey || e.metaKey
+      // App shortcuts use Cmd on macOS (a physical Ctrl chord belongs to the terminal) and Ctrl
+      // elsewhere. Ctrl+Tab stays on Ctrl everywhere: Cmd+Tab is the macOS app switcher.
+      const ctrl = isPrimaryModifier(e, mac)
+      const tabSwitch = e.key === 'Tab' && isControlModifier(e, mac)
+      const chorded = e.ctrlKey || e.metaKey
       if (ctrl && !e.altKey && isZoomKey(e)) {
         e.preventDefault()
         const projects = useProjectsStore.getState()
@@ -49,9 +55,9 @@ export function useKeybindings() {
         return
       }
 
-      if (!ctrl && inEditable) return
+      if (!ctrl && !tabSwitch && inEditable) return
 
-      if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
+      if (!chorded && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
         const projects = useProjectsStore.getState()
         const selected = useUiStore.getState().activeTerminal
         const project = selected
@@ -144,7 +150,7 @@ export function useKeybindings() {
         return
       }
 
-      // Ctrl+P → busca/jump (find)
+      // Ctrl+P → find / jump
       if (ctrl && !e.shiftKey && (e.key === 'p' || e.key === 'P')) {
         e.preventDefault()
         useUiStore.getState().openModal_('findJump')
@@ -179,7 +185,7 @@ export function useKeybindings() {
         return
       }
 
-      if (e.altKey && !ctrl && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+      if (e.altKey && !chorded && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault()
         const projects = useProjectsStore.getState()
         projects.navigateWorkspaceHistory(e.key === 'ArrowLeft' ? -1 : 1)
@@ -192,7 +198,7 @@ export function useKeybindings() {
           ? e.key === 'PageUp'
             ? -1
             : 1
-          : !ctrl && e.shiftKey && !e.altKey && e.key === 'Tab'
+          : !chorded && e.shiftKey && !e.altKey && e.key === 'Tab'
             ? 1
             : 0
       if (cycleTerminalDirection !== 0) {
@@ -233,7 +239,7 @@ export function useKeybindings() {
         return
       }
 
-      if (ctrl && e.key === 'Tab') {
+      if (tabSwitch) {
         e.preventDefault()
         const projects = useProjectsStore.getState()
         const ui = useUiStore.getState()

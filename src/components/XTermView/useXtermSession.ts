@@ -27,7 +27,7 @@ import {
 } from '../../lib/codexSessionTracking'
 import { getLocale, translate } from '../../lib/i18n'
 import { isOrchestratorShellPty } from '../../lib/orchestratorShells'
-import { isWindows } from '../../lib/platform'
+import { isMacOS, isWindows } from '../../lib/platform'
 import { ptyLaunchTarget } from '../../lib/ptyLaunchTarget'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
 import { router9EnvFor } from '../../lib/router9'
@@ -99,12 +99,13 @@ import {
   terminalFontsReady,
 } from './terminalFont'
 import {
+  createWheelScrollAccumulator,
   formatDroppedPaths,
   getTerminalScrollbackRows,
-  getWheelScrollLines,
   normalizePastedText,
   shouldScrollHostScrollback,
 } from './terminalInput'
+import { resolveTerminalKey } from './terminalKeys'
 import {
   type DetectedTerminalLink,
   detectTerminalLinks,
@@ -379,6 +380,10 @@ export function useXtermSession(params: {
       // Match the Windows ConPTY backend when configuring terminal repaint behavior.
 
       ...(isWindows() ? { windowsPty: { backend: 'conpty' as const, buildNumber: 22000 } } : {}),
+      // Option stays a character key, as in Terminal.app, so Option+e/Option+n compose accents;
+      // its word-editing chords are mapped in terminalKeys.ts. Option+click is the only way to
+      // select text while a TUI tracks the mouse.
+      ...(isMacOS() ? { macOptionClickForcesSelection: true } : {}),
       fontFamily: resolveTerminalFontFamily(preferences.terminalFontFamily),
       fontSize: TERMINAL_FONT_SIZE,
       theme: getXtermTheme(terminalTheme),
@@ -519,14 +524,17 @@ export function useXtermSession(params: {
       return row?.getBoundingClientRect().height || terminal.options.fontSize || 18
     }
 
+    const wheelScroll = createWheelScrollAccumulator()
     const onWheel = (event: WheelEvent) => {
       // Let alternate-screen TUIs handle their own mouse tracking and scrolling.
 
       if (!shouldScrollHostScrollback(terminal.buffer.active.type, event.shiftKey)) return
-      const lines = getWheelScrollLines(event, getTerminalLineHeight())
-      if (lines === 0) return
+      if (event.deltaY === 0) return
+      // Sub-line trackpad deltas are still consumed, or xterm would scroll them a second time.
       event.preventDefault()
       event.stopPropagation()
+      const lines = wheelScroll.next(event, getTerminalLineHeight())
+      if (lines === 0) return
       try {
         terminal.scrollLines(lines)
       } catch {
@@ -620,65 +628,53 @@ export function useXtermSession(params: {
       })
       .catch(() => {})
 
+    const macKeys = isMacOS()
     terminal.attachCustomKeyEventHandler((event) => {
-      if (event.type !== 'keydown') return true
-      const ctrl = event.ctrlKey || event.metaKey
-      if (!ctrl || event.altKey) return true
-
-      const key = event.key.toLowerCase()
-
-      if (
-        key === '+' ||
-        key === '=' ||
-        key === '-' ||
-        key === '_' ||
-        key === '0' ||
-        event.code === 'NumpadAdd' ||
-        event.code === 'NumpadSubtract' ||
-        event.code === 'Numpad0'
-      ) {
-        return false
-      }
-
-      if (key === 'c' && terminal.hasSelection()) {
-        const selection = terminal.getSelection()
-        if (selection) {
-          void writeClipboardText(selection).catch(() => navigator.clipboard?.writeText(selection))
+      const action = resolveTerminalKey(event, {
+        mac: macKeys,
+        readOnly: Boolean(readOnly),
+        selection: () => (terminal.hasSelection() ? terminal.getSelection() : ''),
+      })
+      switch (action.kind) {
+        case 'pass':
+          return true
+        case 'block':
+          return false
+        case 'copy': {
+          const { text } = action
+          void writeClipboardText(text).catch(() => navigator.clipboard?.writeText(text))
           terminal.clearSelection()
           return false
         }
-      }
-      if (key === 'c' && !readOnly) {
-        const now = Date.now()
-        const id = ptyIdRef.current
-        if (id && now - lastCtrlCRef.current < 1500) {
-          lastCtrlCRef.current = 0
-          terminal.write('\r\n\x1b[33m[force kill — PTY terminated]\x1b[0m\r\n')
-          void killPty(id)
-          return false
+        case 'interrupt': {
+          const now = Date.now()
+          const id = ptyIdRef.current
+          if (id && now - lastCtrlCRef.current < 1500) {
+            lastCtrlCRef.current = 0
+            terminal.write('\r\n\x1b[33m[force kill — PTY terminated]\x1b[0m\r\n')
+            void killPty(id)
+            return false
+          }
+          lastCtrlCRef.current = now
+          return true
         }
-        lastCtrlCRef.current = now
+        case 'paste':
+          event.preventDefault()
+          void resolveClipboardPaste()
+            .catch(() => navigator.clipboard?.readText() ?? '')
+            .then(pasteText)
+            .catch(() => {
+              terminal.focus()
+            })
+          return false
+        case 'history':
+          navigateHistory(action.direction)
+          return false
+        case 'send':
+          event.preventDefault()
+          terminal.input(action.data, true)
+          return false
       }
-
-      if (key === 'v' && !readOnly) {
-        event.preventDefault()
-        void resolveClipboardPaste()
-          .catch(() => navigator.clipboard?.readText() ?? '')
-          .then(pasteText)
-          .catch(() => {
-            terminal.focus()
-          })
-        return false
-      }
-
-      // Ctrl+B toggles the left sidebar; the shell must not also receive it.
-      if (key === 'b' && !event.shiftKey) return false
-
-      if (!readOnly && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-        navigateHistory(event.key === 'ArrowUp' ? 'up' : 'down')
-        return false
-      }
-      return true
     })
 
     let shouldRestoreTerminalFocus = false

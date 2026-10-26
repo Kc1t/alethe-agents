@@ -21,8 +21,9 @@ import {
   useGsdSyncAvailable,
   useGsdSyncSessions,
 } from '../../hooks/useGsdSyncSessions'
+import { promptText } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { formatShortcut } from '../../lib/platform'
+import { formatShortcut, isPrimaryModifier } from '../../lib/platform'
 import { type PlanningStatus, readPlanningStatus } from '../../lib/tauri'
 import { TODO_TITLE_MAX_LENGTH } from '../../lib/todos'
 import type { Terminal, TodoItem } from '../../lib/types'
@@ -181,7 +182,7 @@ export function TodoSidebar() {
 
   useEffect(() => {
     const focusComposer = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+      if (!isPrimaryModifier(event) || event.altKey || event.shiftKey) return
       if (event.key.toLowerCase() !== 'n') return
       event.preventDefault()
       setComposerExpanded(true)
@@ -226,8 +227,11 @@ export function TodoSidebar() {
     setEditTitle('')
   }
 
-  const editTags = (todo: TodoItem) => {
-    const value = window.prompt(t('todo.tagsPrompt'), todo.tags.join(', '))
+  const editTags = async (todo: TodoItem) => {
+    const value = await promptText(t('todo.tagsPrompt'), {
+      title: t('todo.editTags'),
+      defaultValue: todo.tags.join(', '),
+    })
     if (value === null) return
     updateTodoTags(todo.id, parseTags(value))
   }

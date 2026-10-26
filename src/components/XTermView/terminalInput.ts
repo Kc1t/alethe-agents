@@ -37,18 +37,46 @@ export function formatDroppedPaths(paths: string[]): string {
   return formatted ? `${formatted} ` : ''
 }
 
-export function getWheelScrollLines(event: WheelLike, lineHeight: number): number {
-  if (event.deltaY === 0) return 0
+export type WheelScrollStep = { lines: number; remainderPx: number }
+
+/**
+ * Converts one wheel event into whole lines. Pixel deltas below a line are carried in
+ * `remainderPx` instead of being rounded up: a macOS trackpad sends many tiny momentum deltas,
+ * and rounding each one up to a line scrolled several times too fast. Line and page deltas
+ * (mouse wheels that report notches) are used as they come and drop any carried remainder.
+ */
+export function getWheelScrollStep(
+  event: WheelLike,
+  lineHeight: number,
+  remainderPx = 0,
+): WheelScrollStep {
+  if (event.deltaY === 0) return { lines: 0, remainderPx }
 
   if (event.deltaMode === DOM_DELTA_LINE) {
-    return Math.trunc(event.deltaY)
+    return { lines: Math.trunc(event.deltaY), remainderPx: 0 }
   }
 
   if (event.deltaMode !== DOM_DELTA_PIXEL) {
-    return Math.sign(event.deltaY) * PAGE_SCROLL_LINES
+    return { lines: Math.sign(event.deltaY) * PAGE_SCROLL_LINES, remainderPx: 0 }
   }
 
   const safeLineHeight = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 18
-  const lines = Math.ceil(Math.abs(event.deltaY) / safeLineHeight)
-  return Math.sign(event.deltaY) * Math.max(1, lines)
+  // Reversing direction starts over, so a swipe back never has to burn the old remainder first.
+  const carried = Math.sign(remainderPx) === -Math.sign(event.deltaY) ? 0 : remainderPx
+  const totalPx = carried + event.deltaY
+  // `|| 0` folds the -0 that a small upward delta truncates to.
+  const lines = Math.trunc(totalPx / safeLineHeight) || 0
+  return { lines, remainderPx: totalPx - lines * safeLineHeight }
+}
+
+/** Per-terminal wheel state: keeps the sub-line pixel remainder between events. */
+export function createWheelScrollAccumulator() {
+  let remainderPx = 0
+  return {
+    next(event: WheelLike, lineHeight: number): number {
+      const step = getWheelScrollStep(event, lineHeight, remainderPx)
+      remainderPx = step.remainderPx
+      return step.lines
+    },
+  }
 }

@@ -4,21 +4,21 @@ import { useState } from 'react'
 
 import { isAgentEnabled } from '../../../lib/agentProviders'
 import {
-  CUSTOM_AGENT_ACCENT_TOKENS,
-  CUSTOM_AGENT_ICON_KEYS,
-  iconFileImportError,
-  isValidImageIconUrl,
-  normalizeCustomAgentId,
-  type CustomAgentValidationError,
-  toCustomAgentDefinition,
-  validateCustomAgent,
-} from '../../../lib/customAgents'
-import {
   importCustomAgentIconAsset,
   invalidateCustomAgentIconAsset,
   isCustomIconFileAvailable,
 } from '../../../lib/customAgentIconAssets'
-import { pickFile } from '../../../lib/dialog'
+import {
+  CUSTOM_AGENT_ACCENT_TOKENS,
+  CUSTOM_AGENT_ICON_KEYS,
+  type CustomAgentValidationError,
+  iconFileImportError,
+  isValidImageIconUrl,
+  normalizeCustomAgentId,
+  toCustomAgentDefinition,
+  validateCustomAgent,
+} from '../../../lib/customAgents'
+import { confirmAction, pickFile } from '../../../lib/dialog'
 import { type MessageKey, useT } from '../../../lib/i18n'
 import type { CustomAgentDefinition, CustomAgentIconSpec } from '../../../lib/types'
 import { useProjectsStore } from '../../../stores/projectsStore'
@@ -250,8 +250,9 @@ export function CustomAgentsSection({ enabledCount }: { enabledCount: number }) 
     closeForm()
   }
 
-  const onRemove = (definition: CustomAgentDefinition) => {
-    if (!window.confirm(t('prefs.customAgentConfirmRemove', { label: definition.label }))) return
+  const onRemove = async (definition: CustomAgentDefinition) => {
+    if (!(await confirmAction(t('prefs.customAgentConfirmRemove', { label: definition.label }))))
+      return
     removeCustomAgent(definition.id)
     invalidateCustomAgentIconAsset(definition.id)
     if (editingId === definition.id) closeForm()
