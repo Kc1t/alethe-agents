@@ -159,6 +159,7 @@ function CleanProjectSidebar() {
       reorderUngrouped: s.reorderUngrouped,
       reorderGroups: s.reorderGroups,
       togglePane: s.togglePane,
+      minimizePane: s.minimizePane,
       setLaneVisible: s.setLaneVisible,
       setTerminalRemoteShared: s.setTerminalRemoteShared,
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,

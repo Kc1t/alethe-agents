@@ -54,6 +54,7 @@ type SubTabsSlice = Pick<
   | 'setSubTabName'
   | 'setSubTabInitialInput'
   | 'setSubTabHandoff'
+  | 'revertSubTabToShell'
 >
 
 export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): SubTabsSlice {
@@ -148,6 +149,21 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
 
     setSubTabHandoff: (projectId, terminalId, tabId, handoff) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, handoff })),
+
+    revertSubTabToShell: (projectId, terminalId, tabId) =>
+      updateSubTab(projectId, terminalId, tabId, (s) =>
+        s.type === 'shell'
+          ? s
+          : {
+              ...s,
+              type: 'shell',
+              name: 'shell',
+              ptyId: null,
+              sessionId: undefined,
+              handoff: undefined,
+              initialInput: undefined,
+            },
+      ),
   }
 }
 

@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Globe2,
   Layout,
+  Minus,
   MoveRight,
   PanelTopOpen,
   Pencil,
@@ -63,6 +64,7 @@ type MenuActions = Pick<
   | 'addTerminalToWorkspace'
   | 'renameTerminal'
   | 'togglePane'
+  | 'minimizePane'
   | 'setTerminalDisabled'
   | 'killTerminal'
   | 'setLaneVisible'
@@ -611,6 +613,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         icon: <Layout size={14} />,
         onClick: () => actions.togglePane(projectId, term.id),
       },
+      ...(isTerminalPane && inSplit
+        ? [
+            {
+              kind: 'item' as const,
+              label: t('ui.sidebar.minimizeTerminal'),
+              icon: <Minus size={14} />,
+              onClick: () => actions.minimizePane(projectId, term.id),
+            },
+          ]
+        : []),
       ...(term.kind === 'markdown' && term.filePath
         ? [
             {

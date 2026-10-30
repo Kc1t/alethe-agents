@@ -1273,6 +1273,9 @@ export const en = {
   'prefs.customAgentErrorCliEmpty': 'Enter the CLI command that starts the agent.',
   'prefs.customAgentErrorCliUnsafe':
     'The command looks unsafe or invalid. Use a binary name with plain arguments only.',
+  'prefs.closeConfirm': 'Close confirmation',
+  'prefs.closeConfirmDesc': 'The dialog shown when you close Alethe, with running agents.',
+  'prefs.closeConfirmEnable': 'Ask for confirmation before closing',
   'prefs.resetSession': 'Reset last session',
   'prefs.resetSessionDesc':
     'If reopening the app did not resume your agents, this finds each open agent’s most recent conversation and restarts it with resume.',
@@ -2120,6 +2123,7 @@ export const en = {
     'Open agents and terminals will be stopped. Saved conversations can be resumed the next time you open Alethe.',
   'appClose.confirm': 'Close Alethe',
   'appClose.cancel': 'Cancel',
+  'appClose.dontAskAgain': "Don't show me again",
   'appClose.failedTitle': 'Alethe could not close',
   'appClose.failedBody': 'The close request failed. Try again or open the logs for details.',
   'ui.workspace.openIndividually': 'Open individually',
@@ -2154,6 +2158,7 @@ export const en = {
   'ui.terminal.exitFocusMode': 'Exit focus mode',
   'ui.terminal.focusModeFullscreen': 'Focus mode (fullscreen)',
   'ui.terminal.focusMode': 'Focus mode',
+  'ui.terminal.minimize': 'Minimize (keep running in the background)',
   'ui.terminal.showLess': 'Show less',
   'ui.terminal.showMoreActions': 'Show more actions',
   'ui.terminal.moreActions': 'More actions',
@@ -2349,6 +2354,7 @@ export const en = {
   'ui.sidebar.rename': 'Rename',
   'ui.sidebar.hideFromSplit': 'Close split and stop PTY',
   'ui.sidebar.showInSplit': 'Show in split',
+  'ui.sidebar.minimizeTerminal': 'Minimize (keep running in the background)',
   'ui.sidebar.reactivate': 'Reactivate',
   'ui.sidebar.disable': 'Disable',
   'ui.sidebar.killTerminal': 'Kill process (keep shortcut)',

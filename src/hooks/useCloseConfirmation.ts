@@ -1,12 +1,30 @@
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { confirm } from '@tauri-apps/plugin-dialog'
 import { useEffect } from 'react'
 
 import { type CloseFailureStage, createCloseCoordinator } from '../lib/closeCoordinator'
 import { getLocale, translate } from '../lib/i18n'
 import { quitApp, recordFrontendError } from '../lib/tauri'
-import { flushProjectsState } from '../stores/projectsStore'
+import { flushProjectsState, useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
+
+let pendingResolve: ((confirmed: boolean) => void) | null = null
+
+/** Answers the in-app confirmation dialog opened by `confirmViaModal` below. */
+export function resolveCloseConfirm(confirmed: boolean): void {
+  useUiStore.getState().setCloseConfirmOpen(false)
+  pendingResolve?.(confirmed)
+  pendingResolve = null
+}
+
+/** Opens `CloseConfirmModal` (mounted once in App) and waits for its answer, so the
+ *  "don't ask again" checkbox can live in a real dialog instead of the OS-native one. */
+function confirmViaModal(): Promise<boolean> {
+  if (useProjectsStore.getState().preferences.skipCloseConfirm) return Promise.resolve(true)
+  return new Promise((resolve) => {
+    pendingResolve = resolve
+    useUiStore.getState().setCloseConfirmOpen(true)
+  })
+}
 
 function errorDetails(error: unknown): { message: string; stack: string | null } {
   if (error instanceof Error) {
@@ -33,15 +51,7 @@ function reportCloseFailure(stage: CloseFailureStage, error: unknown): void {
 
 const appWindow = getCurrentWindow()
 const closeCoordinator = createCloseCoordinator({
-  confirmNative: () => {
-    const locale = getLocale()
-    return confirm(translate(locale, 'appClose.message'), {
-      title: translate(locale, 'appClose.title'),
-      kind: 'warning',
-      okLabel: translate(locale, 'appClose.confirm'),
-      cancelLabel: translate(locale, 'appClose.cancel'),
-    })
-  },
+  confirmNative: confirmViaModal,
   confirmFallback: () => window.confirm(translate(getLocale(), 'appClose.message')),
   beforeClose: flushProjectsState,
   destroyWindow: () => appWindow.destroy(),

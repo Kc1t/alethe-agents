@@ -158,6 +158,9 @@ type UiState = {
    *  overlay, no PTY terminal involved). null = closed. */
   gsdSyncActivityView: { worktreePath: string; sessionId: string; title: string } | null
 
+  /** True while the app-close confirmation dialog is open and awaiting an answer. */
+  closeConfirmOpen: boolean
+
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
   closeMainMenu: () => void
@@ -213,6 +216,7 @@ type UiState = {
   setGsdSyncActivityView: (
     view: { worktreePath: string; sessionId: string; title: string } | null,
   ) => void
+  setCloseConfirmOpen: (open: boolean) => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -250,6 +254,9 @@ export const useUiStore = create<UiState>((set) => ({
   updateInfo: null,
   linkViewerUrl: null,
   gsdSyncActivityView: null,
+  closeConfirmOpen: false,
+
+  setCloseConfirmOpen: (open) => set({ closeConfirmOpen: open }),
 
   openModal_: (kind, context) =>
     set({ openModal: kind, modalContext: context ?? null, showMainMenu: false }),

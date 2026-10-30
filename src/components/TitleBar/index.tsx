@@ -574,6 +574,10 @@ export function TitleBar() {
               <div
                 key={tab.id}
                 className={`${styles.groupTab} ${active ? styles.groupTabActive : ''} ${tab.pinned ? styles.groupTabPinned : ''}`}
+                onAuxClick={(event) => {
+                  // Middle-click closes the tab, matching browser tab-strip convention.
+                  if (event.button === 1) closeSavedWorkspaceTab(tab.id)
+                }}
                 onContextMenu={(event) => {
                   event.preventDefault()
                   setTabMenu({

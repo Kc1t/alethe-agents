@@ -35,7 +35,14 @@ export function SubTabsLane({
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
         return (
-          <div key={tab.id} className={`${styles.itemWrap} ${isActive ? styles.active : ''}`}>
+          <div
+            key={tab.id}
+            className={`${styles.itemWrap} ${isActive ? styles.active : ''}`}
+            onAuxClick={(e) => {
+              // Middle-click closes the tab, matching browser tab-strip convention.
+              if (e.button === 1 && tabs.length > 1) onClose(tab.id)
+            }}
+          >
             <button
               type="button"
               className={styles.item}

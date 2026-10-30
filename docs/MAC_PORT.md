@@ -36,6 +36,22 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `ui` · feat(terminal): fall back to a plain shell when an agent CLI exits on its own
+  - Files: `src/stores/projectsStore.slices.ts`, `src/components/TerminalPane/index.tsx`
+- `pending` · `contract` · feat(prefs): "don't show me again" on the close confirmation
+  - Files: `src/lib/types.ts`, `src/hooks/useCloseConfirmation.ts`,
+    `src/components/modals/CloseConfirmModal.tsx`,
+    `src/components/modals/preferences/TerminalPage.tsx`
+  - Contract: new `Preferences.skipCloseConfirm: boolean` (default `false`), not synced by Cloud
+    sync (deliberately machine-local, same as `experimentalAgentPermissionMode`)
+- `pending` · `ui` · feat(terminal): minimize a pane and reopen it from the sidebar, keeping its
+  PTY alive in the background
+  - Files: `src/stores/projectsStore.ts`, `src/stores/projectsStore.terminalSlices.ts`,
+    `src/components/TerminalPane/index.tsx`, `src/components/ProjectSidebar/sidebarMenus.tsx`
+- `pending` · `ui` · feat(tabs): close terminal sub-tabs and workspace tabs with a middle-click
+  - Files: `src/components/SubTabsLane/index.tsx`, `src/components/TitleBar/index.tsx`
+- `pending` · `ui` · fix(terminal): ignore a repeated identical paste within 2 seconds
+  - Files: `src/components/XTermView/useXtermSession.ts`
 - `pending` · `backend` · feat(remote): start agents and list orchestration workers from a paired device
   - Files: `src-tauri/src/remote/http.rs`, `src-tauri/src/remote/workspace.rs`, `src-tauri/remote/app.js`
   - Contract: new remote API `POST /api/open-agent` (`projectId`, `agent`: `claude` or `codex`) and `GET /api/orchestration` (workers of projects with a shared terminal)

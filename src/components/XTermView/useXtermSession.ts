@@ -562,12 +562,18 @@ export function useXtermSession(params: {
       }, 5_000)
     }
 
+    // Right-click, the paste event and Ctrl+V can all deliver the same clipboard once; drop an
+    // identical payload that arrives again right after the first.
+    let lastPaste = { text: '', at: 0 }
     const pasteText = (raw: string) => {
       try {
         if (disposed || readOnly || !raw) return
         const id = ptyIdRef.current
         if (!id) return
         const text = normalizePastedText(raw)
+        const now = Date.now()
+        if (text === lastPaste.text && now - lastPaste.at < 2_000) return
+        lastPaste = { text, at: now }
         useTerminalsStore.getState().recordIo(id)
         recordPromptInput(text)
         inputWriteChain = inputWriteChain

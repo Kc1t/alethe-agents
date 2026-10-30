@@ -269,6 +269,10 @@ export type ProjectsState = ProjectsFile & {
 
   closePane: (projectId: string, terminalId: string) => void
 
+  /** Like closePane, but keeps the PTY alive in the background; clicking the terminal in the
+   * sidebar reopens its pane and reattaches to the still-running process. */
+  minimizePane: (projectId: string, terminalId: string) => void
+
   togglePane: (projectId: string, terminalId: string) => void
 
   openContainerWithAllPanes: (projectId: string) => void
@@ -338,6 +342,8 @@ export type ProjectsState = ProjectsFile & {
     tabId: string,
     handoff: AgentHandoffBootstrap | undefined,
   ) => void
+  /** When an agent CLI exits on its own, fall back to a plain shell in the same cwd. */
+  revertSubTabToShell: (projectId: string, terminalId: string, tabId: string) => void
 
   // preferences / cli
   setLanguage: (language: Locale) => void

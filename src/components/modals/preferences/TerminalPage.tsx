@@ -397,6 +397,21 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       ) : null}
 
       <SettingsSection
+        id="close-confirm"
+        title={t('prefs.closeConfirm')}
+        description={t('prefs.closeConfirmDesc')}
+      >
+        <label className={styles.checkboxCard}>
+          <input
+            type="checkbox"
+            checked={!preferences.skipCloseConfirm}
+            onChange={(e) => setPreferences({ skipCloseConfirm: !e.target.checked })}
+          />
+          <span>{t('prefs.closeConfirmEnable')}</span>
+        </label>
+      </SettingsSection>
+
+      <SettingsSection
         id="reset-session"
         title={t('prefs.resetSession')}
         description={t('prefs.resetSessionDesc')}

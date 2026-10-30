@@ -1295,6 +1295,9 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.customAgentErrorCliEmpty': 'Informe o comando CLI que inicia o agente.',
   'prefs.customAgentErrorCliUnsafe':
     'O comando parece inválido ou inseguro. Use um binário com argumentos simples.',
+  'prefs.closeConfirm': 'Confirmação ao fechar',
+  'prefs.closeConfirmDesc': 'O aviso mostrado ao fechar o Alethe com agentes em execução.',
+  'prefs.closeConfirmEnable': 'Pedir confirmação antes de fechar',
   'prefs.resetSession': 'Resetar última sessão',
   'prefs.resetSessionDesc':
     'Se reabrir o app não retomou seus agentes, isto acha a conversa mais recente de cada agente aberto e reinicia com resume.',
@@ -2152,6 +2155,7 @@ export const ptBR: Record<MessageKey, string> = {
     'Agentes e terminais abertos serão encerrados. As conversas salvas poderão ser retomadas quando você abrir o Alethe novamente.',
   'appClose.confirm': 'Fechar o Alethe',
   'appClose.cancel': 'Cancelar',
+  'appClose.dontAskAgain': 'Não mostrar novamente',
   'appClose.failedTitle': 'Não foi possível fechar o Alethe',
   'appClose.failedBody':
     'O pedido de fechamento falhou. Tente novamente ou abra os logs para ver os detalhes.',
@@ -2187,6 +2191,7 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.terminal.exitFocusMode': 'Sair do Focus mode',
   'ui.terminal.focusModeFullscreen': 'Focus mode (fullscreen)',
   'ui.terminal.focusMode': 'Focus mode',
+  'ui.terminal.minimize': 'Minimizar (continua rodando em segundo plano)',
   'ui.terminal.showLess': 'Mostrar menos',
   'ui.terminal.showMoreActions': 'Mostrar mais ações',
   'ui.terminal.moreActions': 'Mais ações',
@@ -2383,6 +2388,7 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.sidebar.rename': 'Renomear',
   'ui.sidebar.hideFromSplit': 'Fechar split e parar PTY',
   'ui.sidebar.showInSplit': 'Mostrar no split',
+  'ui.sidebar.minimizeTerminal': 'Minimizar (continua rodando em segundo plano)',
   'ui.sidebar.reactivate': 'Reativar',
   'ui.sidebar.disable': 'Desabilitar',
   'ui.sidebar.killTerminal': 'Matar processo (mantém atalho)',
