@@ -140,6 +140,7 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
   const setSubTabHandoff = useProjectsStore((s) => s.setSubTabHandoff)
+  const revertSubTabToShell = useProjectsStore((s) => s.revertSubTabToShell)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
   const deleteTerminalWithWorktreeCleanup = useProjectsStore(
     (s) => s.deleteTerminalWithWorktreeCleanup,
@@ -769,6 +770,15 @@ export const TerminalPane = memo(function TerminalPane({
                       .catch((cause) =>
                         console.warn('[handoff] could not clean the completed packet:', cause),
                       )
+                  }}
+                  onExit={() => {
+                    // The agent CLI quit on its own (not a restart/kill from the UI) — fall back
+                    // to a plain shell in the same project directory instead of a dead pane.
+                    // XTermView's key is keyed off resumeNonce, so bumping it remounts with the
+                    // fresh shell command instead of leaving the old session's effect running.
+                    if (isShellAgentType(activeTab.type)) return
+                    revertSubTabToShell(projectId, terminal.id, activeTab.id)
+                    setResumeNonce((value) => value + 1)
                   }}
                 />
               )}

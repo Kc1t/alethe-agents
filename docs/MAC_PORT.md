@@ -36,6 +36,14 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `ui` · feat(terminal): fall back to a plain shell when an agent CLI exits on its own
+  - Files: `src/stores/projectsStore.slices.ts`, `src/components/TerminalPane/index.tsx`
+- `pending` · `contract` · feat(prefs): "don't show me again" on the close confirmation
+  - Files: `src/lib/types.ts`, `src/hooks/useCloseConfirmation.ts`,
+    `src/components/modals/CloseConfirmModal.tsx`,
+    `src/components/modals/preferences/TerminalPage.tsx`
+  - Contract: new `Preferences.skipCloseConfirm: boolean` (default `false`), not synced by Cloud
+    sync (deliberately machine-local, same as `experimentalAgentPermissionMode`)
 - `pending` · `ui` · feat(terminal): minimize a pane and reopen it from the sidebar, keeping its
   PTY alive in the background
   - Files: `src/stores/projectsStore.ts`, `src/stores/projectsStore.terminalSlices.ts`,

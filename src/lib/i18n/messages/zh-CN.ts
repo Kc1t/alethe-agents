@@ -1071,6 +1071,9 @@ export const zhCN: Record<MessageKey, string> = {
   'prefs.customAgentErrorLabelEmpty': '请为智能体填写显示名称。',
   'prefs.customAgentErrorCliEmpty': '请输入启动智能体的 CLI 命令。',
   'prefs.customAgentErrorCliUnsafe': '该命令看起来不安全或无效。请只使用可执行文件名和普通参数。',
+  'prefs.closeConfirm': '关闭确认',
+  'prefs.closeConfirmDesc': '关闭 Alethe 且有代理正在运行时显示的提示。',
+  'prefs.closeConfirmEnable': '关闭前请求确认',
   'prefs.resetSession': '重置上一次会话',
   'prefs.resetSessionDesc':
     '如果重新打开应用程序没有恢复你的代理，这将找到每个打开的代理的最近一次对话并使用恢复重新启动它。',
@@ -1840,6 +1843,7 @@ export const zhCN: Record<MessageKey, string> = {
   'appClose.message': '打开的代理和终端将被停止。已保存的对话可以在下次打开 Alethe 时继续。',
   'appClose.confirm': '关闭 Alethe',
   'appClose.cancel': '取消',
+  'appClose.dontAskAgain': '不再显示',
   'appClose.failedTitle': 'Alethe 不能关闭',
   'appClose.failedBody': '关闭请求失败。请重试或查看日志以获取详细信息。',
   'ui.workspace.openIndividually': '单独打开',

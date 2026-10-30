@@ -908,6 +908,9 @@ export type Preferences = {
   pomodoroLongBreakMinutes: number
   /** Mirrors `pomodoroStore`'s running session so it survives an app restart. */
   pomodoroSession: PomodoroSessionSnapshot | null
+
+  /** "Don't show me again" on the close-app confirmation dialog. */
+  skipCloseConfirm: boolean
 }
 
 export type ResourcePolicyMode = 'smart-lru' | 'manual'
@@ -1091,6 +1094,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   pomodoroShortBreakMinutes: 5,
   pomodoroLongBreakMinutes: 15,
   pomodoroSession: null,
+  skipCloseConfirm: false,
 }
 
 export const EMPTY_PROJECTS_FILE: ProjectsFile = {

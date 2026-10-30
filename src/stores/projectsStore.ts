@@ -342,6 +342,8 @@ export type ProjectsState = ProjectsFile & {
     tabId: string,
     handoff: AgentHandoffBootstrap | undefined,
   ) => void
+  /** When an agent CLI exits on its own, fall back to a plain shell in the same cwd. */
+  revertSubTabToShell: (projectId: string, terminalId: string, tabId: string) => void
 
   // preferences / cli
   setLanguage: (language: Locale) => void
