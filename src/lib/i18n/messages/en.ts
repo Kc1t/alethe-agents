@@ -58,6 +58,9 @@ export const en = {
   'onboarding.agentsEnabledOf': '{active} of {total} enabled',
   'onboarding.agentChecking': 'Checking',
   'onboarding.agentReady': 'ready',
+  'onboarding.mcpSetupTitle': 'Add MCP servers',
+  'onboarding.mcpSetupSubtitle':
+    'Connect tools for your enabled agents now, or choose Next to add servers later.',
   'onboarding.usageTitle': 'Show your usage limits?',
   'onboarding.usageSubtitle':
     'Alethe can show how much of each plan you have used. To read it, Alethe uses the credentials of the CLI already installed on this computer and contacts the provider. Everything is off until you turn it on.',

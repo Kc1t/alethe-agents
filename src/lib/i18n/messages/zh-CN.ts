@@ -54,6 +54,8 @@ export const zhCN: Record<MessageKey, string> = {
   'onboarding.agentsEnabledOf': '已启用 {active} / {total}',
   'onboarding.agentChecking': '检查中',
   'onboarding.agentReady': '就绪',
+  'onboarding.mcpSetupTitle': '添加 MCP 服务器',
+  'onboarding.mcpSetupSubtitle': '现在为已启用的智能体连接工具，或点击“下一步”稍后再添加服务器。',
   'onboarding.usageTitle': '显示你的用量限额？',
   'onboarding.usageSubtitle':
     'Alethe 可以显示每个套餐已使用的额度。读取时，Alethe 会使用这台电脑上已安装的 CLI 的凭据，并联系对应的提供商。在你开启之前，全部保持关闭。',

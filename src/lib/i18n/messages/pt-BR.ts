@@ -61,6 +61,9 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.agentsEnabledOf': '{active} de {total} ligadas',
   'onboarding.agentChecking': 'Verificando',
   'onboarding.agentReady': 'pronto',
+  'onboarding.mcpSetupTitle': 'Adicionar servidores MCP',
+  'onboarding.mcpSetupSubtitle':
+    'Conecte ferramentas aos agentes ativados agora ou clique em Próximo para adicionar servidores depois.',
   'onboarding.usageTitle': 'Mostrar seus limites de uso?',
   'onboarding.usageSubtitle':
     'O Alethe pode mostrar quanto de cada plano você já usou. Para ler isso, o Alethe usa as credenciais da CLI já instalada neste computador e contata o provedor. Tudo fica desligado até você ligar.',

@@ -20,17 +20,21 @@ import {
 } from '../../lib/tauri'
 import { getThemeIcon } from '../../lib/themeIcons'
 import { resolveAgentCliCommand } from '../../lib/agentProviders'
-import type { AgentType } from '../../lib/types'
+import { groupServersByName } from '../../lib/mcp'
+import type { AgentType, McpAgent } from '../../lib/types'
+import { useMcpStore } from '../../stores/mcpStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ImageInput } from './ImageInput'
 import { AgentsStep } from './onboarding/AgentsStep'
 import { FeaturesStep } from './onboarding/FeaturesStep'
+import { AddServerFlow } from './mcp/AddServerFlow'
 import { UsageAccessStep } from './onboarding/UsageAccessStep'
 import styles from './OnboardingModal.module.css'
 
-const STEP_COUNT = 4
-const USAGE_STEP = 2
+const STEP_COUNT = 5
+const MCP_STEP = 2
+const USAGE_STEP = 3
 const LAST_STEP = STEP_COUNT - 1
 
 const CLI_DETECTION_TIMEOUT_MS = 4000
@@ -75,6 +79,9 @@ export function OnboardingModal() {
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const setLanguage = useProjectsStore((s) => s.setLanguage)
   const setAgentEnabled = useProjectsStore((s) => s.setAgentEnabled)
+  const mcpSnapshots = useMcpStore((s) => s.snapshots)
+  const mcpCapabilities = useMcpStore((s) => s.capabilities)
+  const refreshMcp = useMcpStore((s) => s.refresh)
 
   const [step, setStep] = useState(0)
   const [name, setName] = useState(preferences.displayName)
@@ -92,11 +99,21 @@ export function OnboardingModal() {
     {},
   )
   const [detectingAgents, setDetectingAgents] = useState(true)
+  const [addingMcpServer, setAddingMcpServer] = useState(false)
+  const [sessionMcpNames, setSessionMcpNames] = useState<string[]>([])
   const [agentVersions, setAgentVersions] = useState<Partial<Record<CodingAgent, string>>>({})
   const [agentLatest, setAgentLatest] = useState<Partial<Record<CodingAgent, string>>>({})
   const [agentPaths, setAgentPaths] = useState<Partial<Record<CodingAgent, string>>>({})
   const contentRef = useRef<HTMLDivElement | null>(null)
   const agentDetectionStartedRef = useRef(false)
+  const initialMcpNamesRef = useRef<Set<string> | null>(null)
+
+  const writableMcpAgents = mcpSnapshots
+    .filter((snapshot) =>
+      snapshot.sources.some((item) => item.parseError === null && item.writable),
+    )
+    .map((snapshot) => snapshot.agent)
+    .filter((agent): agent is McpAgent => preferences.enabledAgents[agent])
 
   const enabledFeatureCount = FEATURES.filter(
     (feature) => preferences.enabledFeatures[feature.id],
@@ -113,6 +130,23 @@ export function OnboardingModal() {
     setPhotoUrl(preferences.profileImageUrl)
     setImgFailed(false)
   }, [preferences.displayName, preferences.onboardingDone, preferences.profileImageUrl])
+
+  useEffect(() => {
+    if (step !== MCP_STEP || initialMcpNamesRef.current !== null) return
+    void refreshMcp({ scope: 'global', repo: null }).then(() => {
+      const snapshots = useMcpStore.getState().snapshots
+      initialMcpNamesRef.current = new Set(groupServersByName(snapshots).map((group) => group.name))
+    })
+  }, [mcpSnapshots, refreshMcp, step])
+
+  useEffect(() => {
+    if (step !== MCP_STEP || initialMcpNamesRef.current === null) return
+    setSessionMcpNames(
+      groupServersByName(mcpSnapshots)
+        .map((group) => group.name)
+        .filter((name) => !initialMcpNamesRef.current?.has(name)),
+    )
+  }, [mcpSnapshots, step])
 
   const detectAgents = useCallback(async () => {
     setDetectingAgents(true)
@@ -277,6 +311,15 @@ export function OnboardingModal() {
           }}
           onKeyDown={(event) => {
             if (event.key !== 'Enter' || event.defaultPrevented) return
+            if (!(event.target instanceof Node) || !event.currentTarget.contains(event.target))
+              return
+            if (
+              event.target instanceof Element &&
+              event.target.closest(
+                'button, a[href], textarea, select, [contenteditable]:not([contenteditable="false"])',
+              )
+            )
+              return
             event.preventDefault()
             next()
           }}
@@ -470,6 +513,40 @@ export function OnboardingModal() {
                   <p className={styles.stepSubtitle}>{t('onboarding.usageSubtitle')}</p>
                 </div>
                 <UsageAccessStep />
+              </>
+            ) : null}
+
+            {step === MCP_STEP ? (
+              <>
+                <div className={styles.stepIntro}>
+                  <h2 className={styles.stepTitle}>{t('onboarding.mcpSetupTitle')}</h2>
+                  <p className={styles.stepSubtitle}>{t('onboarding.mcpSetupSubtitle')}</p>
+                </div>
+                <button
+                  type="button"
+                  className={`${styles.button} ${styles.buttonPrimary}`}
+                  disabled={writableMcpAgents.length === 0}
+                  onClick={() => setAddingMcpServer(true)}
+                >
+                  {t('mcp.addServer')}
+                </button>
+                {sessionMcpNames.length > 0 ? (
+                  <ul className={styles.mcpServerList}>
+                    {sessionMcpNames.map((server) => (
+                      <li key={server}>{server}</li>
+                    ))}
+                  </ul>
+                ) : null}
+                {addingMcpServer ? (
+                  <AddServerFlow
+                    scope="global"
+                    repo={null}
+                    capabilities={mcpCapabilities}
+                    availableAgents={writableMcpAgents}
+                    onClose={() => setAddingMcpServer(false)}
+                    onDone={() => void refreshMcp({ scope: 'global', repo: null })}
+                  />
+                ) : null}
               </>
             ) : null}
 
