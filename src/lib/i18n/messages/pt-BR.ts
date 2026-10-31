@@ -2093,6 +2093,9 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.titlebar.codexUsageTooltip': 'Codex: {primary}% na janela atual · {secondary}% semanal',
   'ui.titlebar.antigravityUsageTooltip': 'Antigravity: {conversations} conversas ativas',
   'ui.titlebar.openUsageDetails': 'Abrir detalhes de uso de IA',
+  'ui.titlebar.openNotifications': 'Abrir notificações',
+  'ui.titlebar.notificationsTitle': 'Notificações',
+  'ui.titlebar.clearNotifications': 'Limpar',
   'usageModal.title': 'Detalhes de uso de IA',
   'usageModal.description':
     'Limites atuais, janelas de reset e status da conta dos seus agentes de código conectados.',

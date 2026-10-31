@@ -2062,6 +2062,9 @@ export const en = {
   'ui.titlebar.codexUsageTooltip': 'Codex: {primary}% in the current window · {secondary}% weekly',
   'ui.titlebar.antigravityUsageTooltip': 'Antigravity: {conversations} active conversations',
   'ui.titlebar.openUsageDetails': 'Open AI usage details',
+  'ui.titlebar.openNotifications': 'Open notifications',
+  'ui.titlebar.notificationsTitle': 'Notifications',
+  'ui.titlebar.clearNotifications': 'Clear',
   'usageModal.title': 'AI usage details',
   'usageModal.description':
     'Current limits, reset windows and account status for your connected coding agents.',

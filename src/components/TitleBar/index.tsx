@@ -40,6 +40,7 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AntigravityIcon, ClaudeIcon, CodexIcon, KimiIcon } from '../icons/AgentIcons'
 import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
+import { NotificationHistory } from './NotificationHistory'
 import styles from './TitleBar.module.css'
 
 const CLAUDE_POLL_INTERVAL_MS = 5 * 60_000
@@ -693,6 +694,7 @@ export function TitleBar() {
       <div className={styles.barEnd}>
         <div className={styles.widgets}>
           <div className={styles.utilityGroup}>
+            <NotificationHistory />
             {!threeAreas ? (
               <button
                 type="button"
