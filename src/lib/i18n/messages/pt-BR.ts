@@ -77,6 +77,7 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.featuresExperimental': 'experimental',
   'onboarding.featuresShowMore': 'Mostrar outros {count} módulos',
   'onboarding.featuresNoMatch': 'Nenhum módulo com esse nome.',
+  'onboarding.openAiMemorySettings': 'Abrir configurações da Memória de IA',
   'onboarding.featuresEnabledOf': '{enabled} de {total} ligados · muda depois em Preferências',
   'onboarding.goToApp': 'Ir para o app',
   'onboarding.footerNote': 'A configuração é local e pode ser alterada depois nas Preferências.',
@@ -553,6 +554,14 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.archivedProjectTerminals': '{count} terminais preservados',
   'prefs.restoreProject': 'Restaurar projeto',
   'prefs.categoryAppearance': 'Aparência',
+  'prefs.categoryAiMemory': 'Memória de IA',
+  'prefs.categoryAiMemoryDesc': 'Verifique o status do serviço de memória e controle-o.',
+  'prefs.aiMemoryDisabled':
+    'A Memória de IA está desativada. Ative o recurso para que os agentes possam usá-la.',
+  'prefs.aiMemoryEnableInFeatures': 'Ativar em Recursos',
+  'prefs.aiMemoryServiceTitle': 'Serviço',
+  'prefs.aiMemoryServiceDesc':
+    'Instale o serviço local de memória, inicie ou pare-o e veja o que ele já armazenou.',
   'prefs.categoryAppearanceDesc': 'Personalize as cores e a escala da interface.',
   'prefs.categoryRemoteControl': 'Controle remoto',
   'prefs.categoryRemoteControlDesc':

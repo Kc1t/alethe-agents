@@ -262,6 +262,24 @@
   color: var(--fg);
 }
 
+.settingsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 8px 40px;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.settingsLink:hover {
+  color: var(--fg);
+}
+
 .empty {
   padding: 26px 0;
   text-align: center;
