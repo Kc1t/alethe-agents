@@ -11,8 +11,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use super::util::{local_ip, peer_ip, tailscale_ip, tokens_equal};
 use super::{
-    AUTH_FAILURE_LIMIT, AUTH_FAILURE_WINDOW, AUTH_LOCKOUT, DEFAULT_SESSION_EXPIRY_SECS,
-    MESSAGE_RATE_LIMIT, MESSAGE_RATE_WINDOW, PAIRING_WINDOW_SECS,
+    ATTACHMENT_RATE_LIMIT, AUTH_FAILURE_LIMIT, AUTH_FAILURE_WINDOW, AUTH_LOCKOUT,
+    DEFAULT_SESSION_EXPIRY_SECS, MESSAGE_RATE_LIMIT, MESSAGE_RATE_WINDOW, PAIRING_WINDOW_SECS,
 };
 
 #[derive(Clone, Serialize)]
@@ -98,6 +98,7 @@ pub struct RemoteHub {
     sessions: Mutex<Vec<RemoteSession>>,
     failures: Mutex<HashMap<IpAddr, AuthFailures>>,
     message_rate: Mutex<HashMap<usize, MessageRate>>,
+    attachment_rate: Mutex<HashMap<usize, MessageRate>>,
     qr_cache: Mutex<Option<(String, String)>>,
     last_active_unix: AtomicU64,
 }
@@ -124,6 +125,7 @@ impl RemoteHub {
             sessions: Mutex::new(Vec::new()),
             failures: Mutex::new(HashMap::new()),
             message_rate: Mutex::new(HashMap::new()),
+            attachment_rate: Mutex::new(HashMap::new()),
             qr_cache: Mutex::new(None),
             last_active_unix: AtomicU64::new(unix_now()),
         }
@@ -494,20 +496,13 @@ impl RemoteHub {
     /// paired device can fire prompts, so a stolen/leaked session token
     /// can't hammer an agent or shell at machine speed.
     pub(crate) fn allow_message(&self, session_id: usize) -> bool {
-        let Ok(mut rates) = self.message_rate.lock() else {
-            return true;
-        };
-        let now = Instant::now();
-        let entry = rates.entry(session_id).or_insert(MessageRate {
-            count: 0,
-            window_start: now,
-        });
-        if now.duration_since(entry.window_start) > MESSAGE_RATE_WINDOW {
-            entry.count = 0;
-            entry.window_start = now;
-        }
-        entry.count += 1;
-        entry.count <= MESSAGE_RATE_LIMIT
+        allow_rate(&self.message_rate, session_id, MESSAGE_RATE_LIMIT)
+    }
+
+    /// Photo uploads have their own budget: one message may carry several,
+    /// and they must not use up the prompts.
+    pub(crate) fn allow_attachment(&self, session_id: usize) -> bool {
+        allow_rate(&self.attachment_rate, session_id, ATTACHMENT_RATE_LIMIT)
     }
 
     pub(crate) fn session_id_for(&self, token: &str) -> Option<usize> {
@@ -672,6 +667,24 @@ impl RemoteHub {
             }
         }
     }
+}
+
+/// Fixed-window counter shared by the message and photo throttles.
+fn allow_rate(rates: &Mutex<HashMap<usize, MessageRate>>, session_id: usize, limit: u32) -> bool {
+    let Ok(mut rates) = rates.lock() else {
+        return true;
+    };
+    let now = Instant::now();
+    let entry = rates.entry(session_id).or_insert(MessageRate {
+        count: 0,
+        window_start: now,
+    });
+    if now.duration_since(entry.window_start) > MESSAGE_RATE_WINDOW {
+        entry.count = 0;
+        entry.window_start = now;
+    }
+    entry.count += 1;
+    entry.count <= limit
 }
 
 fn unix_now() -> u64 {
