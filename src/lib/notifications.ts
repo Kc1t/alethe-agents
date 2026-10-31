@@ -77,3 +77,7 @@ export async function notifyLimitReset(
 export async function notifyPomodoro(title: string, body: string): Promise<void> {
   return deliver(title, body)
 }
+
+export async function notifyLowBalance(title: string, body: string): Promise<void> {
+  return deliver(title, body)
+}

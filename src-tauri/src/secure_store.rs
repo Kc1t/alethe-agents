@@ -14,6 +14,7 @@ pub enum SecretKind {
     Router9RemoteKey,
     VoiceProviderKey(crate::voice_providers::CloudProvider),
     VoiceServerKey(crate::voice_servers::id::ServerId),
+    OpenrouterManagementKey,
 }
 
 impl SecretKind {
@@ -33,6 +34,7 @@ impl SecretKind {
                 crate::voice_providers::CloudProvider::Openrouter => "voice-key-openrouter",
             }),
             Self::VoiceServerKey(id) => Cow::Owned(format!("voice-server-{id}")),
+            Self::OpenrouterManagementKey => Cow::Borrowed("openrouter-management-key"),
         }
     }
 }
@@ -132,6 +134,14 @@ mod tests {
         assert_eq!(
             account("default", SecretKind::VoiceServerKey(id)),
             "profile:default:voice-server-V1StGXR8_Z5jdHi6B-myT"
+        );
+    }
+
+    #[test]
+    fn the_openrouter_management_key_has_its_own_account() {
+        assert_eq!(
+            account("default", SecretKind::OpenrouterManagementKey),
+            "profile:default:openrouter-management-key"
         );
     }
 

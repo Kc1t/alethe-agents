@@ -1,11 +1,13 @@
-import { Clock, RefreshCw } from 'lucide-react'
+import { Clock, KeyRound, RefreshCw, Route } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { loadClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { getCachedKimiUsage } from '../../lib/kimiUsageCache'
+import { formatUsd } from '../../lib/openrouterAlerts'
+import { getCachedOpenRouterUsage } from '../../lib/openrouterUsageCache'
 import { translate, getLocale, useT } from '../../lib/i18n'
-import { AGENT_TYPE_LABELS } from '../../lib/types'
+import type { MessageKey } from '../../lib/i18n/messages/en'
 import { USAGE_PROVIDERS, type UsageProviderDef } from '../../lib/usageProviders'
 import {
   codexHeadlineWindow,
@@ -13,6 +15,9 @@ import {
   type AntigravityUsage,
   type ClaudeUsage,
   type CodexUsage,
+  deleteOpenRouterManagementKey,
+  setOpenRouterManagementKey,
+  type OpenRouterUsage,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -78,6 +83,15 @@ async function refreshKimi(): Promise<void> {
   }
 }
 
+async function refreshOpenRouter(): Promise<void> {
+  const { setOpenRouterUsage } = useUiStore.getState()
+  try {
+    setOpenRouterUsage(await getCachedOpenRouterUsage(true))
+  } catch {
+    setOpenRouterUsage(null)
+  }
+}
+
 async function refreshAntigravity(): Promise<void> {
   const { setAntigravityUsage } = useUiStore.getState()
   try {
@@ -115,6 +129,12 @@ const PROVIDER_CARD: Record<
     icon: <KimiIcon size={16} />,
     refresh: refreshKimi,
   },
+  openrouter: {
+    name: 'openrouter',
+    badgeClass: styles.badgeOpenRouter,
+    icon: <Route size={16} />,
+    refresh: refreshOpenRouter,
+  },
 }
 
 /** Stands in for a provider whose usage reading is off: says so and offers to turn it on. */
@@ -138,8 +158,8 @@ function UsageOffCard({ providerId }: { providerId: UsageProviderDef['id'] }) {
       <div className={styles.usageEmpty}>
         <span className={styles.usageEmptyTitle}>{t('widget.usageOff')}</span>
         <span className={styles.usageEmptyHint}>
-          {t('widget.usageOffHint', {
-            provider: AGENT_TYPE_LABELS[provider.agentType],
+          {t(provider.credential === 'key' ? 'widget.usageOffKeyHint' : 'widget.usageOffHint', {
+            provider: provider.label,
             vendor: provider.vendor,
           })}
         </span>
@@ -695,6 +715,263 @@ function KimiCard() {
   )
 }
 
+const OPENROUTER_KEY_ERRORS: Record<string, MessageKey> = {
+  openrouter_not_management_key: 'openrouter.keyErrorNotManagement',
+  openrouter_key_rejected: 'openrouter.keyErrorRejected',
+  openrouter_network: 'openrouter.keyErrorNetwork',
+  voice_key_invalid_format: 'openrouter.keyErrorFormat',
+}
+
+/** Adds, replaces or removes the management key that unlocks the account balance and activity. */
+function ManagementKeyForm({ hasKey, onDone }: { hasKey: boolean; onDone?: () => void }) {
+  const t = useT()
+  const [value, setValue] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<MessageKey | null>(null)
+
+  const run = async (work: () => Promise<void>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await work()
+      setValue('')
+      await refreshOpenRouter()
+      onDone?.()
+    } catch (reason) {
+      setError(OPENROUTER_KEY_ERRORS[String(reason)] ?? 'openrouter.keyErrorOther')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form
+      className={styles.orKeyForm}
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (value.trim()) void run(() => setOpenRouterManagementKey(value))
+      }}
+    >
+      <span className={styles.resetCreditTitle}>
+        {hasKey ? t('openrouter.keyReplaceTitle') : t('openrouter.keyAddTitle')}
+      </span>
+      <span className={styles.orKeyHint}>{t('openrouter.keyHint')}</span>
+      <div className={styles.orKeyRow}>
+        <input
+          type="password"
+          className={styles.orKeyInput}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="sk-or-v1-…"
+          autoComplete="off"
+          spellCheck={false}
+          aria-label={t('openrouter.keyAddTitle')}
+          disabled={busy}
+        />
+        <button type="submit" className={styles.resetCreditButton} disabled={busy || !value.trim()}>
+          {t('openrouter.keySave')}
+        </button>
+        {hasKey ? (
+          <button
+            type="button"
+            className={styles.resetCreditButton}
+            disabled={busy}
+            onClick={() => void run(deleteOpenRouterManagementKey)}
+          >
+            {t('openrouter.keyRemove')}
+          </button>
+        ) : null}
+      </div>
+      {error ? <span className={styles.orKeyError}>{t(error)}</span> : null}
+    </form>
+  )
+}
+
+function OpenRouterCard({ usage }: { usage: OpenRouterUsage | null }) {
+  const t = useT()
+  const [managing, setManaging] = useState(false)
+  const accent = 'var(--accent)'
+  const ready = usage?.status === 'ready'
+  const headline = ready ? usage.headline : null
+
+  const head = (
+    <CardHead
+      badgeClass={styles.badgeOpenRouter}
+      icon={<Route size={16} />}
+      name="openrouter"
+      plan={
+        headline
+          ? t(`openrouter.source.${headline.source}`)
+          : usage?.key?.is_free_tier
+            ? t('openrouter.freeTier')
+            : undefined
+      }
+      accent={accent}
+      hasData={ready}
+      onRefresh={refreshOpenRouter}
+    />
+  )
+
+  if (!usage || !ready) {
+    const title =
+      usage?.status === 'no_key'
+        ? t('openrouter.noKey')
+        : usage?.key_error === 'auth' || usage?.management_error === 'auth'
+          ? t('openrouter.keyRejected')
+          : t('widget.usageUnavailable')
+    return (
+      <div className={styles.usageCard}>
+        {head}
+        <div className={styles.usageEmpty}>
+          <span className={styles.usageEmptyTitle}>{title}</span>
+          <span className={styles.usageEmptyHint}>{t('openrouter.noKeyHint')}</span>
+        </div>
+        {usage ? <ManagementKeyForm hasKey={usage.has_management_key} /> : null}
+      </div>
+    )
+  }
+
+  const { account, key, budget, activity } = usage
+  const days = usage.days_left
+  const lowDays = days !== null && days <= 3
+  const spentWeek = activity?.spend_7d ?? key?.usage_weekly ?? null
+  const spentMonth = key?.usage_monthly ?? null
+  const topModels = activity?.top_models.slice(0, 3) ?? []
+  const sources = [
+    account ? t('openrouter.source.account') : null,
+    key?.limit ? t('openrouter.source.key') : null,
+    budget ? t('openrouter.source.budget') : null,
+  ].filter(Boolean)
+
+  return (
+    <div className={styles.usageCard}>
+      {head}
+      {headline ? (
+        <Hero
+          percent={headline.used_percent}
+          reset={
+            days !== null ? t('openrouter.daysShort', { n: Math.max(0, Math.round(days)) }) : '—'
+          }
+          critical={headline.used_percent >= 80 || lowDays}
+          sub={
+            <>
+              {t('openrouter.usedOf', { total: formatUsd(headline.total_usd) })} ·{' '}
+              <b>{t('openrouter.left', { v: formatUsd(headline.remaining_usd) })}</b>
+            </>
+          }
+        />
+      ) : (
+        <>
+          <div className={styles.hero}>
+            <div className={styles.heroNumWrap}>
+              <span className={styles.heroNum}>{formatUsd(spentMonth ?? spentWeek ?? 0)}</span>
+            </div>
+          </div>
+          <div className={styles.heroSub}>
+            {spentMonth !== null ? t('openrouter.spentMonth') : t('openrouter.spentWeek')} ·{' '}
+            <b>{t('openrouter.noCap')}</b>
+          </div>
+        </>
+      )}
+      <div className={styles.cardBody}>
+        <div className={styles.meterList}>
+          {account ? (
+            <Meter
+              label={t('openrouter.source.account')}
+              value={`${formatUsd(account.total_usage)} / ${formatUsd(account.total_credits)}`}
+              util={account.used_percent}
+              base={accent}
+            />
+          ) : null}
+          {key && key.limit ? (
+            <Meter
+              label={t('openrouter.source.key')}
+              reset={key.limit_reset ?? undefined}
+              value={`${formatUsd(key.limit - (key.limit_remaining ?? 0))} / ${formatUsd(key.limit)}`}
+              util={((key.limit - (key.limit_remaining ?? 0)) / key.limit) * 100}
+              base={accent}
+            />
+          ) : null}
+          {budget && budget.limit_usd > 0 ? (
+            <Meter
+              label={t('openrouter.source.budget')}
+              reset={budget.resets_at ? formatResetTime(budget.resets_at) : undefined}
+              value={`${formatUsd(budget.spend_usd)} / ${formatUsd(budget.limit_usd)}`}
+              util={(budget.spend_usd / budget.limit_usd) * 100}
+              base={accent}
+            />
+          ) : null}
+          {topModels.map((model) => (
+            <Meter
+              key={model.model}
+              label={model.model.split('/').pop() ?? model.model}
+              value={formatUsd(model.usage)}
+              util={
+                activity && activity.spend_30d > 0 ? (model.usage / activity.spend_30d) * 100 : 0
+              }
+              base="var(--fg-faint)"
+            />
+          ))}
+        </div>
+        <div className={styles.statGrid}>
+          <StatCell label={t('openrouter.today')} value={key ? formatUsd(key.usage_daily) : '—'} />
+          <StatCell
+            label={t('openrouter.last7d')}
+            value={spentWeek !== null ? formatUsd(spentWeek) : '—'}
+          />
+          <StatCell
+            label={activity ? t('openrouter.last30d') : t('openrouter.month')}
+            value={
+              activity
+                ? formatUsd(activity.spend_30d)
+                : spentMonth !== null
+                  ? formatUsd(spentMonth)
+                  : '—'
+            }
+          />
+          <StatCell
+            label={t('openrouter.perDay')}
+            value={usage.daily_burn_usd !== null ? formatUsd(usage.daily_burn_usd) : '—'}
+          />
+          <StatCell
+            label={t('openrouter.daysLeft')}
+            value={
+              days !== null ? t('openrouter.daysShort', { n: Math.max(0, Math.round(days)) }) : '—'
+            }
+            crit={lowDays}
+          />
+          <StatCell
+            label={t('openrouter.requests30d')}
+            value={activity ? String(activity.requests_30d) : '—'}
+          />
+        </div>
+        {!usage.has_management_key || managing ? (
+          <ManagementKeyForm hasKey={usage.has_management_key} onDone={() => setManaging(false)} />
+        ) : null}
+      </div>
+      <CardFoot
+        accent={accent}
+        left={sources.length > 0 ? sources.join(' · ') : t('openrouter.source.key')}
+        right={
+          usage.has_management_key ? (
+            <button
+              type="button"
+              className={styles.orKeyToggle}
+              onClick={() => setManaging((open) => !open)}
+              aria-expanded={managing}
+            >
+              <KeyRound size={11} />
+              {t('openrouter.keyManage')}
+            </button>
+          ) : (
+            t('openrouter.keyMissingShort')
+          )
+        }
+      />
+    </div>
+  )
+}
+
 export function UsageStrip({
   showActivity = true,
   showResetCreditAction = false,
@@ -706,13 +983,15 @@ export function UsageStrip({
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
   const antigravityUsage = useUiStore((s) => s.antigravityUsage)
+  const openrouterUsage = useUiStore((s) => s.openrouterUsage)
   const showClaude = useProjectsStore((s) => s.preferences.usageShowClaude)
   const showCodex = useProjectsStore((s) => s.preferences.usageShowCodex)
   const showAntigravity = useProjectsStore((s) => s.preferences.usageShowAntigravity)
   const showKimi = useProjectsStore((s) => s.preferences.usageShowKimi ?? true)
+  const showOpenRouter = useProjectsStore((s) => s.preferences.usageShowOpenRouter)
   const access = useProjectsStore((s) => s.preferences.usageAccess)
 
-  if (!showClaude && !showCodex && !showAntigravity && !showKimi) {
+  if (!showClaude && !showCodex && !showAntigravity && !showKimi && !showOpenRouter) {
     return (
       <div className={`${styles.usageStrip} ${showActivity ? '' : styles.usageStripTwo}`}>
         <div className={styles.usageEmpty}>{t('usageModal.allHidden')}</div>
@@ -738,6 +1017,11 @@ export function UsageStrip({
         <UsageOffCard providerId="antigravity" />
       )}
       {!showKimi ? null : access.kimi ? <KimiCard /> : <UsageOffCard providerId="kimi" />}
+      {showActivity || !showOpenRouter ? null : access.openrouter ? (
+        <OpenRouterCard usage={openrouterUsage} />
+      ) : (
+        <UsageOffCard providerId="openrouter" />
+      )}
       {showActivity ? <ActivityGraph /> : null}
     </div>
   )

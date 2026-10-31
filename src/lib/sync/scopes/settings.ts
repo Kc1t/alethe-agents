@@ -26,6 +26,7 @@ export const SYNCED_PREFERENCE_KEYS = [
   'topbarShowCodexUsage',
   'topbarShowAntigravityUsage',
   'topbarShowKimiUsage',
+  'topbarShowOpenRouterUsage',
   'topbarShowSync',
   'topbarShowProfile',
   'topbarShowMemory',

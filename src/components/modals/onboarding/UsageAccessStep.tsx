@@ -1,8 +1,7 @@
 import { useT } from '../../../lib/i18n'
-import { AGENT_TYPE_LABELS } from '../../../lib/types'
 import { USAGE_PROVIDERS } from '../../../lib/usageProviders'
 import { useProjectsStore } from '../../../stores/projectsStore'
-import { AgentIcon } from '../../icons/AgentIcons'
+import { UsageProviderIcon } from '../../icons/UsageProviderIcon'
 import styles from './FeaturesStep.module.css'
 
 /**
@@ -19,7 +18,7 @@ export function UsageAccessStep() {
     <div className={styles.step}>
       {USAGE_PROVIDERS.map((provider, index) => {
         const on = usageAccess[provider.id]
-        const label = AGENT_TYPE_LABELS[provider.agentType]
+        const label = provider.label
         return (
           <button
             key={provider.id}
@@ -31,12 +30,17 @@ export function UsageAccessStep() {
             onClick={() => setPreferences({ usageAccess: { ...usageAccess, [provider.id]: !on } })}
           >
             <span className={styles.icon}>
-              <AgentIcon type={provider.agentType} size={15} theme={uiTheme} />
+              <UsageProviderIcon provider={provider} size={15} theme={uiTheme} />
             </span>
             <span className={styles.rowCopy}>
               <span className={styles.rowTitle}>{label}</span>
               <span className={styles.rowDesc}>
-                {t('usageAccess.providerHint', { provider: label, vendor: provider.vendor })}
+                {t(
+                  provider.credential === 'key'
+                    ? 'usageAccess.providerKeyHint'
+                    : 'usageAccess.providerHint',
+                  { provider: label, vendor: provider.vendor },
+                )}
               </span>
             </span>
             <span className={styles.track} aria-hidden>

@@ -60,6 +60,7 @@ import { useCloudSync } from './hooks/useCloudSync'
 import { useCodexSessionBridge } from './hooks/useCodexSessionBridge'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useKeybindings } from './hooks/useKeybindings'
+import { useOpenRouterUsage } from './hooks/useOpenRouterUsage'
 import { useOrchestrationSettingsSync } from './hooks/useOrchestrationSettingsSync'
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
@@ -214,6 +215,7 @@ export default function App() {
   useAgentBrowserOffers(playwrightEnabled)
   useAgentHookBridge()
   useCodexSessionBridge()
+  useOpenRouterUsage()
   useAgentsSidebarAutoOpen()
   useCliOpenRequests(hydrated)
 

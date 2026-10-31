@@ -13,6 +13,7 @@ const granted: Record<UsageProviderId, boolean> = {
   codex: false,
   antigravity: false,
   kimi: false,
+  openrouter: false,
 }
 
 export const USAGE_ACCESS_OFF = 'usage_access_off'

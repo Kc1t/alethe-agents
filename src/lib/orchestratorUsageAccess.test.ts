@@ -24,6 +24,7 @@ describe('enableOrchestratorFeature', () => {
       codex: true,
       antigravity: false,
       kimi: false,
+      openrouter: false,
     })
     const [toast] = useUiStore.getState().toasts
     expect(toast.body).toContain('Claude Code, Codex')

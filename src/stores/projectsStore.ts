@@ -838,6 +838,7 @@ useProjectsStore.subscribe((state, previous) => {
   }
   if (revoked.includes('codex')) ui.setCodexUsage(null)
   if (revoked.includes('antigravity')) ui.setAntigravityUsage(null)
+  if (revoked.includes('openrouter')) ui.setOpenRouterUsage(null)
 })
 
 /** Flushes the debounced document before the native window is destroyed. */
