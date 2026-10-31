@@ -345,6 +345,20 @@ See Alethe in real development workflows and learn how to orchestrate coding age
   </tr>
   <tr>
     <td>
+      <a href="https://www.youtube.com/watch?v=ujW-e6w3NQA">
+        <img src="https://i.ytimg.com/vi/ujW-e6w3NQA/hqdefault.jpg" alt="How to Orchestrate AI Agents with a FREE Skill" width="100%">
+      </a>
+    </td>
+    <td>
+      <strong><a href="https://www.youtube.com/watch?v=ujW-e6w3NQA">How to Orchestrate AI Agents with a FREE Skill</a></strong>
+      <br><br>
+      A tutorial on orchestrating AI coding agents with the free Alethe Orchestrate skill.
+      <br><br>
+      <sub>Kauã Miguel - Dev · Portuguese</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
       <a href="https://www.youtube.com/watch?v=reUN7CkMbgM&amp;t=100s">
         <img src="https://i.ytimg.com/vi/reUN7CkMbgM/hqdefault.jpg" alt="A Day in the Life of a Software Developer — Devlog 1" width="100%">
       </a>

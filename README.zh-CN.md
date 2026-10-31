@@ -274,6 +274,20 @@ _暂无条目。_ 用 Alethe 做出了什么？把它加到 [`SHOWCASE.md`](SHOW
   </tr>
   <tr>
     <td>
+      <a href="https://www.youtube.com/watch?v=ujW-e6w3NQA">
+        <img src="https://i.ytimg.com/vi/ujW-e6w3NQA/hqdefault.jpg" alt="How to Orchestrate AI Agents with a FREE Skill" width="100%">
+      </a>
+    </td>
+    <td>
+      <strong><a href="https://www.youtube.com/watch?v=ujW-e6w3NQA">How to Orchestrate AI Agents with a FREE Skill</a></strong>
+      <br><br>
+      教程：使用免费的 Alethe Orchestrate 技能来编排 AI 编程智能体。
+      <br><br>
+      <sub>Kauã Miguel - Dev · 葡萄牙语</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
       <a href="https://www.youtube.com/watch?v=reUN7CkMbgM&amp;t=100s">
         <img src="https://i.ytimg.com/vi/reUN7CkMbgM/hqdefault.jpg" alt="A Day in the Life of a Software Developer — Devlog 1" width="100%">
       </a>
