@@ -77,6 +77,12 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 - `pending` · `contract` · Jev moves to the external `alethe.jev` plugin; the plugin API goes to version 2 (accepts manifests 1..=2) and gains overlays, settings sections, workspace control, terminal input, toasts and events
   - Files: `src/lib/plugins/workspace.ts`, `src/lib/plugins/legacyMigration.ts`, `src/components/ContributedOverlays/index.tsx`, `docs/PLUGINS.md`
   - Contract: `Preferences` drops `voiceCommandApiKey`, `voiceKeepListening` and every `dictation*` key; on load they are handed once to `plugin-data/alethe.jev.json` as `legacyPreferences` (only when that record has neither `settings` nor `legacyPreferences`), then removed from `projects.json`; `dictationEnabled` leaves the synced `settings` keys; new plugin capabilities `ui.overlay`, `ui.settings`, `workspace.read`, `workspace.control`, `terminal.write` and `listen:<event>`. The Mac app has no plugin host, so it drops its built-in voice bar or keeps it outside sync
+- `pending` · `contract` · feat(usage): track OpenRouter credits and warn before they run out
+  - Files: `src-tauri/src/openrouter_usage.rs`, `src/components/HomeView/UsageStrip.tsx`, `src/stores/projectsStore.migrations.ts`
+  - Contract: `usageAccess.openrouter`, `usageShowOpenRouter` and `topbarShowOpenRouterUsage` in preferences (off for existing profiles); management key in the keychain as `openrouter-management-key`
+- `pending` · `backend` · feat(voice): bring the voice engine, providers and HUD backend into the core
+  - Files: `src-tauri/src/voice_providers/`, `src-tauri/src/tts.rs`, `src-tauri/src/voice_hud.rs`
+  - Contract: provider keys in the keychain as `voice-key-<provider>` and voice server keys as `voice-server-<id>`
 - `pending` · `ui` · `eb426c5` fix(ui): keep the Dropdown search usable inside modal dialogs
   - Files: `src/components/ui/Dropdown.tsx`
 - `skip (npm packages of the Tauri app)` · `backend` · `3ad4ce9` fix(build): align Tauri plugin npm packages with their Rust crates
