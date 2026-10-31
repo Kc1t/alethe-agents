@@ -629,18 +629,28 @@ async fn request_decision(
 /// Routes one spoken sentence into a typed workspace decision.
 ///
 /// `native` selects TypeSafe's own endpoint; anything else goes through the OpenRouter
-/// decisions endpoint, which needs no waitlist.
+/// decisions endpoint, which needs no waitlist. The key is the OpenRouter voice provider's, read
+/// from the OS keychain, so the frontend never holds it.
 #[tauri::command]
 pub async fn jev_decide(
+    app: tauri::AppHandle,
     spoken: String,
     context: JevContext,
-    api_key: String,
     native: Option<bool>,
     model: Option<String>,
+    api_key: Option<String>,
 ) -> Result<JevDecision, String> {
-    if api_key.trim().is_empty() {
-        return Err("missing Jev API key".into());
-    }
+    let stored = crate::voice_providers::keys::read_key_async(
+        &app,
+        crate::voice_providers::CloudProvider::Openrouter,
+    )
+    .await?;
+    // Jev 1.0.0 passes its own key; the keychain wins once one is saved there.
+    let present = |key: &String| !key.trim().is_empty();
+    let api_key = stored
+        .filter(present)
+        .or(api_key.filter(present))
+        .ok_or_else(|| "missing Jev API key".to_string())?;
 
     let state = json!({
         "spoken_command": spoken,

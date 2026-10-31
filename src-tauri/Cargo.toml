@@ -15,16 +15,16 @@ name = "alethe_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [lints.rust]
-# ghostty_linked é um cfg custom (ligado só quando o backend nativo Ghostty é
-# linkado no build, ver build.rs) — sem isso o compilador avisa "unexpected
-# cfg" toda vez que aparece em #[cfg(...)] (lib.rs, ghostty_bridge.rs).
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(ghostty_linked)"] }
+# ghostty_linked and apple_speech_linked are custom cfgs set by build.rs when the native Ghostty
+# backend / the Apple speech bridge are linked. Declaring them avoids "unexpected cfg" warnings.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(ghostty_linked)", "cfg(apple_speech_linked)"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [target.'cfg(target_os = "macos")'.build-dependencies]
 cc = "1"
+serde_json = "1"
 
 [dependencies]
 nanoid = "0.4"
@@ -33,8 +33,10 @@ serde = { version = "1", features = ["derive"] }
 # preserve_order keeps a round-tripped Value in file order. Without it, rewriting one
 # key of ~/.claude.json would alphabetise its other 80+ top-level keys.
 serde_json = { version = "1", features = ["preserve_order"] }
-tauri = { version = "2", features = ["image-png", "unstable"] }
+tauri = { version = "2", features = ["image-png", "macos-private-api", "unstable"] }
 tauri-plugin-dialog = "2"
+# ~2.3: 2.4 needs Tauri 2.12 and rustc 1.90.
+tauri-plugin-global-shortcut = "~2.3"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
@@ -46,14 +48,22 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 which = "6"
 zip = "0.6"
 tar = "0.4"
+bzip2 = "0.4"
 flate2 = "1"
 sha2 = "0.10"
+sha1 = "0.10"
 sysinfo = "0.31"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
 hex = "0.4"
 cpal = "0.15"
+# Decodes compressed speech replies: OpenRouter MP3 (its PCM rate is model-dependent and
+# undocumented) and local voice servers (MP3 or WAV).
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "wav", "pcm"] }
 # On-device STT (Parakeet / Whisper / …). Build script downloads prebuilt libs when unset.
 sherpa-onnx = "1.13.6"
+# Narration for voice conversation: AVSpeechSynthesizer (macOS), WinRT (Windows),
+# speech-dispatcher (Linux, needs libspeechd-dev at build time).
+tts = "0.26.3"
 tiny_http = "0.12"
 # keyring v3 enables NO platform backend by default: without an explicit
 # feature it uses a mock store and every get_password() fails. The native
@@ -87,6 +97,8 @@ tauri-plugin-single-instance = "2"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+# Turns the voice HUD into a non-activating NSPanel (enables Tauri's macos-private-api).
+tauri-nspanel = "2.1"
 # Keychain backend (where Claude Code stores its OAuth token on macOS).
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
 

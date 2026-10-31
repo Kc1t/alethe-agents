@@ -43,7 +43,7 @@ jobs:
           sudo apt-get update
           # libasound2-dev is ALSA: `cpal` (on-device voice dictation) links against it
           # through alsa-sys, and without it the Linux build panics in its build script.
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev libspeechd-dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -82,6 +82,18 @@ jobs:
             "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-x86_64.AppImage"
           echo "${LINUXDEPLOY_SHA256}  $HOME/.cache/tauri/linuxdeploy-x86_64.AppImage" | sha256sum -c -
           chmod +x ~/.cache/tauri/linuxdeploy-x86_64.AppImage
+
+      - name: Select Xcode 26 (Apple speech recognition)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$XCODE" ]; then sudo xcode-select -s "$XCODE"; fi
+          xcodebuild -version || true
+          swift --version
+          SWIFT_VERSION=$(swift --version 2>&1 | sed -nE 's/.*Swift version ([0-9]+\.[0-9]+).*/\1/p' | head -1)
+          if [ "$(printf '6.2\n%s\n' "$SWIFT_VERSION" | sort -V | head -1)" != "6.2" ]; then
+            echo "::warning::Swift < 6.2 on this runner: the macOS build ships without SpeechAnalyzer (macOS 26 engine)"
+          fi
 
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@v0

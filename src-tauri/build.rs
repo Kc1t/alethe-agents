@@ -10,6 +10,9 @@ fn main() {
     #[cfg(target_os = "macos")]
     link_libghostty();
 
+    #[cfg(target_os = "macos")]
+    link_apple_speech();
+
     stage_remote_page_assets();
 
     tauri_build::build()
@@ -128,4 +131,80 @@ fn link_libghostty() {
     println!("cargo:rustc-check-cfg=cfg(ghostty_linked)");
 
     println!("cargo:rerun-if-changed={}", lib.display());
+}
+
+/// Builds and links the Swift bridge to Apple's speech recognition (src-tauri/swift/AletheSpeech).
+/// Without a Swift toolchain the app still builds; the native engine is then simply absent.
+/// Release builds require it, so a Mac release never ships without the native engine by accident.
+#[cfg(target_os = "macos")]
+fn link_apple_speech() {
+    println!("cargo:rustc-check-cfg=cfg(apple_speech_linked)");
+    println!("cargo:rerun-if-changed=swift/AletheSpeech/Package.swift");
+    println!("cargo:rerun-if-changed=swift/AletheSpeech/Sources");
+    let has_swift = std::process::Command::new("swift")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if !has_swift {
+        if std::env::var("PROFILE").as_deref() == Ok("release") {
+            panic!("a Swift toolchain is required for macOS release builds (Apple speech recognition)");
+        }
+        println!("cargo:warning=no Swift toolchain found: building without Apple speech recognition");
+        return;
+    }
+    let arch = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+        Ok("aarch64") => "arm64",
+        Ok("x86_64") => "x86_64",
+        other => panic!("unsupported macOS architecture for the Swift bridge: {other:?}"),
+    };
+    let triple = format!("{arch}-apple-macosx10.15");
+    let release = std::env::var("PROFILE").as_deref() == Ok("release");
+    let config = if release { "release" } else { "debug" };
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let scratch = out_dir.join("swift-build");
+
+    let status = std::process::Command::new("swift")
+        .args(["build", "-c", config, "--package-path", "swift/AletheSpeech", "--triple"])
+        .arg(&triple)
+        .arg("--scratch-path")
+        .arg(&scratch)
+        .status();
+    if !matches!(status, Ok(s) if s.success()) {
+        if release {
+            panic!("swift build failed for {triple} (Apple speech recognition)");
+        }
+        println!("cargo:warning=swift build failed for {triple}: building without Apple speech recognition");
+        return;
+    }
+
+    let lib_dir = scratch.join(format!("{arch}-apple-macosx")).join(config);
+    if !lib_dir.join("libAletheSpeech.a").is_file() {
+        if release {
+            panic!("libAletheSpeech.a not found in {}", lib_dir.display());
+        }
+        println!("cargo:warning=libAletheSpeech.a not found in {}: building without Apple speech recognition", lib_dir.display());
+        return;
+    }
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    println!("cargo:rustc-link-lib=static=AletheSpeech");
+
+    // The Swift runtime and back-deployment libraries live in the toolchain, not the target OS.
+    if let Ok(output) = std::process::Command::new("swift")
+        .args(["-print-target-info", "-target", &triple])
+        .output()
+    {
+        if let Ok(info) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+            if let Some(paths) = info["paths"]["runtimeLibraryPaths"].as_array() {
+                for path in paths.iter().filter_map(|p| p.as_str()) {
+                    println!("cargo:rustc-link-search=native={path}");
+                }
+            }
+        }
+    }
+    println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib/swift");
+    for framework in ["Speech", "AVFoundation", "Foundation"] {
+        println!("cargo:rustc-link-lib=framework={framework}");
+    }
+    println!("cargo:rustc-cfg=apple_speech_linked");
 }

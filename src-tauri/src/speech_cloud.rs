@@ -1,16 +1,30 @@
+//! Speech-to-text through OpenRouter chat models that accept audio input. They are not
+//! transcription models, so `/audio/transcriptions` does not serve them: the audio goes in a chat
+//! message with an instruction to reply with the transcript only.
+
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::{json, Value};
-use tauri::State;
 
 use crate::jev::client;
-use crate::speech::{
-    stop_capture, trim_silence, validate_capture, SpeechState, HOTWORDS, SAMPLE_RATE,
-};
+use crate::speech::{HOTWORDS, SAMPLE_RATE};
 
 const COMPLETIONS_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
 const MAX_ATTEMPTS: u32 = 3;
+
+/// The chat models offered for speech-to-text, with the label the model list shows.
+pub(crate) const CHAT_AUDIO_MODELS: [(&str, &str); 2] = [
+    ("openai/gpt-audio-mini", "OpenAI: GPT Audio Mini"),
+    (
+        "google/gemini-3.1-flash-lite",
+        "Google: Gemini 3.1 Flash Lite",
+    ),
+];
+
+pub(crate) fn is_chat_audio_model(model: &str) -> bool {
+    CHAT_AUDIO_MODELS.iter().any(|(id, _)| *id == model)
+}
 
 fn encode_wav(samples: &[f32], sample_rate: u32) -> Vec<u8> {
     let data_len = (samples.len() * 2) as u32;
@@ -114,33 +128,24 @@ async fn request_transcript(api_key: &str, payload: &Value) -> Result<Value, Att
         .map_err(|e| AttemptError::Fatal(format!("OpenRouter returned invalid json: {e}")))
 }
 
-#[tauri::command]
-pub async fn speech_stop_and_transcribe_cloud(
-    state: State<'_, SpeechState>,
-    api_key: String,
-    model: String,
+/// Transcribes already trimmed audio, retrying rate limits and server errors.
+pub(crate) async fn transcribe_with_chat_model(
+    api_key: &str,
+    model: &str,
+    samples: &[f32],
+    sample_rate: u32,
 ) -> Result<String, String> {
-    let audio = stop_capture(&state)?;
-    if api_key.trim().is_empty() {
-        return Err("missing OpenRouter API key".into());
-    }
-    let model = model.trim();
-    if model.is_empty() {
-        return Err("missing OpenRouter transcription model".into());
-    }
-    validate_capture(&audio)?;
-
-    let rate = if audio.sample_rate == 0 {
+    let rate = if sample_rate == 0 {
         SAMPLE_RATE as u32
     } else {
-        audio.sample_rate
+        sample_rate
     };
-    let wav = encode_wav(trim_silence(&audio.samples), rate);
+    let wav = encode_wav(samples, rate);
     let payload = build_transcription_payload(model, &wav);
 
     let mut attempts = 0u32;
     loop {
-        match request_transcript(&api_key, &payload).await {
+        match request_transcript(api_key, &payload).await {
             Ok(body) => return Ok(read_transcript(&body)),
             Err(AttemptError::Fatal(message)) => return Err(message),
             Err(AttemptError::Retriable(message)) => {
@@ -193,6 +198,13 @@ mod tests {
         assert_eq!(content[1]["type"], "input_audio");
         assert_eq!(content[1]["input_audio"]["format"], "wav");
         assert_eq!(content[1]["input_audio"]["data"], STANDARD.encode(b"abc"));
+    }
+
+    #[test]
+    fn only_the_listed_chat_models_go_through_chat_completions() {
+        assert!(is_chat_audio_model("openai/gpt-audio-mini"));
+        assert!(is_chat_audio_model("google/gemini-3.1-flash-lite"));
+        assert!(!is_chat_audio_model("openai/whisper-1"));
     }
 
     #[test]
