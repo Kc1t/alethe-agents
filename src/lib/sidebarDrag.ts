@@ -23,3 +23,17 @@ export function sidebarInsertionIndex(
   if (sameList && sourceIndex < insertionIndex) insertionIndex -= 1
   return Math.max(0, insertionIndex)
 }
+
+/**
+ * The group a dragged project lands in: a group's header or body, or `null` for the ungrouped
+ * list. `undefined` when the target is not a group at all.
+ */
+export function projectDropGroupId(target: string): string | null | undefined {
+  const groupId = target.startsWith('group:')
+    ? target.slice('group:'.length)
+    : target.startsWith('group-body:')
+      ? target.slice('group-body:'.length)
+      : undefined
+  if (groupId === undefined) return undefined
+  return groupId === 'ungrouped' ? null : groupId
+}

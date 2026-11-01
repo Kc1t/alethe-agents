@@ -13,7 +13,7 @@
     <br />
     在同一款本地优先的桌面应用里，并排运行 Claude Code、Codex、Copilot 以及你的 Shell。
     <br />
-    <a href="./README.md">English</a>
+    <a href="./README.md">English</a> · <a href="./README.pt-BR.md">Português</a>
   </p>
 
   <p align="center">
@@ -268,6 +268,20 @@ _暂无条目。_ 用 Alethe 做出了什么？把它加到 [`SHOWCASE.md`](SHOW
       <strong><a href="https://www.youtube.com/watch?v=8jvrucR7QCU&amp;t=54s">Stop Using One AI Agent at a Time: Orchestrate AI Agents</a></strong>
       <br><br>
       实用介绍：如何协调多个 AI 编程智能体，而不是一次只用一个。
+      <br><br>
+      <sub>Kauã Miguel - Dev · 葡萄牙语</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <a href="https://www.youtube.com/watch?v=ujW-e6w3NQA">
+        <img src="https://i.ytimg.com/vi/ujW-e6w3NQA/hqdefault.jpg" alt="How to Orchestrate AI Agents with a FREE Skill" width="100%">
+      </a>
+    </td>
+    <td>
+      <strong><a href="https://www.youtube.com/watch?v=ujW-e6w3NQA">How to Orchestrate AI Agents with a FREE Skill</a></strong>
+      <br><br>
+      教程：使用免费的 Alethe Orchestrate 技能来编排 AI 编程智能体。
       <br><br>
       <sub>Kauã Miguel - Dev · 葡萄牙语</sub>
     </td>

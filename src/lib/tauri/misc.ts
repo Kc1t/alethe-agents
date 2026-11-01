@@ -80,6 +80,20 @@ export function listenRemoteMessages(
   return listen<RemoteMessageEvent>('remote://message', (event) => handler(event.payload))
 }
 
+export type RemoteOpenAgentEvent = {
+  projectId: string
+  agent: 'claude' | 'codex'
+  deviceId: number
+  deviceName: string
+}
+
+/** Fires when a paired device asks to start a new agent terminal in a project. */
+export function listenRemoteOpenAgent(
+  handler: (event: RemoteOpenAgentEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<RemoteOpenAgentEvent>('remote://open-agent', (event) => handler(event.payload))
+}
+
 export async function openRemoteControlPairing(): Promise<RemoteControlInfo> {
   return invoke<RemoteControlInfo>('remote_control_open_pairing')
 }

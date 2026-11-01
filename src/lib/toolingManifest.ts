@@ -1,4 +1,4 @@
-import { type McpEnvInput, mcpScan, type McpServerInput,mcpUpsert } from './tauri/mcp'
+import { type McpEnvInput, mcpScan, type McpServerInput, mcpUpsert } from './tauri/mcp'
 import {
   type SkillAgentSnapshot,
   skillsCatalog,

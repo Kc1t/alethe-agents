@@ -10,6 +10,7 @@ mod backup;
 mod browser_pane;
 mod browser_session;
 mod cdp;
+mod child_env;
 mod claude_sessions;
 mod claude_usage;
 mod cli_launch;
@@ -132,21 +133,22 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // bugs conhecidos no Wayland — escala fracionada quebrando layout,
+    let args: Vec<String> = std::env::args().collect();
+    let action = cli_launch::parse_cli_action(&args);
+    if let Some(exit) = cli_launch::cli_immediate_exit(action) {
+        cli_launch::attach_parent_console();
+        cli_launch::write_cli_exit(&exit);
+        std::process::exit(exit.code);
+    }
 
-    // ("Error 71") em alguns drivers de GPU — documentados oficialmente em
-    // https://v2.tauri.app/develop/debug/linux-graphics/. Desligar o
-
+    // Work around known Wayland/DMABUF WebKitGTK rendering bugs ("Error 71") on Linux:
+    // https://v2.tauri.app/develop/debug/linux-graphics/
     #[cfg(target_os = "linux")]
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
     let _ = dotenvy::dotenv();
-    // `npm run app` (dev) injeta EDITOR=vi e GIT_EDITOR=true no ambiente do
-
-    // o vi-mode (Ctrl+R vira "redisplay", Ctrl+A/E viram self-insert — bug real
-
-    // npm (rodando sob npm run + valores exatos que o npm injeta); o ambiente
-
+    // `npm run app` injects EDITOR=vi and GIT_EDITOR=true into the environment; strip those
+    // exact npm defaults so child shells do not inherit unintended vi-mode settings.
     if std::env::var_os("npm_lifecycle_event").is_some() {
         if std::env::var("EDITOR").as_deref() == Ok("vi") {
             std::env::remove_var("EDITOR");
@@ -161,6 +163,13 @@ pub fn run() {
     // Built once and handed to `build()` below: `generate_context!` embeds the
     // whole frontend bundle, so expanding it twice would duplicate it.
     let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+
+    if action == cli_launch::CliAction::Update {
+        cli_launch::attach_parent_console();
+        let exit = cli_launch::run_cli_update(context);
+        cli_launch::write_cli_exit(&exit);
+        std::process::exit(exit.code);
+    }
 
     // `tauri-plugin-single-instance` exits the second process with status 0 and
     // prints nothing, so a stale owner looks exactly like a broken install.
@@ -256,10 +265,10 @@ pub fn run() {
                         let (width, height) = rgba.dimensions();
                         let icon = tauri::image::Image::new_owned(rgba.into_raw(), width, height);
                         if let Err(error) = window.set_icon(icon) {
-                            eprintln!("[icon] falha ao aplicar ícone da janela: {error}");
+                            eprintln!("[icon] could not set the window icon: {error}");
                         }
                     }
-                    Err(error) => eprintln!("[icon] falha ao decodificar ícone embutido: {error}"),
+                    Err(error) => eprintln!("[icon] could not decode the embedded icon: {error}"),
                 }
                 // Required for getUserMedia / voice dictation on WebKitGTK.
                 webview_media::grant_media_permissions(&window);
@@ -414,6 +423,8 @@ pub fn run() {
             ghostty_bridge::ghostty_spawn,
             ghostty_bridge::ghostty_sync_frame,
             ghostty_bridge::ghostty_set_hidden,
+            ghostty_bridge::ghostty_set_focus,
+            ghostty_bridge::ghostty_surface_exited,
             ghostty_bridge::ghostty_kill,
             ghostty_bridge::ghostty_kill_all,
             ghostty_bridge::ghostty_debug_send_read,
@@ -667,7 +678,7 @@ pub fn run() {
         .build(context)
         .expect("error while building alethe")
         .run(move |_app_handle, event| {
-            // emitir `Exit`; esperar esse evento deixa shells/agentes vivos
+            // Tear down on ExitRequested: on Windows `Exit` can arrive late and leave shells alive.
 
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 pty::kill_all_sessions_background(&sessions_for_exit);

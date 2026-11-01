@@ -653,6 +653,7 @@ type ContainersSlice = Pick<
   ProjectsState,
   | 'openPane'
   | 'closePane'
+  | 'minimizePane'
   | 'togglePane'
   | 'openContainerWithAllPanes'
   | 'closeContainer'
@@ -773,6 +774,39 @@ export function createContainersSlice({ get, update, updateContainer }: SliceCtx
               }
             : p,
         )
+        const containers = state.workspace.containers
+          .map((c) => {
+            if (c.projectId !== projectId) return c
+            const ids = c.paneIds.flatMap((id) => {
+              if (id !== terminalId) return [id]
+              return successor && !c.paneIds.includes(successor) ? [successor] : []
+            })
+            return { ...c, paneIds: ids }
+          })
+          .filter((c) => c.paneIds.length > 0 || c.gridId !== undefined)
+        return { projects, workspace: { ...state.workspace, containers } }
+      }),
+
+    minimizePane: (projectId, terminalId) =>
+      update((state) => {
+        const project = state.projects.find((p) => p.id === projectId)
+        // The PTY is left running; only the pane leaves the visible grid.
+        const group = project?.paneGroups?.find((g) => g.paneIds.includes(terminalId))
+        const remaining = group?.paneIds.filter((id) => id !== terminalId) ?? []
+        const successor = group?.paneIds[0] === terminalId ? remaining[0] : undefined
+        const projects = group
+          ? state.projects.map((p) =>
+              p.id === projectId
+                ? {
+                    ...p,
+                    paneGroups: (p.paneGroups ?? []).flatMap((g) => {
+                      if (g !== group) return [g]
+                      return remaining.length > 1 ? [{ ...g, paneIds: remaining }] : []
+                    }),
+                  }
+                : p,
+            )
+          : state.projects
         const containers = state.workspace.containers
           .map((c) => {
             if (c.projectId !== projectId) return c

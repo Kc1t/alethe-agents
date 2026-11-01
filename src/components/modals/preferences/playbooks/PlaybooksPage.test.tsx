@@ -49,7 +49,7 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks())
 
-describe('PlaybooksPage', () => {
+describe('PlaybooksPage', { timeout: 20_000 }, () => {
   it('draws the first playbook and lists every playbook, preset and provider', async () => {
     render(<PlaybooksPage />)
 

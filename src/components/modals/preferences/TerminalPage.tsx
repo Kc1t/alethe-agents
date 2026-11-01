@@ -8,7 +8,9 @@ import { useT, useTDynamic } from '../../../lib/i18n'
 import { isMacOS, isWindows } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
 import {
+  AGENT_TYPE_LABELS,
   agentCliCommand,
+  ALL_AGENT_TYPES,
   type AgentType,
   DEFAULT_TERMINAL_FONT_FAMILY,
   isShellAgentType,
@@ -21,22 +23,11 @@ import styles from '../PreferencesModal.module.css'
 import { CustomAgentsSection } from './CustomAgentsSection'
 import { SettingsSection } from './primitives'
 
+// Shells first, then coding agents.
 const AGENTS: { id: AgentType; label: string }[] = [
-  { id: 'shell', label: 'Shell' },
-  { id: 'wsl', label: 'WSL' },
-  { id: 'claude', label: 'Claude Code' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'copilot', label: 'GitHub Copilot' },
-  { id: 'cursor', label: 'Cursor' },
-  { id: 'antigravity', label: 'Antigravity' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'freebuff', label: 'Freebuff' },
-  { id: 'mimo', label: 'Mimo Code' },
-  { id: 'kiro', label: 'Kiro CLI' },
-  { id: 'kimi', label: 'Kimi Code' },
-  { id: 'grok', label: 'Grok Build' },
-  { id: 'codewhale', label: 'Codewhale' },
-]
+  ...ALL_AGENT_TYPES.filter(isShellAgentType),
+  ...ALL_AGENT_TYPES.filter((id) => !isShellAgentType(id)),
+].map((id) => ({ id, label: AGENT_TYPE_LABELS[id] }))
 
 export function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const t = useT()

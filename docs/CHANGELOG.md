@@ -28,6 +28,16 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   official skills even after they are installed, with their version and a link to their source. A
   project's MCP & skills tab installs, updates, or removes them inside the repository, where Claude
   Code reads `.claude/skills` and Codex reads `.agents/skills`, so they travel with the project.
+- **Minimize a terminal instead of deleting it.** The terminal header gets a minimize button, and
+  the sidebar context menu gets a matching option, that hides the pane while keeping its process
+  running in the background. Clicking the terminal in the sidebar reopens it.
+- **Close tabs with the middle mouse button.** Terminal sub-tabs and workspace tabs in the title
+  bar now close on a middle-click, matching browser tab-strip convention.
+- **Start agents and follow orchestration from your phone.** Remote control can now start a Claude
+  Code or Codex terminal in any project from the paired device; the desktop opens it already shared
+  and the phone jumps into the chat. The phone also lists the orchestrator workers of shared projects
+  with their task, status, time, and cost, and says when one is waiting for approval on the desktop.
+  Read-only devices cannot start agents.
 - **Leftover processes in Memory analytics.** Dev servers and runtimes still running after the
   terminal that started them closed (Node, Python, shells, agent CLIs) are listed with how long they
   have been running, when they started, their folder, and their memory, each with an End button and
@@ -128,6 +138,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   sentence with a send phrase such as "thanks Jev" or "send it" and it fires as soon as
   the phrase is recognised, and a pause of about two seconds sends by itself. Releasing
   F9 or clicking the stop button still works.
+- **The `alethe` command gains `--version`, `--help` and `update`.** `alethe update` installs a
+  newer release from the terminal, and refuses while Alethe is open, since installing would close it
+  and its terminals. A command installed by an older release shows as outdated in Preferences →
+  Integrations until it is reinstalled.
+- **Worker cards now show each worker's model and effort**, including whether each value came from
+  the planner, a role, a fallback role, or the CLI default.
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with
@@ -429,6 +445,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   and cloud sign-in could not complete.
 - The Alethe Cloud session token is stored in the system credential store instead of a plain file,
   and signing out also revokes the device on the server.
+- **One agent list everywhere.** Onboarding now also detects the Cursor CLI, and agent names in
+  onboarding and Preferences → Terminal match the rest of the app (for example "Claude Code").
 - **Backups restore the whole profile.** An export now also carries the profile name, the terminal
   prompt history, open Markdown tabs, and folded settings sections, and saves the profile photo and
   project logos that were only links inside the file. Importing puts all of it back, and a
@@ -535,9 +553,60 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   the skill reads.
 - **Saved setups that name the skill `alethe-orchestrate` still install it,** and only for Claude Code
   and Codex, the agents it supports.
+- **Searchable pickers inside dialogs keep the cursor in their search box.** Model pickers in
+  Preferences and the project agent settings lost focus to the dialog as soon as the list opened.
+- **Antigravity panes find a new conversation right away.** Alethe also reads Antigravity's
+  `last_conversations.json`, so a chat started in a pane is saved and reopened even before
+  `conversation_metadata.json` lists it, including in folders whose path has a space.
+- **Long Claude Code replies no longer get their earlier lines written over the newer ones on
+  Windows** ([#303](https://github.com/Kc1t/alethe-agents/issues/303)). Panes force a terminal
+  resize on many events (switching tabs, the inspector, resuming), and ConPTY repaints the whole
+  visible screen on every resize, even to the size it already has. A resize to the pty's current
+  size is now skipped, so only a real size change repaints.
+- **Typing accented characters quickly no longer duplicates letters or brings back text already
+  sent.** The terminal empties its hidden input buffer once typing pauses, never during an open IME
+  composition.
+- **Remote control can send a message Claude Code queued while busy.** With the message box empty,
+  tapping send twice on the phone sends the queued message right away, the phone's take on Claude
+  Code's Ctrl+X Ctrl+S.
+- **On macOS, the window uses the native title bar and traffic lights**, so maximize, restore and
+  display changes behave like in other Mac apps. On every platform, double-clicking an empty part
+  of the title bar now maximizes or restores the window.
+- **Shift+Enter adds a line instead of sending.** Claude Code and Codex now get a line break in the
+  prompt. In Claude Code panes, Ctrl+Enter (Cmd+Enter on macOS) sends the typed message right away,
+  even while the agent is busy and Enter would only queue it.
+- **Long task titles in the Todo sidebar wrap instead of being cut off.** Tags and project links
+  move below the title, and rows keep their height when the hover actions appear.
+- **On macOS, agents installed with npm, bun, pnpm, Volta, nvm or fnm are found when Alethe is
+  opened from the Dock or Finder.** Remote control's Tailscale mode also finds the CLI bundled in
+  Tailscale.app or installed with Homebrew.
+- **Picking `C:\Windows\System32\wsl.exe` as the terminal shell opens WSL**, the same as `wsl.exe`.
+- **Right-click paste no longer pastes twice.** The same clipboard text arriving again within two
+  seconds is ignored by the terminal.
+- **Cloning keeps the repository's own agent guides.** Cloning a repository from Alethe no longer
+  overwrites its `AGENTS.md` or `CLAUDE.md` with the generated briefing, and a README with accented
+  or other non-ASCII characters no longer crashes the briefing step.
+- **New terminals open right away on macOS.** Alethe read the Mac's free memory as 0 MB whenever
+  macOS was compressing memory, so every new CLI sat on "Waiting for memory" for up to 45 seconds,
+  the RAM indicator stayed red, and the resource manager kept trimming caches and hibernating idle
+  terminals. Free memory now comes from the share the macOS kernel reports as available.
+- **Moving a project into a group works again.** **Move to group…** now lists the groups to pick
+  from (nested ones with their path) instead of asking for a typed number, which did nothing on
+  macOS, and a project already in a group can move straight to another one. Dropping a dragged
+  project anywhere on a group's area, including the "No projects yet" space of an empty group,
+  moves it into that group; before, only the group's name strip took the drop.
+
 - **Exporting a backup no longer stops at a permission error.** Files the embedded browser keeps
   locked while Alethe is open are left out, and any other file in use is skipped and named in the
   confirmation instead of failing the whole export.
+- On Linux, terminals and files or links opened from the AppImage no longer inherit the AppImage's
+  bundled library and runtime paths. System tools such as `curl` and `python` run normally inside
+  Alethe terminals again, and links open in the browser with its own libraries.
+- **Pasting images and Finder files into a terminal works on macOS.** Ctrl+V or Cmd+V with a
+  screenshot or a copied image now saves it as a PNG and pastes its path, so Claude Code attaches
+  it as an image; files copied in Finder paste as their paths. Before, only text was read and an
+  image on the clipboard pasted nothing.
+
 - Closing or killing a terminal on Windows now also ends the dev servers and background jobs it
   started, even when the shell that launched them had already exited. Each terminal runs inside its
   own Job Object, so a `npm run dev` left behind by an agent no longer keeps holding memory.
@@ -549,6 +618,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Kimi workers started by the orchestration skill on Windows no longer lose everything after the
   first line of their task, and Kimi write workers no longer fail at startup. Codex resumes keep
   the worker's sandbox, and a Claude worker that times out can be resumed.
+- **The Claude usage indicator shows up in the top bar again with Orchestration open.** Each
+  Orchestration pane read Claude usage on its own every minute, so the usage service refused the
+  reads and the top bar never got one to show. All readers now share a single request.
+
 - Claude panes reopen on the conversation they were on when the project folder has a space, an
   underscore, an accent or other punctuation in its path. Alethe looked for the saved conversation
   in the wrong directory, treated it as gone and started a new chat on every launch.
@@ -576,7 +649,24 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Terminal clipboard events now use bounded paste writes instead of bypassing them through xterm's
   keyboard input path. Failed or slow paste writes no longer automatically restart the live agent session,
   and read-only terminals reject clipboard input.
+- **Switching accounts no longer overwrites the new account's plugin data.** The Todo list and
+  other plugin data were kept from the previous account after a switch, and the next change saved
+  them over the new account's. Switching now reloads the app, as creating or deleting an account
+  already did.
 
+- **Orchestrator quota warnings now identify the limit that triggered them** and use raw utilization
+  so their threshold matches the usage indicators.
+- **GitHub sync is reachable from Preferences → Account and reports push and pull results.**
+  Existing profiles can open the sync dialog from Account settings without repeating onboarding,
+  and GitHub Gist or cloud push and pull now show a toast when they succeed or fail, alongside the
+  inline message.
+- **Pairing from Preferences now shows its QR code and address.** You can scan the code or enter
+  its address manually while pairing is active.
+- **Routing rules now show their role on the orchestrator board**, instead of an incomplete
+  usage label.
+- **The orchestration board no longer auto-fits while hovered or after you move its view.** Live
+  worker updates and container resizes preserve the view you chose, while Fit and tab switches
+  still bring the selected board into view.
 - **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
   server or watcher it already has running on the board (for example after reopening the app, or
   from a new planner terminal) now reuses that running shell and adopts it under the new planner,

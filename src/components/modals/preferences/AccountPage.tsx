@@ -1,7 +1,8 @@
-import { Check, ChevronRight, UserRound } from 'lucide-react'
+import { Check, ChevronRight, Cloud, UserRound } from 'lucide-react'
 
 import { LOCALES, useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { useUiStore } from '../../../stores/uiStore'
 import { ImageInput } from '../ImageInput'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
@@ -20,6 +21,7 @@ export function AccountPage({
   const preferences = useProjectsStore((state) => state.preferences)
   const setLanguage = useProjectsStore((state) => state.setLanguage)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
+  const openModal = useUiStore((state) => state.openModal_)
 
   return (
     <>
@@ -76,6 +78,14 @@ export function AccountPage({
         <button type="button" className={styles.secondaryButton} onClick={onManageAccounts}>
           <UserRound size={15} />
           {t('profile.manageAccounts')}
+          <ChevronRight size={15} />
+        </button>
+      </SettingsSection>
+
+      <SettingsSection id="sync" title={t('sync.cloud.title')} description={t('sync.subtitle')}>
+        <button type="button" className={styles.secondaryButton} onClick={() => openModal('sync')}>
+          <Cloud size={15} />
+          {t('sync.title')}
           <ChevronRight size={15} />
         </button>
       </SettingsSection>

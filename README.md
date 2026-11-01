@@ -13,7 +13,7 @@
     <br />
     Run Claude Code, Codex, Copilot and your shells side by side — in one local-first desktop app.
     <br />
-    <a href="./README.zh-CN.md">中文说明</a>
+    <a href="./README.pt-BR.md">Português</a> · <a href="./README.zh-CN.md">中文说明</a>
   </p>
 
   <p align="center">
@@ -394,6 +394,20 @@ See Alethe in real development workflows and learn how to orchestrate coding age
   </tr>
   <tr>
     <td>
+      <a href="https://www.youtube.com/watch?v=ujW-e6w3NQA">
+        <img src="https://i.ytimg.com/vi/ujW-e6w3NQA/hqdefault.jpg" alt="How to Orchestrate AI Agents with a FREE Skill" width="100%">
+      </a>
+    </td>
+    <td>
+      <strong><a href="https://www.youtube.com/watch?v=ujW-e6w3NQA">How to Orchestrate AI Agents with a FREE Skill</a></strong>
+      <br><br>
+      A tutorial on orchestrating AI coding agents with the free Alethe Orchestrate skill.
+      <br><br>
+      <sub>Kauã Miguel - Dev · Portuguese</sub>
+    </td>
+  </tr>
+  <tr>
+    <td>
       <a href="https://www.youtube.com/watch?v=reUN7CkMbgM&amp;t=100s">
         <img src="https://i.ytimg.com/vi/reUN7CkMbgM/hqdefault.jpg" alt="A Day in the Life of a Software Developer — Devlog 1" width="100%">
       </a>
@@ -424,15 +438,21 @@ Thanks to everyone helping shape Alethe.
   <a href="https://github.com/Jbnado"><img src="https://github.com/Jbnado.png?size=100" width="80" height="80" alt="Jbnado" title="Jbnado" /></a>
   <a href="https://github.com/MiguelSilvaPorto"><img src="https://github.com/MiguelSilvaPorto.png?size=100" width="80" height="80" alt="MiguelSilvaPorto" title="MiguelSilvaPorto" /></a>
   <a href="https://github.com/HayatoG"><img src="https://github.com/HayatoG.png?size=100" width="80" height="80" alt="HayatoG" title="HayatoG" /></a>
+  <a href="https://github.com/SrAmaral"><img src="https://github.com/SrAmaral.png?size=100" width="80" height="80" alt="SrAmaral" title="SrAmaral" /></a>
   <a href="https://github.com/Kc1tDev"><img src="https://github.com/Kc1tDev.png?size=100" width="80" height="80" alt="Kc1tDev" title="Kc1tDev" /></a>
   <a href="https://github.com/lucapohl-angel"><img src="https://github.com/lucapohl-angel.png?size=100" width="80" height="80" alt="lucapohl-angel" title="lucapohl-angel" /></a>
   <a href="https://github.com/slegarraga"><img src="https://github.com/slegarraga.png?size=100" width="80" height="80" alt="slegarraga" title="slegarraga" /></a>
   <a href="https://github.com/HyperTechDevelopment"><img src="https://github.com/HyperTechDevelopment.png?size=100" width="80" height="80" alt="HyperTechDevelopment" title="HyperTechDevelopment" /></a>
-  <a href="https://github.com/S1LV4"><img src="https://github.com/S1LV4.png?size=100" width="80" height="80" alt="S1LV4" title="S1LV4" /></a>
-  <a href="https://github.com/pinhaum"><img src="https://github.com/pinhaum.png?size=100" width="80" height="80" alt="pinhaum" title="pinhaum" /></a>
   <a href="https://github.com/AiurArtanis"><img src="https://github.com/AiurArtanis.png?size=100" width="80" height="80" alt="AiurArtanis" title="AiurArtanis" /></a>
+  <a href="https://github.com/S1LV4"><img src="https://github.com/S1LV4.png?size=100" width="80" height="80" alt="S1LV4" title="S1LV4" /></a>
+  <a href="https://github.com/Jhonata-Anderson"><img src="https://github.com/Jhonata-Anderson.png?size=100" width="80" height="80" alt="Jhonata-Anderson" title="Jhonata-Anderson" /></a>
+  <a href="https://github.com/pinhaum"><img src="https://github.com/pinhaum.png?size=100" width="80" height="80" alt="pinhaum" title="pinhaum" /></a>
+  <a href="https://github.com/Tavaressan"><img src="https://github.com/Tavaressan.png?size=100" width="80" height="80" alt="Tavaressan" title="Tavaressan" /></a>
   <a href="https://github.com/1arley"><img src="https://github.com/1arley.png?size=100" width="80" height="80" alt="1arley" title="1arley" /></a>
+  <a href="https://github.com/afthex"><img src="https://github.com/afthex.png?size=100" width="80" height="80" alt="afthex" title="afthex" /></a>
   <a href="https://github.com/potatoiscompiled"><img src="https://github.com/potatoiscompiled.png?size=100" width="80" height="80" alt="potatoiscompiled" title="potatoiscompiled" /></a>
+  <a href="https://github.com/Arthurandrealmeida"><img src="https://github.com/Arthurandrealmeida.png?size=100" width="80" height="80" alt="Arthurandrealmeida" title="Arthurandrealmeida" /></a>
+  <a href="https://github.com/Erikkaso"><img src="https://github.com/Erikkaso.png?size=100" width="80" height="80" alt="Erikkaso" title="Erikkaso" /></a>
   <a href="https://github.com/GustavoAlmeidaDoNascimento"><img src="https://github.com/GustavoAlmeidaDoNascimento.png?size=100" width="80" height="80" alt="GustavoAlmeidaDoNascimento" title="GustavoAlmeidaDoNascimento" /></a>
   <a href="https://github.com/chintanparmar011"><img src="https://github.com/chintanparmar011.png?size=100" width="80" height="80" alt="chintanparmar011" title="chintanparmar011" /></a>
   <a href="https://github.com/jo20132012"><img src="https://github.com/jo20132012.png?size=100" width="80" height="80" alt="jo20132012" title="jo20132012" /></a>
@@ -441,8 +461,7 @@ Thanks to everyone helping shape Alethe.
   <a href="https://github.com/rlevidev"><img src="https://github.com/rlevidev.png?size=100" width="80" height="80" alt="rlevidev" title="rlevidev" /></a>
   <a href="https://github.com/mapsiva"><img src="https://github.com/mapsiva.png?size=100" width="80" height="80" alt="mapsiva" title="mapsiva" /></a>
   <a href="https://github.com/moisesz10"><img src="https://github.com/moisesz10.png?size=100" width="80" height="80" alt="moisesz10" title="moisesz10" /></a>
-  <a href="https://github.com/Bakurin0"><img src="https://github.com/Bakurin0.png?size=100" width="80" height="80" alt="Bakurin0" title="Bakurin0" /></a>
-  <a href="https://github.com/SrAmaral"><img src="https://github.com/SrAmaral.png?size=100" width="80" height="80" alt="SrAmaral" title="SrAmaral" /></a>
+  <a href="https://github.com/Bakurinodev"><img src="https://github.com/Bakurinodev.png?size=100" width="80" height="80" alt="Bakurinodev" title="Bakurinodev" /></a>
   <a href="https://github.com/diegoliveiraa"><img src="https://github.com/diegoliveiraa.png?size=100" width="80" height="80" alt="diegoliveiraa" title="diegoliveiraa" /></a>
   <a href="https://github.com/VicktorMS"><img src="https://github.com/VicktorMS.png?size=100" width="80" height="80" alt="VicktorMS" title="VicktorMS" /></a>
   <a href="https://github.com/rad4manthys"><img src="https://github.com/rad4manthys.png?size=100" width="80" height="80" alt="rad4manthys" title="rad4manthys" /></a>
@@ -459,12 +478,15 @@ Thanks to everyone helping shape Alethe.
   <a href="https://github.com/ThiagoSales17"><img src="https://github.com/ThiagoSales17.png?size=100" width="80" height="80" alt="ThiagoSales17" title="ThiagoSales17" /></a>
   <a href="https://github.com/opedrooz"><img src="https://github.com/opedrooz.png?size=100" width="80" height="80" alt="opedrooz" title="opedrooz" /></a>
   <a href="https://github.com/devmatheusmota"><img src="https://github.com/devmatheusmota.png?size=100" width="80" height="80" alt="devmatheusmota" title="devmatheusmota" /></a>
+  <a href="https://github.com/Laiirton"><img src="https://github.com/Laiirton.png?size=100" width="80" height="80" alt="Laiirton" title="Laiirton" /></a>
   <a href="https://github.com/JohnPss"><img src="https://github.com/JohnPss.png?size=100" width="80" height="80" alt="JohnPss" title="JohnPss" /></a>
   <a href="https://github.com/GabrielKLopes"><img src="https://github.com/GabrielKLopes.png?size=100" width="80" height="80" alt="GabrielKLopes" title="GabrielKLopes" /></a>
   <a href="https://github.com/floze-the-genius"><img src="https://github.com/floze-the-genius.png?size=100" width="80" height="80" alt="floze-the-genius" title="floze-the-genius" /></a>
   <a href="https://github.com/claude"><img src="https://github.com/claude.png?size=100" width="80" height="80" alt="claude" title="claude" /></a>
+  <a href="https://github.com/BrunoSSantana"><img src="https://github.com/BrunoSSantana.png?size=100" width="80" height="80" alt="BrunoSSantana" title="BrunoSSantana" /></a>
   <a href="https://github.com/aryansk"><img src="https://github.com/aryansk.png?size=100" width="80" height="80" alt="aryansk" title="aryansk" /></a>
   <a href="https://github.com/sousaakira"><img src="https://github.com/sousaakira.png?size=100" width="80" height="80" alt="sousaakira" title="sousaakira" /></a>
+  <a href="https://github.com/AFSFerreira"><img src="https://github.com/AFSFerreira.png?size=100" width="80" height="80" alt="AFSFerreira" title="AFSFerreira" /></a>
   <!-- contributors:end -->
 </p>
 

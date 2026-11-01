@@ -29,6 +29,7 @@ import { sidebarTabLabel, sidebarTabPanelLabel } from '../../lib/plugins'
 import { useSidebarViews } from '../../lib/viewPlacement'
 import { formatShortcut } from '../../lib/platform'
 import {
+  projectDropGroupId,
   sidebarDragKind,
   type SidebarDropIndicator,
   sidebarInsertionIndex,
@@ -58,7 +59,9 @@ const sidebarCollisionDetection: CollisionDetection = (args) => {
     const target = String(id)
     if (target === String(args.active.id)) return false
     if (kind === 'terminal') return target.startsWith('proj:')
-    if (kind === 'project') return target.startsWith('proj:') || target.startsWith('group:')
+    if (kind === 'project') {
+      return target.startsWith('proj:') || projectDropGroupId(target) !== undefined
+    }
     if (kind === 'group') {
       const sourceId = String(args.active.id).slice('grp:'.length)
       return (
@@ -88,7 +91,11 @@ const sidebarCollisionDetection: CollisionDetection = (args) => {
 function dropIndicatorForEvent(event: DragMoveEvent | DragEndEvent): SidebarDropIndicator | null {
   if (!event.over) return null
   const id = String(event.over.id)
-  if (id.startsWith('group:') || sidebarDragKind(String(event.active.id)) === 'terminal') {
+  if (
+    id.startsWith('group:') ||
+    id.startsWith('group-body:') ||
+    sidebarDragKind(String(event.active.id)) === 'terminal'
+  ) {
     return { id, edge: 'inside' }
   }
 
@@ -146,6 +153,7 @@ export function NormalProjectSidebar() {
       reorderUngrouped: s.reorderUngrouped,
       reorderGroups: s.reorderGroups,
       togglePane: s.togglePane,
+      minimizePane: s.minimizePane,
       setLaneVisible: s.setLaneVisible,
       setTerminalRemoteShared: s.setTerminalRemoteShared,
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
@@ -296,10 +304,9 @@ export function NormalProjectSidebar() {
       return
     }
 
-    if (dragged.startsWith('proj:') && target.startsWith('group:')) {
-      const [, projectId] = dragged.split(':')
-      const [, groupId] = target.split(':')
-      actions.moveProjectToGroup(projectId, groupId === 'ungrouped' ? null : groupId)
+    const dropGroupId = projectDropGroupId(target)
+    if (dragged.startsWith('proj:') && dropGroupId !== undefined) {
+      actions.moveProjectToGroup(dragged.slice('proj:'.length), dropGroupId)
       return
     }
 
@@ -465,7 +472,9 @@ export function NormalProjectSidebar() {
         onOpenOnly={() => onGroupOpenAll(g, 'only')}
         dragKind={draggingKind}
         reorderEdge={dropIndicator?.id === `grp:${g.id}` ? dropIndicator.edge : null}
-        dropInside={dropIndicator?.id === `group:${g.id}`}
+        dropInside={
+          dropIndicator?.id === `group:${g.id}` || dropIndicator?.id === `group-body:${g.id}`
+        }
       />
     )
   }

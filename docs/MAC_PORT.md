@@ -43,6 +43,7 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 - `pending` · `backend` · Writing Codex hooks removes the unmarked subagent hook blocks older releases appended to `.codex/config.toml`
   - Files: `src-tauri/src/agent_events.rs`
 - `pending` · `ui` · Tutorials page in Preferences plays the Alethe videos inline (YouTube privacy-enhanced embed) with links to YouTube
+  - Commit: `dab0d02d` feat: playbooks editor, tutorials, cloud sync v3 and Jev as a plugin
   - Files: `src/lib/tutorials.ts`, `src/components/modals/preferences/TutorialsPage.tsx`, `src/components/modals/PreferencesModal.tsx`
 - `pending` · `ui` · New install defaults: Elite Pure Black, clean style, reduced motion, 90% zoom, Dark Lemon terminal, sidebars 380/420; the default avatar is the app icon
   - Files: `src/lib/types.ts`, `src/stores/projectsStore.migrations.ts`, `src/lib/profile.ts`, `src/lib/themeIcons.ts`, `index.html`
@@ -63,11 +64,79 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 - `pending` · `contract` · Jev moves to the external `alethe.jev` plugin; the plugin API goes to version 2 (accepts manifests 1..=2) and gains overlays, settings sections, workspace control, terminal input, toasts and events
   - Files: `src/lib/plugins/workspace.ts`, `src/lib/plugins/legacyMigration.ts`, `src/components/ContributedOverlays/index.tsx`, `docs/PLUGINS.md`
   - Contract: `Preferences` drops `voiceCommandApiKey`, `voiceKeepListening` and every `dictation*` key; on load they are handed once to `plugin-data/alethe.jev.json` as `legacyPreferences` (only when that record has neither `settings` nor `legacyPreferences`), then removed from `projects.json`; `dictationEnabled` leaves the synced `settings` keys; new plugin capabilities `ui.overlay`, `ui.settings`, `workspace.read`, `workspace.control`, `terminal.write` and `listen:<event>`. The Mac app has no plugin host, so it drops its built-in voice bar or keeps it outside sync
+- `pending` · `ui` · `eb426c5` fix(ui): keep the Dropdown search usable inside modal dialogs
+  - Files: `src/components/ui/Dropdown.tsx`
+- `skip (npm packages of the Tauri app)` · `backend` · `3ad4ce9` fix(build): align Tauri plugin npm packages with their Rust crates
+  - Files: `package.json`, `package-lock.json`
+- `pending` · `ui` · `6376021` fix(orchestrator): keep the board view still during a live dispatch
+  - Files: `src/components/OrchestratorPane/index.tsx`, `src/lib/orchestratorViewPolicy.ts`
+- `pending` · `ui` · `1334e64` feat(orchestrator): show the effective model and effort of every worker
+  - Files: `src/components/OrchestratorPane/index.tsx`, `src/lib/orchestratorWorkerDisplay.ts`
+  - Native subagent cards show no model chip (`31d4774`)
+- `pending` · `backend` · `8bf7bf4` feat(cli): support --version, --help and update on the alethe binary
+  - Files: `src-tauri/src/cli_launch.rs`, `src-tauri/src/cli_shim.rs`, `src-tauri/src/lib.rs`
+- `pending` · `backend` · `7dc3fdd` fix(cli): flag a terminal command left by an older release as outdated
+  - Files: `src-tauri/src/cli_shim.rs`
+- `pending` · `ui` · `0c3eaa6` fix(remote): show the pairing QR code in Preferences
+  - Files: `src/components/modals/RemotePairingQr.tsx`, `src/components/modals/preferences/RemoteControlPage.tsx`
+- `pending` · `ui` · `44a0bca` fix(sync): reach the sync dialog from Preferences and report every push and pull
+  - Files: `src/components/modals/SyncModal.tsx`, `src/components/modals/preferences/AccountPage.tsx`
+- `skip (ConPTY repaints on a same-size resize; Unix never signals one)` · `backend` · `dbd0718` fix(pty): skip a resize to the size the pty already has (#303)
+  - Files: `src-tauri/src/pty.rs`
+- `pending` · `backend` · `4cb2beb` fix(sessions): resume Claude chats in cwds with spaces and discover new Antigravity conversations
+  - Files: `src-tauri/src/antigravity_sessions.rs`
+- `skip (Tauri window chrome; the Swift app has native window controls)` · `ui` · `46ea5fc` fix(macos): use the native title bar and traffic lights
+  - Files: `src-tauri/tauri.macos.conf.json`, `src-tauri/capabilities/default.json`, `src/components/TitleBar/index.tsx`
+- `pending` · `backend` · `56f16b7` fix(remote): let the phone send a message Claude Code queued while busy
+  - Files: `src-tauri/src/remote/http.rs`, `src-tauri/remote/app.js`
+  - Contract: `POST /api/agent-control` accepts `action: "send_now"` (Claude Code only), written as `Ctrl+X` then `Ctrl+S` 60 ms apart
+- `pending` · `ui` · `20546e1` feat(terminal): minimize a pane and reopen it from the sidebar
+  - Files: `src/stores/projectsStore.terminalSlices.ts`, `src/components/TerminalPane/index.tsx`, `src/components/ProjectSidebar/sidebarMenus.tsx`
+- `pending` · `ui` · `168167d` fix(usage): name the quota window behind the orchestrator warning
+  - Files: `src/components/OrchestratorPane/index.tsx`, `src/hooks/useOrchestratorQuotaWarnings.ts`
+- `pending` · `backend` · `a5857ff` fix(macos): find npm-global agents and the Tailscale CLI under Launch Services' PATH
+  - Files: `src-tauri/src/cli_resolver.rs`, `src-tauri/src/remote/util.rs`
+- `pending` · `ui` · `80048bf` fix(todos): wrap task titles above their metadata
+  - Files: `src/plugins/todos/TodoSidebar.module.css`
+- `pending` · `ui` · `0650e0f` fix(todos): keep row height stable when actions appear
+  - Files: `src/plugins/todos/TodoSidebar.module.css`
+- `pending` · `ui` · `e8c29da` fix(terminal): Shift+Enter adds a line, Ctrl/Cmd+Enter sends now in Claude Code
+  - Files: `src/components/XTermView/useXtermSession.ts`
+- `pending` · `ui` · `889cece` fix(profiles): reload the app when switching profiles
+  - Files: `src/components/modals/ProfilesModal.tsx`
+- `pending` · `ui` · `5a53321` fix(i18n): polish zh-CN memory analytics wording after f8f0a21 sync
+  - Files: `src/lib/i18n/messages/zh-CN.ts`
+- `pending` · `ui` · `8c61b65` i18n(zh-CN): unify Shell casing
+  - Files: `src/lib/i18n/messages/zh-CN.ts`
+- `pending` · `ui` · `1c7c987` i18n(zh-CN): Shell casing in counts
+  - Files: `src/lib/i18n/messages/zh-CN.ts`
+- `skip (WSL is Windows-only)` · `platform` · `86589be` fix(wsl): recognize an absolute path to wsl.exe as the WSL launcher
+  - Files: `src-tauri/src/wsl.rs`
+- `pending` · `ui` · `afe693d` feat(tabs): close terminal sub-tabs and workspace tabs with middle-click
+  - Files: `src/components/SubTabsLane/index.tsx`, `src/components/TitleBar/index.tsx`
+- `pending` · `ui` · `305a99d` fix(terminal): ignore duplicate paste within 2 seconds
+  - Files: `src/components/XTermView/useXtermSession.ts`
+- `pending` · `backend` · fix(memory): read available memory from the kernel on macOS
+  - Files: `src-tauri/src/stats.rs`
+- `pending` · `ui` · fix(sidebar): pick the group from a list and drop projects on a group's area
+  - Files: `src/components/ProjectSidebar/sidebarMenus.tsx`, `src/components/ProjectSidebar/ContextMenu.tsx`,
+    `src/components/ProjectSidebar/NormalGroupNode.tsx`
+- `pending` · `backend` · feat(remote): start agents and list orchestration workers from a paired device
+  - Files: `src-tauri/src/remote/http.rs`, `src-tauri/src/remote/workspace.rs`, `src-tauri/remote/app.js`
+  - Contract: new remote API `POST /api/open-agent` (`projectId`, `agent`: `claude` or `codex`) and `GET /api/orchestration` (workers of projects with a shared terminal)
+- `pending` · `backend` · fix(clone): keep existing agent guides and cut the README briefing at a char boundary
+  - Files: `src-tauri/src/projects.rs`
+- `pending` · `ui` · refactor(agents): derive onboarding and terminal agent lists from one source
+  - Files: `src/components/modals/OnboardingModal.tsx`, `src/components/modals/preferences/TerminalPage.tsx`
 - `pending` · `contract` · fix(backup): export the whole profile and skip files in use
   - Files: `src-tauri/src/backup.rs`, `src/lib/backup.ts`, `src/lib/storageNamespace.ts`
   - Contract: archives gain `alethe-backup.json` at the root (`format: 1`, `appVersion`, `createdAtMs`, `profileName`, `localStorage` keyed without the `alethe:<profile>:` prefix, `skipped`), never extracted on import; archives leave out `browser-session/`, `mcp/backups/`, `speech-models/`, `tools/`, `cloud_sync.json` and `sync-state.json`; the archived `projects.json` embeds `iconUrl` and `profileImageUrl` links as `data:` URLs of up to 4 MB each; import renames the profile to `profileName` unless another profile already uses it
 - `pending` · `ui` · feat(about): creator, contribution links, and installing an older release
   - Files: `src/components/modals/preferences/AboutPage.tsx`, `src/lib/releases.ts`, `src-tauri/src/release_install.rs`
+- `skip (Linux AppImage only; the Mac app does not ship as an AppImage)` · `platform` · fix(pty): keep AppImage env out of terminals
+  - Files: `src-tauri/src/child_env.rs`, `src-tauri/src/cli_resolver.rs`
+- `pending` · `backend` · fix(clipboard): paste images and Finder files into a terminal on macOS
+  - Files: `src-tauri/src/diagnostics.rs`
 - `pending` · `ui` · feat(memory): list leftover processes and end orphaned terminal children
   - Files: `src/components/modals/MemoryAnalyticsModal.tsx`, `src-tauri/src/leftover_processes.rs`
 - `skip (Windows Job Objects; macOS terminals already end their process group)` · `platform` · Terminals run in a per-PTY Job Object so killing one ends orphaned descendants
@@ -75,6 +144,8 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 - `pending` · `contract` · Alethe Cloud sync v3: scoped documents, three-way merge, devices, Supporter plan
   - Files: `src/lib/sync/`, `src-tauri/src/cloud_sync.rs`, `src/hooks/useCloudSync.ts`
   - Contract: [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md) — `/v1` API with device registration and `If-Match`, payload format 3 (`settings`, `projects`, `tooling`), `sync-state.json` per profile, session token in the keyring as `profile:<id>:cloud-sync-token` (plaintext `cloud_sync.json` tokens migrate on load)
+- `pending` · `ui` · fix(usage): share one Claude usage request with the orchestrator
+  - Files: `src/hooks/useOrchestratorQuotaWarnings.ts`, `src/lib/claudeUsageCache.ts`
 - `pending` · `contract` · MCP servers and skills saved per account and per project, carried by sync
   - Files: `src/lib/toolingManifest.ts`, `src/lib/toolingNotice.ts`, `src/components/ToolingManifestPanel/`
   - Contract: `tooling` scope keyed by `<agent>::<name>`; secret env and header values are never stored

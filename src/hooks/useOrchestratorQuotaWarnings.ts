@@ -2,14 +2,26 @@ import { useEffect, useState } from 'react'
 
 import { type AgentFitness, claudeFitness, codexFitness } from '../lib/agentFitness'
 import { USAGE_FALLBACK_THRESHOLD, USAGE_POLL_MS } from '../lib/agentCanvasConfig'
+import { loadClaudeUsage } from '../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../lib/codexUsageCache'
-import { getClaudeUsage, setAgentFitness } from '../lib/tauri'
+import { setAgentFitness } from '../lib/tauri'
 import { useProjectsStore } from '../stores/projectsStore'
 
 export type QuotaWarning = {
   agent: 'claude' | 'codex'
   pct: number
   resetsAt: string | null
+  window: string
+}
+
+export function quotaWarningForFitness(
+  agent: QuotaWarning['agent'],
+  fitness: AgentFitness,
+): QuotaWarning | null {
+  const raw = fitness.windows[fitness.worst] ?? fitness.used
+  return fitness.rateLimited || raw >= USAGE_FALLBACK_THRESHOLD
+    ? { agent, pct: Math.round(raw), resetsAt: fitness.resetsAt, window: fitness.worst }
+    : null
 }
 
 export function useOrchestratorQuotaWarnings(): QuotaWarning[] {
@@ -33,19 +45,18 @@ export function useOrchestratorQuotaWarnings(): QuotaWarning[] {
 
     const report = async (agent: 'claude' | 'codex', fitness: AgentFitness) => {
       await setAgentFitness(agent, fitness).catch(() => undefined)
-      return fitness.rateLimited || fitness.used >= USAGE_FALLBACK_THRESHOLD
-        ? { agent, pct: fitness.used, resetsAt: fitness.resetsAt }
-        : null
+      return quotaWarningForFitness(agent, fitness)
     }
 
     const check = async () => {
       const next: QuotaWarning[] = []
       if (claudeAccess) {
-        try {
-          const warning = await report('claude', claudeFitness(await getClaudeUsage()))
+        // Through the shared cache: the usage API rate limits readily, and one request per pane
+        // would keep the top bar from ever getting a reading.
+        const usage = await loadClaudeUsage()
+        if (usage) {
+          const warning = await report('claude', claudeFitness(usage))
           if (warning) next.push(warning)
-        } catch {
-          // ignore
         }
       }
       if (codexAccess) {

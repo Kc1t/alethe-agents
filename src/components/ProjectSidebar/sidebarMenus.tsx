@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Globe2,
   Layout,
+  Minus,
   MoveRight,
   PanelTopOpen,
   Pencil,
@@ -22,6 +23,7 @@ import {
 import { relaunchAgentPty } from '../../lib/agentRelaunch'
 import { graphifyRepoOf } from '../../lib/claudeMcpConfigs'
 import { pickFile, saveFile } from '../../lib/dialog'
+import { groupMoveTargets } from '../../lib/groupMoveTargets'
 import { useT } from '../../lib/i18n'
 import {
   getPtyCwd,
@@ -63,6 +65,7 @@ type MenuActions = Pick<
   | 'addTerminalToWorkspace'
   | 'renameTerminal'
   | 'togglePane'
+  | 'minimizePane'
   | 'setTerminalDisabled'
   | 'killTerminal'
   | 'setLaneVisible'
@@ -108,6 +111,25 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     requestPaneFocus,
     openMarkdownSidebar,
   } = deps
+
+  // A list to pick from: `window.prompt` is a no-op in the macOS webview, and typing a number was
+  // the only way to choose before.
+  const moveToGroupItem = (project: Project): MenuItem[] => {
+    const targets = groupMoveTargets(groups, project.groupId)
+    if (targets.length === 0) return []
+    return [
+      {
+        kind: 'submenu',
+        label: t('ui.sidebar.moveToGroup'),
+        icon: <MoveRight size={14} />,
+        items: targets.map((target) => ({
+          kind: 'item' as const,
+          label: target.label,
+          onClick: () => actions.moveProjectToGroup(project.id, target.id),
+        })),
+      },
+    ]
+  }
 
   const projectMenu = (project: Project): MenuItem[] => [
     ...(project.mode !== 'agentSandbox'
@@ -256,28 +278,17 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
           },
         ]
       : []),
-    {
-      kind: 'item',
-      label: project.groupId ? t('ui.sidebar.removeFromGroup') : t('ui.sidebar.moveToGroup'),
-      icon: <MoveRight size={14} />,
-      onClick: () => {
-        if (project.groupId) {
-          actions.moveProjectToGroup(project.id, null)
-        } else if (groups.length === 0) {
-          window.alert(t('ui.sidebar.createGroupFirst'))
-        } else {
-          const list = groups.map((g, i) => `${i + 1}. ${g.name}`).join('\n')
-          const pick = window.prompt(
-            t('ui.sidebar.moveProjectToWhichGroup', { name: project.name, list }),
-            '1',
-          )
-          const idx = pick ? Number(pick) - 1 : -1
-          if (idx >= 0 && idx < groups.length) {
-            actions.moveProjectToGroup(project.id, groups[idx].id)
-          }
-        }
-      },
-    },
+    ...(project.groupId
+      ? [
+          {
+            kind: 'item' as const,
+            label: t('ui.sidebar.removeFromGroup'),
+            icon: <MoveRight size={14} />,
+            onClick: () => actions.moveProjectToGroup(project.id, null),
+          },
+        ]
+      : []),
+    ...moveToGroupItem(project),
     {
       kind: 'item',
       label: t('ui.sidebar.archiveProject'),
@@ -611,6 +622,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         icon: <Layout size={14} />,
         onClick: () => actions.togglePane(projectId, term.id),
       },
+      ...(isTerminalPane && inSplit
+        ? [
+            {
+              kind: 'item' as const,
+              label: t('ui.sidebar.minimizeTerminal'),
+              icon: <Minus size={14} />,
+              onClick: () => actions.minimizePane(projectId, term.id),
+            },
+          ]
+        : []),
       ...(term.kind === 'markdown' && term.filePath
         ? [
             {

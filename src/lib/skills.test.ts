@@ -117,7 +117,12 @@ function bundled(states: Record<string, BundledSkillState>): BundledSkill {
     version: 1,
     repository: 'https://github.com/Kc1t/alethe-orchestrate-skill',
     body: '',
-    agents: Object.entries(states).map(([agent, state]) => ({ agent, state, path: null, error: null })),
+    agents: Object.entries(states).map(([agent, state]) => ({
+      agent,
+      state,
+      path: null,
+      error: null,
+    })),
   }
 }
 

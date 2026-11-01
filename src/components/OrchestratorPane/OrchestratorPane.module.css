@@ -859,6 +859,26 @@
   color: var(--fg-faint);
 }
 
+.workerSettings {
+  white-space: nowrap;
+}
+
+.settingDefault {
+  color: var(--fg-muted);
+  font-style: italic;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.settingMarker {
+  margin-left: 2px;
+  color: var(--fg-muted);
+  font-size: 8px;
+  font-style: normal;
+  letter-spacing: normal;
+  vertical-align: super;
+}
+
 .worker[data-status='failed'] .metaStatus {
   color: var(--status-offline);
 }

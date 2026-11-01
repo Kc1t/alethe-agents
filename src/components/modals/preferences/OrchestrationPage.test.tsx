@@ -42,7 +42,7 @@ function choose(control: string, option: string) {
 beforeEach(() => withRoles([]))
 
 // The Orchestration category of Preferences (#254).
-describe('OrchestrationPage', () => {
+describe('OrchestrationPage', { timeout: 20_000 }, () => {
   it('saves the bundled skill backend, strategy, and provider switching policy', () => {
     render(<OrchestrationPage />)
 

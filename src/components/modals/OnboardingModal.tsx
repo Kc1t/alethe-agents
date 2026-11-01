@@ -19,7 +19,13 @@ import {
   openInBrowser,
 } from '../../lib/tauri'
 import { getThemeIcon } from '../../lib/themeIcons'
-import type { AgentType } from '../../lib/types'
+import {
+  AGENT_TYPE_LABELS,
+  ALL_AGENT_TYPES,
+  isShellAgentType,
+  type AgentType,
+  type BuiltinAgentType,
+} from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ImageInput } from './ImageInput'
@@ -54,19 +60,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 
 type CodingAgent = Exclude<AgentType, 'shell'>
 
-const AGENTS: { id: CodingAgent; label: string }[] = [
-  { id: 'claude', label: 'Claude' },
-  { id: 'codex', label: 'Codex' },
-  { id: 'copilot', label: 'GitHub Copilot' },
-  { id: 'antigravity', label: 'Antigravity' },
-  { id: 'opencode', label: 'OpenCode' },
-  { id: 'freebuff', label: 'Freebuff' },
-  { id: 'mimo', label: 'Mimo' },
-  { id: 'kiro', label: 'Kiro CLI' },
-  { id: 'kimi', label: 'Kimi Code' },
-  { id: 'grok', label: 'Grok Build' },
-  { id: 'codewhale', label: 'Codewhale' },
-]
+const AGENTS: { id: CodingAgent; label: string }[] = ALL_AGENT_TYPES.filter(
+  (id): id is Exclude<BuiltinAgentType, 'shell' | 'wsl'> => !isShellAgentType(id),
+).map((id) => ({ id, label: AGENT_TYPE_LABELS[id] }))
 
 export function OnboardingModal() {
   const t = useT()

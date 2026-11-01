@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import {
   listenRemoteAutoDisabled,
   listenRemoteMessages,
+  listenRemoteOpenAgent,
   listenRemoteStartFailed,
   setRemoteControlEnabled,
   setRemoteControlMaxDevices,
@@ -12,6 +13,7 @@ import {
   setRemoteControlShellInput,
 } from '../lib/tauri'
 import { translate } from '../lib/i18n'
+import { openRemoteAgent } from '../lib/remoteOpenAgent'
 import { flushProjectsState, useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
@@ -146,6 +148,19 @@ export function useRemoteControlService() {
     if (!enabled) return
     let unlistenMessages: (() => void) | undefined
     let unlistenAutoDisabled: (() => void) | undefined
+    let unlistenOpenAgent: (() => void) | undefined
+    void listenRemoteOpenAgent((event) => {
+      if (!openRemoteAgent(event)) return
+      const locale = useProjectsStore.getState().preferences.language
+      useUiStore.getState().pushToast({
+        title: translate(locale, 'remote.openAgentToastTitle', { device: event.deviceName }),
+        body: event.agent === 'claude' ? 'Claude Code' : 'Codex',
+      })
+    })
+      .then((stop) => {
+        unlistenOpenAgent = stop
+      })
+      .catch(() => undefined)
     void listenRemoteMessages((event) => {
       const locale = useProjectsStore.getState().preferences.language
       useUiStore.getState().pushToast({
@@ -172,6 +187,7 @@ export function useRemoteControlService() {
     return () => {
       unlistenMessages?.()
       unlistenAutoDisabled?.()
+      unlistenOpenAgent?.()
     }
   }, [enabled])
 }

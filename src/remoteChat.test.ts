@@ -44,6 +44,8 @@ function harness() {
     return { openChat, loadTranscript, setChatView, stopTranscriptPolling, renderHome,
       chatSession, setConnectionState, renderTranscript, renderMarkdown, messages,
       setReadOnly: (value) => { readOnly = value },
+      setState: (value) => { state = value },
+      setWorkers: (value) => { workers = value },
       setTranscript: (value) => { transcript = value; renderTranscript() },
       updateChatFeedback,
     };
@@ -88,7 +90,9 @@ describe('remote mobile conversations', () => {
       expect(document.querySelector('.chat-skeleton')).not.toBeNull()
       await settle()
       expect(document.querySelector('.messages-empty')).toHaveTextContent('Start a conversation')
-      expect(document.querySelector('.send-button')).toBeDisabled()
+      // An empty box still sends Claude Code's queued message now; Codex has no queue.
+      if (agent === 'claude') expect(document.querySelector('.send-button')).toBeEnabled()
+      else expect(document.querySelector('.send-button')).toBeDisabled()
       expect(document.querySelector('#messages')).toHaveAttribute('aria-busy', 'false')
     },
   )
@@ -505,6 +509,64 @@ describe('remote mobile conversations', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
   })
 
+  it('starts an agent in a project from the phone and opens it once the desktop shares it', async () => {
+    ui.setState({ groups: [], projects: [{ id: 'p1', name: 'Site', chats: [] }] })
+    ui.renderHome()
+    const button = document.querySelector<HTMLButtonElement>('[data-new-agent="claude"]')!
+    expect(button).toHaveAttribute('data-project', 'p1')
+
+    const shared = {
+      id: 'p1',
+      name: 'Site',
+      chats: [{ ptyId: 'new', name: 'Claude', agent: 'claude' }],
+    }
+    fetchMock
+      .mockResolvedValueOnce(response(null, 204))
+      .mockResolvedValueOnce(response({ groups: [], projects: [shared] }))
+      .mockResolvedValue(response(snapshot()))
+    button.click()
+    await settle()
+    expect(document.querySelector('[data-new-agent="codex"]')).toBeDisabled()
+    await vi.advanceTimersByTimeAsync(1000)
+    await settle()
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(path).toMatch(/\/api\/open-agent$/)
+    expect(JSON.parse(String(init.body))).toEqual({ projectId: 'p1', agent: 'claude' })
+    expect(document.querySelector('[data-new-agent]')).toBeNull()
+  })
+
+  it('hides agent creation on read-only devices', () => {
+    ui.setReadOnly(true)
+    ui.setState({ groups: [], projects: [{ id: 'p1', name: 'Site', chats: [] }] })
+    ui.renderHome()
+    expect(document.querySelector('[data-new-agent]')).toBeNull()
+    expect(document.querySelector('.empty-state')).not.toBeNull()
+  })
+
+  it('lists orchestration workers and asks for approval on the desktop', () => {
+    ui.setWorkers([
+      {
+        id: 'w1',
+        agent: 'codex',
+        status: 'running',
+        task: 'Build the cart',
+        summary: 'Halfway',
+        seconds: 120,
+        costUsd: 0.5,
+      },
+      { id: 'w2', agent: 'claude', status: 'blocked', task: 'Deploy', needsApproval: true },
+    ])
+    ui.renderHome()
+    const rows = document.querySelectorAll('.worker-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('Build the cart')
+    expect(rows[0]).toHaveTextContent('2 min · US$ 0.50')
+    expect(rows[0].querySelector('.terminal-status')).toHaveAttribute('data-status', 'working')
+    expect(rows[1]).toHaveTextContent('Approve it on the desktop')
+    expect(rows[1].querySelector('.terminal-status')).toHaveTextContent('Needs approval')
+  })
+
   it('renders agent text as safe markup and registers all new remote strings in both locales', () => {
     const html = ui.renderMarkdown(
       '## Title\n<img src=x onerror=alert(1)>\n\n```js\n<script>alert(1)</script>\n```',
@@ -546,6 +608,19 @@ describe('remote mobile conversations', () => {
       'home.status.question',
       'home.status.draft',
       'home.status.ended',
+      'home.newAgent',
+      'home.startingAgent',
+      'home.startAgentError',
+      'home.startAgentTimeout',
+      'workers.title',
+      'workers.needsApproval',
+      'workers.approveOnDesktop',
+      'workers.status.running',
+      'workers.status.blocked',
+      'workers.status.queued',
+      'workers.status.done',
+      'workers.status.failed',
+      'workers.status.stopped',
     ] as const) {
       expect(ui.messages.en[key]).toBe(en[key])
       expect(ui.messages['pt-BR'][key]).toBe(ptBR[key])

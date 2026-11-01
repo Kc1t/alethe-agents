@@ -263,7 +263,7 @@ pub async fn plugin_catalog_open(
     let result = std::process::Command::new("open").arg(&url).spawn();
 
     #[cfg(all(unix, not(target_os = "macos")))]
-    let result = std::process::Command::new("xdg-open").arg(&url).spawn();
+    let result = crate::child_env::scrub_command(std::process::Command::new("xdg-open").arg(&url)).spawn();
 
     result.map(|_| ()).map_err(|e| format!("open_failed:{e}"))
 }

@@ -278,6 +278,10 @@ export type ProjectsState = ProjectsFile & {
 
   closePane: (projectId: string, terminalId: string) => void
 
+  /** Like closePane, but keeps the PTY alive in the background; clicking the terminal in the
+   * sidebar reopens its pane and reattaches to the still-running process. */
+  minimizePane: (projectId: string, terminalId: string) => void
+
   togglePane: (projectId: string, terminalId: string) => void
 
   openContainerWithAllPanes: (projectId: string) => void

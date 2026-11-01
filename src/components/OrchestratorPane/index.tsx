@@ -63,6 +63,8 @@ import {
 } from '../../lib/orchestratorRuns'
 import { resolveShortcuts, renderShortcut, shortcutsForJob } from '../../lib/orchestratorShortcuts'
 import { nativeSubagentJobs } from '../../lib/orchestratorSubagents'
+import { shouldAutoFit } from '../../lib/orchestratorViewPolicy'
+import { workerSettingDisplay } from '../../lib/orchestratorWorkerDisplay'
 import { basename } from '../../lib/paths'
 import {
   listenOrchestratorJobs,
@@ -175,13 +177,11 @@ function canStop(job: OrchestratorJob): boolean {
   )
 }
 
-/** What the planner chose to run a worker on; either part can be given without the other. */
-function modelTitle(job: OrchestratorJob, t: TFunction): string {
-  if (job.model && job.effort) {
-    return t('orchestrator.modelEffortTitle', { model: job.model, effort: job.effort })
-  }
-  if (job.model) return t('orchestrator.modelTitle', { model: job.model })
-  return t('orchestrator.effortTitle', { effort: job.effort ?? '' })
+function quotaWindowLabel(window: string, t: TFunction): string {
+  if (window === '5h') return t('orchestrator.quotaWindowSession')
+  if (window === 'week') return t('orchestrator.quotaWindowWeekly')
+  if (window === 'opus') return t('orchestrator.quotaWindowOpus')
+  return t('orchestrator.quotaWindowModel', { model: window })
 }
 
 function laneTitle(lane: RunLane, t: TFunction): string | undefined {
@@ -386,11 +386,42 @@ function WorkerNode({
           {job.role && (
             <span title={t('orchestrator.roleTitle', { role: job.role })}>{job.role}</span>
           )}
-          {(job.model || job.effort) && (
-            <span title={modelTitle(job, t)}>
-              {[job.model, job.effort].filter(Boolean).join(' · ')}
-            </span>
-          )}
+          {!job.native &&
+            (() => {
+              const settings = workerSettingDisplay(job)
+              const sourceTitle = (field: typeof settings.model) => {
+                if (field.source === 'cli') return t('orchestrator.settingFromCli')
+                if (field.source === 'role')
+                  return t('orchestrator.settingFromRole', { role: field.role ?? job.role ?? '' })
+                if (field.source === 'fallback')
+                  return t('orchestrator.settingFromFallback', { role: field.role ?? '' })
+                return t('orchestrator.settingFromPlanner')
+              }
+              const display = (field: typeof settings.model) => (
+                <span className={field.source === 'cli' ? styles.settingDefault : undefined}>
+                  {field.value ?? t('orchestrator.cliDefault')}
+                  {field.source === 'role' && (
+                    <small className={styles.settingMarker}>
+                      {t('orchestrator.settingRoleMarker')}
+                    </small>
+                  )}
+                  {field.source === 'fallback' && (
+                    <small className={styles.settingMarker}>
+                      {t('orchestrator.settingFallbackMarker')}
+                    </small>
+                  )}
+                </span>
+              )
+              const title = [
+                t('orchestrator.modelSourceTitle', { source: sourceTitle(settings.model) }),
+                t('orchestrator.effortSourceTitle', { source: sourceTitle(settings.effort) }),
+              ].join('\n')
+              return (
+                <span className={styles.workerSettings} title={title}>
+                  {display(settings.model)} · {display(settings.effort)}
+                </span>
+              )
+            })()}
           {job.readOnly && (
             <span className={styles.metaIcon} title={t('orchestrator.readOnlyTitle')}>
               <Eye size={9} aria-hidden />
@@ -836,6 +867,8 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const world = useRef<HTMLDivElement | null>(null)
   const pan = useRef<{ id: number; x: number; y: number } | null>(null)
   const moved = useRef(false)
+  const pointerOverBoard = useRef(false)
+  const fitNextLayout = useRef(false)
   // Elapsed time on a running job is derived from its start, so the pane has to re-render on its
   // own between events: a worker that reports nothing for a minute would otherwise look frozen.
   const [, setTick] = useState(0)
@@ -1046,11 +1079,9 @@ export const OrchestratorPane = memo(function OrchestratorPane({
 
   const activeKey = activeGroup ? plannerKey(activeGroup) : null
   useLayoutEffect(() => {
-    moved.current = false
-  }, [activeKey])
-
-  useLayoutEffect(() => {
-    if (moved.current) return
+    const forced = fitNextLayout.current
+    fitNextLayout.current = false
+    if (!shouldAutoFit(moved.current, pointerOverBoard.current, forced)) return
     fit()
   }, [activeKey, graph.width, graph.height, fit])
 
@@ -1059,10 +1090,10 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     const element = board.current
     if (!element) return
     const onWheel = (event: WheelEvent) => {
+      moved.current = true
       if (!event.ctrlKey && !event.metaKey) return
       event.preventDefault()
       const rect = element.getBoundingClientRect()
-      moved.current = true
       setView((prev) =>
         zoomAt(prev, Math.exp(-event.deltaY / 400), {
           x: event.clientX - rect.left,
@@ -1078,7 +1109,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     const element = board.current
     if (!element || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => {
-      if (!moved.current) fit()
+      if (shouldAutoFit(moved.current, pointerOverBoard.current)) fit()
     })
     observer.observe(element)
     return () => observer.disconnect()
@@ -1136,6 +1167,12 @@ export const OrchestratorPane = memo(function OrchestratorPane({
 
   const openPlanner = (key: string) => {
     setSelectedPlanner(key)
+    // Re-selecting the active planner changes no layout dependency, so a fit armed here would
+    // fire on a later graph change and undo a pan made in between.
+    if (key !== activeKey) {
+      moved.current = false
+      fitNextLayout.current = true
+    }
     setInspecting(null)
   }
 
@@ -1393,11 +1430,13 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                 title={t('orchestrator.quotaWarningTitle', {
                   agent: warning.agent,
                   pct: warning.pct,
+                  window: quotaWindowLabel(warning.window, t),
                 })}
               >
                 {t('orchestrator.quotaWarning', {
                   agent: warning.agent,
                   pct: warning.pct,
+                  window: quotaWindowLabel(warning.window, t),
                   resets: warning.resetsAt
                     ? formatReset(warning.resetsAt, t('orchestrator.quotaResetsNow'))
                     : '—',
@@ -1512,6 +1551,16 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                   backgroundPosition: `${view.x}px ${view.y}px`,
                 }}
                 onPointerDown={startPan}
+                onPointerDownCapture={() => {
+                  moved.current = true
+                }}
+                onPointerEnter={() => {
+                  pointerOverBoard.current = true
+                }}
+                onPointerLeave={() => {
+                  pointerOverBoard.current = false
+                  if (!moved.current) fit()
+                }}
                 onPointerMove={movePan}
                 onPointerUp={endPan}
                 onPointerCancel={endPan}
@@ -1553,20 +1602,23 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           data-verdict={edge.note.verdict}
                           style={{ left: edge.note.x, top: edge.note.y }}
                         >
-                          {t(
-                            edge.note.verdict === 'fallback'
-                              ? 'orchestrator.routingFallback'
-                              : edge.note.verdict === 'ignored'
-                                ? 'orchestrator.routingIgnored'
-                                : 'orchestrator.routingChosen',
-                            {
-                              agent: edge.note.agent,
-                              window: edge.note.window,
-                              used: String(edge.note.used),
-                              from: edge.note.from ?? '',
-                              to: edge.note.to ?? '',
-                            },
-                          )}
+                          {edge.note.verdict === 'rule'
+                            ? t('orchestrator.routingRule', { role: edge.note.role })
+                            : t(
+                                edge.note.verdict === 'fallback'
+                                  ? 'orchestrator.routingFallback'
+                                  : edge.note.verdict === 'ignored'
+                                    ? 'orchestrator.routingIgnored'
+                                    : 'orchestrator.routingChosen',
+                                {
+                                  agent: edge.note.agent,
+                                  window: edge.note.window,
+                                  used: String(edge.note.used),
+                                  from:
+                                    edge.note.verdict === 'fallback' ? (edge.note.from ?? '') : '',
+                                  to: edge.note.verdict === 'fallback' ? (edge.note.to ?? '') : '',
+                                },
+                              )}
                         </span>
                       ) : null,
                     )}
@@ -1681,7 +1733,10 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                     className={styles.zoomBtn}
                     title={t('orchestrator.zoomFitTitle')}
                     onPointerDown={(event) => event.stopPropagation()}
-                    onClick={fit}
+                    onClick={() => {
+                      moved.current = false
+                      fit()
+                    }}
                   >
                     {t('orchestrator.zoomFit')}
                   </button>

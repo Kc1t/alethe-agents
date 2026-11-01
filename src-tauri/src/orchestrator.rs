@@ -128,6 +128,13 @@ pub fn orchestrator_mcp_config_path(
     Ok(path.to_string_lossy().into_owned())
 }
 
+impl OrchestratorState {
+    /// The board as `orchestrator_jobs` returns it, for the remote control view.
+    pub(crate) fn board(&self) -> Value {
+        self.core.snapshot()
+    }
+}
+
 #[tauri::command]
 pub fn orchestrator_jobs(state: tauri::State<'_, OrchestratorState>) -> Value {
     state.core.snapshot()
@@ -424,7 +431,10 @@ pub fn orchestrator_job_diff(
 
 /// Interrupts a running worker and settles it as cancelled — the same path `alethe_cancel` takes.
 #[tauri::command]
-pub fn orchestrator_cancel_job(state: tauri::State<'_, OrchestratorState>, job_id: String) -> Value {
+pub fn orchestrator_cancel_job(
+    state: tauri::State<'_, OrchestratorState>,
+    job_id: String,
+) -> Value {
     json!({ "cancelled": state.core.cancel_jobs(&[job_id]) })
 }
 

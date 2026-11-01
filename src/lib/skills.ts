@@ -1,4 +1,9 @@
-import type { BundledSkill, BundledSkillAgent, SkillAgentSnapshot, SkillSummary } from './tauri/skills'
+import type {
+  BundledSkill,
+  BundledSkillAgent,
+  SkillAgentSnapshot,
+  SkillSummary,
+} from './tauri/skills'
 
 export const SHARED_SKILL_AGENT = 'shared'
 

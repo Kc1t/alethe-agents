@@ -585,6 +585,7 @@
 .todoTitle {
   min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
   padding: 4px 0;
@@ -599,6 +600,7 @@
   display: block;
   width: auto;
   flex: 1;
+  flex-basis: 100%;
   min-width: 0;
   padding: 0;
   overflow: hidden;
@@ -612,9 +614,8 @@
 .todoTitleText {
   display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .projectLink {
@@ -684,21 +685,14 @@
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  width: 0;
-  max-width: 0;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  transition:
-    width 120ms ease,
-    max-width 120ms ease,
-    opacity 120ms ease;
+  transition: opacity 120ms ease;
 }
 
 .todoRow:hover .rowActions,
 .todoRow:focus-within .rowActions {
-  width: auto;
-  max-width: 66px;
   opacity: 1;
   pointer-events: auto;
 }

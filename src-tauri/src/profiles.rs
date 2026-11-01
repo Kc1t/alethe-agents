@@ -568,3 +568,151 @@ fn normalize_profile_name(name: Option<&str>) -> String {
         trimmed.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_root(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("alethe-profiles-{label}-{}", nanoid::nanoid!(8)));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn meta(id: &str, last_used_at_ms: u64) -> ProfileMeta {
+        ProfileMeta {
+            id: id.to_string(),
+            name: id.to_string(),
+            created_at_ms: 0,
+            last_used_at_ms,
+        }
+    }
+
+    #[test]
+    fn parse_rejects_unknown_version() {
+        let raw = r#"{"version":2,"active_profile_id":"a","profiles":[]}"#;
+        assert!(parse_profiles_index(raw).is_err());
+    }
+
+    #[test]
+    fn parse_falls_back_to_default_when_empty() {
+        let raw = r#"{"version":1,"active_profile_id":"x","profiles":[]}"#;
+        let index = parse_profiles_index(raw).unwrap();
+        assert_eq!(index.active_profile_id, DEFAULT_PROFILE_ID);
+        assert_eq!(index.profiles.len(), 1);
+    }
+
+    #[test]
+    fn parse_repairs_dangling_active_id() {
+        let index = ProfilesIndex {
+            version: 1,
+            active_profile_id: "gone".into(),
+            profiles: vec![meta("work", 1), meta("home", 2)],
+        };
+        let raw = serde_json::to_string(&index).unwrap();
+        assert_eq!(
+            parse_profiles_index(&raw).unwrap().active_profile_id,
+            "work"
+        );
+    }
+
+    #[test]
+    fn state_lists_active_first_then_most_recent() {
+        let index = ProfilesIndex {
+            version: 1,
+            active_profile_id: "old".into(),
+            profiles: vec![meta("new", 30), meta("old", 10), meta("mid", 20)],
+        };
+        let ids: Vec<_> = profiles_state_from(&index)
+            .profiles
+            .into_iter()
+            .map(|profile| profile.id)
+            .collect();
+        assert_eq!(ids, ["old", "new", "mid"]);
+    }
+
+    #[test]
+    fn summary_counts_projects_and_terminals() {
+        let root = temp_root("summary");
+        let dir = profile_dir(&root, "p");
+        fs::create_dir_all(&dir).unwrap();
+        let projects = serde_json::json!({
+            "preferences": { "profileImageUrl": "img" },
+            "projects": [{ "terminals": [1, 2] }, { "terminals": [3] }, {}],
+        });
+        fs::write(dir.join("projects.json"), projects.to_string()).unwrap();
+        let summary = profile_summary(&root, &meta("p", 0), "p").unwrap();
+        assert_eq!((summary.project_count, summary.terminal_count), (3, 3));
+        assert_eq!(summary.profile_image_url, "img");
+        assert!(summary.is_active);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn discover_prefers_default_profile() {
+        let root = temp_root("discover");
+        assert!(discover_profiles(&root).unwrap().is_none());
+        for id in ["alpha", DEFAULT_PROFILE_ID, "my-work"] {
+            fs::create_dir_all(profile_dir(&root, id)).unwrap();
+        }
+        let index = discover_profiles(&root).unwrap().unwrap();
+        assert_eq!(index.active_profile_id, DEFAULT_PROFILE_ID);
+        let work = index.profiles.iter().find(|p| p.id == "my-work").unwrap();
+        assert_eq!(work.name, "my work");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn legacy_migration_moves_data_and_keeps_registry_and_webview() {
+        let root = temp_root("legacy");
+        fs::write(root.join("projects.json"), "{}").unwrap();
+        fs::write(root.join(PROFILES_REGISTRY_FILE), "{}").unwrap();
+        fs::create_dir_all(root.join("scrollback")).unwrap();
+        fs::write(root.join("scrollback").join("a.bin"), "x").unwrap();
+        fs::create_dir_all(root.join(WEBVIEW_CACHE_DIR)).unwrap();
+        assert!(legacy_payload_exists(&root));
+
+        migrate_legacy_root(&root).unwrap();
+
+        let default_dir = profile_dir(&root, DEFAULT_PROFILE_ID);
+        assert!(default_dir.join("projects.json").is_file());
+        assert!(default_dir.join("scrollback").join("a.bin").is_file());
+        assert!(root.join(PROFILES_REGISTRY_FILE).is_file());
+        assert!(root.join(WEBVIEW_CACHE_DIR).is_dir());
+        assert!(!legacy_payload_exists(&root));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn moving_into_profile_never_overwrites_existing_files() {
+        let root = temp_root("move");
+        let src = root.join("projects.json");
+        let dst = root.join("profile").join("projects.json");
+        fs::create_dir_all(dst.parent().unwrap()).unwrap();
+        fs::write(&src, "legacy").unwrap();
+        fs::write(&dst, "current").unwrap();
+        move_entry_into_profile(&src, &dst).unwrap();
+        assert_eq!(fs::read_to_string(&dst).unwrap(), "current");
+        assert!(!src.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn index_round_trips_through_disk() {
+        let root = temp_root("roundtrip");
+        let index = default_profiles_index();
+        write_profiles_index(&root, &index).unwrap();
+        let loaded = load_index(&root).unwrap();
+        assert_eq!(loaded.active_profile_id, index.active_profile_id);
+        assert!(!registry_path(&root).with_extension("json.tmp").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_names_are_trimmed_with_fallback() {
+        assert_eq!(normalize_profile_name(Some("  Work ")), "Work");
+        assert_eq!(normalize_profile_name(Some("   ")), "Untitled profile");
+        assert_eq!(normalize_profile_name(None), "Untitled profile");
+    }
+}

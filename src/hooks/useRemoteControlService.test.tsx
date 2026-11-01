@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   listenRemoteAutoDisabled: vi.fn(),
   listenRemoteMessages: vi.fn(),
+  listenRemoteOpenAgent: vi.fn(),
   listenRemoteStartFailed: vi.fn(),
   flushProjectsState: vi.fn(),
   projectState: {} as Record<string, unknown>,
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/tauri', () => ({
   listenRemoteAutoDisabled: mocks.listenRemoteAutoDisabled,
   listenRemoteMessages: mocks.listenRemoteMessages,
+  listenRemoteOpenAgent: mocks.listenRemoteOpenAgent,
   listenRemoteStartFailed: mocks.listenRemoteStartFailed,
   setRemoteControlEnabled: mocks.setRemoteControlEnabled,
   setRemoteControlMaxDevices: mocks.setRemoteControlMaxDevices,
@@ -94,6 +96,7 @@ describe('useRemoteControlService', () => {
     }
     mocks.listenRemoteAutoDisabled.mockResolvedValue(vi.fn())
     mocks.listenRemoteMessages.mockResolvedValue(vi.fn())
+    mocks.listenRemoteOpenAgent.mockResolvedValue(vi.fn())
     mocks.listenRemoteStartFailed.mockResolvedValue(vi.fn())
     mocks.flushProjectsState.mockResolvedValue(undefined)
     mocks.setRemoteControlEnabled.mockResolvedValue({ enabled: false })

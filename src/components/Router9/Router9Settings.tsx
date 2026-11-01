@@ -183,11 +183,7 @@ export function Router9Settings() {
             </div>
 
             {external?.installed && managed?.installed ? (
-              <div
-                className={styles.field}
-                role="group"
-                aria-labelledby={`${fieldId}-source`}
-              >
+              <div className={styles.field} role="group" aria-labelledby={`${fieldId}-source`}>
                 <span id={`${fieldId}-source`}>{t('router9.sourceLabel')}</span>
                 <div className={styles.segmented}>
                   <button
@@ -261,11 +257,7 @@ export function Router9Settings() {
                 </div>
                 <p className={styles.hint}>{t('router9.apiKeyHint')}</p>
 
-                <div
-                  className={styles.field}
-                  role="group"
-                  aria-labelledby={`${fieldId}-autostart`}
-                >
+                <div className={styles.field} role="group" aria-labelledby={`${fieldId}-autostart`}>
                   <span id={`${fieldId}-autostart`}>{t('router9.autoStart')}</span>
                   <div className={styles.segmented}>
                     <button

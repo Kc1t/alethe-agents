@@ -9,6 +9,7 @@ import {
   githubSyncStatus,
 } from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { useUiStore } from '../../../stores/uiStore'
 import styles from '../SyncModal.module.css'
 import { formatWhen, syncErrorText } from './syncText'
 
@@ -20,6 +21,12 @@ export function LegacyGistCard({ open }: { open: boolean }) {
   const [busy, setBusy] = useState<null | 'pull' | 'logout'>(null)
   const [confirmPull, setConfirmPull] = useState(false)
   const [feedback, setFeedback] = useState<{ kind: 'error' | 'notice'; text: string } | null>(null)
+  const pushToast = useUiStore((s) => s.pushToast)
+
+  const report = (next: { kind: 'error' | 'notice'; text: string }) => {
+    setFeedback(next)
+    pushToast({ title: next.text, body: '' })
+  }
 
   useEffect(() => {
     if (!open) return
@@ -39,9 +46,9 @@ export function LegacyGistCard({ open }: { open: boolean }) {
     try {
       setStatus(await githubSyncPull())
       await hydrate()
-      setFeedback({ kind: 'notice', text: t('sync.github.pullDone') })
+      report({ kind: 'notice', text: t('sync.github.pullDone') })
     } catch (error) {
-      setFeedback({ kind: 'error', text: syncErrorText(t, error) })
+      report({ kind: 'error', text: syncErrorText(t, error) })
     } finally {
       setBusy(null)
     }

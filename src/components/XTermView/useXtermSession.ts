@@ -91,6 +91,7 @@ import type { AgentHookPayload } from '../../stores/agentCanvasStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { keepTerminalTextareaClean } from './terminalComposition'
 import {
   loadTerminalFonts,
   remeasuredFontFamily,
@@ -111,6 +112,7 @@ import {
   getLogicalTerminalLine,
   makeXtermLink,
 } from './terminalLinks'
+import { captureTerminalPaste } from './terminalPaste'
 import {
   TERMINAL_WRITE_FALLBACK_MS,
   TERMINAL_WRITE_FRAME_BUDGET,
@@ -118,7 +120,6 @@ import {
   writePtyChunked,
   writePtyWithTimeout,
 } from './terminalWrite'
-import { captureTerminalPaste } from './terminalPaste'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
 
 // Early exits trigger a single fresh-session retry.
@@ -391,6 +392,9 @@ export function useXtermSession(params: {
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
     terminal.open(container)
+    const releaseTextareaClean = terminal.textarea
+      ? keepTerminalTextareaClean(terminal.textarea)
+      : () => {}
     terminalRef.current = terminal
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
@@ -562,12 +566,18 @@ export function useXtermSession(params: {
       }, 5_000)
     }
 
+    // Right-click, the paste event and Ctrl+V can all deliver the same clipboard once; drop an
+    // identical payload that arrives again right after the first.
+    let lastPaste = { text: '', at: 0 }
     const pasteText = (raw: string) => {
       try {
         if (disposed || readOnly || !raw) return
         const id = ptyIdRef.current
         if (!id) return
         const text = normalizePastedText(raw)
+        const now = Date.now()
+        if (text === lastPaste.text && now - lastPaste.at < 2_000) return
+        lastPaste = { text, at: now }
         useTerminalsStore.getState().recordIo(id)
         recordPromptInput(text)
         inputWriteChain = inputWriteChain
@@ -622,7 +632,42 @@ export function useXtermSession(params: {
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
+      // xterm.js sends a bare \r for Shift+Enter, so it submitted instead of
+      // adding a line. ESC+CR is what Claude Code's /terminal-setup binds: both
+      // Claude Code and Codex read it as a newline, and line editors ignore it.
+      if (
+        event.key === 'Enter' &&
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        !event.isComposing
+      ) {
+        event.preventDefault()
+        const id = ptyIdRef.current
+        if (!readOnly && id) queueInput(id, '\x1b\r')
+        return false
+      }
       const ctrl = event.ctrlKey || event.metaKey
+      // Ctrl/Cmd+Enter sends right away, like Warp: in Claude Code that is its
+      // ctrl+x ctrl+s "send now", which submits the typed text whether the
+      // agent is idle or mid-turn (where a plain Enter only queues it).
+      if (
+        ctrl &&
+        event.key === 'Enter' &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.isComposing &&
+        command === 'claude'
+      ) {
+        event.preventDefault()
+        const id = ptyIdRef.current
+        if (!readOnly && id) {
+          queueInput(id, '\x18')
+          window.setTimeout(() => queueInput(id, '\x13'), 60)
+        }
+        return false
+      }
       if (!ctrl || event.altKey) return true
 
       const key = event.key.toLowerCase()
@@ -1758,6 +1803,7 @@ export function useXtermSession(params: {
       container.removeEventListener('pointerdown', focusTerminal, true)
       container.removeEventListener('click', focusTerminal)
       releasePasteCapture()
+      releaseTextareaClean()
       container.removeEventListener('focusin', rememberTerminalFocus)
       container.removeEventListener('focusout', forgetTerminalFocus)
       document.removeEventListener('pointerdown', rememberPointerFocusIntent, true)

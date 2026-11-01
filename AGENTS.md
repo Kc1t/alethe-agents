@@ -6,8 +6,9 @@
 
 ## 1. What it is
 
-**Alethe** is a **Windows-first** desktop app that organizes, operates, and resumes multiple coding
-agents (Claude Code, Codex, OpenCode) and shells in parallel, inside a persistent workspace with
+**Alethe** is a cross-platform, **Windows-first** desktop app that organizes, operates, and resumes multiple coding
+agents (Claude Code, Codex, Copilot CLI, Cursor, OpenCode, and more — full list in
+[`README.md`](README.md)) and shells in parallel, inside a persistent workspace with
 real terminals (PTYs), layouts, themes, history, and RAM control.
 
 > Tagline: **Reveal the state of every agent, shell, and project.**
@@ -21,6 +22,8 @@ npm run app      # = tauri dev — runs the full app with hot reload (RECOMMENDE
 npm run dev      # Vite frontend only, at http://localhost:1422 (strictPort)
 npm run build    # tsc + vite build — tsc typechecks and VALIDATES i18n (see §3)
 npm test         # vitest run over src/**/*.test.{ts,tsx}
+npm run test:rust # cargo test --lib in src-tauri/
+npm run lint     # eslint
 ```
 
 **Building the Windows installer (MSI/NSIS)** requires the MSVC environment (`vcvars64`):
@@ -68,7 +71,7 @@ path relative to the repository.
 ## 4. Architecture at a glance
 
 **Communication:** the frontend calls `invoke(...)` through `lib/tauri/`; the terminal receives
-streaming through the Tauri events `pty://data/{id}` and `pty://exit/{id}`.
+streaming through the Tauri events `pty://data/{id}`, `pty://activity/{id}`, and `pty://exit/{id}`.
 
 ## 5. Conventions
 
@@ -127,6 +130,7 @@ The domain glossary (Group, Project, Container, Pane, Sub-tab, PTY) is summarize
   instead of extending the language inconsistency.
 - Keep comments concise. Add them only when they explain non-obvious behavior, constraints, or decisions.
 
-This project has a knowledge graph at `graphify-out/`. For codebase-structure questions
+This project can have a knowledge graph at `graphify-out/` (gitignored, generated locally, so a
+fresh clone does not have it). When it exists, for codebase-structure questions
 (architecture, god nodes, cross-file relationships), use the `graphify-query` skill instead of
 raw grep/source browsing.

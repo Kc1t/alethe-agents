@@ -69,4 +69,24 @@ describe('agent fitness', () => {
     expect(fitness.used).toBe(100)
     expect(fitness.resetsAt).toBe('monday')
   })
+
+  it('selects the model window when it exceeds the session window', () => {
+    const fitness = claudeFitness({
+      five_hour: claudeWindow(10),
+      seven_day: claudeWindow(20),
+      seven_day_opus: claudeWindow(0),
+      model_limits: [{ model: 'Fable', utilization: 90 }],
+    })
+    expect(fitness.worst).toBe('fable')
+  })
+
+  it('selects the session window when it exceeds model limits', () => {
+    const fitness = claudeFitness({
+      five_hour: claudeWindow(90),
+      seven_day: claudeWindow(20),
+      seven_day_opus: claudeWindow(0),
+      model_limits: [{ model: 'Fable', utilization: 10 }],
+    })
+    expect(fitness.worst).toBe('5h')
+  })
 })

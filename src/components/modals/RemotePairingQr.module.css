@@ -1,0 +1,53 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-raised);
+}
+.qr {
+  display: block;
+  width: 190px;
+  height: 190px;
+  padding: 0.35rem;
+  border-radius: 8px;
+  background: white;
+}
+.scanHint {
+  color: var(--fg-muted);
+  font-size: 0.7rem;
+  text-align: center;
+  line-height: 1.35;
+}
+.urlBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+.metricLabel {
+  color: var(--fg-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.urlBlock code {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--accent);
+  background: var(--surface-raised);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+@media (max-width: 560px) {
+  .qr {
+    width: 170px;
+    height: 170px;
+  }
+}

@@ -88,31 +88,46 @@ fn sh_single_quote(value: &str) -> String {
 }
 
 #[cfg(not(windows))]
-fn unix_shim_script(target_marker: &str, launch: &str) -> String {
+fn unix_shim_script(target_marker: &str, launch: &str, print_flags: &str) -> String {
     format!(
         r#"#!/bin/sh
-# alethe — abre um diretório no Alethe a partir do terminal.
+# alethe — open a directory in Alethe from the terminal.
 #
-# Gerado automaticamente pelo Alethe (Configurações ▸ Integrações ▸ Comando de
-# terminal). Não edite à mão: reinstale por lá, principalmente depois de mover
-# ou reinstalar o app.
+# Generated automatically by Alethe (Preferences > Integrations > Terminal
+# command). Do not edit by hand: reinstall from there, especially after moving
+# or reinstalling the app.
 #
-# alethe            → abre o diretório atual
-# alethe .          → idem
-# alethe ~/projeto  → abre o diretório informado
+# alethe            -> open the current directory
+# alethe .          -> same
+# alethe ~/project  -> open the given directory
+# alethe update     -> check for and install updates
 #
 # ALETHE_TARGET_BIN: {target_marker}
 
 set -e
 
+for arg in "$@"; do
+  case "$arg" in
+    --version|-V|--help|-h)
+      exec {print_flags} "$@"
+      ;;
+  esac
+done
+
+case "${{1:-}}" in
+  update|--version|-V|--help|-h)
+    exec {print_flags} "$@"
+    ;;
+esac
+
 target=${{1:-.}}
 
 if [ ! -d "$target" ]; then
-  echo "alethe: diretório não encontrado: $target" >&2
+  echo "alethe: directory not found: $target" >&2
   exit 1
 fi
 
-# Caminho absoluto: o app compara com o cwd salvo dos projetos.
+# Absolute path: the app compares against saved project cwds.
 target=$(cd "$target" && pwd)
 
 {launch}
@@ -125,9 +140,11 @@ fn render_shim(binary: &Path) -> Result<String, String> {
     {
         if let Some(bundle) = app_bundle(binary) {
             let quoted = sh_single_quote(&bundle.to_string_lossy());
+            let quoted_binary = sh_single_quote(&binary.to_string_lossy());
             return Ok(unix_shim_script(
                 &bundle.to_string_lossy(),
                 &format!("exec open -na {quoted} --args --open-path \"$target\""),
+                &quoted_binary,
             ));
         }
         let quoted = sh_single_quote(&binary.to_string_lossy());
@@ -137,6 +154,7 @@ fn render_shim(binary: &Path) -> Result<String, String> {
                 "nohup {quoted} --open-path \"$target\" >/dev/null 2>&1 &\n\
                  exit 0"
             ),
+            &quoted,
         ));
     }
 
@@ -149,6 +167,7 @@ fn render_shim(binary: &Path) -> Result<String, String> {
                 "nohup {quoted} --open-path \"$target\" >/dev/null 2>&1 &\n\
                  exit 0"
             ),
+            &quoted,
         ));
     }
 
@@ -157,27 +176,43 @@ fn render_shim(binary: &Path) -> Result<String, String> {
         let binary = binary.to_string_lossy().to_string();
         return Ok(format!(
             r#"@echo off
-rem alethe - abre um diretorio no Alethe a partir do terminal.
+rem alethe - open a directory in Alethe from the terminal.
 rem
-rem Gerado automaticamente pelo Alethe (Configuracoes > Integracoes > Comando de
-rem terminal). Nao edite a mao: reinstale por la, principalmente depois de mover
-rem ou reinstalar o app.
+rem Generated automatically by Alethe (Preferences > Integrations > Terminal
+rem command). Do not edit by hand: reinstall from there, especially after moving
+rem or reinstalling the app.
 rem
 rem ALETHE_TARGET_BIN: {binary}
 
 setlocal
+if "%~1"=="update" goto print_flags
+if "%~1"=="--version" goto print_flags
+if "%~1"=="-V" goto print_flags
+if "%~1"=="--help" goto print_flags
+if "%~1"=="-h" goto print_flags
+for %%A in (%*) do (
+  if "%%~A"=="--version" goto print_flags
+  if "%%~A"=="-V" goto print_flags
+  if "%%~A"=="--help" goto print_flags
+  if "%%~A"=="-h" goto print_flags
+)
 set "target=%~1"
 if "%target%"=="" set "target=%CD%"
 
-rem Caminho absoluto: o app compara com o cwd salvo dos projetos.
+rem Absolute path: the app compares against saved project cwds.
 for %%I in ("%target%") do set "target=%%~fI"
 
 if not exist "%target%\" (
-  echo alethe: diretorio nao encontrado: %target% 1>&2
+  echo alethe: directory not found: %target% 1>&2
   exit /b 1
 )
 
 start "" "{binary}" --open-path "%target%"
+goto :eof
+
+:print_flags
+"{binary}" %*
+exit /b %errorlevel%
 "#
         ));
     }
@@ -204,6 +239,11 @@ fn shim_targets_binary(contents: &str, binary: &Path) -> bool {
     line == binary.to_string_lossy()
 }
 
+fn shim_is_stale(contents: &str, binary: &Path) -> bool {
+    !shim_targets_binary(contents, binary)
+        || render_shim(binary).is_ok_and(|fresh| fresh != contents)
+}
+
 fn build_status() -> Result<CliShimStatus, String> {
     let bin_dir = shim_bin_dir()?;
     let path = shim_path()?;
@@ -212,7 +252,7 @@ fn build_status() -> Result<CliShimStatus, String> {
     let contents = std::fs::read_to_string(&path).ok();
     let installed = contents.is_some();
     let stale = contents
-        .map(|contents| !shim_targets_binary(&contents, &binary))
+        .map(|contents| shim_is_stale(&contents, &binary))
         .unwrap_or(false);
 
     Ok(CliShimStatus {
@@ -433,6 +473,15 @@ mod tests {
     }
 
     #[test]
+    fn a_shim_written_by_an_older_release_counts_as_stale() {
+        let binary = PathBuf::from("/opt/alethe/alethe");
+        let current = render_shim(&binary).expect("script");
+        assert!(!shim_is_stale(&current, &binary));
+        let older = current.replacen("--version", "--ver", 1);
+        assert!(shim_is_stale(&older, &binary));
+    }
+
+    #[test]
     fn shim_without_marker_counts_as_stale() {
         assert!(!shim_targets_binary(
             "#!/bin/sh\necho oi\n",
@@ -448,6 +497,21 @@ mod tests {
 
         assert!(script.contains("target=${1:-.}"));
         assert!(script.contains("--open-path"));
+        assert!(script.contains("for arg in \"$@\"; do"));
+        assert!(script.contains("update|--version|-V|--help|-h"));
+        assert!(script.contains("exec '/opt/alethe/alethe' \"$@\""));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_shim_print_flags_run_in_foreground() {
+        let script = render_shim(Path::new(r"C:\Alethe\alethe.exe")).expect("script");
+        assert!(script.contains("if \"%~1\"==\"update\" goto print_flags"));
+        assert!(script.contains("if \"%~1\"==\"--version\" goto print_flags"));
+        assert!(script.contains("for %%A in (%*) do ("));
+        assert!(script.contains(":print_flags"));
+        assert!(script.contains("\"C:\\Alethe\\alethe.exe\" %*"));
+        assert!(script.contains("exit /b %errorlevel%"));
     }
 
     #[cfg(not(windows))]

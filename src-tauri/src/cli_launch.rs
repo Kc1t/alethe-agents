@@ -7,6 +7,242 @@ pub const OPEN_PATH_EVENT: &str = "alethe://open-path";
 
 const OPEN_PATH_FLAG: &str = "--open-path";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliAction {
+    LaunchGui,
+    PrintVersion,
+    PrintHelp,
+    Update,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CliUpdateReport {
+    UpToDate {
+        current_version: String,
+    },
+    Updated {
+        from_version: String,
+        to_version: String,
+    },
+    BlockedByRunningApp {
+        available_version: String,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CliExit {
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+pub fn parse_cli_action(args: &[String]) -> CliAction {
+    let mut iter = args.iter().skip(1);
+    let mut saw_positional = false;
+    let mut is_update = false;
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--version" | "-V" => return CliAction::PrintVersion,
+            "--help" | "-h" => return CliAction::PrintHelp,
+            OPEN_PATH_FLAG => {
+                iter.next();
+                saw_positional = true;
+            }
+            _ if arg.starts_with(&format!("{OPEN_PATH_FLAG}=")) => {
+                saw_positional = true;
+            }
+            "update" if !saw_positional => {
+                is_update = true;
+                saw_positional = true;
+            }
+            _ if !arg.starts_with('-') => {
+                saw_positional = true;
+            }
+            _ => {}
+        }
+    }
+    if is_update {
+        CliAction::Update
+    } else {
+        CliAction::LaunchGui
+    }
+}
+
+pub fn cli_action_output(action: CliAction) -> Option<String> {
+    match action {
+        CliAction::LaunchGui | CliAction::Update => None,
+        CliAction::PrintVersion => Some(format!("alethe {}\n", env!("CARGO_PKG_VERSION"))),
+        CliAction::PrintHelp => Some(format!(
+            "alethe {}\n\nUsage:\n  alethe [path]\n  alethe --open-path <path>\n  alethe update\n  alethe --version\n  alethe --help\n",
+            env!("CARGO_PKG_VERSION")
+        )),
+    }
+}
+
+pub fn cli_immediate_exit(action: CliAction) -> Option<CliExit> {
+    cli_action_output(action).map(|stdout| CliExit {
+        code: 0,
+        stdout,
+        stderr: String::new(),
+    })
+}
+
+pub fn format_update_outcome(result: Result<CliUpdateReport, String>) -> CliExit {
+    match result {
+        Ok(CliUpdateReport::UpToDate { current_version }) => CliExit {
+            code: 0,
+            stdout: format!("alethe {current_version} is already up to date.\n"),
+            stderr: String::new(),
+        },
+        Ok(CliUpdateReport::Updated {
+            from_version,
+            to_version,
+        }) => CliExit {
+            code: 0,
+            stdout: format!("Updated alethe from {from_version} to {to_version}.\n"),
+            stderr: String::new(),
+        },
+        Ok(CliUpdateReport::BlockedByRunningApp { available_version }) => CliExit {
+            code: 1,
+            stdout: String::new(),
+            stderr: format!(
+                "alethe {available_version} is available, but Alethe is open. Close it and run \
+                 `alethe update` again, or update from inside the app.\n"
+            ),
+        },
+        Err(err) => CliExit {
+            code: 1,
+            stdout: String::new(),
+            stderr: format!("alethe update failed: {err}\n"),
+        },
+    }
+}
+
+pub fn attach_parent_console() {
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+        let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+pub fn write_cli_exit(exit: &CliExit) {
+    use std::io::Write;
+    if !exit.stdout.is_empty() {
+        let stdout = std::io::stdout();
+        let mut stdout = stdout.lock();
+        let _ = stdout.write_all(exit.stdout.as_bytes());
+        let _ = stdout.flush();
+    }
+    if !exit.stderr.is_empty() {
+        let stderr = std::io::stderr();
+        let mut stderr = stderr.lock();
+        let _ = stderr.write_all(exit.stderr.as_bytes());
+        let _ = stderr.flush();
+    }
+}
+
+pub fn run_cli_update(mut context: tauri::Context<tauri::Wry>) -> CliExit {
+    use tauri_plugin_updater::UpdaterExt;
+
+    context.config_mut().app.windows.clear();
+    let result = (|| -> Result<CliUpdateReport, String> {
+        let app = tauri::Builder::default()
+            .plugin(tauri_plugin_updater::Builder::new().build())
+            .build(context)
+            .map_err(|err| err.to_string())?;
+
+        tauri::async_runtime::block_on(async {
+            let updater = app
+                .updater_builder()
+                .build()
+                .map_err(|err| err.to_string())?;
+            let Some(update) = updater.check().await.map_err(|err| err.to_string())? else {
+                return Ok(CliUpdateReport::UpToDate {
+                    current_version: env!("CARGO_PKG_VERSION").to_string(),
+                });
+            };
+
+            let from_version = update.current_version.clone();
+            let to_version = update.version.clone();
+            // The installer closes a running Alethe, and every terminal open in it.
+            if another_instance_running() {
+                return Ok(CliUpdateReport::BlockedByRunningApp {
+                    available_version: to_version,
+                });
+            }
+            let bytes = update
+                .download(|_, _| {}, || {})
+                .await
+                .map_err(|err| err.to_string())?;
+
+            // On Windows, `install` launches the installer and exits this process, so this is the
+            // last message printed there; macOS and Linux go on to report the finished update.
+            write_cli_exit(&CliExit {
+                code: 0,
+                stdout: format_install_start(&from_version, &to_version),
+                stderr: String::new(),
+            });
+
+            let report = CliUpdateReport::Updated {
+                from_version,
+                to_version,
+            };
+            update
+                .restart_after_install(false)
+                .install(bytes)
+                .map_err(|err| err.to_string())?;
+
+            Ok(report)
+        })
+    })();
+
+    format_update_outcome(result)
+}
+
+pub fn format_install_start(from_version: &str, to_version: &str) -> String {
+    format!("Installing alethe {to_version} (currently {from_version})...\n")
+}
+
+fn another_instance_running() -> bool {
+    let Ok(own_exe) = std::env::current_exe() else {
+        return false;
+    };
+    let mut system = sysinfo::System::new();
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::All,
+        sysinfo::ProcessRefreshKind::new().with_exe(sysinfo::UpdateKind::OnlyIfNotSet),
+    );
+    is_other_instance(
+        std::process::id(),
+        &own_exe,
+        system
+            .processes()
+            .iter()
+            .map(|(pid, process)| (pid.as_u32(), process.exe())),
+    )
+}
+
+fn is_other_instance<'a>(
+    own_pid: u32,
+    own_exe: &Path,
+    processes: impl IntoIterator<Item = (u32, Option<&'a Path>)>,
+) -> bool {
+    let own_exe = strip_verbatim_prefix(own_exe.to_path_buf());
+    processes.into_iter().any(|(pid, exe)| {
+        pid != own_pid
+            && exe.is_some_and(|exe| {
+                let exe = strip_verbatim_prefix(exe.to_path_buf());
+                if cfg!(windows) {
+                    exe.to_string_lossy()
+                        .eq_ignore_ascii_case(&own_exe.to_string_lossy())
+                } else {
+                    exe == own_exe
+                }
+            })
+    })
+}
+
 #[derive(Default)]
 pub struct PendingOpen(Mutex<Option<String>>);
 
@@ -110,6 +346,165 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_long_and_short_version_flags() {
+        for flag in ["--version", "-V"] {
+            assert_eq!(
+                parse_cli_action(&args(&["alethe", flag])),
+                CliAction::PrintVersion
+            );
+        }
+    }
+
+    #[test]
+    fn parses_long_and_short_help_flags() {
+        for flag in ["--help", "-h"] {
+            assert_eq!(
+                parse_cli_action(&args(&["alethe", flag])),
+                CliAction::PrintHelp
+            );
+        }
+    }
+
+    #[test]
+    fn print_flags_work_after_paths_and_other_flags() {
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "--open-path", "/tmp/x", "--help"])),
+            CliAction::PrintHelp
+        );
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "/tmp/x", "-V"])),
+            CliAction::PrintVersion
+        );
+    }
+
+    #[test]
+    fn unknown_flags_still_launch_gui() {
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "--unknown"])),
+            CliAction::LaunchGui
+        );
+    }
+
+    #[test]
+    fn paths_and_open_path_values_are_not_print_actions() {
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "--open-path", "--version"])),
+            CliAction::LaunchGui
+        );
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "/tmp/--help"])),
+            CliAction::LaunchGui
+        );
+        assert_eq!(
+            cli_action_output(CliAction::PrintVersion),
+            Some(format!("alethe {}\n", env!("CARGO_PKG_VERSION")))
+        );
+        assert!(cli_action_output(CliAction::PrintHelp)
+            .unwrap()
+            .contains("alethe --help"));
+        assert!(cli_action_output(CliAction::PrintHelp)
+            .unwrap()
+            .contains("alethe update"));
+        assert_eq!(cli_action_output(CliAction::LaunchGui), None);
+        assert_eq!(cli_action_output(CliAction::Update), None);
+    }
+
+    #[test]
+    fn parses_update_subcommand_and_preserves_help_version_precedence() {
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "update"])),
+            CliAction::Update
+        );
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "update", "--help"])),
+            CliAction::PrintHelp
+        );
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "update", "-V"])),
+            CliAction::PrintVersion
+        );
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "--open-path", "update"])),
+            CliAction::LaunchGui
+        );
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "--open-path=update"])),
+            CliAction::LaunchGui
+        );
+        assert_eq!(
+            parse_cli_action(&args(&["alethe", "/tmp/x", "update"])),
+            CliAction::LaunchGui
+        );
+    }
+
+    #[test]
+    fn formats_update_outcomes_and_exit_behavior() {
+        let up_to_date = format_update_outcome(Ok(CliUpdateReport::UpToDate {
+            current_version: "1.7.0".to_string(),
+        }));
+        assert_eq!(up_to_date.code, 0);
+        assert_eq!(up_to_date.stdout, "alethe 1.7.0 is already up to date.\n");
+        assert!(up_to_date.stderr.is_empty());
+
+        let updated = format_update_outcome(Ok(CliUpdateReport::Updated {
+            from_version: "1.7.0".to_string(),
+            to_version: "1.8.0".to_string(),
+        }));
+        assert_eq!(updated.code, 0);
+        assert_eq!(updated.stdout, "Updated alethe from 1.7.0 to 1.8.0.\n");
+        assert!(updated.stderr.is_empty());
+
+        let blocked = format_update_outcome(Ok(CliUpdateReport::BlockedByRunningApp {
+            available_version: "1.8.0".to_string(),
+        }));
+        assert_eq!(blocked.code, 1);
+        assert!(blocked.stdout.is_empty());
+        assert!(blocked
+            .stderr
+            .contains("alethe 1.8.0 is available, but Alethe is open."));
+
+        assert_eq!(
+            format_install_start("1.7.0", "1.8.0"),
+            "Installing alethe 1.8.0 (currently 1.7.0)...\n"
+        );
+
+        let failed = format_update_outcome(Err("network unreachable".to_string()));
+        assert_eq!(failed.code, 1);
+        assert!(failed.stdout.is_empty());
+        assert_eq!(failed.stderr, "alethe update failed: network unreachable\n");
+
+        let version_exit = cli_immediate_exit(CliAction::PrintVersion).expect("version exit");
+        assert_eq!(version_exit.code, 0);
+        assert!(version_exit.stderr.is_empty());
+        assert_eq!(cli_immediate_exit(CliAction::Update), None);
+        assert_eq!(cli_immediate_exit(CliAction::LaunchGui), None);
+    }
+
+    #[test]
+    fn another_process_of_the_same_executable_counts_as_a_running_app() {
+        let own = Path::new("/opt/alethe/alethe");
+        let other = Path::new("/usr/bin/other");
+        assert!(is_other_instance(
+            10,
+            own,
+            [(10, Some(own)), (11, Some(own))]
+        ));
+        assert!(!is_other_instance(
+            10,
+            own,
+            [(10, Some(own)), (11, Some(other)), (12, None)]
+        ));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn running_app_match_ignores_case_and_verbatim_prefix_on_windows() {
+        let own = Path::new(r"C:\Users\me\AppData\Local\Alethe\alethe.exe");
+        let other = Path::new(r"\\?\C:\USERS\ME\AppData\Local\Alethe\ALETHE.EXE");
+        assert!(is_other_instance(10, own, [(11, Some(other))]));
     }
 
     fn temp_root() -> PathBuf {

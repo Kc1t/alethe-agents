@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { sidebarInsertionIndex } from './sidebarDrag'
+import { projectDropGroupId, sidebarInsertionIndex } from './sidebarDrag'
 
 describe('sidebarInsertionIndex', () => {
   it('places a same-list item before or after the hovered row', () => {
@@ -13,5 +13,18 @@ describe('sidebarInsertionIndex', () => {
   it('keeps the target index stable when moving across lists', () => {
     expect(sidebarInsertionIndex(3, 1, 'before', false)).toBe(1)
     expect(sidebarInsertionIndex(3, 1, 'after', false)).toBe(2)
+  })
+})
+
+describe('projectDropGroupId', () => {
+  it('reads the group from its header or its body, and ungrouped as null', () => {
+    expect(projectDropGroupId('group:g1')).toBe('g1')
+    expect(projectDropGroupId('group-body:g1')).toBe('g1')
+    expect(projectDropGroupId('group:ungrouped')).toBeNull()
+  })
+
+  it('is undefined for anything that is not a group drop target', () => {
+    expect(projectDropGroupId('proj:p1')).toBeUndefined()
+    expect(projectDropGroupId('grp:g1')).toBeUndefined()
   })
 })

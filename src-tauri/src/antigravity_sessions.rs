@@ -52,7 +52,8 @@ fn normalize_uri_path(uri: &str, guest: bool) -> String {
         .replace("%3A", ":")
         .replace("%3a", ":")
         .replace("%5C", "\\")
-        .replace("%5c", "\\");
+        .replace("%5c", "\\")
+        .replace("%20", " ");
     if guest {
         // The leading slash of a guest URI is part of the path, not a separator to strip.
         return normalize_cwd_for(&decoded, true);
@@ -118,8 +119,35 @@ fn snapshot_antigravity_sessions_inner(
         )
     };
 
+    let mut snapshots = Vec::new();
+
+    // `agy` records the newest conversation per workspace in `last_conversations.json`
+    // right away, while `conversation_metadata.json` can lag behind (or never list it).
+    // Without this, a new chat was never discovered, never saved, and lost on restart.
+    let last_path = meta_path.with_file_name("last_conversations.json");
+    if let Ok(contents) = fs::read_to_string(&last_path) {
+        let last_ms = fs::metadata(&last_path)
+            .ok()
+            .as_ref()
+            .map(file_modified_ms)
+            .unwrap_or(0);
+        if let Ok(serde_json::Value::Object(map)) = serde_json::from_str(&contents) {
+            for (workspace, id) in map {
+                let Some(id) = id.as_str() else { continue };
+                let norm = normalize_uri_path(&workspace, guest);
+                if target_cwd.is_empty() || cwd_matches(&norm, &target_cwd, sep) {
+                    snapshots.push(AntigravitySessionSnapshot {
+                        id: id.to_string(),
+                        preview: String::new(),
+                        modified_at_ms: last_ms,
+                    });
+                }
+            }
+        }
+    }
+
     if !meta_path.is_file() {
-        return Ok(Vec::new());
+        return Ok(snapshots);
     }
 
     let metadata = fs::metadata(&meta_path).ok();
@@ -127,8 +155,6 @@ fn snapshot_antigravity_sessions_inner(
 
     let contents = fs::read_to_string(&meta_path).map_err(|e| e.to_string())?;
     let json: serde_json::Value = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
-
-    let mut snapshots = Vec::new();
 
     let conversations = json.get("conversations").and_then(|v| v.as_object());
     if let Some(map) = conversations {
@@ -158,6 +184,8 @@ fn snapshot_antigravity_sessions_inner(
             }
 
             if matches_cwd {
+                // Prefer the metadata entry (it carries the preview) over the bare fallback.
+                snapshots.retain(|existing| existing.id != *id);
                 snapshots.push(AntigravitySessionSnapshot {
                     id: id.clone(),
                     preview,

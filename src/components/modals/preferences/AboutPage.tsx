@@ -190,7 +190,9 @@ function UpdatesSection({ version }: { version: string }) {
     setPhase('installing')
     setError('')
     try {
-      await installPendingUpdate(({ downloaded, total }) => setPercent(percentOf(downloaded, total)))
+      await installPendingUpdate(({ downloaded, total }) =>
+        setPercent(percentOf(downloaded, total)),
+      )
     } catch (err) {
       setPhase('error')
       setError(String(err))

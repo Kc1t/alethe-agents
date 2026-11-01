@@ -60,11 +60,15 @@ export function OfficialSkillsForProject({ projectPath }: { projectPath: string 
         ? await skillsRemoveBundled(skill.name, installedBundledAgents(skill), projectPath)
         : await skillsInstallBundled(skill.name, pendingBundledAgents(skill), projectPath)
       const { done, failed } = splitBundledReport(report, (entry) =>
-        remove ? entry.state !== 'installed' && entry.state !== 'update' : entry.state === 'installed',
+        remove
+          ? entry.state !== 'installed' && entry.state !== 'update'
+          : entry.state === 'installed',
       )
       if (done.length > 0) {
         pushToast({
-          title: t(remove ? 'skills.projectRemoved' : 'skills.projectInstalled', { name: skill.name }),
+          title: t(remove ? 'skills.projectRemoved' : 'skills.projectInstalled', {
+            name: skill.name,
+          }),
           body: done.map((entry) => entry.path ?? agentLabel(entry.agent)).join('\n'),
         })
       }

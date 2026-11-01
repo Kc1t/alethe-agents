@@ -57,7 +57,8 @@ export function GroupNode({
   })
   const bodyDropZone = useDroppable({
     id: dragKind === 'group' ? `group:${group.id}` : `group-body:${group.id}`,
-    disabled: dragKind !== 'group' || group.collapsed,
+    // Projects drop into the body too, so an empty group takes one anywhere in its area.
+    disabled: (dragKind !== 'group' && dragKind !== 'project') || group.collapsed,
   })
   const draggable = useDraggable({ id: `grp:${group.id}` })
   const isDragging = draggable.isDragging
@@ -132,7 +133,7 @@ export function GroupNode({
       <Collapse open={!group.collapsed}>
         <div
           ref={bodyDropZone.setNodeRef}
-          className={`${styles.groupBody} ${dragKind === 'group' && dropInside ? styles.dropInside : ''}`}
+          className={`${styles.groupBody} ${dropInside && (dragKind === 'group' || dragKind === 'project') ? styles.dropInside : ''}`}
         >
           {childGroups.map((cg) => renderChildGroup(cg))}
           {projects.length === 0 && childGroups.length === 0 ? (

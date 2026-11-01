@@ -281,11 +281,10 @@ fn generate_repo_context_files(project_dir: &str) -> Result<(), String> {
         tech_stack.join(", ")
     };
 
-    // Truncar README para os primeiros 1500 caracteres
-    let truncated_readme = if readme_content.len() > 1500 {
-        format!("{}...", &readme_content[..1500])
-    } else {
-        readme_content
+    // Cut at a char boundary: slicing bytes panics inside a multi-byte character.
+    let truncated_readme = match readme_content.char_indices().nth(1500) {
+        Some((cut, _)) => format!("{}...", &readme_content[..cut]),
+        None => readme_content,
     };
 
     let context_markdown = format!(
@@ -297,8 +296,117 @@ fn generate_repo_context_files(project_dir: &str) -> Result<(), String> {
         Ao iniciar a conversa com o usuário neste repositório, faça um resumo executivo direto de 2 a 3 frases explicando o propósito deste projeto.\n"
     );
 
-    let _ = fs::write(path.join("AGENTS.md"), &context_markdown);
-    let _ = fs::write(path.join("CLAUDE.md"), &context_markdown);
+    // Never overwrite the repository's own agent guides.
+    for name in ["AGENTS.md", "CLAUDE.md"] {
+        let file = path.join(name);
+        if !file.exists() {
+            let _ = fs::write(file, &context_markdown);
+        }
+    }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_dir(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("alethe-projects-{label}-{}", nanoid::nanoid!(8)));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn normalizes_github_shorthands() {
+        assert_eq!(
+            normalize_github_url(" owner/repo "),
+            "https://github.com/owner/repo"
+        );
+        assert_eq!(
+            normalize_github_url("github.com/owner/repo"),
+            "https://github.com/owner/repo"
+        );
+        assert_eq!(
+            normalize_github_url("git@github.com:o/r.git"),
+            "git@github.com:o/r.git"
+        );
+        assert_eq!(
+            normalize_github_url("https://gitlab.com/o/r"),
+            "https://gitlab.com/o/r"
+        );
+        assert_eq!(normalize_github_url("not a url"), "not a url");
+    }
+
+    #[test]
+    fn folder_name_strips_git_suffix_and_sanitizes() {
+        assert_eq!(
+            repo_folder_name("https://github.com/o/my-repo.git"),
+            "my-repo"
+        );
+        assert_eq!(repo_folder_name("git@github.com:o/r.git"), "r");
+        assert_eq!(repo_folder_name("https://github.com/o/a b/"), "a_b");
+        assert_eq!(repo_folder_name(".git"), "repo");
+    }
+
+    #[test]
+    fn clone_target_appends_folder_unless_already_named() {
+        let base = std::env::temp_dir();
+        let joined =
+            resolve_clone_target(base.to_str().unwrap(), "https://github.com/o/r").unwrap();
+        assert_eq!(PathBuf::from(joined), base.join("r"));
+        let named = base.join("r");
+        let same = resolve_clone_target(named.to_str().unwrap(), "https://github.com/o/r").unwrap();
+        assert_eq!(PathBuf::from(same), named);
+    }
+
+    #[test]
+    fn external_todos_round_trip() {
+        let dir = temp_dir("todos");
+        let content = serde_json::json!({
+            "preferences": { "todoStoragePath": dir.to_str().unwrap() },
+            "todos": [{ "id": "t1" }],
+        })
+        .to_string();
+        save_external_todos(&content).unwrap();
+
+        let without_todos = serde_json::json!({
+            "preferences": { "todoStoragePath": dir.to_str().unwrap() },
+            "todos": [],
+        })
+        .to_string();
+        let merged: Value = serde_json::from_str(&merge_external_todos(without_todos)).unwrap();
+        assert_eq!(merged["todos"][0]["id"], "t1");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn merge_without_external_path_returns_content_unchanged() {
+        let content = r#"{"preferences":{"todoStoragePath":"  "},"todos":[]}"#.to_string();
+        assert_eq!(merge_external_todos(content.clone()), content);
+    }
+
+    #[test]
+    fn context_files_keep_existing_guides() {
+        let dir = temp_dir("context");
+        fs::write(dir.join("CLAUDE.md"), "own guide").unwrap();
+        generate_repo_context_files(dir.to_str().unwrap()).unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("CLAUDE.md")).unwrap(),
+            "own guide"
+        );
+        assert!(dir.join("AGENTS.md").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn context_files_truncate_multibyte_readme_without_panicking() {
+        let dir = temp_dir("readme");
+        fs::write(dir.join("README.md"), "é".repeat(2000)).unwrap();
+        generate_repo_context_files(dir.to_str().unwrap()).unwrap();
+        let written = fs::read_to_string(dir.join("AGENTS.md")).unwrap();
+        assert!(written.contains(&format!("{}...", "é".repeat(1500))));
+        let _ = fs::remove_dir_all(dir);
+    }
 }

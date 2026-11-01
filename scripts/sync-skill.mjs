@@ -60,7 +60,8 @@ function listFiles(dir, base = dir) {
 
 function skillVersion(skillDir) {
   const frontmatter = readFileSync(path.join(skillDir, 'SKILL.md'), 'utf8').split('\n---')[0]
-  if (!new RegExp(`^name:\\s*${SKILL}\\s*$`, 'm').test(frontmatter)) fail(`skills/${SKILL}/SKILL.md is not named ${SKILL}`)
+  if (!new RegExp(`^name:\\s*${SKILL}\\s*$`, 'm').test(frontmatter))
+    fail(`skills/${SKILL}/SKILL.md is not named ${SKILL}`)
   const version = Number(frontmatter.match(/^\s+version:\s*"?(\d+)"?\s*$/m)?.[1])
   if (!Number.isInteger(version)) fail(`skills/${SKILL}/SKILL.md has no metadata.version`)
   return version
@@ -87,14 +88,19 @@ function fileEntry(file) {
 
 function updatedRust(rust, version, files) {
   const versionPattern = new RegExp(`(name: "${SKILL}",[\\s\\S]*?version: )\\d+`)
-  if (!versionPattern.test(rust)) fail(`Could not find the ${SKILL} version in src-tauri/src/skills.rs`)
+  if (!versionPattern.test(rust))
+    fail(`Could not find the ${SKILL} version in src-tauri/src/skills.rs`)
   const begin = rust.indexOf(FILES_BEGIN)
   const end = rust.indexOf(FILES_END)
-  if (begin === -1 || end === -1 || end < begin) fail(`src-tauri/src/skills.rs has no "${FILES_BEGIN}" block`)
+  if (begin === -1 || end === -1 || end < begin)
+    fail(`src-tauri/src/skills.rs has no "${FILES_BEGIN}" block`)
   const lineStart = rust.lastIndexOf('\n', end) + 1
   const ordered = ['SKILL.md', ...files.filter((file) => file !== 'SKILL.md')]
   const block = `${FILES_BEGIN}\n${ordered.map(fileEntry).join('\n')}\n`
-  return (rust.slice(0, begin) + block + rust.slice(lineStart)).replace(versionPattern, `$1${version}`)
+  return (rust.slice(0, begin) + block + rust.slice(lineStart)).replace(
+    versionPattern,
+    `$1${version}`,
+  )
 }
 
 const opts = parseArgs(process.argv.slice(2))
@@ -112,7 +118,9 @@ try {
   textOnly(skillDir, files)
   const rust = updatedRust(readFileSync(SKILLS_RS, 'utf8'), version, files)
   if (from && !git(from, 'branch', '-r', '--contains', commit)) {
-    console.warn(`warning: ${commit.slice(0, 7)} is not on any remote branch of ${from}; push it before releasing`)
+    console.warn(
+      `warning: ${commit.slice(0, 7)} is not on any remote branch of ${from}; push it before releasing`,
+    )
   }
 
   rmSync(staging, { recursive: true, force: true })
@@ -123,12 +131,18 @@ try {
   }
   rmSync(VENDORED, { recursive: true, force: true })
   renameSync(staging, VENDORED)
-  for (const legacy of LEGACY_SKILLS) rmSync(path.join(SKILLS_DIR, legacy), { recursive: true, force: true })
+  for (const legacy of LEGACY_SKILLS)
+    rmSync(path.join(SKILLS_DIR, legacy), { recursive: true, force: true })
   writeFileSync(SKILLS_RS, rust)
 
   const sources = existsSync(SOURCES) ? JSON.parse(readFileSync(SOURCES, 'utf8')) : {}
   for (const legacy of LEGACY_SKILLS) delete sources[legacy]
-  sources[SKILL] = { repository: REPOSITORY, commit, version, ...(opts.ref ? { ref: opts.ref } : {}) }
+  sources[SKILL] = {
+    repository: REPOSITORY,
+    commit,
+    version,
+    ...(opts.ref ? { ref: opts.ref } : {}),
+  }
   writeFileSync(SOURCES, `${JSON.stringify(sources, null, 2)}\n`)
   console.log(`Synced ${SKILL} ${version} from ${commit.slice(0, 7)} (${files.length} files).`)
 } catch (error) {

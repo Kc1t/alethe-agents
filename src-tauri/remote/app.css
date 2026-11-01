@@ -393,6 +393,70 @@ svg {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.worker-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.62rem;
+  padding: 0.55rem 0.55rem 0.55rem 0.2rem;
+}
+.worker-body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.worker-body .terminal-name {
+  white-space: normal;
+}
+.worker-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.worker-meta {
+  color: var(--fg-faint);
+  font-size: 0.66rem;
+}
+.worker-meta:empty {
+  display: none;
+}
+.new-agent {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.35rem 0.2rem 0.2rem;
+}
+.new-agent-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 40px;
+  padding: 0 0.7rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.new-agent-button:hover {
+  border-color: var(--accent-border);
+  color: var(--fg);
+}
+.new-agent-button svg {
+  width: 14px;
+  height: 14px;
+}
+.new-agent-error {
+  margin: 0.2rem 0.2rem 0;
+  color: var(--status-offline);
+  font-size: 0.72rem;
+}
 .terminal-tag {
   overflow: hidden;
   margin-left: auto;

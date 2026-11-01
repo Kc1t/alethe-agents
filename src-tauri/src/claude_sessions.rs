@@ -803,5 +803,10 @@ mod encode_cwd_tests {
     #[test]
     fn trailing_separator_is_dropped() {
         assert_eq!(encode_cwd_for_claude("/tmp/x/"), "-tmp-x");
+        assert_eq!(
+            encode_cwd_for_claude(r"C:\Users\dev\Projeto Demanda Review"),
+            "C--Users-dev-Projeto-Demanda-Review"
+        );
+        assert_eq!(encode_cwd_for_claude("/home/dev/my_app ção"), "-home-dev-my-app---o");
     }
 }

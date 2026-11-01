@@ -9,14 +9,17 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty::PtySessions;
 
 use super::appearance::{projects_document, remote_appearance, selected_brand_icon};
 use super::pty_bridge::{read_pty_size, read_scrollback, write_remote};
 use super::util::{query_value, sanitize_remote_message};
-use super::workspace::{pty_agent, pty_is_shared, shared_tab, workspace_snapshot};
+use super::workspace::{
+    orchestration_snapshot, project_exists, pty_agent, pty_is_shared, shared_tab,
+    workspace_snapshot,
+};
 use super::{
     ConnectionGuard, RemoteHub, IDLE_DISABLE_SECS, MAX_BODY, MAX_MESSAGE, MAX_REQUEST,
     MAX_SCROLLBACK, MAX_STATIC_ASSET, SOCKET_TIMEOUT,
@@ -183,25 +186,25 @@ fn handle_http(
     }
 
     match path {
-        "/" | "/index.html" => respond(
+        "/" | "/index.html" => respond_large(
             stream,
             200,
             "text/html; charset=utf-8",
             include_str!("../../remote/index.html"),
         ),
-        "/app.js" => respond(
+        "/app.js" => respond_large(
             stream,
             200,
             "text/javascript; charset=utf-8",
             include_str!("../../remote/app.js"),
         ),
-        "/locales.js" => respond(
+        "/locales.js" => respond_large(
             stream,
             200,
             "application/javascript; charset=utf-8",
             include_str!("../../remote/locales.js"),
         ),
-        "/app.css" => respond(
+        "/app.css" => respond_large(
             stream,
             200,
             "text/css; charset=utf-8",
@@ -323,6 +326,18 @@ fn handle_api(
             200,
             "application/json",
             &workspace_snapshot(app)?.to_string(),
+        );
+    }
+    if path == "/api/orchestration" {
+        let board = app
+            .try_state::<crate::orchestrator::OrchestratorState>()
+            .map(|state| state.board())
+            .unwrap_or_else(|| json!({}));
+        return respond(
+            stream,
+            200,
+            "application/json",
+            &orchestration_snapshot(app, &board).to_string(),
         );
     }
     if path == "/api/scrollback" {
@@ -515,24 +530,41 @@ fn handle_api(
                 r#"{"error":"Only Codex and Claude Code can be controlled remotely"}"#,
             );
         }
-        if payload.action != "interrupt" {
-            return respond(
-                stream,
-                400,
-                "application/json",
-                r#"{"error":"Unknown agent control action"}"#,
-            );
+        // Claude Code queues a message typed while a turn is running and only
+        // offers `ctrl+x ctrl+s` to send it now — a chord a phone keyboard
+        // cannot type.
+        let (keys, preview): (&[&str], &str) = match payload.action.as_str() {
+            "interrupt" => (&["\x03"], "Interrupted the active agent turn"),
+            "send_now" if agent == "claude" => (&["\x18", "\x13"], "Sent the queued message now"),
+            _ => {
+                return respond(
+                    stream,
+                    400,
+                    "application/json",
+                    r#"{"error":"Unknown agent control action"}"#,
+                );
+            }
+        };
+        let mut written = true;
+        for (index, key) in keys.iter().enumerate() {
+            if index > 0 {
+                // Each half of the chord must arrive as its own keypress.
+                thread::sleep(Duration::from_millis(60));
+            }
+            written = hub.with_active_session(generation, session_id, || {
+                write_remote(sessions, &payload.pty_id, key)
+            })?;
+            if !written {
+                break;
+            }
         }
-        let written = hub.with_active_session(generation, session_id, || {
-            write_remote(sessions, &payload.pty_id, "\x03")
-        })?;
         if !written {
             return respond_session_inactive(stream);
         }
         let device_name = hub.device_name(session_id);
         eprintln!(
-            "[remote] {device_name} (device {session_id}) interrupted {}",
-            payload.pty_id
+            "[remote] {device_name} (device {session_id}) {} {}",
+            payload.action, payload.pty_id
         );
         let _ = app.emit(
             "remote://message",
@@ -540,7 +572,7 @@ fn handle_api(
                 "ptyId": payload.pty_id,
                 "deviceId": session_id,
                 "deviceName": device_name,
-                "preview": "Interrupted the active agent turn",
+                "preview": preview,
             }),
         );
         return respond(stream, 204, "text/plain", "");
@@ -613,7 +645,75 @@ fn handle_api(
         );
         return respond(stream, 204, "text/plain", "");
     }
+    if path == "/api/open-agent" && method == "POST" {
+        if hub.is_read_only() {
+            return respond(
+                stream,
+                403,
+                "application/json",
+                r#"{"error":"Remote control is in read-only mode"}"#,
+            );
+        }
+        if !hub.allow_message(session_id) {
+            return respond(
+                stream,
+                429,
+                "application/json",
+                r#"{"error":"Too many messages, slow down"}"#,
+            );
+        }
+        let payload: RemoteOpenAgent =
+            serde_json::from_slice(body).map_err(|error| error.to_string())?;
+        if !REMOTE_OPEN_AGENTS.contains(&payload.agent.as_str()) {
+            return respond(
+                stream,
+                400,
+                "application/json",
+                r#"{"error":"Only Codex and Claude Code can be started remotely"}"#,
+            );
+        }
+        if !project_exists(app, &payload.project_id) {
+            return respond(
+                stream,
+                404,
+                "application/json",
+                r#"{"error":"Project not found"}"#,
+            );
+        }
+        let device_name = hub.device_name(session_id);
+        // The desktop owns terminal creation; it spawns the PTY and shares the new terminal.
+        let emitted = hub.with_active_session(generation, session_id, || {
+            app.emit(
+                "remote://open-agent",
+                json!({
+                    "projectId": payload.project_id,
+                    "agent": payload.agent,
+                    "deviceId": session_id,
+                    "deviceName": device_name,
+                }),
+            )
+            .map_err(|error| error.to_string())
+        })?;
+        if !emitted {
+            return respond_session_inactive(stream);
+        }
+        eprintln!(
+            "[remote] {device_name} (device {session_id}) started {} in project {}",
+            payload.agent, payload.project_id
+        );
+        return respond(stream, 204, "text/plain", "");
+    }
     respond(stream, 404, "application/json", r#"{"error":"Not found"}"#)
+}
+
+/// Agents a paired device may start: the ones the remote chat view can drive.
+const REMOTE_OPEN_AGENTS: [&str; 2] = ["claude", "codex"];
+
+#[derive(Deserialize)]
+struct RemoteOpenAgent {
+    #[serde(rename = "projectId")]
+    project_id: String,
+    agent: String,
 }
 
 /// The session was revoked or remote control was turned off between
@@ -881,6 +981,18 @@ fn respond_bytes_with_limit(
 #[cfg(test)]
 mod tests {
     use super::{bearer_token, find_headers_end, header_value, question_answer_input};
+
+    #[test]
+    fn every_static_asset_fits_the_asset_limit() {
+        for asset in [
+            include_str!("../../remote/index.html"),
+            include_str!("../../remote/app.js"),
+            include_str!("../../remote/locales.js"),
+            include_str!("../../remote/app.css"),
+        ] {
+            assert!(asset.len() <= super::super::MAX_STATIC_ASSET);
+        }
+    }
     use crate::handoff::{RemoteQuestion, RemoteQuestionOption};
 
     #[test]

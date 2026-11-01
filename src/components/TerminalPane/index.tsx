@@ -6,6 +6,7 @@ import {
   GripVertical,
   Maximize2,
   Minimize2,
+  Minus,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -133,6 +134,7 @@ export const TerminalPane = memo(function TerminalPane({
   const setLaneVisible = useProjectsStore((s) => s.setLaneVisible)
   const setTerminalTopbarPinned = useProjectsStore((s) => s.setTerminalTopbarPinned)
   const setTerminalDisabled = useProjectsStore((s) => s.setTerminalDisabled)
+  const minimizePane = useProjectsStore((s) => s.minimizePane)
   const markTerminalUsed = useProjectsStore((s) => s.markTerminalUsed)
   const setSubTabPtyId = useProjectsStore((s) => s.setSubTabPtyId)
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
@@ -649,6 +651,15 @@ export const TerminalPane = memo(function TerminalPane({
                   <RefreshCw size={12} />
                 </button>
               ) : null}
+              <button
+                type="button"
+                className={styles.action}
+                onClick={() => minimizePane(projectId, terminal.id)}
+                title={t('ui.terminal.minimize')}
+                aria-label={t('ui.terminal.minimize')}
+              >
+                <Minus size={12} />
+              </button>
               <button
                 type="button"
                 className={`${styles.action} ${styles.danger}`}

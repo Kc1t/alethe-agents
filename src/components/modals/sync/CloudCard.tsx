@@ -33,6 +33,7 @@ import {
   openInBrowser,
 } from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { useUiStore } from '../../../stores/uiStore'
 import styles from '../SyncModal.module.css'
 import { MachinesSection } from './MachinesSection'
 import { formatWhen, summaryText, syncErrorText } from './syncText'
@@ -76,11 +77,15 @@ export function CloudCard({ open }: { open: boolean }) {
 
   const tRef = useRef(t)
   tRef.current = t
+  const report = useCallback((next: NonNullable<Feedback>) => {
+    setFeedback(next)
+    useUiStore.getState().pushToast({ title: next.text, body: '' })
+  }, [])
   const fail = useCallback(
-    (error: unknown) => setFeedback({ kind: 'error', text: syncErrorText(tRef.current, error) }),
-    [],
+    (error: unknown) => report({ kind: 'error', text: syncErrorText(tRef.current, error) }),
+    [report],
   )
-  const note = useCallback((text: string) => setFeedback({ kind: 'notice', text }), [])
+  const note = useCallback((text: string) => report({ kind: 'notice', text }), [report])
 
   const loadSyncState = useCallback(async () => {
     setLastSyncAt(parseState(await cloudSyncStateRead().catch(() => null)).lastSyncAt)

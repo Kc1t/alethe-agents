@@ -314,7 +314,10 @@ impl ResourceSupervisor {
             ptys_mb: to_mb(pty_bytes),
             process_count: app_tree.len(),
             system_total_mb: to_mb(system.total_memory()),
-            system_available_mb: to_mb(system.available_memory()),
+            system_available_mb: crate::stats::system_available_mb(
+                &system,
+                to_mb(system.total_memory()),
+            ),
         };
 
         let mut ptys = roots

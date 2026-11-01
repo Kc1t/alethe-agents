@@ -362,7 +362,9 @@ function BundledSkillView({
         <div className={styles.detailTitleRow}>
           <span className={styles.detailName}>{skill.name}</span>
           <span className={styles.badge}>{t('skills.badgeOfficial')}</span>
-          <span className={styles.badge}>{t('skills.versionLabel', { version: skill.version })}</span>
+          <span className={styles.badge}>
+            {t('skills.versionLabel', { version: skill.version })}
+          </span>
           {skill.repository ? (
             <button
               type="button"

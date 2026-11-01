@@ -616,7 +616,8 @@ pub fn command_builder_for_wsl(
 }
 
 fn is_wsl_launcher(command: &str) -> bool {
-    command.eq_ignore_ascii_case("wsl") || command.eq_ignore_ascii_case("wsl.exe")
+    let name = command.rsplit(['/', '\\']).next().unwrap_or(command);
+    name.eq_ignore_ascii_case("wsl") || name.eq_ignore_ascii_case("wsl.exe")
 }
 
 const NEVER_CROSS: [&str; 5] = ["PATH", "HOME", "TMP", "TEMP", "WSLENV"];
@@ -1097,7 +1098,13 @@ mod tests {
 
     #[test]
     fn a_plain_wsl_terminal_opens_the_login_shell_of_its_distro() {
-        for launcher in ["wsl.exe", "WSL.EXE", "wsl"] {
+        for launcher in [
+            "wsl.exe",
+            "WSL.EXE",
+            "wsl",
+            r"C:\Windows\System32\wsl.exe",
+            "C:/Windows/System32/WSL.EXE",
+        ] {
             let builder = command_builder_for_wsl(&ubuntu(), Some(launcher), &[], None);
             assert_eq!(argv(&builder), vec!["wsl.exe", "-d", "Ubuntu"]);
         }
