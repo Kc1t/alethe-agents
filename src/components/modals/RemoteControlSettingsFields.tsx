@@ -60,6 +60,7 @@ export function RemoteControlSettingsFields({
           <label className={styles.setting}>
             <span>{t('remote.reachTitle')}</span>
             <Dropdown
+              rootClassName={styles.select}
               value={preferences.remoteUseTailscale ? 'tailscale' : 'lan'}
               onChange={(rawValue) =>
                 setPreferences({ remoteUseTailscale: rawValue === 'tailscale' })
@@ -108,6 +109,7 @@ export function RemoteControlSettingsFields({
                 <span className={styles.settingCaption}>{t('remote.maxDevicesHint')}</span>
               </span>
               <Dropdown
+                rootClassName={styles.select}
                 value={String(preferences.remoteMaxDevices)}
                 onChange={(rawValue) => setPreferences({ remoteMaxDevices: Number(rawValue) })}
                 disabled={busy}
@@ -124,6 +126,7 @@ export function RemoteControlSettingsFields({
                 <span className={styles.settingCaption}>{t('remote.sessionExpiryHint')}</span>
               </span>
               <Dropdown
+                rootClassName={styles.select}
                 value={String(preferences.remoteSessionExpirySecs)}
                 onChange={(rawValue) =>
                   setPreferences({ remoteSessionExpirySecs: Number(rawValue) })
@@ -142,6 +145,7 @@ export function RemoteControlSettingsFields({
                 <span className={styles.settingCaption}>{t('remote.readOnlyHint')}</span>
               </span>
               <Dropdown
+                rootClassName={styles.select}
                 value={readOnly ? 'on' : 'off'}
                 onChange={(rawValue) => setPreferences({ remoteReadOnly: rawValue === 'on' })}
                 disabled={busy}
@@ -158,6 +162,7 @@ export function RemoteControlSettingsFields({
                 <span className={styles.settingCaption}>{t('remote.shellInputHint')}</span>
               </span>
               <Dropdown
+                rootClassName={styles.select}
                 value={allowShellInput ? 'on' : 'off'}
                 onChange={(rawValue) =>
                   setPreferences({ remoteAllowShellInput: rawValue === 'on' })

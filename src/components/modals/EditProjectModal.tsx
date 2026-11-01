@@ -1,8 +1,10 @@
-import { Bot, GitBranch, GitMerge, Palette } from 'lucide-react'
+import { Bot, FolderSearch, GitBranch, GitMerge, Palette, Plug } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import {
+  cloneGithubRepo,
   detectProjectStack,
   gitListBranches,
   startGsdWatcher,
@@ -11,16 +13,19 @@ import {
   worktreeProvision,
   worktreeRemove,
 } from '../../lib/tauri'
-import { type AgentType, GROUP_COLORS } from '../../lib/types'
-import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
+import { type AgentType, GROUP_COLORS, type Project } from '../../lib/types'
 import { useMergeStore } from '../../stores/mergeStore'
+import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { OfficialSkillsForProject } from '../OfficialSkills'
+import { ToolingManifestPanel } from '../ToolingManifestPanel'
 import { Dropdown } from '../ui/Dropdown'
 import { ColorPalettePopover } from './ColorPalettePopover'
 import controls from './controls.module.css'
 import { EditProjectAgentSettings } from './EditProjectAgentSettings'
 import styles from './EditProjectModal.module.css'
 import { ImageInput } from './ImageInput'
+import { LocalOverrideToggle } from './LocalOverrideToggle'
 import { Modal } from './Modal'
 
 export function EditProjectModal() {
@@ -73,7 +78,13 @@ export function EditProjectModal() {
   const [mergeTarget, setMergeTarget] = useState('')
   const [newAgentName, setNewAgentName] = useState('')
   const [creatingAgent, setCreatingAgent] = useState(false)
-  const [activeTab, setActiveTab] = useState<'focus' | 'agents' | 'worktrees' | 'merge'>('focus')
+  const [activeTab, setActiveTab] = useState<
+    'focus' | 'agents' | 'tooling' | 'worktrees' | 'merge'
+  >('focus')
+  const setProjectToolingManifest = useProjectsStore((s) => s.setProjectToolingManifest)
+  const relocateProject = useProjectsStore((s) => s.relocateProject)
+  const [relocating, setRelocating] = useState(false)
+  const [relocateError, setRelocateError] = useState<string | null>(null)
 
   const loadWorktrees = async (repoPath: string) => {
     setLoadingWorktrees(true)
@@ -91,6 +102,18 @@ export function EditProjectModal() {
 
   // resetado de volta ao valor antigo. `seededForRef` faz a semeadura valer
 
+  const seedAgentFields = (source: Project) => {
+    setWorktreeModeState(source.worktreeMode ?? 'gitWorktree')
+    setValidationCommandsStr((source.validationCommands ?? []).join('\n'))
+    setHealthCheckCommandState(source.healthCheckCommand ?? '')
+    setHealthCheckPathState(source.healthCheckPath ?? '')
+    setGsdWatcherEnabledState(source.gsdWatcherEnabled ?? false)
+    setConflictProviderState(source.conflictAgentProvider ?? 'claude')
+    setConflictModelState(source.conflictAgentModel ?? '')
+    setGraphifyEnabledState(source.graphifyEnabled ?? false)
+    setAutoWorktreeState(source.autoWorktree ?? false)
+  }
+
   const seededForRef = useRef<string | null>(null)
   useEffect(() => {
     if (!open || !project) {
@@ -103,16 +126,7 @@ export function EditProjectModal() {
     setName(project.name)
     setColor(project.color || GROUP_COLORS[0])
     setIconUrl(project.iconUrl ?? '')
-    setWorktreeModeState(project.worktreeMode ?? 'gitWorktree')
-    setValidationCommandsStr((project.validationCommands ?? []).join('\n'))
-    setHealthCheckCommandState(project.healthCheckCommand ?? '')
-    setHealthCheckPathState(project.healthCheckPath ?? '')
-    setGsdWatcherEnabledState(project.gsdWatcherEnabled ?? false)
-
-    setConflictProviderState(project.conflictAgentProvider ?? 'claude')
-    setConflictModelState(project.conflictAgentModel ?? '')
-    setGraphifyEnabledState(project.graphifyEnabled ?? false)
-    setAutoWorktreeState(project.autoWorktree ?? false)
+    seedAgentFields(project)
     setActiveTab('focus')
     setIsColorPopoverOpen(false)
 
@@ -273,6 +287,29 @@ export function EditProjectModal() {
   }
 
   const previewIcon = iconUrl.trim()
+  const toolingRepo = project.defaultCwd?.trim() || getProjectRepoRoot(project)
+
+  const locateFolder = async () => {
+    const picked = await pickDirectory({ defaultPath: project.pendingRelocation?.originalPath })
+    if (!picked) return
+    setRelocateError(null)
+    relocateProject(project.id, picked)
+  }
+
+  const cloneHere = async () => {
+    if (!project.githubUrl) return
+    const parent = await pickDirectory()
+    if (!parent) return
+    setRelocating(true)
+    setRelocateError(null)
+    try {
+      relocateProject(project.id, await cloneGithubRepo(project.githubUrl, parent))
+    } catch (err) {
+      setRelocateError(t('projectSync.cloneError', { error: String(err) }))
+    } finally {
+      setRelocating(false)
+    }
+  }
 
   return (
     <Modal
@@ -302,6 +339,7 @@ export function EditProjectModal() {
             [
               ['focus', t('crud.editProjectFocus'), Palette],
               ['agents', t('crud.editProjectAgents'), Bot],
+              ['tooling', t('tooling.projectTab'), Plug],
               ['worktrees', t('crud.editProjectWorktrees'), GitBranch],
               ['merge', t('crud.editProjectMerge'), GitMerge],
             ] as const
@@ -319,6 +357,40 @@ export function EditProjectModal() {
           ))}
         </nav>
         <div className={styles.panel}>
+          {project.pendingRelocation ? (
+            <div className={controls.gitInitBanner}>
+              <span className={controls.gitInitBannerIcon}>
+                <FolderSearch size={16} />
+              </span>
+              <div className={controls.gitInitBannerText}>
+                <strong>{t('projectSync.relocateTitle')}</strong>
+                <span>
+                  {relocateError ??
+                    t('projectSync.relocateBody', {
+                      path: project.pendingRelocation.originalPath,
+                    })}
+                </span>
+              </div>
+              <button
+                type="button"
+                className={controls.gitInitBannerBtn}
+                disabled={relocating}
+                onClick={() => void locateFolder()}
+              >
+                {t('projectSync.locate')}
+              </button>
+              {project.githubUrl ? (
+                <button
+                  type="button"
+                  className={controls.gitInitBannerBtn}
+                  disabled={relocating}
+                  onClick={() => void cloneHere()}
+                >
+                  {relocating ? t('projectSync.cloning') : t('projectSync.clone')}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           {activeTab === 'focus' ? (
             <div>
               <div className={controls.field}>
@@ -462,6 +534,16 @@ export function EditProjectModal() {
 
           {activeTab === 'agents' ? (
             <div>
+              <LocalOverrideToggle
+                project={project}
+                group="agents"
+                onAdopted={() => {
+                  const fresh = useProjectsStore
+                    .getState()
+                    .projects.find((p) => p.id === project.id)
+                  if (fresh) seedAgentFields(fresh)
+                }}
+              />
               <EditProjectAgentSettings
                 projectId={project.id}
                 cwd={project.terminals[0]?.cwd ?? project.defaultCwd ?? ''}
@@ -484,6 +566,29 @@ export function EditProjectModal() {
                 gsdWatcherEnabled={gsdWatcherEnabled}
                 onGsdWatcherEnabledChange={setGsdWatcherEnabledState}
               />
+            </div>
+          ) : null}
+
+          {activeTab === 'tooling' ? (
+            <div>
+              <div className={styles.sectionIntro}>
+                <h3>{t('tooling.projectTitle')}</h3>
+                <p>{t('tooling.projectDescription')}</p>
+              </div>
+              <LocalOverrideToggle project={project} group="tooling" />
+              {toolingRepo && !project.pendingRelocation ? (
+                <>
+                  <ToolingManifestPanel
+                    scope="project"
+                    repo={toolingRepo}
+                    manifest={project.toolingManifest}
+                    onChange={(manifest) => setProjectToolingManifest(project.id, manifest)}
+                  />
+                  <OfficialSkillsForProject projectPath={toolingRepo} />
+                </>
+              ) : (
+                <p className={controls.hint}>{t('tooling.projectNeedsFolder')}</p>
+              )}
             </div>
           ) : null}
 

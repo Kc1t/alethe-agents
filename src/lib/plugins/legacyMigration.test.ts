@@ -5,8 +5,23 @@ vi.mock('./host', () => ({
   setPluginEnabled: (id: string, enabled: boolean) => setPluginEnabledMock(id, enabled),
 }))
 
-const { applyLegacyPluginMigrations, GIT_CONTROL_PLUGIN_ID, recordLegacyGitFlag } =
-  await import('./legacyMigration')
+const records: Record<string, Record<string, unknown>> = {}
+vi.mock('./storage', () => ({
+  createPluginStorage: (id: string) => ({
+    read: async () => ({ ...(records[id] ?? {}) }),
+    set: async (key: string, value: unknown) => {
+      records[id] = { ...(records[id] ?? {}), [key]: value }
+    },
+  }),
+}))
+
+const {
+  applyLegacyPluginMigrations,
+  GIT_CONTROL_PLUGIN_ID,
+  JEV_PLUGIN_ID,
+  recordLegacyGitFlag,
+  recordLegacyVoicePreferences,
+} = await import('./legacyMigration')
 
 beforeEach(() => setPluginEnabledMock.mockClear())
 afterEach(async () => {
@@ -46,5 +61,36 @@ describe('legacy git feature migration', () => {
     recordLegacyGitFlag(undefined)
     await applyLegacyPluginMigrations()
     expect(setPluginEnabledMock).toHaveBeenCalledWith(GIT_CONTROL_PLUGIN_ID, false)
+  })
+})
+
+describe('legacy voice preferences', () => {
+  beforeEach(() => {
+    for (const id of Object.keys(records)) delete records[id]
+  })
+
+  it('hands the old voice preferences to the Jev plugin storage', async () => {
+    recordLegacyVoicePreferences({
+      uiTheme: 'dark',
+      voiceCommandApiKey: 'sk-or-1',
+      dictationEnabled: true,
+    })
+    await applyLegacyPluginMigrations()
+    expect(records[JEV_PLUGIN_ID]).toEqual({
+      legacyPreferences: { voiceCommandApiKey: 'sk-or-1', dictationEnabled: true },
+    })
+  })
+
+  it('never overwrites settings the plugin already keeps', async () => {
+    records[JEV_PLUGIN_ID] = { settings: { apiKey: 'current' } }
+    recordLegacyVoicePreferences({ voiceCommandApiKey: 'old' })
+    await applyLegacyPluginMigrations()
+    expect(records[JEV_PLUGIN_ID]).toEqual({ settings: { apiKey: 'current' } })
+  })
+
+  it('writes nothing for a profile that never used voice', async () => {
+    recordLegacyVoicePreferences({ uiTheme: 'dark' })
+    await applyLegacyPluginMigrations()
+    expect(records[JEV_PLUGIN_ID]).toBeUndefined()
   })
 })

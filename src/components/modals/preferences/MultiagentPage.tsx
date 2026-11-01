@@ -182,14 +182,15 @@ export function MultiagentPage() {
       >
         <div className={multiagentStyles.toolbar}>
           <Dropdown
-            className={styles.select}
+            rootClassName={styles.select}
             value={selectedProjectId}
             onChange={setSelectedProjectId}
             ariaLabel={t('prefs.multiagentSelectProjectOption')}
-            options={[
-              { value: '', label: t('prefs.multiagentSelectProjectOption') },
-              ...projects.map((p) => ({ value: p.id, label: p.name })),
-            ]}
+            placeholder={t('prefs.multiagentSelectProjectOption')}
+            disabled={projects.length === 0}
+            searchable={projects.length > 8}
+            searchPlaceholder={t('prefs.multiagentSelectProjectOption')}
+            options={projects.map((p) => ({ value: p.id, label: p.name }))}
           />
 
           {selectedProjectId && repoPath ? (
@@ -391,18 +392,17 @@ export function MultiagentPage() {
                     aria-label={t('prefs.shortcutName')}
                     onChange={(event) => updateShortcut(index, { name: event.target.value })}
                   />
-                  <select
-                    className={controls.input}
+                  <Dropdown
+                    rootClassName={multiagentStyles.shortcutRule}
                     value={shortcut.rule}
-                    aria-label={t('prefs.shortcutRule')}
-                    onChange={(event) =>
-                      updateShortcut(index, { rule: event.target.value as ShortcutRule })
-                    }
-                  >
-                    <option value="any">{t('prefs.shortcutRuleAny')}</option>
-                    <option value="finished">{t('prefs.shortcutRuleFinished')}</option>
-                    <option value="finishedIsolated">{t('prefs.shortcutRuleIsolated')}</option>
-                  </select>
+                    ariaLabel={t('prefs.shortcutRule')}
+                    onChange={(value) => updateShortcut(index, { rule: value as ShortcutRule })}
+                    options={[
+                      { value: 'any', label: t('prefs.shortcutRuleAny') },
+                      { value: 'finished', label: t('prefs.shortcutRuleFinished') },
+                      { value: 'finishedIsolated', label: t('prefs.shortcutRuleIsolated') },
+                    ]}
+                  />
                   <textarea
                     className={multiagentStyles.shortcutText}
                     value={shortcut.text}

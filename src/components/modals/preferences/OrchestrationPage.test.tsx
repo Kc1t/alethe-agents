@@ -2,7 +2,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { orchestratorCodexModels } from '../../../lib/tauri/orchestrator'
-import { EMPTY_PROJECTS_FILE, type OrchestrationRole } from '../../../lib/types'
+import {
+  DEFAULT_ROUTER9_PREFERENCES,
+  EMPTY_PROJECTS_FILE,
+  type OrchestrationRole,
+} from '../../../lib/types'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { OrchestrationPage } from './OrchestrationPage'
 
@@ -55,6 +59,22 @@ describe('OrchestrationPage', () => {
       conserveProvider: 'claude',
       preferredProvider: 'kimi',
     })
+  })
+
+  it('previews the selected strategy and shows 9router only for the default route', () => {
+    render(<OrchestrationPage />)
+
+    choose('Default strategy', 'Quality')
+    expect(screen.getByRole('region', { name: 'Strategy architecture' })).toBeTruthy()
+    expect(screen.getByText('Worker 2 · review')).toBeTruthy()
+    expect(screen.queryByText('9router')).toBeNull()
+
+    act(() => {
+      useProjectsStore.getState().setPreferences({
+        router9: { ...DEFAULT_ROUTER9_PREFERENCES, enabled: true, defaultForNewAgents: true },
+      })
+    })
+    expect(screen.getByText('9router')).toBeTruthy()
   })
 
   it('adds a role that the orchestrator can run as soon as it appears', () => {

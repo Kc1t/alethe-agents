@@ -33,6 +33,43 @@ describe('Dropdown', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
+  it('marks the selected option without changing its accessible name', () => {
+    render(
+      <Dropdown
+        value="second"
+        onChange={vi.fn()}
+        ariaLabel="Choice"
+        options={[
+          { value: 'first', label: 'First' },
+          { value: 'second', label: 'Second' },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choice' }))
+
+    const selected = screen.getByRole('option', { name: 'Second' })
+    expect(selected).toHaveAttribute('aria-selected', 'true')
+    expect(selected.querySelector('svg')).not.toBeNull()
+    expect(screen.getByRole('option', { name: 'First' }).querySelector('svg')).toBeNull()
+  })
+
+  it('renders the placeholder as a placeholder when nothing is selected', () => {
+    render(
+      <Dropdown
+        value=""
+        placeholder="Select a project"
+        onChange={vi.fn()}
+        ariaLabel="Project"
+        options={[{ value: 'alpha', label: 'Alpha' }]}
+      />,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'Project' })
+    expect(trigger).toHaveTextContent('Select a project')
+    expect(trigger).toHaveAttribute('data-placeholder')
+  })
+
   it('closes the dropdown before its parent modal on Escape', () => {
     const onClose = vi.fn()
 

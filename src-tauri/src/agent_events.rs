@@ -454,6 +454,102 @@ pub async fn codex_mcp_config_write(
         .map_err(|error| format!("codex_mcp_config_write: falha na task bloqueante: {error}"))?
 }
 
+const CODEX_HOOK_FORWARDER: &str = "alethe-codex-hook-forward-";
+
+struct TomlSection<'a> {
+    header: Option<&'a str>,
+    lines: Vec<&'a str>,
+}
+
+fn split_toml_sections(body: &str) -> Vec<TomlSection<'_>> {
+    let mut sections = vec![TomlSection {
+        header: None,
+        lines: Vec::new(),
+    }];
+    for line in body.lines() {
+        if !line.trim_start().starts_with('[') {
+            sections.last_mut().expect("one section").lines.push(line);
+            continue;
+        }
+        let current = sections.last_mut().expect("one section");
+        let mut carried = Vec::new();
+        if current.header.is_some() {
+            let content_end = current
+                .lines
+                .iter()
+                .rposition(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+                .map_or(0, |index| index + 1);
+            if let Some(comment_start) = current.lines[content_end..]
+                .iter()
+                .position(|l| l.trim_start().starts_with('#'))
+            {
+                carried = current.lines.split_off(content_end + comment_start);
+            }
+        }
+        carried.push(line);
+        sections.push(TomlSection {
+            header: Some(line.trim()),
+            lines: carried,
+        });
+    }
+    sections
+}
+
+// Releases before the managed markers appended a fresh hooks block on every Codex launch.
+fn strip_legacy_codex_hooks(body: &str) -> String {
+    let sections = split_toml_sections(body);
+    let mut kept: Vec<&str> = Vec::new();
+    let mut dropped = false;
+    let mut index = 0;
+    while index < sections.len() {
+        let event = sections[index]
+            .header
+            .and_then(|header| header.strip_prefix("[[hooks."))
+            .and_then(|rest| rest.strip_suffix("]]"))
+            .filter(|event| !event.contains('.'));
+        let Some(event) = event else {
+            kept.extend(&sections[index].lines);
+            index += 1;
+            continue;
+        };
+        let handler_header = format!("[[hooks.{event}.hooks]]");
+        let group_end = sections[index + 1..]
+            .iter()
+            .position(|section| {
+                !section
+                    .header
+                    .is_some_and(|header| header.starts_with(&format!("[[hooks.{event}.")))
+            })
+            .map_or(sections.len(), |offset| index + 1 + offset);
+        let handlers: Vec<&TomlSection> = sections[index + 1..group_end]
+            .iter()
+            .filter(|section| section.header == Some(handler_header.as_str()))
+            .collect();
+        let legacy = !handlers.is_empty()
+            && handlers.iter().all(|section| {
+                section
+                    .lines
+                    .iter()
+                    .any(|l| l.contains(CODEX_HOOK_FORWARDER))
+            });
+        if legacy {
+            dropped = true;
+        } else {
+            for section in &sections[index..group_end] {
+                kept.extend(&section.lines);
+            }
+        }
+        index = group_end;
+    }
+    let mut output = kept.join("\n");
+    if dropped {
+        while output.contains("\n\n\n") {
+            output = output.replace("\n\n\n", "\n\n");
+        }
+    }
+    output
+}
+
 fn codex_hooks_config_write_inner(repo: String, _planner_id: String) -> Result<(), String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
@@ -486,7 +582,7 @@ fn codex_hooks_config_write_inner(repo: String, _planner_id: String) -> Result<(
             kept_lines.push(line);
         }
     }
-    let mut body = kept_lines.join("\n");
+    let mut body = strip_legacy_codex_hooks(&kept_lines.join("\n"));
     if !body.is_empty() && !body.ends_with('\n') {
         body.push('\n');
     }
@@ -747,7 +843,7 @@ pub fn start_listener(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{claude_hooks_settings, toml_string};
+    use super::{claude_hooks_settings, strip_legacy_codex_hooks, toml_string};
 
     const ENDPOINT: &str = "http://127.0.0.1:9123";
 
@@ -830,5 +926,44 @@ mod tests {
             "bridge script should report request failures on stderr"
         );
         removed.expect("generated bridge script should be removable");
+    }
+
+    fn legacy_hooks(script: &str) -> String {
+        ["SubagentStart", "SubagentStop"]
+            .iter()
+            .map(|event| {
+                format!(
+                    "[[hooks.{event}]]\nmatcher = \".*\"\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = \"true\"\ncommandWindows = 'powershell.exe -File \"C:\\Temp\\alethe-codex-hook-forward-{script}.ps1\"'\ntimeout = 5\n\n"
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn legacy_alethe_hook_blocks_are_removed_and_everything_else_stays() {
+        let body = format!(
+            "# vault config\n[mcp_servers.obsidian]\ncommand = \"npx\"\n\n{}\n\n{}# my own hook\n[[hooks.Stop]]\nmatcher = \".*\"\n\n[[hooks.Stop.hooks]]\ntype = \"command\"\ncommand = \"notify\"\n",
+            legacy_hooks("9123-abc"),
+            legacy_hooks("d03793a5"),
+        );
+
+        let stripped = strip_legacy_codex_hooks(&body);
+
+        assert!(!stripped.contains("alethe-codex-hook-forward-"));
+        assert!(!stripped.contains("SubagentStart"));
+        assert!(stripped.starts_with("# vault config\n[mcp_servers.obsidian]\ncommand = \"npx\"\n"));
+        assert!(stripped.contains("# my own hook\n[[hooks.Stop]]"));
+        assert!(stripped.contains("command = \"notify\""));
+        assert!(!stripped.contains("\n\n\n"));
+        stripped
+            .parse::<toml_edit::DocumentMut>()
+            .expect("still valid TOML");
+    }
+
+    #[test]
+    fn a_hook_group_that_also_runs_the_users_command_is_kept() {
+        let body = "[[hooks.SubagentStart]]\nmatcher = \".*\"\n\n[[hooks.SubagentStart.hooks]]\ntype = \"command\"\ncommand = \"true\"\ncommandWindows = 'alethe-codex-hook-forward-1.ps1'\n\n[[hooks.SubagentStart.hooks]]\ntype = \"command\"\ncommand = \"log-subagent\"\n";
+
+        assert_eq!(strip_legacy_codex_hooks(body), body.trim_end_matches('\n'));
     }
 }

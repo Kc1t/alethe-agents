@@ -1,0 +1,108 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.title {
+  margin: 0 0 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.hint {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.name {
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.badge {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--fg-faint);
+  font-size: 10.5px;
+}
+
+.description {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.agents {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.agentName {
+  flex: none;
+  min-width: 84px;
+  color: var(--fg-muted);
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}

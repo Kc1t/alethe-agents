@@ -37,7 +37,7 @@ const CONTRACT_FILE = [
   /Persistence/,
   /\.migrations\.ts$/,
   /^src-tauri\/src\/(backup|profiles|paths)\.rs$/,
-  /^sync-server\//,
+  /^src\/lib\/sync\//,
 ]
 
 function git(...args) {

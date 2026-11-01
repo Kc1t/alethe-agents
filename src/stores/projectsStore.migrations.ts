@@ -8,7 +8,12 @@ import {
 } from '../lib/features'
 import { normalizeExperimentalAgentPermissionMode } from '../lib/experimentalAgentPolicy'
 import { normalizeOrchestrationSettings } from '../lib/orchestrationSettings'
-import { recordLegacyGitFlag, recordLegacyTodosFlag } from '../lib/plugins/legacyMigration'
+import {
+  LEGACY_VOICE_PREFERENCE_KEYS,
+  recordLegacyGitFlag,
+  recordLegacyTodosFlag,
+  recordLegacyVoicePreferences,
+} from '../lib/plugins/legacyMigration'
 import { normalizeProjectGrids, projectGridContainer } from '../lib/projectGrids'
 import { normalizePort } from '../lib/router9'
 import { normalizeAppIconTheme } from '../lib/themeIcons'
@@ -17,7 +22,6 @@ import {
   DEFAULT_PREFERENCES,
   DEFAULT_ROUTER9_PREFERENCES,
   DEFAULT_TERMINAL_FONT_FAMILY,
-  DICTATION_CLOUD_MODELS,
   EMPTY_PROJECTS_FILE,
   type Group,
   GROUP_COLORS,
@@ -121,11 +125,16 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
   // Git Control became a plugin; its old toggle is handed to the plugin host.
   recordLegacyGitFlag(legacyGitFeatureFlag(raw))
   recordLegacyTodosFlag(legacyTodosFeatureFlag(raw))
+  // Voice settings moved to the Jev plugin, which receives them through its own storage.
+  recordLegacyVoicePreferences(raw as Record<string, unknown> | undefined)
   const preferences = {
     ...DEFAULT_PREFERENCES,
     ...(raw ?? {}),
   } as Preferences & { showGitControl?: boolean }
   delete preferences.showGitControl
+  for (const key of LEGACY_VOICE_PREFERENCE_KEYS) {
+    delete (preferences as Record<string, unknown>)[key]
+  }
   const rawResourcePolicy = raw?.resourcePolicy
   const resourcePolicy = {
     ...DEFAULT_PREFERENCES.resourcePolicy,
@@ -159,14 +168,26 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     orchestration: normalizeOrchestrationSettings(preferences.orchestration),
     leftSidebarVisible: raw?.leftSidebarVisible ?? true,
     rightSidebarVisible: raw?.rightSidebarVisible ?? true,
-    leftSidebarWidth: Math.min(380, Math.max(220, Math.round(raw?.leftSidebarWidth ?? 286))),
-    rightSidebarWidth: Math.min(420, Math.max(260, Math.round(raw?.rightSidebarWidth ?? 300))),
+    leftSidebarWidth: Math.min(
+      380,
+      Math.max(220, Math.round(raw?.leftSidebarWidth ?? DEFAULT_PREFERENCES.leftSidebarWidth)),
+    ),
+    rightSidebarWidth: Math.min(
+      420,
+      Math.max(260, Math.round(raw?.rightSidebarWidth ?? DEFAULT_PREFERENCES.rightSidebarWidth)),
+    ),
     language:
       preferences.language === 'pt-BR' || preferences.language === 'zh-CN'
         ? preferences.language
         : 'en',
-    visualStyle: raw?.visualStyle === 'clean' ? 'clean' : 'normal',
-    motionPreference: raw?.motionPreference === 'reduced' ? 'reduced' : 'animated',
+    visualStyle:
+      raw?.visualStyle === 'clean' || raw?.visualStyle === 'normal'
+        ? raw.visualStyle
+        : DEFAULT_PREFERENCES.visualStyle,
+    motionPreference:
+      raw?.motionPreference === 'reduced' || raw?.motionPreference === 'animated'
+        ? raw.motionPreference
+        : DEFAULT_PREFERENCES.motionPreference,
     accountCreated: legacyAccountCreated,
     topbarStyle: preferences.topbarStyle === 'three-areas' ? 'three-areas' : 'classic',
     viewPlacements: normalizeViewPlacements(preferences),
@@ -191,26 +212,6 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     uiZoom: clampUiZoom(preferences.uiZoom),
     appIconTheme: normalizeAppIconTheme(preferences.appIconTheme),
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
-    dictationEnabled: Boolean(preferences.dictationEnabled),
-    dictationMode: preferences.dictationMode === 'hold' ? 'hold' : 'toggle',
-    dictationModelId:
-      typeof preferences.dictationModelId === 'string' && preferences.dictationModelId.trim()
-        ? preferences.dictationModelId.trim()
-        : DEFAULT_PREFERENCES.dictationModelId,
-    dictationProvider: preferences.dictationProvider === 'openrouter' ? 'openrouter' : 'local',
-    dictationCloudModel: DICTATION_CLOUD_MODELS.includes(preferences.dictationCloudModel)
-      ? preferences.dictationCloudModel
-      : DEFAULT_PREFERENCES.dictationCloudModel,
-    dictationMicrophoneId:
-      typeof preferences.dictationMicrophoneId === 'string' &&
-      preferences.dictationMicrophoneId.trim()
-        ? preferences.dictationMicrophoneId.trim()
-        : null,
-    dictationMicrophoneLabel:
-      typeof preferences.dictationMicrophoneLabel === 'string' &&
-      preferences.dictationMicrophoneLabel.trim()
-        ? preferences.dictationMicrophoneLabel.trim()
-        : null,
     resourcePolicy: {
       // Automatic parking was removed. Keep the legacy shape for file
       // compatibility, but normalize every installation to monitoring only.

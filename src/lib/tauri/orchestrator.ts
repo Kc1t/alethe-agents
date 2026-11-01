@@ -201,6 +201,21 @@ export async function orchestratorCodexModels(): Promise<CodexModelOption[]> {
   return invoke<CodexModelOption[]>('orchestrator_codex_models')
 }
 
+export type SkillPlaybooks = {
+  text: string
+  path: string
+  /** False while the skill still plans with its bundled playbooks. */
+  custom: boolean
+}
+
+export async function orchestratorPlaybooks(): Promise<SkillPlaybooks> {
+  return invoke<SkillPlaybooks>('orchestrator_playbooks')
+}
+
+export async function orchestratorSavePlaybooks(text: string): Promise<SkillPlaybooks> {
+  return invoke<SkillPlaybooks>('orchestrator_save_playbooks', { text })
+}
+
 /**
  * Pushes an agent's remaining-limit snapshot into the orchestrator core, which cannot poll for it.
  * `null` makes the core forget the agent, for when its usage is no longer read.

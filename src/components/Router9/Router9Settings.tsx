@@ -1,5 +1,5 @@
 import { Download, ExternalLink, Play, Square, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 
 import { useRouter9Runtime } from '../../hooks/useRouter9Runtime'
 import { useT } from '../../lib/i18n'
@@ -21,6 +21,7 @@ export function Router9Settings() {
     useRouter9Runtime()
   const [error, setError] = useState<string | null>(null)
   const [installAction, setInstallAction] = useState<'install' | 'uninstall' | null>(null)
+  const fieldId = useId()
 
   const patch = (next: Partial<Router9Preferences>) => {
     setPreferences({ router9: { ...config, ...next } })
@@ -182,8 +183,12 @@ export function Router9Settings() {
             </div>
 
             {external?.installed && managed?.installed ? (
-              <label className={styles.field}>
-                <span>{t('router9.sourceLabel')}</span>
+              <div
+                className={styles.field}
+                role="group"
+                aria-labelledby={`${fieldId}-source`}
+              >
+                <span id={`${fieldId}-source`}>{t('router9.sourceLabel')}</span>
                 <div className={styles.segmented}>
                   <button
                     type="button"
@@ -200,11 +205,11 @@ export function Router9Settings() {
                     {t('router9.sourceExternal')}
                   </button>
                 </div>
-              </label>
+              </div>
             ) : null}
 
-            <label className={styles.field}>
-              <span>{t('router9.enabled')}</span>
+            <div className={styles.field} role="group" aria-labelledby={`${fieldId}-enabled`}>
+              <span id={`${fieldId}-enabled`}>{t('router9.enabled')}</span>
               <div className={styles.segmented}>
                 <button
                   type="button"
@@ -226,7 +231,7 @@ export function Router9Settings() {
                   {t('router9.enabledOff')}
                 </button>
               </div>
-            </label>
+            </div>
 
             {config.enabled ? (
               <div className={styles.connection}>
@@ -256,8 +261,12 @@ export function Router9Settings() {
                 </div>
                 <p className={styles.hint}>{t('router9.apiKeyHint')}</p>
 
-                <label className={styles.field}>
-                  <span>{t('router9.autoStart')}</span>
+                <div
+                  className={styles.field}
+                  role="group"
+                  aria-labelledby={`${fieldId}-autostart`}
+                >
+                  <span id={`${fieldId}-autostart`}>{t('router9.autoStart')}</span>
                   <div className={styles.segmented}>
                     <button
                       type="button"
@@ -274,7 +283,7 @@ export function Router9Settings() {
                       {t('router9.autoStartOff')}
                     </button>
                   </div>
-                </label>
+                </div>
               </div>
             ) : null}
           </>

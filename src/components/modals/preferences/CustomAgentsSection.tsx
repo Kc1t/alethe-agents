@@ -2,7 +2,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { Bot } from 'lucide-react'
 import { useState } from 'react'
 
-import { isAgentEnabled } from '../../../lib/agentProviders'
+import { agentLabel, isAgentEnabled } from '../../../lib/agentProviders'
 import {
   CUSTOM_AGENT_ACCENT_TOKENS,
   CUSTOM_AGENT_ICON_KEYS,
@@ -20,9 +20,11 @@ import {
 } from '../../../lib/customAgentIconAssets'
 import { pickFile } from '../../../lib/dialog'
 import { type MessageKey, useT } from '../../../lib/i18n'
-import type { CustomAgentDefinition, CustomAgentIconSpec } from '../../../lib/types'
+import type { AgentType, CustomAgentDefinition, CustomAgentIconSpec } from '../../../lib/types'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { customAgentIconComponent } from '../../icons/customAgentIcons'
+import { Dropdown } from '../../ui/Dropdown'
+import controls from '../controls.module.css'
 import styles from './CustomAgentsSection.module.css'
 
 const ERROR_KEY: Record<CustomAgentValidationError, MessageKey> = {
@@ -348,16 +350,25 @@ export function CustomAgentsSection({ enabledCount }: { enabledCount: number }) 
           <div className={styles.grid2}>
             <label className={styles.field}>
               <span>{t('prefs.customAgentAccent')}</span>
-              <select
+              <Dropdown
+                className={styles.selectTrigger}
                 value={form.accentToken}
-                onChange={(event) => setField('accentToken', event.target.value)}
-              >
-                {CUSTOM_AGENT_ACCENT_TOKENS.map((token) => (
-                  <option key={token} value={token}>
-                    {token}
-                  </option>
-                ))}
-              </select>
+                ariaLabel={t('prefs.customAgentAccent')}
+                onChange={(value) => setField('accentToken', value)}
+                options={CUSTOM_AGENT_ACCENT_TOKENS.map((token) => ({
+                  value: token,
+                  label: (
+                    <span className={controls.iconLabel}>
+                      <span
+                        className={styles.accentSwatch}
+                        style={{ background: `var(${token})` }}
+                        aria-hidden
+                      />
+                      {agentLabel(token.slice('--agent-'.length) as AgentType)}
+                    </span>
+                  ),
+                }))}
+              />
             </label>
             <div className={styles.field}>
               <span>{t('prefs.customAgentIconPreview')}</span>
@@ -404,16 +415,26 @@ export function CustomAgentsSection({ enabledCount }: { enabledCount: number }) 
           {form.iconMode === 'preset' ? (
             <label className={styles.field}>
               <span>{t('prefs.customAgentIcon')}</span>
-              <select
+              <Dropdown
+                className={styles.selectTrigger}
                 value={form.iconPreset}
-                onChange={(event) => setField('iconPreset', event.target.value)}
-              >
-                {CUSTOM_AGENT_ICON_KEYS.map((key) => (
-                  <option key={key} value={key}>
-                    {key}
-                  </option>
-                ))}
-              </select>
+                ariaLabel={t('prefs.customAgentIcon')}
+                onChange={(value) => setField('iconPreset', value)}
+                options={CUSTOM_AGENT_ICON_KEYS.map((key) => {
+                  const Preset = customAgentIconComponent({ kind: 'preset', key })
+                  return {
+                    value: key,
+                    label: (
+                      <span className={controls.iconLabel}>
+                        <Preset size={14} />
+                        {key === 'bot'
+                          ? t('prefs.customAgentIconGeneric')
+                          : agentLabel(key as AgentType)}
+                      </span>
+                    ),
+                  }
+                })}
+              />
             </label>
           ) : null}
           {form.iconMode === 'file' ? (

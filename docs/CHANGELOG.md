@@ -11,10 +11,84 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ## [Unreleased]
 
 ### Added
+- **Tutorials in Preferences.** A new Tutorials page plays the videos that show Alethe in real work
+  inside Settings, one at a time, with a link to open each on YouTube and to the channel.
+- **Playbooks editor in Preferences.** A new Playbooks page shows every orchestration playbook as a
+  canvas of blocks: the planner, each decision, the role and model each step runs on with its list
+  price, the fallbacks when a provider runs low, and the escalation when a check fails. Drag workers,
+  your own steps, checks and conditions from the block palette, connect their ports, and drop a
+  condition on a worker to give it a model rule. Conditions cover the task, quota (a provider low, a
+  window past a percent, quota that would be lost, every provider low) and cost (budget low, the
+  model's price per million tokens, the spend so far). Pick a task, check result, budget and spend to
+  light the path that would run, switch between the base, savings and aggressive profiles, and see
+  Claude and Codex quota read live. Create, duplicate or delete playbooks; a shape the skill cannot
+  run is outlined with what to fix, and saving writes `alethe-playbooks.yaml`, the file the
+  orchestration skill plans with.
+- **Official skills, always listed and installable into a project.** The Skills window lists Alethe's
+  official skills even after they are installed, with their version and a link to their source. A
+  project's MCP & skills tab installs, updates, or removes them inside the repository, where Claude
+  Code reads `.claude/skills` and Codex reads `.agents/skills`, so they travel with the project.
 - **Leftover processes in Memory analytics.** Dev servers and runtimes still running after the
   terminal that started them closed (Node, Python, shells, agent CLIs) are listed with how long they
   have been running, when they started, their folder, and their memory, each with an End button and
   an End all action.
+- **Alethe Cloud sync that merges instead of overwriting.** A single Sync now button replaces Upload
+  and Download. Edits made on different machines are merged. The cloud carries preferences (now including custom agents and orchestration
+  settings), plugin state, project settings, and the account's MCP servers and skills. At startup,
+  Alethe says when another device changed something and offers to sync.
+- **MCP servers and skills saved per account and per project.** Save the current setup from Accounts
+  (global MCP servers and skills) or from a project's new **MCP & skills** tab, and the list travels
+  with sync. On another machine Alethe shows what is installed and what is missing, and installs the
+  missing items in one click. Secret env and header values are never stored and are asked for again
+  on install; only skills bundled with Alethe install automatically.
+- **Project settings travel with sync.** Name, color, validation and health-check commands, merge and
+  worktree options, and linked MCP servers sync without terminals or layout. Projects are matched by
+  id, Git remote (detected automatically), or folder.
+- **Projects by computer.** Each computer keeps its own list of projects and its own folder for each
+  one. Sync → Projects by computer shows which computers have each project and where; a project from
+  another computer is added here only when you choose, using its folder if it exists or one you pick.
+  Removing a project removes it from this computer only, and it leaves your account when no computer
+  has it anymore. A computer you no longer use can be forgotten.
+- **Per-computer project settings.** The Agents and MCP & skills tabs of a project have an Only on
+  this computer switch that keeps that tab's settings off sync; turning it off asks whether to use
+  the shared version or share this one.
+- **Devices, history, and account controls in Sync.** See the devices signed in to your account and
+  sign any of them out, restore an earlier version of settings, projects, or MCP servers and skills,
+  and download or delete everything stored in your Alethe Cloud account.
+- **Supporter plan.** An optional monthly or yearly subscription, sold through Polar, that turns on
+  automatic background sync and keeps 30 days of version history. Alethe itself stays free and open
+  source.
+- **Settings file export and import.** Sync → File saves preferences, project settings, and the MCP
+  setup to a `.alethe` file, and imports one after showing what will change. No account is needed and
+  secrets are never included.
+- **Orchestration setup guidance and strategy preview.** The bundled skill now walks through
+  provider and strategy choices, asks about additional CLIs and routing tools such as 9router,
+  and describes ready-made routes. Preferences shows a diagram of the selected default strategy
+  with official provider marks and labeled delegation and traffic arrows. A new SVG renderer
+  creates a shareable, dark, top-down architecture preview from the resolved dry-run plan.
+- **Strategy playbooks that orchestrate and save.** Before planning, the bundled skill reads a
+  playbooks file with eleven presets: plan big, execute small; cascade; scout, then build; advisor
+  on call; review gate; and an adaptive Complete flow, among others. Each phase names a role, a
+  tier, its model and effort, and conditions such as "when Claude's 5-hour or weekly window runs
+  low, use Codex at the same tier". Quota that would otherwise be lost, because a plan ends before
+  its weekly reset or a weekly window resets soon with plenty left, goes to the strong tier.
+  `orchestrate.py playbook` prints the file in effect, and `playbook --init` creates a copy to edit.
+- **Orchestration setup builds your profiles.** Setting up the bundled skill now takes inventory of
+  the CLIs, models and routes you actually have, including Antigravity, Kimi, Kiro, Copilot and
+  9router, and proposes base, savings and aggressive profiles over the same playbooks. They are
+  saved to your playbooks file only after you approve. A custom CLI is added only after its help
+  confirms a non-interactive mode, and flags that approve every tool, such as `--trust-all-tools`,
+  now need explicit authorization.
+- **Orchestration reports.** Ask the bundled orchestration skill what a run did or cost and it
+  reports each worker's role, where it ran, how long it took, the tokens and cost its CLI
+  reported, what it changed, and what is left to review. It never estimates a number a CLI did
+  not report.
+- **Orchestration limits the skill enforces.** The bundled skill can cap calls, reported cost and
+  reported tokens across every wave of an orchestration, gives Claude workers a hard cost cap, and
+  stops Codex and Claude workers from starting subagents. Workers start without MCP servers unless
+  they need one, which halved the tokens of a one-line Claude check. Read-only workers that change
+  the checkout, blocked workers and failed checks now show up in the report, and marking each
+  result used or discarded shows what the spend bought.
 - **Administrator shell tabs.** New terminal and new tab dialogs offer a Windows administrator
   option when Shell is selected. Elevated shells stay in the Alethe tab and request UAC approval
   through gsudo or Windows Sudo configured in inline mode.
@@ -317,10 +391,53 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **New default look.** A fresh install starts on the Elite Pure Black theme with the clean visual
+  style, reduced motion, 90% zoom, the Dark Lemon terminal theme, and wider sidebars. Saved
+  preferences are kept. Without a profile photo, the avatar shows the app icon and follows the
+  icon chosen in Appearance.
+- **Agents tab grouped by project and planner.** Workers and subagents now sit under their
+  project and the terminal that delegated them, with each agent's icon, a summary of what is
+  running, waiting on you, or queued, and cost per project. Finished work folds under a toggle,
+  a blocked worker shows the command it wants to run next to Approve and Decline, clicking a
+  planner jumps to its terminal, and a This planner / All switch widens the view while a planner
+  is focused. The board button reopens the project's existing board instead of adding another.
+- **Consistent selects in Settings.** Every select in Settings uses the same dropdown as the rest of
+  the app, at a steady width instead of stretching across the page or shrinking to its text. The
+  current choice is marked with a check, and options show the agent icon or the theme colors where
+  that helps. The accent color and icon pickers for custom agents show agent names and icon
+  previews instead of internal ids. Clicking the label of the worker count or a 9Router setting no
+  longer presses its first button, and Esc on an open select closes only the select instead of the
+  whole Settings window.
+- **The orchestration skill is now `alethe` v21,** vendored from
+  [`Kc1t/alethe-orchestrate-skill`](https://github.com/Kc1t/alethe-orchestrate-skill): a playbook
+  editor and HTML reports, real quota checks with a stop line, a freestyle mode that only watches
+  cost, and playbook conditions on a model's price (`price-above`) and the spend so far
+  (`spent-above`). Installing it replaces an `alethe-orchestrate` copy that Alethe installed; a folder you made
+  yourself is left alone.
+- **Jev is now a plugin.** Voice commands, Ctrl+E dictation, the Jev history tab, and the voice
+  settings moved out of the app into the `alethe.jev` plugin, installed from Preferences → Plugins.
+  Without it, Ctrl+Shift+Space and Ctrl+E do nothing and the Jev tab is gone. Existing voice settings
+  and the decisions API key are handed to the plugin the first time it runs. Voice settings no longer
+  sync between computers.
+- **Plugins can do more.** A plugin can now draw over the window, add sections to Preferences →
+  Integrations (found by the settings search), read the open projects and terminals, open, focus,
+  close and type into terminals, show notifications, and follow app events. Each of these is a
+  separate permission shown in the trust dialog before the plugin is turned on. These additions are
+  plugin API version 2: existing plugins keep working, and plugins that need version 2 are hidden
+  from older versions of Alethe instead of failing there.
+- Release builds now connect to the hosted Alethe Cloud server. Before, they pointed at a local address
+  and cloud sign-in could not complete.
+- The Alethe Cloud session token is stored in the system credential store instead of a plain file,
+  and signing out also revokes the device on the server.
 - **Backups restore the whole profile.** An export now also carries the profile name, the terminal
   prompt history, open Markdown tabs, and folded settings sections, and saves the profile photo and
   project logos that were only links inside the file. Importing puts all of it back, and a
   notification says what the backup holds.
+- Backups no longer include the shared browser session, MCP configuration backups, downloaded speech
+  models and tools, or this device's cloud session. Importing a backup keeps the current device signed
+  in and resets its sync state, so the next sync cannot delete anything.
+- GitHub Gist sync is being retired. New connections are no longer offered; a connected profile can
+  still download its Gist once before moving to Alethe Cloud.
 - Plugin Market profiles now open in a modal without adding workspace panes or requiring a project.
   The sidebar and preferences catalogue share status/source filters, sorting, result counts, and
   accent-insensitive multiword search across names, authors, descriptions, repositories, and permissions.
@@ -400,12 +517,38 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Handing a conversation to Codex survives its startup dialogs.** The handoff prompt now waits
+  until Codex's composer is ready and no trust, hooks-review or update dialog is open, so it no longer
+  picks an option in one and fails with "config/read failed"; it is sent once the dialog is closed.
+- **A handoff packet lasts as long as its pane.** The context file the other agent reads is no longer
+  deleted after its first reply, so a turn that fails can be sent again; packets no pane uses are
+  removed when Alethe starts.
+- **Old Alethe hooks leave `.codex/config.toml`.** Earlier releases added another copy of their
+  subagent hooks on every Codex launch; the next launch removes them and keeps only the current block.
+- **Skill installs report each agent.** A failure for one agent no longer hides what happened for the
+  others, an interrupted first install no longer leaves a folder that reads as "name already in use",
+  and updates replace each file in one step.
+- **Shared and system skills are protected.** The shared copy other agents link to can no longer be
+  deleted from one agent's row, and Codex system skills can no longer be removed.
+- **Orchestration preferences reach the skill on macOS and Linux.** The app now writes
+  `~/.config/alethe/orchestrate.json`, or the path in `ALETHE_ORCHESTRATE_POLICY`, which is the file
+  the skill reads.
+- **Saved setups that name the skill `alethe-orchestrate` still install it,** and only for Claude Code
+  and Codex, the agents it supports.
 - **Exporting a backup no longer stops at a permission error.** Files the embedded browser keeps
   locked while Alethe is open are left out, and any other file in use is skipped and named in the
   confirmation instead of failing the whole export.
 - Closing or killing a terminal on Windows now also ends the dev servers and background jobs it
   started, even when the shell that launched them had already exited. Each terminal runs inside its
   own Job Object, so a `npm run dev` left behind by an agent no longer keeps holding memory.
+- Starting Alethe or saving the Orchestration preferences no longer erases the budgets, model
+  tiers and provider order set through the orchestration skill. Alethe now updates only the
+  preferences it shows and moves your preferred provider to the front of the saved order.
+- Worktrees the orchestration skill creates under `.alethe/worktrees/` no longer show in
+  `git status` or get staged by `git add -A`.
+- Kimi workers started by the orchestration skill on Windows no longer lose everything after the
+  first line of their task, and Kimi write workers no longer fail at startup. Codex resumes keep
+  the worker's sandbox, and a Claude worker that times out can be resumed.
 - Claude panes reopen on the conversation they were on when the project folder has a space, an
   underscore, an accent or other punctuation in its path. Alethe looked for the saved conversation
   in the wrong directory, treated it as gone and started a new chat on every launch.

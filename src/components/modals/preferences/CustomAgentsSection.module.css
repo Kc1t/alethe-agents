@@ -102,8 +102,7 @@
   font-size: 11px;
 }
 
-.field input,
-.field select {
+.field input {
   height: 32px;
   padding: 0 10px;
   color: var(--fg);
@@ -113,14 +112,26 @@
   font-size: 12px;
 }
 
-.field input:focus,
-.field select:focus {
+.field input:focus {
   border-color: var(--accent);
   outline: none;
 }
 
 .field input:disabled {
   opacity: 0.6;
+}
+
+.form .selectTrigger {
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.accentSwatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
 }
 
 .hint {

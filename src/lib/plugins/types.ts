@@ -46,6 +46,82 @@ export type ModalContribution = {
   component: ComponentType
 }
 
+/** Mounted once over the whole window while the plugin is active, for bars and indicators. */
+export type OverlayContribution = {
+  id: string
+  component: ComponentType
+}
+
+/** A section the Integrations page renders, with an entry in the settings search. */
+export type SettingsContribution = {
+  id: string
+  /** Called on render, so a plugin's own `t` follows the current language. */
+  title: () => string
+  description?: () => string
+  /** Extra words the settings search matches on. */
+  keywords?: string
+  component: ComponentType
+}
+
+export type WorkspaceProject = {
+  id: string
+  name: string
+  path: string
+}
+
+export type WorkspaceTerminal = {
+  id: string
+  projectId: string
+  projectName: string
+  name: string
+  agent: string
+  agentLabel: string
+  cwd: string
+  /** Its process is alive, so it can be typed into. */
+  running: boolean
+  /** Its agent is working on something right now. */
+  busy: boolean
+}
+
+export type WorkspaceAgent = {
+  id: string
+  label: string
+}
+
+export type WorkspaceSnapshot = {
+  projects: WorkspaceProject[]
+  terminals: WorkspaceTerminal[]
+  /** Enabled agent CLIs, shells excluded. */
+  agents: WorkspaceAgent[]
+  focusedProjectId: string | null
+  focusedTerminalId: string | null
+}
+
+export type OpenAgentTerminalOptions = {
+  agent: string
+  name?: string
+  /** Typed into the agent once it starts. */
+  prompt?: string
+}
+
+/**
+ * Reads and moves the workspace. Reading needs `workspace.read`, opening, focusing and closing
+ * terminals needs `workspace.control`, and typing into one needs `terminal.write`.
+ */
+export type PluginWorkspace = {
+  snapshot: () => WorkspaceSnapshot
+  focusTerminal: (terminalId: string) => void
+  closeTerminal: (terminalId: string) => void
+  /** Resolves with the new terminal's id. */
+  openAgentTerminal: (projectId: string, options: OpenAgentTerminalOptions) => Promise<string>
+  writeToTerminal: (terminalId: string, text: string) => Promise<void>
+}
+
+export type PluginToast = {
+  title: string
+  body?: string
+}
+
 export type SidebarSide = 'left' | 'right'
 
 /**
@@ -100,6 +176,8 @@ export type PluginContributions = {
   pane: (definition: PaneContribution) => Disposable
   modal: (definition: ModalContribution) => Disposable
   agentProvider: (definition: AgentProviderContribution) => Disposable
+  overlay: (definition: OverlayContribution) => Disposable
+  settings: (definition: SettingsContribution) => Disposable
 }
 
 export type PluginContext = {
@@ -121,13 +199,20 @@ export type PluginContext = {
     revealView: (viewId: string) => void
     /** Opens a modal this plugin contributed. */
     openModal: (modalId: string) => void
+    /** Shows a notification and records it in the notification history. */
+    toast: (toast: PluginToast) => void
   }
+  readonly workspace: PluginWorkspace
   /** Registers messages under `plugin.<id>.` — the prefix is added for you. */
   registerMessages: (locale: Locale, messages: Record<string, string>) => Disposable
   /** Translates one of this plugin's own keys, without the prefix. */
   t: (key: string, params?: Record<string, string | number>) => string
+  /** Hook form of `t` that re-renders the component when the language changes. */
+  useT: () => (key: string, params?: Record<string, string | number>) => string
   /** Rejects any command the manifest does not declare a capability for. */
   invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+  /** Subscribes to an app event. Needs `listen:<event>`, which accepts a trailing `*`. */
+  listen: <T>(event: string, handler: (payload: T) => void) => Disposable
   /** The plugin's own persisted record, kept outside its served directory. */
   readonly storage: PluginStorage
 }

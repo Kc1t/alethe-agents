@@ -4,7 +4,9 @@ import type {
   CommandContribution,
   Disposable,
   ModalContribution,
+  OverlayContribution,
   PaneContribution,
+  SettingsContribution,
   SidebarTabContribution,
   ThemeContribution,
 } from './types'
@@ -84,6 +86,8 @@ export const paneContributions = new ContributionList<PaneContribution>()
 export const modalContributions = new ContributionList<ModalContribution>()
 export const sidebarTabContributions = new ContributionList<SidebarTabContribution>()
 export const commandContributions = new ContributionList<CommandContribution>()
+export const overlayContributions = new ContributionList<OverlayContribution>()
+export const settingsContributions = new ContributionList<SettingsContribution>()
 
 export function useContributions<T extends Identified>(list: ContributionList<T>): readonly T[] {
   return useSyncExternalStore(list.subscribe, list.getSnapshot, list.getSnapshot)

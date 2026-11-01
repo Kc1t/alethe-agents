@@ -12,6 +12,12 @@ const ICON_URLS = import.meta.glob('../assets/theme-icons/*/*.png', {
   import: 'default',
 }) as Record<string, string>
 
+const MASTER_ICON_URLS = import.meta.glob('../assets/theme-icons/elite-*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>
+
 const ICON_FILES: Record<AppIconTheme, string> = {
   'elite-original': 'elite-original.png',
   'elite-pure-black': 'elite-pure-black.png',
@@ -38,6 +44,10 @@ function preferredSize(): number {
 export function getThemeIcon(theme: AppIconTheme, size = preferredSize()): string {
   const file = ICON_FILES[theme] ?? ICON_FILES['elite-indigo']
   return ICON_URLS[`../assets/theme-icons/${size}/${file}`] ?? ''
+}
+
+export function getAppIconImage(theme: AppIconTheme): string {
+  return MASTER_ICON_URLS[`../assets/theme-icons/${ICON_FILES[normalizeAppIconTheme(theme)]}`] ?? ''
 }
 
 const iconBytesCache = new Map<string, number[]>()

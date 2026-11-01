@@ -27,11 +27,35 @@ vi.mock('../i18n', () => ({
 
 const disabledIds: string[] = []
 const setEnabledMock = vi.fn(async () => {})
+const unlistenMock = vi.fn()
+const listenMock = vi.fn(
+  async (_event: string, _handler: (payload: unknown) => void) => unlistenMock,
+)
 vi.mock('../tauri', () => ({
   pluginsDisabled: async () => disabledIds,
   pluginsList: async () => [],
   pluginSetEnabled: (id: string, enabled: boolean) => setEnabledMock(id, enabled),
   pluginInvoke: (command: string, args?: Record<string, unknown>) => invokeMock(command, args),
+  pluginListen: (event: string, handler: (payload: unknown) => void) => listenMock(event, handler),
+}))
+
+const pushToastMock = vi.fn()
+vi.mock('../../stores/uiStore', () => ({
+  useUiStore: { getState: () => ({ pushToast: pushToastMock }) },
+}))
+vi.mock('./workspace', () => ({
+  createPluginWorkspace: (require: (capability: string) => void) => ({
+    snapshot: () => {
+      require('workspace.read')
+      return {
+        projects: [],
+        terminals: [],
+        agents: [],
+        focusedProjectId: null,
+        focusedTerminalId: null,
+      }
+    },
+  }),
 }))
 
 const {
@@ -43,8 +67,14 @@ const {
   runCommand,
   setPluginEnabled,
 } = await import('./host')
-const { commandContributions, paneContributions, sidebarTabContributions, themeContributions } =
-  await import('./registry')
+const {
+  commandContributions,
+  overlayContributions,
+  paneContributions,
+  settingsContributions,
+  sidebarTabContributions,
+  themeContributions,
+} = await import('./registry')
 const { agentProviderContributions } = await import('../agentProviders')
 
 function Dummy() {
@@ -223,14 +253,24 @@ describe('manifest validation', () => {
     expect(entryFor('test.plugin')?.error).toBe('unknown_activation_event:*')
   })
 
-  it('refuses a manifest built for another api version', async () => {
+  it('refuses a manifest built for a newer api version', async () => {
     const load = vi.fn(async () => ({ activate: vi.fn() }))
-    bundled.push({ manifest: manifest({ apiVersion: 2 }), load })
+    bundled.push({ manifest: manifest({ apiVersion: 3 }), load })
 
     await initPluginHost()
 
     expect(load).not.toHaveBeenCalled()
-    expect(entryFor('test.plugin')?.error).toBe('unsupported_api_version:2')
+    expect(entryFor('test.plugin')?.error).toBe('unsupported_api_version:3')
+  })
+
+  it('still runs a manifest written for api version 1', async () => {
+    const activate = vi.fn()
+    bundled.push({ manifest: manifest({ apiVersion: 1 }), load: async () => ({ activate }) })
+
+    await initPluginHost()
+
+    expect(entryFor('test.plugin')?.error).toBeNull()
+    expect(activate).toHaveBeenCalled()
   })
 
   it('refuses a manifest with a blanket capability', async () => {
@@ -376,6 +416,44 @@ describe('imperative contributions', () => {
     expect(entryFor('test.plugin')?.error).toBe('capability_denied:test.plugin:ui.theme')
     expect(themeContributions.get('test-theme')).toBeUndefined()
   })
+
+  it('mounts overlays and settings sections, and removes them on disable', async () => {
+    bundled.push({
+      manifest: manifest({ capabilities: ['ui.overlay', 'ui.settings'] }),
+      load: async () => ({
+        activate: (ctx: PluginContext) => {
+          ctx.contributes.overlay({ id: 'test.bar', component: Dummy })
+          ctx.contributes.settings({ id: 'test.key', title: () => 'Key', component: Dummy })
+        },
+      }),
+    })
+
+    await initPluginHost()
+
+    expect(entryFor('test.plugin')?.error).toBeNull()
+    expect(overlayContributions.get('test.bar')).toBeDefined()
+    expect(settingsContributions.get('test.key')?.title()).toBe('Key')
+
+    await setPluginEnabled('test.plugin', false)
+    expect(overlayContributions.get('test.bar')).toBeUndefined()
+    expect(settingsContributions.get('test.key')).toBeUndefined()
+  })
+
+  it('denies an overlay the manifest did not ask for', async () => {
+    bundled.push({
+      manifest: manifest({ capabilities: ['ui.settings'] }),
+      load: async () => ({
+        activate: (ctx: PluginContext) => {
+          ctx.contributes.overlay({ id: 'test.bar', component: Dummy })
+        },
+      }),
+    })
+
+    await initPluginHost()
+
+    expect(entryFor('test.plugin')?.error).toBe('capability_denied:test.plugin:ui.overlay')
+    expect(overlayContributions.get('test.bar')).toBeUndefined()
+  })
 })
 
 describe('plugin context', () => {
@@ -420,6 +498,52 @@ describe('plugin context', () => {
     )
     await expect(captured!.invoke('spawn_pty')).rejects.toThrow('capability_denied')
     expect(invokeMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('gates event subscriptions and stops listening when the plugin is disabled', async () => {
+    let captured: PluginContext | null = null
+    bundled.push({
+      manifest: manifest({ capabilities: ['listen:speech*'] }),
+      load: async () => ({
+        activate: (ctx: PluginContext) => {
+          captured = ctx
+        },
+      }),
+    })
+
+    await initPluginHost()
+
+    const handler = vi.fn()
+    captured!.listen('speech://download-progress', handler)
+    expect(listenMock).toHaveBeenCalledWith('speech://download-progress', handler)
+    expect(() => captured!.listen('pty://data/1', handler)).toThrow(
+      'capability_denied:test.plugin:listen:pty://data/1',
+    )
+
+    await vi.waitFor(() => expect(listenMock).toHaveBeenCalledTimes(1))
+    await Promise.resolve()
+    await setPluginEnabled('test.plugin', false)
+    expect(unlistenMock).toHaveBeenCalledOnce()
+  })
+
+  it('passes the workspace through its capability gate and shows toasts', async () => {
+    let captured: PluginContext | null = null
+    bundled.push({
+      manifest: manifest(),
+      load: async () => ({
+        activate: (ctx: PluginContext) => {
+          captured = ctx
+        },
+      }),
+    })
+
+    await initPluginHost()
+
+    expect(() => captured!.workspace.snapshot()).toThrow(
+      'capability_denied:test.plugin:workspace.read',
+    )
+    captured!.ui.toast({ title: 'Done' })
+    expect(pushToastMock).toHaveBeenCalledWith({ title: 'Done', body: '' })
   })
 })
 

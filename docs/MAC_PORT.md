@@ -36,6 +36,33 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `ui` · Codex's first prompt (handoff, prompts sent at launch) waits for its composer and never presses Enter while a trust, hooks-review or update dialog is open
+  - Files: `src/lib/agentPromptDelivery.ts`, `src/components/XTermView/useXtermSession.ts`
+- `pending` · `backend` · A handoff packet stays until its pane closes; packets no pane lists are pruned at startup (`prune_agent_handoffs`)
+  - Files: `src-tauri/src/handoff.rs`, `src/stores/projectsStore.ts`, `src/components/TerminalPane/index.tsx`
+- `pending` · `backend` · Writing Codex hooks removes the unmarked subagent hook blocks older releases appended to `.codex/config.toml`
+  - Files: `src-tauri/src/agent_events.rs`
+- `pending` · `ui` · Tutorials page in Preferences plays the Alethe videos inline (YouTube privacy-enhanced embed) with links to YouTube
+  - Files: `src/lib/tutorials.ts`, `src/components/modals/preferences/TutorialsPage.tsx`, `src/components/modals/PreferencesModal.tsx`
+- `pending` · `ui` · New install defaults: Elite Pure Black, clean style, reduced motion, 90% zoom, Dark Lemon terminal, sidebars 380/420; the default avatar is the app icon
+  - Files: `src/lib/types.ts`, `src/stores/projectsStore.migrations.ts`, `src/lib/profile.ts`, `src/lib/themeIcons.ts`, `index.html`
+- `pending` · `ui` · Agents tab groups workers by project and planner, with agent icons, a status summary and folded finished work
+  - Files: `src/components/RightSidebar/AgentsPanel.tsx`, `src/components/RightSidebar/AgentsPanel.module.css`, `src/lib/agentsPanelGroups.ts`
+- `skip (web only: styling, labels and Esc handling of the web settings selects)` · `ui` · Settings selects share one dropdown with steady widths, a check on the current choice and readable custom agent pickers; Esc on an open select no longer closes Settings
+  - Files: `src/components/ui/Dropdown.tsx`, `src/components/modals/preferences/CustomAgentsSection.tsx`, `src/components/modals/PreferencesModal.module.css`, `src/components/modals/PreferencesModal.tsx`
+- `pending` · `contract` · Official skills: the bundled skill becomes `alethe` v21 and installs into projects
+  - Files: `src-tauri/src/skills.rs`, `src/components/OfficialSkills/index.tsx`, `src/components/modals/mcp/SkillsBrowser.tsx`, `scripts/sync-skill.mjs`
+  - Contract: catalog entries gain `repository`; agent results gain `error`; new `skills_remove_bundled`; `skills_catalog`, `skills_install_bundled` and `skills_remove_bundled` take an optional `projectPath` that targets `<project>/.claude/skills/<name>` for Claude and `<project>/.agents/skills/<name>` for Codex; installing `alethe` removes an Alethe-managed `alethe-orchestrate` folder (one with `.alethe-skill.json`); an empty skill folder counts as not installed; managed files are written to a temporary file and renamed; tooling manifests that name `alethe-orchestrate` map to `alethe`
+- `pending` · `contract` · Orchestration policy path on macOS and Linux
+  - Files: `src-tauri/src/orchestrator.rs`
+  - Contract: `~/.config/alethe/orchestrate.json` (honoring `XDG_CONFIG_HOME`), or `ALETHE_ORCHESTRATE_POLICY` when set, matching the skill's `default_policy_path`; Windows keeps `%APPDATA%\Alethe\alethe-orchestrate.json`
+- `pending` · `contract` · Playbooks page: the skill's playbooks as a canvas of blocks in Preferences, with price and spend conditions
+  - Files: `src/lib/playbooks/flowDoc.ts`, `src/lib/playbooks/state.ts`, `src/components/modals/preferences/playbooks/NodeCanvas.tsx`, `src-tauri/src/orchestrator.rs`
+  - Contract: `orchestrator_playbooks` / `orchestrator_save_playbooks` read and write `alethe-playbooks.yaml` next to the skill policy (or `ALETHE_ORCHESTRATE_PLAYBOOKS`), falling back to the bundled `playbooks.yaml` until a copy is saved; the YAML subset, key order and `routing` block match the skill's `assets/editor.html` export; the canvas compiles to the same phases (`with`, `after`, `if`, `then`, `gate`), a decision whose no skips ahead becomes a phase that runs only if, and `price-above:<usd>` / `spent-above:<usd>` follow the skill's version 21 conditions; node positions stay in local storage, never in the file
+
+- `pending` · `contract` · Jev moves to the external `alethe.jev` plugin; the plugin API goes to version 2 (accepts manifests 1..=2) and gains overlays, settings sections, workspace control, terminal input, toasts and events
+  - Files: `src/lib/plugins/workspace.ts`, `src/lib/plugins/legacyMigration.ts`, `src/components/ContributedOverlays/index.tsx`, `docs/PLUGINS.md`
+  - Contract: `Preferences` drops `voiceCommandApiKey`, `voiceKeepListening` and every `dictation*` key; on load they are handed once to `plugin-data/alethe.jev.json` as `legacyPreferences` (only when that record has neither `settings` nor `legacyPreferences`), then removed from `projects.json`; `dictationEnabled` leaves the synced `settings` keys; new plugin capabilities `ui.overlay`, `ui.settings`, `workspace.read`, `workspace.control`, `terminal.write` and `listen:<event>`. The Mac app has no plugin host, so it drops its built-in voice bar or keeps it outside sync
 - `pending` · `contract` · fix(backup): export the whole profile and skip files in use
   - Files: `src-tauri/src/backup.rs`, `src/lib/backup.ts`, `src/lib/storageNamespace.ts`
   - Contract: archives gain `alethe-backup.json` at the root (`format: 1`, `appVersion`, `createdAtMs`, `profileName`, `localStorage` keyed without the `alethe:<profile>:` prefix, `skipped`), never extracted on import; archives leave out `browser-session/`, `mcp/backups/`, `speech-models/`, `tools/`, `cloud_sync.json` and `sync-state.json`; the archived `projects.json` embeds `iconUrl` and `profileImageUrl` links as `data:` URLs of up to 4 MB each; import renames the profile to `profileName` unless another profile already uses it
@@ -45,12 +72,34 @@ Mac synced through: `v1.7.0` (`80e44a3`)
   - Files: `src/components/modals/MemoryAnalyticsModal.tsx`, `src-tauri/src/leftover_processes.rs`
 - `skip (Windows Job Objects; macOS terminals already end their process group)` · `platform` · Terminals run in a per-PTY Job Object so killing one ends orphaned descendants
   - Files: `src-tauri/src/process_tree.rs`
+- `pending` · `contract` · Alethe Cloud sync v3: scoped documents, three-way merge, devices, Supporter plan
+  - Files: `src/lib/sync/`, `src-tauri/src/cloud_sync.rs`, `src/hooks/useCloudSync.ts`
+  - Contract: [`SYNC_PROTOCOL.md`](SYNC_PROTOCOL.md) — `/v1` API with device registration and `If-Match`, payload format 3 (`settings`, `projects`, `tooling`), `sync-state.json` per profile, session token in the keyring as `profile:<id>:cloud-sync-token` (plaintext `cloud_sync.json` tokens migrate on load)
 - `pending` · `contract` · MCP servers and skills saved per account and per project, carried by sync
   - Files: `src/lib/toolingManifest.ts`, `src/lib/toolingNotice.ts`, `src/components/ToolingManifestPanel/`
-  - Contract: new tooling manifest in the synced payload; secret env and header values are never stored
-- `pending` · `contract` · Cloud sync carries project settings, matched by id, GitHub remote or folder
-  - Files: `src/lib/projectSync.ts`, `src/lib/cloudSync.ts`, `src/lib/types.ts`
-  - Contract: project settings shape in the sync payload, without terminals or layout
+  - Contract: `tooling` scope keyed by `<agent>::<name>`; secret env and header values are never stored
+- `pending` · `contract` · Cloud sync carries project settings, matched by id, Git remote or folder
+  - Files: `src/lib/projectSync.ts`, `src/lib/sync/scopes/projects.ts`, `src-tauri/src/git_control.rs`
+  - Contract: `projects` scope; remote ids linked to local ones through aliases in the sync state
+- `pending` · `contract` · Projects by computer: per-machine folders, opt-in add, per-computer settings
+  - Files: `src/lib/projectSync.ts`, `src/lib/sync/machines.ts`, `src/components/modals/sync/MachinesSection.tsx`, `src/components/modals/LocalOverrideToggle.tsx`, `src-tauri/src/cloud_sync.rs`
+  - Contract: each synced project carries `machines: { <machineId>: { name, path, custom? } }` instead of `pathHint`; the machine id is a random id in the app-data root `machine-id` file, suffixed `:<profileId>` for non-default profiles; projects from other machines are never created automatically; a project leaves the account when its last machine drops it; `Project.localOverrides` (`agents`, `tooling`) keeps those settings off sync; `sync-state.json` gains `forgetMachines`
+- `pending` · `contract` · Settings file export and import (`.alethe`)
+  - Files: `src/lib/sync/bundle.ts`, `src/components/modals/sync/FileCard.tsx`
+  - Contract: `{ kind: "alethe-bundle", format: 3, scopes }`, merged with no base on import
+- `pending` · `contract` · Backups skip device-bound data and reset the sync state on import
+  - Files: `src-tauri/src/backup.rs`
+  - Contract: archives leave out `browser-session/`, `mcp/backups/`, `speech-models/`, `tools/`, `cloud_sync.json` and `sync-state.json`
+- `pending` · `contract` · Orchestration preferences merge into the skill policy instead of rewriting it
+  - Files: `src-tauri/src/orchestrator.rs`
+  - Contract: `alethe-orchestrate.json` keeps every key the app does not set (`budget`, `modelTiers`, `maxWorkers`, `onboarded`); the app sets `backend`, `defaultStrategy`, `providerSwitch`, `conserveProviders` and `maxConcurrent`, and moves the preferred provider to the front of the saved `providerOrder`
+- `pending` · `ui` · Sync window: Sync now, Supporter checkout, devices, history, account export and deletion; Gist sync download-only
+  - Files: `src/components/modals/sync/CloudCard.tsx`, `src/components/modals/sync/LegacyGistCard.tsx`, `src/components/modals/SyncModal.tsx`
+- `pending` · `ui` · Preferences shows a diagram of the default orchestration strategy with official provider marks
+  - Files: `src/components/modals/preferences/StrategyArchitecture.tsx`, `src/components/modals/preferences/OrchestrationPage.tsx`
+- `pending` · `backend` · alethe-orchestrate skill v12, vendored from `Kc1t/alethe-orchestrate`: setup onboarding that builds base, savings and aggressive profiles, `report`, `budget`, `mark`, `status`, `dry-run --write` with warnings, an SVG architecture preview, strategy playbooks with conditions and spare-quota rules, `references/briefs.md`
+  - Files: `src-tauri/assets/skills/alethe-orchestrate/`, `src-tauri/assets/skills/sources.json`, `scripts/sync-skill.mjs`, `src-tauri/src/skills.rs`
+  - Contract: the skill folder is platform-neutral; the Mac app ships the commit recorded in `sources.json` at version 12, the `metadata.version` in `SKILL.md`, and the user copy lives next to the policy as `alethe-playbooks.yaml` with `providers`, `adapters`, `routes`, `profiles` and `profile`. An orchestration folder may hold a `budget.json` (`version` 1, `limits` with `maxCalls`, `maxReportedCostUsd`, `maxReportedTokens`) and each worker folder a `mark.json` (`mark` of `used`, `partial` or `discarded`); the Windows-only `.cmd` shim handling has no Mac counterpart
 
 ## Since 1.7.0
 

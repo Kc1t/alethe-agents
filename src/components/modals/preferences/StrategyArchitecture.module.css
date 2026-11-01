@@ -1,0 +1,117 @@
+.preview {
+  grid-column: 1 / -1;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+}
+
+.heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.heading span,
+.note,
+.node small,
+.route > span:first-child,
+.route > span:last-child {
+  color: var(--fg-muted);
+}
+
+.diagram {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 18px 0 8px;
+}
+
+.node {
+  display: flex;
+  flex: 0 0 126px;
+  min-height: 54px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px 10px 7px 9px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.node small {
+  font-size: 10px;
+}
+
+.workers {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sequentialWorkers,
+.workerStep {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.sequentialWorkers {
+  flex-direction: row;
+}
+
+.workerName,
+.router {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workerName img {
+  object-fit: contain;
+}
+
+.arrow {
+  display: flex;
+  flex: 0 0 74px;
+  flex-direction: column;
+  align-items: center;
+  color: var(--fg-muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.arrow svg {
+  width: 72px;
+  height: 28px;
+  stroke: var(--fg-muted);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.router {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.note {
+  margin: 12px 0 0;
+  font-size: 11px;
+}

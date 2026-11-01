@@ -7,7 +7,6 @@ import {
   FileText,
   GitPullRequest,
   Maximize2,
-  Mic,
   PanelRightClose,
   Plug,
   RefreshCw,
@@ -54,7 +53,6 @@ import { McpPanel } from '../McpPanel'
 import { PluginsSidebar } from '../PluginsSidebar'
 import { PullRequestsSidebar } from '../PullRequestsSidebar'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
-import { VoiceHistoryPanel } from '../VoiceHistoryPanel'
 import { AgentsPanel } from './AgentsPanel'
 import styles from './RightSidebar.module.css'
 
@@ -99,7 +97,6 @@ export function RightSidebar() {
       (mode === 'mcp' && mcpEnabled) ||
       (mode === 'prs' && prsEnabled) ||
       (mode === 'agents' && agentsPanelEnabled) ||
-      mode === 'jev' ||
       mode === 'plugins' ||
       contributedTabs.some((tab) => tab.id === mode)
     if (modeStillEnabled) return
@@ -172,17 +169,6 @@ export function RightSidebar() {
             <span>{t('mcp.tab')}</span>
           </button>
         ) : null}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'jev'}
-          className={`${styles.sidebarTab} ${mode === 'jev' ? styles.sidebarTabActive : ''}`}
-          onClick={() => setRightSidebarMode('jev')}
-          title={t('voice.history.tabTitle')}
-        >
-          <Mic size={14} />
-          <span>Jev</span>
-        </button>
         {prsEnabled ? (
           <button
             type="button"
@@ -249,7 +235,6 @@ export function RightSidebar() {
         {mode === 'mcp' && mcpEnabled ? <McpPanel /> : null}
         {mode === 'prs' && prsEnabled ? <PullRequestsSidebar /> : null}
         {mode === 'agents' && agentsPanelEnabled ? <AgentsPanel /> : null}
-        {mode === 'jev' ? <VoiceHistoryPanel /> : null}
         {mode === 'plugins' ? <PluginsSidebar /> : null}
         {contributedTab ? (
           <section className={styles.contributedPanel}>

@@ -1,9 +1,8 @@
-import { normalizeProjectGrids } from '../lib/projectGrids'
 /** Group and project actions extracted from the main store. */
-
 import { nanoid } from 'nanoid'
 
 import { getLocale, translate } from '../lib/i18n'
+import { normalizeProjectGrids } from '../lib/projectGrids'
 import {
   clearTerminalPtyIds,
   collectTerminalPtyIds,
@@ -394,6 +393,11 @@ type ProjectsSlice = Pick<
   | 'setCleaningOrphans'
   | 'cleanupOrphanWorktrees'
   | 'deleteProject'
+  | 'applyProjectMergePlan'
+  | 'setProjectGithubUrl'
+  | 'setProjectLocalOverrides'
+  | 'setProjectToolingManifest'
+  | 'relocateProject'
 >
 
 export function createProjectsSlice({
@@ -477,6 +481,32 @@ export function createProjectsSlice({
       })
       return project
     },
+
+    applyProjectMergePlan: (plan) => {
+      if (plan.updates.length === 0 && plan.creates.length === 0) return
+      const patches = new Map(plan.updates.map((u) => [u.id, u.patch]))
+      update((state) => ({
+        projects: [
+          ...state.projects.map((p) => {
+            const patch = patches.get(p.id)
+            return patch ? normalizeProjectGrids({ ...p, ...patch }, p) : p
+          }),
+          ...plan.creates,
+        ],
+        ungroupedOrder: [...state.ungroupedOrder, ...plan.creates.map((p) => p.id)],
+      }))
+    },
+
+    setProjectGithubUrl: (id, githubUrl) => updateProject(id, (p) => ({ ...p, githubUrl })),
+
+    setProjectLocalOverrides: (id, groups) =>
+      updateProject(id, (p) => ({ ...p, localOverrides: groups.length ? groups : undefined })),
+
+    setProjectToolingManifest: (id, toolingManifest) =>
+      updateProject(id, (p) => ({ ...p, toolingManifest })),
+
+    relocateProject: (id, path) =>
+      updateProject(id, (p) => ({ ...p, defaultCwd: path, pendingRelocation: undefined })),
 
     renameProject: (id, name) => {
       updateProject(id, (p) => ({ ...p, name }))

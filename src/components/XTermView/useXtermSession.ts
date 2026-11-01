@@ -10,7 +10,7 @@ import { useEffect, useRef } from 'react'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
-import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
+import { deliverCodexPrompt, deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
 import { resolveAgentCliCommand, resolveCustomAgentArgs } from '../../lib/agentProviders'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import {
@@ -1648,6 +1648,16 @@ export function useXtermSession(params: {
               }
             }
             if (disposed || !readyToSend) return
+            const readVisibleScreenText = (rows = 200): string => {
+              const buffer = terminal.buffer.active
+              const start = Math.max(0, buffer.length - rows)
+              const lines: string[] = []
+              for (let y = start; y < buffer.length; y++) {
+                const line = buffer.getLine(y)
+                if (line) lines.push(line.translateToString(true))
+              }
+              return lines.join('\n')
+            }
             try {
               try {
                 terminal.focus()
@@ -1665,16 +1675,6 @@ export function useXtermSession(params: {
                 // this component, e.g. by the e2e suite — see
                 // `e2e/support/openCodePrompt.ts` — without duplicating or
                 // reinventing something already tested live).
-                const readVisibleScreenText = (rows = 200): string => {
-                  const buffer = terminal.buffer.active
-                  const start = Math.max(0, buffer.length - rows)
-                  const lines: string[] = []
-                  for (let y = start; y < buffer.length; y++) {
-                    const line = buffer.getLine(y)
-                    if (line) lines.push(line.translateToString(true))
-                  }
-                  return lines.join('\n')
-                }
                 const delivered = await deliverOpenCodePrompt(prompt, deadline, {
                   readScreenText: readVisibleScreenText,
                   write: (data) => writePty(response.id, data),
@@ -1687,10 +1687,28 @@ export function useXtermSession(params: {
                   )
                   return
                 }
+              } else if (command === 'codex') {
+                // A startup dialog waits on the person, so give them longer than the launch deadline.
+                const delivered = await deliverCodexPrompt(prompt, Date.now() + 10 * 60_000, {
+                  readScreenText: () => readVisibleScreenText(terminal.rows),
+                  paste: (text) =>
+                    writePtyChunked(response.id, text, terminal.modes.bracketedPasteMode),
+                  submit: () => {
+                    noteCodexPaneInput(response.id)
+                    return writePty(response.id, '\r')
+                  },
+                  sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+                  isCancelled: () => disposed,
+                })
+                if (!delivered) {
+                  console.warn(
+                    `[pty-launch] codex did not take the initial prompt before the deadline id=${response.id}`,
+                  )
+                  return
+                }
               } else {
                 await writePtyChunked(response.id, prompt, terminal.modes.bracketedPasteMode)
                 await new Promise((resolve) => window.setTimeout(resolve, 150))
-                if (command === 'codex') noteCodexPaneInput(response.id)
                 await writePty(response.id, '\r')
                 // A CLI still drawing its first screen, or sitting on a trust prompt, swallows the
                 // first returns, so the text stays typed but unsent. Extra ones only submit empty.

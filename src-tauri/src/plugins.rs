@@ -29,8 +29,18 @@ pub enum PluginKind {
     Theme,
 }
 
+pub const PLUGIN_API_VERSION: u32 = 2;
+
 fn default_api_version() -> u32 {
     1
+}
+
+fn check_api_version(manifest: &PluginManifest) -> Result<(), String> {
+    if (1..=PLUGIN_API_VERSION).contains(&manifest.api_version) {
+        Ok(())
+    } else {
+        Err(format!("unsupported_api_version:{}", manifest.api_version))
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -219,9 +229,7 @@ fn install_in(root: &Path, manifest: &PluginManifest) -> Result<(), String> {
     if manifest.name.trim().is_empty() {
         return Err("invalid_plugin_name".to_string());
     }
-    if manifest.api_version != default_api_version() {
-        return Err(format!("unsupported_api_version:{}", manifest.api_version));
-    }
+    check_api_version(manifest)?;
     for asset in [manifest.entry.as_deref(), manifest.styles.as_deref()]
         .into_iter()
         .flatten()
@@ -382,9 +390,7 @@ fn import_dir_into(root: &Path, source: &Path) -> Result<PluginManifest, String>
     if manifest.name.trim().is_empty() {
         return Err("invalid_plugin_name".to_string());
     }
-    if manifest.api_version != default_api_version() {
-        return Err(format!("unsupported_api_version:{}", manifest.api_version));
-    }
+    check_api_version(&manifest)?;
     validate_contributes(&manifest.contributes)?;
     for asset in [manifest.entry.as_deref(), manifest.styles.as_deref()]
         .into_iter()
@@ -665,8 +671,21 @@ mod tests {
     fn rejects_unsupported_api_version() {
         let root = temp_root("api-version");
         let mut future = manifest("from-the-future", PluginKind::Ui);
-        future.api_version = 99;
+        future.api_version = PLUGIN_API_VERSION + 1;
         assert!(install_in(&root, &future).is_err());
+        future.api_version = 0;
+        assert!(install_in(&root, &future).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn accepts_every_api_version_up_to_the_current_one() {
+        let root = temp_root("api-version-range");
+        for version in 1..=PLUGIN_API_VERSION {
+            let mut older = manifest(&format!("api-{version}"), PluginKind::Ui);
+            older.api_version = version;
+            assert!(install_in(&root, &older).is_ok());
+        }
         let _ = fs::remove_dir_all(root);
     }
 

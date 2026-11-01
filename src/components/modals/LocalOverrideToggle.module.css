@@ -1,0 +1,41 @@
+.box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.box > :first-child {
+  margin-bottom: 2px;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.leave {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.leaveTitle {
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.leaveActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

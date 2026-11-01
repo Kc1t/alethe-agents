@@ -6,8 +6,8 @@ import {
   listenOrchestratorJobs,
   orchestratorAnswer,
   orchestratorCancelJob,
-  orchestratorJobs,
   type OrchestratorJob,
+  orchestratorJobs,
   type OrchestratorSnapshot,
 } from '../../lib/tauri/orchestrator'
 import { EMPTY_PROJECTS_FILE } from '../../lib/types'
@@ -111,9 +111,11 @@ describe('AgentsPanel', () => {
     render(<AgentsPanel />)
 
     expect(await screen.findByText('Refactor the parser')).toBeTruthy()
-    expect(screen.getByText('codex · gpt-6.1-sol')).toBeTruthy()
+    expect(screen.getByText('No project')).toBeTruthy()
+    expect(screen.getByText('gpt-6.1-sol')).toBeTruthy()
     expect(screen.getByText('1m 05s')).toBeTruthy()
-    expect(screen.getByText('$1.00')).toBeTruthy()
+    const card = screen.getByText('Refactor the parser').closest('article')
+    expect(within(card!).getByText('$1.00')).toBeTruthy()
     expect(screen.getByText('Write the tests')).toBeTruthy()
   })
 
@@ -181,6 +183,75 @@ describe('AgentsPanel', () => {
 
     expect(await screen.findByText('Mine')).toBeTruthy()
     expect(screen.queryByText('Someone else')).toBeNull()
-    expect(screen.getByText('Focused planner')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'This planner' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'All' }))
+    expect(await screen.findByText('Someone else')).toBeTruthy()
+  })
+
+  it('groups workers under their project and planner, with finished ones folded away', async () => {
+    const store = useProjectsStore.getState()
+    const project = store.createProject({ name: 'Billing' })
+    const terminal = store.createTerminal(project.id, {
+      name: 'Planner',
+      cwd: 'C:\\billing',
+      firstTab: { type: 'claude', cwd: 'C:\\billing' },
+    })
+    useProjectsStore.setState((state) => ({
+      projects: state.projects.map((p) => ({
+        ...p,
+        terminals: p.terminals.map((entry) =>
+          entry.id === terminal.id
+            ? { ...entry, tabs: entry.tabs.map((tab) => ({ ...tab, ptyId: 'pty-billing' })) }
+            : entry,
+        ),
+      })),
+    }))
+    vi.mocked(orchestratorJobs).mockResolvedValue(
+      snapshot([
+        job({ plannerId: 'pty-billing', spec: 'Live work' }),
+        job({ id: 'job-2', plannerId: 'pty-billing', spec: 'Old work', status: 'done' }),
+        job({ id: 'job-3', cwd: 'D:\\elsewhere', spec: 'Loose work' }),
+      ]),
+    )
+
+    render(<AgentsPanel />)
+
+    const billing = await screen.findByRole('region', { name: 'Billing' })
+    expect(within(billing).getByText('Live work')).toBeTruthy()
+    expect(within(billing).queryByText('Old work')).toBeNull()
+    fireEvent.click(within(billing).getByRole('button', { name: /1 finished/ }))
+    expect(within(billing).getByText('Old work')).toBeTruthy()
+
+    const loose = screen.getByRole('region', { name: 'No project' })
+    expect(within(loose).getByText('Loose work')).toBeTruthy()
+
+    fireEvent.click(within(billing).getByRole('button', { expanded: true, name: /Billing/ }))
+    expect(within(billing).queryByText('Live work')).toBeNull()
+  })
+
+  it('shows what a blocked worker is asking to run', async () => {
+    vi.mocked(orchestratorJobs).mockResolvedValue(
+      snapshot([
+        job({
+          status: 'blocked',
+          pendingApproval: {
+            rpcId: 'rpc-1',
+            kind: 'command',
+            command: 'npm run migrate',
+            cwd: null,
+            reason: null,
+            askedAtMs: Date.now(),
+          },
+        }),
+      ]),
+    )
+
+    render(<AgentsPanel />)
+
+    expect(await screen.findByText('npm run migrate')).toBeTruthy()
+    expect(screen.getByText('1 waiting on you')).toBeTruthy()
   })
 })

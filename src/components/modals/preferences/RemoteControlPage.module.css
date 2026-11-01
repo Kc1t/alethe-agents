@@ -54,9 +54,6 @@
   color: var(--fg-muted);
   font-size: 11px;
 }
-.setting select {
-  width: 110px;
-}
 .securityNote {
   margin-top: 10px;
   color: var(--fg-muted);

@@ -4,9 +4,10 @@ import {
   countSkills,
   groupSkillsByName,
   hasBundledUpdate,
-  isBundledSkillOffered,
+  installedBundledAgents,
   matchesSkillQuery,
   pendingBundledAgents,
+  splitBundledReport,
 } from './skills'
 import type {
   BundledSkill,
@@ -111,18 +112,19 @@ describe('matchesSkillQuery', () => {
 
 function bundled(states: Record<string, BundledSkillState>): BundledSkill {
   return {
-    name: 'alethe-orchestrate',
+    name: 'alethe',
     description: '',
     version: 1,
+    repository: 'https://github.com/Kc1t/alethe-orchestrate-skill',
     body: '',
-    agents: Object.entries(states).map(([agent, state]) => ({ agent, state, path: null })),
+    agents: Object.entries(states).map(([agent, state]) => ({ agent, state, path: null, error: null })),
   }
 }
 
 describe('bundled skills', () => {
   it('marks a group as from Alethe when any copy carries the marker', () => {
     const groups = groupSkillsByName([
-      snapshot('claude', [skill('claude', 'alethe-orchestrate', { fromAlethe: true })]),
+      snapshot('claude', [skill('claude', 'alethe', { fromAlethe: true })]),
       snapshot('codex', [skill('codex', 'brand')]),
     ])
 
@@ -143,8 +145,19 @@ describe('bundled skills', () => {
     expect(hasBundledUpdate(bundled({ claude: 'installed', codex: 'available' }))).toBe(false)
   })
 
-  it('keeps offering the skill until one agent has the Alethe copy', () => {
-    expect(isBundledSkillOffered(bundled({ claude: 'available', codex: 'conflict' }))).toBe(true)
-    expect(isBundledSkillOffered(bundled({ claude: 'installed', codex: 'available' }))).toBe(false)
+  it('removes only the copies Alethe installed', () => {
+    expect(installedBundledAgents(bundled({ claude: 'installed', codex: 'update' }))).toEqual([
+      'claude',
+      'codex',
+    ])
+    expect(installedBundledAgents(bundled({ claude: 'conflict', codex: 'available' }))).toEqual([])
+  })
+
+  it('separates the agents a report reached from the ones that failed', () => {
+    const report = bundled({ claude: 'installed', codex: 'available' }).agents
+    report[1].error = 'write_failed:denied'
+    const { done, failed } = splitBundledReport(report, (entry) => entry.state === 'installed')
+    expect(done.map((entry) => entry.agent)).toEqual(['claude'])
+    expect(failed.map((entry) => entry.agent)).toEqual(['codex'])
   })
 })

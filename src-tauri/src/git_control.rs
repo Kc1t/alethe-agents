@@ -1234,6 +1234,40 @@ pub async fn git_pull(repo_root: String) -> Result<String, String> {
         .map_err(|error| format!("git_pull: falha na task bloqueante: {error}"))?
 }
 
+fn strip_url_credentials(url: &str) -> String {
+    match url.split_once("://") {
+        Some((scheme, rest)) => {
+            let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+            let host = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+            format!("{scheme}://{host}{path}")
+        }
+        None => url.to_string(),
+    }
+}
+
+fn git_remote_origin_inner(path: String) -> Result<Option<String>, String> {
+    let root = match repository_root(&path) {
+        Ok(root) => root,
+        Err(error) if error == "not_a_git_repository" || error == "directory_not_found" => {
+            return Ok(None)
+        }
+        Err(error) => return Err(error),
+    };
+    let output = git_command(&root, &["remote", "get-url", "origin"])?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok((!url.is_empty()).then(|| strip_url_credentials(&url)))
+}
+
+#[tauri::command]
+pub async fn git_remote_origin(path: String) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || git_remote_origin_inner(path))
+        .await
+        .map_err(|error| format!("git_remote_origin: blocking task failed: {error}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1632,6 +1666,31 @@ mod tests {
         );
 
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod remote_origin_tests {
+    use super::strip_url_credentials;
+
+    #[test]
+    fn tokens_embedded_in_https_remotes_are_dropped() {
+        assert_eq!(
+            strip_url_credentials("https://kc1t:ghp_secret@github.com/Kc1t/alethe.git"),
+            "https://github.com/Kc1t/alethe.git"
+        );
+        assert_eq!(
+            strip_url_credentials("https://github.com/Kc1t/alethe"),
+            "https://github.com/Kc1t/alethe"
+        );
+    }
+
+    #[test]
+    fn scp_style_remotes_are_left_alone() {
+        assert_eq!(
+            strip_url_credentials("git@github.com:Kc1t/alethe.git"),
+            "git@github.com:Kc1t/alethe.git"
+        );
     }
 }
 

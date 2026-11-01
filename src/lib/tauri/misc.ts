@@ -246,53 +246,6 @@ export async function githubSyncPull(): Promise<GithubSyncStatus> {
   return invoke<GithubSyncStatus>('github_sync_pull')
 }
 
-export type CloudSyncStatus = {
-  configured: boolean
-  connected: boolean
-  login: string | null
-  name: string | null
-  avatar_url: string | null
-  plan: string | null
-  last_push_ms: number | null
-  last_pull_ms: number | null
-}
-
-export type CloudDeviceStart = {
-  device_code: string
-  user_code: string
-  verification_uri: string
-  interval: number
-  expires_in: number
-}
-
-export async function cloudSyncStatus(): Promise<CloudSyncStatus> {
-  return invoke<CloudSyncStatus>('cloud_sync_status')
-}
-
-export async function cloudSyncDeviceStart(): Promise<CloudDeviceStart> {
-  return invoke<CloudDeviceStart>('cloud_sync_device_start')
-}
-
-export async function cloudSyncDeviceFinish(start: CloudDeviceStart): Promise<CloudSyncStatus> {
-  return invoke<CloudSyncStatus>('cloud_sync_device_finish', {
-    deviceCode: start.device_code,
-    interval: start.interval,
-    expiresIn: start.expires_in,
-  })
-}
-
-export async function cloudSyncLogout(): Promise<CloudSyncStatus> {
-  return invoke<CloudSyncStatus>('cloud_sync_logout')
-}
-
-export async function cloudSyncPush(payload: unknown): Promise<CloudSyncStatus> {
-  return invoke<CloudSyncStatus>('cloud_sync_push', { payload })
-}
-
-export async function cloudSyncPull(): Promise<unknown> {
-  return invoke<unknown>('cloud_sync_pull')
-}
-
 // --- RFC-001 — Event Bus & Observabilidade ---
 
 export type EventBusPayload = {

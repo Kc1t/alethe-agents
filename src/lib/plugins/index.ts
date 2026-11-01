@@ -4,7 +4,6 @@ import { getPluginEntries, subscribePlugins } from './host'
 import type { PluginRuntimeEntry } from './types'
 
 export { PLUGIN_API_VERSION } from './constants'
-export { requiresTrustConfirmation } from './trust'
 export {
   activateForView,
   activationEvents,
@@ -21,6 +20,7 @@ export { commandLabel, sidebarTabLabel, sidebarTabPanelLabel } from './labels'
 export {
   applyLegacyPluginMigrations,
   GIT_CONTROL_PLUGIN_ID,
+  JEV_PLUGIN_ID,
   recordLegacyGitFlag,
   recordLegacyTodosFlag,
   TODOS_PLUGIN_ID,
@@ -31,26 +31,38 @@ export {
   commandContributions,
   ContributionList,
   modalContributions,
+  overlayContributions,
   paneContributions,
+  settingsContributions,
   sidebarTabContributions,
   themeContributions,
   useContributions,
 } from './registry'
 export type { PluginStorage } from './storage'
+export { requiresTrustConfirmation } from './trust'
 export type {
   CommandContribution,
   Disposable,
   ModalContribution,
+  OpenAgentTerminalOptions,
+  OverlayContribution,
   PaneContribution,
   PaneProps,
   PluginContext,
   PluginModule,
   PluginRuntimeEntry,
   PluginSource,
+  PluginToast,
+  PluginWorkspace,
+  SettingsContribution,
   SidebarSide,
   SidebarTabContribution,
   SidebarTabProps,
   ThemeContribution,
+  WorkspaceAgent,
+  WorkspaceProject,
+  WorkspaceSnapshot,
+  WorkspaceTerminal,
 } from './types'
 
 export function usePlugins(): readonly PluginRuntimeEntry[] {

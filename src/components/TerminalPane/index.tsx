@@ -137,7 +137,6 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabPtyId = useProjectsStore((s) => s.setSubTabPtyId)
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
-  const setSubTabHandoff = useProjectsStore((s) => s.setSubTabHandoff)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
   const deleteTerminalWithWorktreeCleanup = useProjectsStore(
     (s) => s.deleteTerminalWithWorktreeCleanup,
@@ -750,15 +749,9 @@ export const TerminalPane = memo(function TerminalPane({
                     useTerminalsStore.getState().markSuspended(activeTab.ptyId)
                     pushToast({ title: t('ui.terminal.resumeFailed'), body: String(error) })
                   }}
-                  onAgentComplete={() => {
+                  onAgentComplete={() =>
                     setSubTabCompletionUnread(projectId, terminal.id, activeTab.id, true)
-                    if (!activeTab.handoff) return
-                    void completeAgentHandoff(activeTab.handoff.id)
-                      .then(() => setSubTabHandoff(projectId, terminal.id, activeTab.id, undefined))
-                      .catch((cause) =>
-                        console.warn('[handoff] could not clean the completed packet:', cause),
-                      )
-                  }}
+                  }
                 />
               )}
               {ptyExited && !useNativeBackend ? (

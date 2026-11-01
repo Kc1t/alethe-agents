@@ -40,3 +40,7 @@ export function materializeAgentHandoff(content: string): Promise<HandoffArtifac
 export function completeAgentHandoff(handoffId: string): Promise<void> {
   return invoke('complete_agent_handoff', { handoffId })
 }
+
+export function pruneAgentHandoffs(keep: string[]): Promise<void> {
+  return invoke('prune_agent_handoffs', { keep })
+}

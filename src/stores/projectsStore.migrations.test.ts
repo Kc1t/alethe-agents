@@ -351,20 +351,42 @@ describe('preference normalization', () => {
     ).toBe(false)
   })
 
-  it('defaults motion to animated and preserves a reduced-motion choice', () => {
-    expect(normalizePreferences(undefined).motionPreference).toBe('animated')
+  it('defaults motion to reduced and preserves an animated choice', () => {
+    expect(normalizePreferences(undefined).motionPreference).toBe('reduced')
     expect(
       normalizePreferences({
         ...DEFAULT_PREFERENCES,
-        motionPreference: 'reduced',
+        motionPreference: 'animated',
       }).motionPreference,
-    ).toBe('reduced')
+    ).toBe('animated')
     expect(
       normalizePreferences({
         ...DEFAULT_PREFERENCES,
         motionPreference: 'unsupported' as 'reduced',
       }).motionPreference,
-    ).toBe('animated')
+    ).toBe('reduced')
+  })
+
+  it('starts a fresh install on the default look and keeps a saved one', () => {
+    const fresh = normalizePreferences(undefined)
+    expect(fresh.uiTheme).toBe('elite-pure-black')
+    expect(fresh.visualStyle).toBe('clean')
+    expect(fresh.uiZoom).toBe(0.9)
+    expect(fresh.terminalTheme).toBe('dark-lemon')
+    expect(fresh.leftSidebarWidth).toBe(380)
+    expect(fresh.rightSidebarWidth).toBe(420)
+
+    const saved = normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      uiTheme: 'nord',
+      visualStyle: 'normal',
+      uiZoom: 1,
+      terminalTheme: null,
+    })
+    expect(saved.uiTheme).toBe('nord')
+    expect(saved.visualStyle).toBe('normal')
+    expect(saved.uiZoom).toBe(1)
+    expect(saved.terminalTheme).toBeNull()
   })
 
   it('clamps Pomodoro durations to a sane range and falls back on invalid input', () => {

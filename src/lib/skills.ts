@@ -1,4 +1,4 @@
-import type { BundledSkill, SkillAgentSnapshot, SkillSummary } from './tauri/skills'
+import type { BundledSkill, BundledSkillAgent, SkillAgentSnapshot, SkillSummary } from './tauri/skills'
 
 export const SHARED_SKILL_AGENT = 'shared'
 
@@ -65,7 +65,20 @@ export function hasBundledUpdate(skill: BundledSkill): boolean {
   return skill.agents.some((entry) => entry.state === 'update')
 }
 
-/** A catalog skill stays in the offer list until Alethe's copy exists for some agent. */
-export function isBundledSkillOffered(skill: BundledSkill): boolean {
-  return !skill.agents.some((entry) => entry.state === 'installed' || entry.state === 'update')
+/** Agents holding Alethe's copy, current or outdated, which a remove may delete. */
+export function installedBundledAgents(skill: BundledSkill): string[] {
+  return skill.agents
+    .filter((entry) => entry.state === 'installed' || entry.state === 'update')
+    .map((entry) => entry.agent)
+}
+
+/** Splits an install or remove report into the agents it reached and the ones that failed. */
+export function splitBundledReport(
+  report: BundledSkillAgent[],
+  reached: (entry: BundledSkillAgent) => boolean,
+): { done: BundledSkillAgent[]; failed: BundledSkillAgent[] } {
+  return {
+    done: report.filter((entry) => !entry.error && reached(entry)),
+    failed: report.filter((entry) => Boolean(entry.error)),
+  }
 }

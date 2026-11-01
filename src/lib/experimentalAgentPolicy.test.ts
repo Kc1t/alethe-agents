@@ -4,7 +4,6 @@ import agentWorkersSource from '../components/AgentCanvasPOC/hooks/useAgentWorke
 import sessionTerminalDockSource from '../components/AgentCanvasPOC/SessionTerminalDock.tsx?raw'
 import agentSandboxStoreSource from '../stores/agentSandboxStore.ts?raw'
 import agentCanvasUtilsSource from './agentCanvasUtils.ts?raw'
-import cloudSyncSource from './cloudSync.ts?raw'
 import {
   codexApprovalAnswer,
   codexThreadStartParams,
@@ -14,6 +13,7 @@ import {
   normalizeExperimentalAgentPermissionMode,
   oneShotArgs,
 } from './experimentalAgentPolicy'
+import cloudSyncSource from './sync/scopes/settings.ts?raw'
 import type { AgentType } from './types'
 
 const AGENTS: AgentType[] = ['claude', 'codex', 'opencode', 'shell']

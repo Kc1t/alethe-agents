@@ -1,15 +1,18 @@
 import type { ComponentType } from 'react'
 
 import { BUNDLED_PLUGINS } from '../../plugins'
+import { useUiStore } from '../../stores/uiStore'
 import { agentProviderContributions } from '../agentProviders'
 import {
   getLocale,
   type Locale,
   registerMessages as registerCoreMessages,
   translateDynamic,
+  useTDynamic,
 } from '../i18n'
 import {
   pluginInvoke,
+  pluginListen,
   type PluginManifest,
   pluginsDisabled,
   pluginSetEnabled,
@@ -23,7 +26,9 @@ import { canInvoke, grants, isValidCapability } from './permissions'
 import {
   commandContributions,
   modalContributions,
+  overlayContributions,
   paneContributions,
+  settingsContributions,
   sidebarTabContributions,
   themeContributions,
 } from './registry'
@@ -36,6 +41,7 @@ import type {
   PluginSource,
   SidebarTabProps,
 } from './types'
+import { createPluginWorkspace } from './workspace'
 
 const STARTUP_EVENT = 'onStartupFinished'
 const VIEW_EVENT = 'onView:'
@@ -130,7 +136,16 @@ function createContext(manifest: PluginManifest): PluginContext {
         require('agent.provider')
         return track(agentProviderContributions.add(manifest.id, definition))
       },
+      overlay: (definition) => {
+        require('ui.overlay')
+        return track(overlayContributions.add(manifest.id, definition))
+      },
+      settings: (definition) => {
+        require('ui.settings')
+        return track(settingsContributions.add(manifest.id, definition))
+      },
     },
+    workspace: createPluginWorkspace(require),
     registerView: (viewId, component) => {
       const declared = sidebarTabContributions.get(viewId)
       if (!declared || declared.pluginId !== manifest.id) {
@@ -170,6 +185,9 @@ function createContext(manifest: PluginManifest): PluginContext {
         }
         openContributedModal(modalId)
       },
+      toast: ({ title, body }) => {
+        useUiStore.getState().pushToast({ title, body: body ?? '' })
+      },
     },
     registerMessages: (locale: Locale, messages) => {
       const prefixed: Record<string, string> = {}
@@ -178,17 +196,46 @@ function createContext(manifest: PluginManifest): PluginContext {
       return track({ dispose: undo })
     },
     t: (key, params) => translateDynamic(getLocale(), namespaced(key), params),
+    useT: () => {
+      const translate = useTDynamic()
+      return (key, params) => translate(namespaced(key), params)
+    },
     invoke: async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
       if (!canInvoke(manifest.capabilities, command)) {
         throw new Error(`capability_denied:${manifest.id}:invoke:${command}`)
       }
       return pluginInvoke<T>(command, args)
     },
+    listen: <T>(event: string, handler: (payload: T) => void) => {
+      require(`listen:${event}`)
+      let disposed = false
+      let unlisten: (() => void) | null = null
+      void pluginListen<T>(event, handler).then(
+        (stop) => {
+          if (disposed) stop()
+          else unlisten = stop
+        },
+        (error) => {
+          if (import.meta.env.DEV) console.error(`[Alethe][plugin:${manifest.id}]`, error)
+        },
+      )
+      return track({
+        dispose: () => {
+          disposed = true
+          unlisten?.()
+          unlisten = null
+        },
+      })
+    },
   }
 }
 
 function validateManifest(manifest: PluginManifest): string | null {
-  if (manifest.apiVersion !== PLUGIN_API_VERSION) {
+  if (
+    !Number.isInteger(manifest.apiVersion) ||
+    manifest.apiVersion < 1 ||
+    manifest.apiVersion > PLUGIN_API_VERSION
+  ) {
     return `unsupported_api_version:${manifest.apiVersion}`
   }
   const invalid = manifest.capabilities.filter((capability) => !isValidCapability(capability))

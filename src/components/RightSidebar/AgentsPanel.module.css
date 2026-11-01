@@ -25,28 +25,63 @@
   text-overflow: ellipsis;
 }
 
-.scope {
-  flex: none;
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--fg-muted);
-  font-size: 9px;
-  font-weight: 600;
-  white-space: nowrap;
+.headerSpacer {
+  flex: 1;
 }
 
-.running {
+.scopeSwitch {
   flex: none;
-  color: var(--status-working);
+  display: flex;
+  padding: 1px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.scopeOption {
+  padding: 1px 7px;
+  border-radius: calc(var(--radius-sm) - 1px);
+  color: var(--fg-muted);
   font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  cursor: pointer;
 }
 
-.headerSpacer {
-  flex: 1;
+.scopeOption:hover {
+  color: var(--fg);
+}
+
+.scopeOption[aria-pressed='true'] {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.summaryWaiting {
+  color: var(--status-waiting);
+  font-weight: 700;
+}
+
+.summaryRunning {
+  color: var(--status-working);
+}
+
+.summaryCost {
+  margin-left: auto;
+  color: var(--fg-faint);
 }
 
 .iconAction {
@@ -76,67 +111,251 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 8px;
+  padding: 0 6px 10px;
 }
 
-.card {
+.project {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel);
+  flex-direction: column;
 }
 
-.dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 4px;
-  border-radius: 50%;
+.project + .project {
+  border-top: 1px solid var(--border);
+}
+
+.projectHeader {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg);
+}
+
+.projectToggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.projectToggle:hover {
+  background: var(--panel-hover);
+}
+
+.chevron {
   flex: none;
-  background: var(--status-stopped);
+  color: var(--fg-faint);
+  transition: transform 120ms ease;
 }
 
-.card[data-status='running'] .dot {
+.chevron[data-open='true'] {
+  transform: rotate(90deg);
+}
+
+.noProjectIcon {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  color: var(--fg-faint);
+}
+
+.projectName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.projectWaiting {
+  flex: none;
+  min-width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 8px;
+  color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.projectRunning {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--status-working);
+  font-size: 10px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.runningDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: var(--status-working);
 }
 
-.card[data-status='queued'] .dot,
-.card[data-status='blocked'] .dot {
-  background: var(--status-waiting);
+.projectCost {
+  flex: none;
+  color: var(--fg-faint);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
 }
 
-.card[data-status='blocked'] .dot {
+.projectBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 0 8px;
+}
+
+.planner {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.plannerHeader {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 24px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.plannerHeader:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.plannerHeader:disabled {
+  cursor: default;
+}
+
+.glyph {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.plannerName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.plannerCount {
+  flex: none;
+  color: var(--fg-faint);
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.plannerJobs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 31px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border);
+}
+
+.job {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 5px 2px 5px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.job[data-status='blocked'] {
+  background: var(--status-waiting-soft);
+}
+
+.statusSlot {
+  width: 12px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-stopped);
+}
+
+.job[data-status='queued'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--fg-faint);
+}
+
+.job[data-status='blocked'] .dot {
+  background: var(--status-waiting);
   box-shadow: 0 0 0 2px var(--status-waiting-soft);
 }
 
-.card[data-status='interrupted'] .dot {
+.job[data-status='interrupted'] .dot {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--status-waiting);
 }
 
-.card[data-status='failed'] .dot {
+.job[data-status='failed'] .dot {
   background: var(--status-offline);
 }
 
-.cardBody {
+.jobBody {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
-.cardTop {
+.jobTop {
   display: flex;
   align-items: baseline;
   gap: 6px;
   min-width: 0;
+  min-height: 16px;
 }
 
-.cardTitle {
+.jobTitle {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -145,6 +364,13 @@
   color: var(--fg);
   font-size: 11px;
   font-weight: 600;
+  line-height: 16px;
+}
+
+.job[data-status='done'] .jobTitle,
+.job[data-status='cancelled'] .jobTitle,
+.job[data-status='released'] .jobTitle {
+  color: var(--fg-muted);
 }
 
 .elapsed {
@@ -154,38 +380,35 @@
   font-variant-numeric: tabular-nums;
 }
 
-.cardMeta {
+.jobMeta {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
   font-size: 10px;
   color: var(--fg-muted);
 }
 
-.chip {
-  max-width: 100%;
+.details {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-weight: 600;
 }
 
 .statusLabel {
   flex: none;
 }
 
-.card[data-status='blocked'] .statusLabel {
+.job[data-status='blocked'] .statusLabel,
+.job[data-status='interrupted'] .statusLabel {
   color: var(--status-waiting);
   font-weight: 700;
 }
 
-.card[data-status='failed'] .statusLabel {
+.job[data-status='failed'] .statusLabel {
   color: var(--status-offline);
+  font-weight: 700;
 }
 
 .cost {
@@ -193,6 +416,32 @@
   margin-left: auto;
   color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
+}
+
+.ask {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.askWhat {
+  color: var(--fg);
+  font-size: 10px;
+}
+
+.askCommand {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 
 .actions {
@@ -216,7 +465,7 @@
 }
 
 .answerButton:hover:not(:disabled) {
-  background: var(--panel-hover);
+  border-color: var(--border-strong);
 }
 
 .answerButton:disabled {
@@ -224,10 +473,21 @@
   cursor: default;
 }
 
-.cardActions {
-  display: flex;
-  flex-direction: column;
-  flex: none;
+.finishedToggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-faint);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.finishedToggle:hover {
+  color: var(--fg);
 }
 
 .empty {

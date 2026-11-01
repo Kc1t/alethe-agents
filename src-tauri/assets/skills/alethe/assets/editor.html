@@ -1,0 +1,2414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alethe Playbooks</title>
+<style>
+:root {
+  --bg: #101114;
+  --bg-elevated: #1f2125;
+  --bg-sunken: #1a1c1f;
+  --panel: #2a2d33;
+  --panel-hover: #34373e;
+  --border: #2a2d33;
+  --border-strong: rgba(243, 244, 246, 0.22);
+  --fg: #f3f4f6;
+  --fg-muted: #c8c8d0;
+  --text-tertiary: #8b8b95;
+  --text-quaternary: #6b6b75;
+  --accent: #f3f4f6;
+  --accent-soft: rgba(243, 244, 246, 0.06);
+  --accent-border: rgba(243, 244, 246, 0.22);
+  --ok: #10b981;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Caskaydia Cove Nerd Font Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  --canvas: var(--bg);
+  --surface: var(--bg-elevated);
+  --surface-2: var(--bg-sunken);
+  --surface-3: var(--panel);
+  --muted: var(--text-tertiary);
+  --line: var(--text-quaternary);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-sans); font-size: 12px; overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; }
+.app { display: grid; grid-template-columns: 224px minmax(0, 1fr); grid-template-rows: 32px minmax(0, 1fr); height: 100vh; }
+.app.with-panel { grid-template-columns: 224px minmax(0, 1fr) 320px; }
+.titlebar { grid-column: 1 / -1; height: 32px; display: flex; align-items: center; gap: 7px; padding: 0 8px 0 11px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); min-width: 0; user-select: none; }
+.titlebar .logo { width: 16px; height: 16px; display: block; border-radius: 4px; }
+.titlebar .app-name { font-size: 12px; font-weight: 600; letter-spacing: 0.02em; }
+.titlebar .crumb { font-size: 12px; color: var(--text-quaternary); }
+.titlebar .crumb-label { font-size: 12px; color: var(--text-tertiary); }
+.titlebar .crumb-current { font-size: 12px; color: var(--fg-muted); white-space: nowrap; }
+.titlebar .edited { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); }
+.titlebar .edited[hidden] { display: none; }
+.spacer { flex: 1; }
+.create-btn { height: 24px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--fg-muted); background: var(--bg-sunken); font-size: 10px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.create-btn:hover, .create-btn[aria-pressed="true"] { color: var(--fg); background: var(--panel-hover); border-color: var(--border-strong); }
+.sidebar { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); background: var(--bg); }
+.side-header { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 0 12px; border-bottom: 1px solid var(--border); gap: 8px; }
+.side-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-muted); }
+.count { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); padding: 1px 6px; border-radius: 999px; background: var(--bg-elevated); border: 1px solid var(--border); }
+.side-list { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
+.group { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px; margin-bottom: 8px; }
+.group-title { display: flex; align-items: center; gap: 6px; padding: 5px 6px 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-muted); }
+.group-title .dot { width: 6px; height: 6px; border-radius: 50%; }
+.wf { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 26px; padding: 3px 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg-muted); font: 12px var(--font-sans); text-align: left; cursor: pointer; }
+.wf:hover { background: var(--accent-soft); color: var(--fg); }
+.wf[aria-current="true"] { background: var(--panel); color: var(--fg); font-weight: 600; }
+.wf .chip { width: 14px; height: 14px; border-radius: 3px; display: grid; place-items: center; font-size: 9px; font-weight: 700; color: #101114; flex-shrink: 0; }
+.wf .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf .n { font: 10px var(--font-mono); color: var(--text-quaternary); }
+.wf .edited-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--warn); flex-shrink: 0; }
+.side-footer { border-top: 1px solid var(--border); }
+.footer-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; padding: 0 12px; }
+.footer-label { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.stage { position: relative; min-width: 0; min-height: 0; background: var(--bg); }
+.canvas-wrap { position: absolute; inset: 0; }
+#canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#canvas.panning { cursor: grabbing; }
+#canvas .node { cursor: pointer; }
+.scenario-bar, .zoom { position: absolute; display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--bg) 82%, transparent); }
+.scenario-bar { top: 12px; left: 12px; }
+.scenario-bar label { display: flex; align-items: center; gap: 4px; height: 24px; padding: 0 2px 0 8px; font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); white-space: nowrap; }
+.scenario-bar select { width: auto; height: 22px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--fg); font: 10px var(--font-mono); padding: 0 2px; cursor: pointer; letter-spacing: 0; text-transform: none; }
+.scenario-bar select:hover { background: var(--panel-hover); border-color: transparent; }
+.scenario-bar .divider { width: 1px; height: 14px; background: var(--border); }
+.zoom { left: 12px; bottom: 12px; }
+.zoom button { width: 26px; height: 22px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-tertiary); font: 12px var(--font-mono); cursor: pointer; }
+.zoom button:hover { color: var(--fg); background: var(--panel-hover); }
+.drawer { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; background: var(--bg-elevated); border-top: 1px solid var(--border); display: flex; flex-direction: column; }
+.drawer[hidden] { display: none; }
+.drawer header { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 12px; border-bottom: 1px solid var(--border); }
+.drawer header b { font: 600 11px var(--font-mono); }
+.drawer header span { color: var(--text-tertiary); font-size: 11px; }
+.drawer pre { margin: 0; padding: 12px 14px; overflow: auto; flex: 1; font: 11.5px/1.6 var(--font-mono); color: var(--fg-muted); }
+.panel { border-left: 1px solid var(--border); background: var(--bg); overflow: auto; }
+.panel[hidden] { display: none; }
+.panel-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.panel-head button { width: 24px; height: 24px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-tertiary); font-size: 15px; line-height: 1; cursor: pointer; }
+.panel-head button:hover { color: var(--fg); background: var(--panel-hover); }
+.panel-body { padding: 12px; }
+.wf .ico { width: 16px; height: 16px; display: grid; place-items: center; color: var(--text-tertiary); flex-shrink: 0; }
+.wf:hover .ico, .wf[aria-current="true"] .ico { color: var(--fg); }
+.wf .ico img { width: 13px; height: 13px; object-fit: contain; }
+.wf .via { width: 11px; height: 11px; object-fit: contain; }
+.group-title .group-note { margin-left: auto; font: 500 10px var(--font-mono); letter-spacing: 0; text-transform: lowercase; color: var(--text-quaternary); }
+.usage { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.usage-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 22px; padding: 2px 8px; border: 0; border-radius: 8px; background: var(--bg-sunken); color: var(--pill-color, var(--fg-muted)); font: 11px var(--font-mono); cursor: pointer; }
+.usage-pill:hover { background: var(--panel-hover); }
+.usage { gap: 4px; }
+.usage-pill { gap: 5px; padding: 2px 7px; box-shadow: inset 0 0 0 1px var(--border); }
+.usage-pill[aria-pressed="true"] { background: var(--panel-hover); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.usage-pill.unread { box-shadow: none; outline: 1px dashed var(--border-strong); outline-offset: -1px; }
+.usage-pill.route { color: var(--text-tertiary); }
+.usage-pill .dot { width: 6px; height: 6px; border-radius: 50%; }
+.usage-pill .dot.spare { background: var(--ok); }
+.usage-pill .dot.low { background: var(--danger); }
+.profiles { display: flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-md); background: color-mix(in srgb, var(--bg) 78%, transparent); }
+.profiles button { height: 22px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: var(--radius-sm); padding: 0 8px; background: transparent; color: var(--text-tertiary); font: 10.5px var(--font-mono); cursor: pointer; }
+.profiles button .ico { width: 13px; height: 13px; display: grid; place-items: center; }
+.profiles button:hover { color: var(--fg); background: var(--panel-hover); }
+.profiles button[aria-pressed="true"] { color: var(--fg); border-color: var(--accent-border); background: var(--accent-soft); }
+.usage-pill img, .usage-popover img { width: 13px; height: 13px; object-fit: contain; }
+.usage-pill .sep { color: var(--text-quaternary); }
+.usage-pill .spare { color: var(--ok); font-size: 10px; }
+.usage-popover { position: absolute; top: calc(100% + 7px); right: 0; z-index: 20; width: 300px; padding: 10px 12px 12px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--bg-elevated); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28); }
+.usage-popover .title { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+.usage-popover .tabs { display: flex; gap: 2px; }
+.usage-popover .tabs button { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; cursor: pointer; opacity: 0.5; }
+.usage-popover .tabs button:hover { opacity: 0.85; background: var(--panel-hover); }
+.usage-popover .tabs button[aria-pressed="true"] { opacity: 1; border-color: var(--accent-border); background: var(--accent-soft); }
+.usage-popover .unread-note { margin: 0 0 6px; font-size: 10px; line-height: 1.4; color: var(--warn); }
+.usage-popover .presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.usage-popover .presets button { height: 20px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text-tertiary); font: 10px var(--font-mono); padding: 0 6px; cursor: pointer; }
+.usage-popover .presets button:hover { color: var(--fg); background: var(--panel-hover); }
+.usage-popover .presets button[aria-pressed="true"] { color: var(--fg); border-color: var(--accent-border); background: var(--accent-soft); }
+.usage-popover .provider { display: flex; align-items: center; gap: 6px; margin: 12px 0 4px; font-size: 11px; font-weight: 600; }
+.usage-popover .provider .state { margin-left: auto; font: 10px var(--font-mono); }
+.usage-popover .provider .state.low { color: var(--danger); }
+.usage-popover .provider .state.spare { color: var(--ok); }
+.usage-popover .line { display: grid; grid-template-columns: 56px 1fr 38px; align-items: center; gap: 8px; height: 22px; font: 11px var(--font-mono); color: var(--fg-muted); }
+.usage-popover .meta { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 8px; height: 26px; font: 11px var(--font-mono); color: var(--fg-muted); }
+.usage-popover .meta select { height: 22px; padding: 0 6px; font: 11px var(--font-mono); }
+.usage-popover input[type="range"] { width: 100%; height: 14px; margin: 0; accent-color: var(--fg); }
+.usage-popover .val { text-align: right; color: var(--fg); }
+.usage-popover .val.hot { color: var(--danger); }
+.usage-popover .why { margin: 2px 0 0 64px; font-size: 10px; line-height: 1.4; color: var(--ok); }
+.usage-popover .foot { margin-top: 10px; font-size: 10px; color: var(--text-tertiary); line-height: 1.4; }
+.panel h2 { font-size: 14px; font-weight: 600; margin: 3px 0 2px; }
+.panel .kind { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.panel .hint { color: var(--fg-muted); font-size: 12px; margin: 6px 0 12px; line-height: 1.5; }
+.panel a { color: var(--fg); }
+.facts { display: grid; grid-template-columns: auto 1fr; gap: 5px 10px; font-size: 11.5px; margin-bottom: 12px; }
+.facts dt { color: var(--text-tertiary); }
+.facts dd { margin: 0; line-height: 1.45; color: var(--fg-muted); }
+.field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; min-width: 0; }
+.field > span { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+input[type="text"], input[type="number"], input[type="date"], select, textarea { height: 28px; background: var(--bg-sunken); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 8px; font: 12px var(--font-sans); width: 100%; min-width: 0; }
+input[type="date"] { color-scheme: dark; }
+input:hover, select:hover, textarea:hover { border-color: var(--border-strong); }
+textarea { height: auto; min-height: 70px; padding: 6px 8px; resize: vertical; line-height: 1.45; }
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; min-width: 0; }
+.row.wide-first > :first-child { flex: 2; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.checks label { display: inline-flex; gap: 5px; align-items: center; height: 24px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 8px; font-size: 11px; color: var(--fg-muted); background: var(--bg-sunken); cursor: pointer; }
+.section { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 12px; }
+.section h4 { margin: 0 0 8px; font-size: 11px; font-weight: 500; letter-spacing: 1.4px; text-transform: uppercase; color: var(--text-tertiary); }
+.cards { display: flex; flex-direction: column; gap: 8px; }
+.card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px; background: var(--bg-sunken); }
+.card header { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.card header b { font: 600 11px var(--font-mono); }
+.mini { display: flex; gap: 3px; }
+.mini button { height: 20px; background: transparent; border: 1px solid var(--border); color: var(--text-tertiary); border-radius: var(--radius-sm); padding: 0 6px; cursor: pointer; font: 10px var(--font-mono); }
+.mini button:hover { color: var(--fg); background: var(--panel-hover); }
+.conds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.conds select { width: auto; flex: 1 1 140px; }
+.conds .and { color: var(--text-tertiary); font: 10px var(--font-mono); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.btn { height: 24px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--fg-muted); background: var(--bg-sunken); font-size: 10px; font-weight: 650; cursor: pointer; white-space: nowrap; }
+.btn:hover { color: var(--fg); background: var(--panel-hover); border-color: var(--border-strong); }
+.btn.danger { color: var(--danger); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.trace { display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; color: var(--text-tertiary); line-height: 1.5; }
+.trace b { color: var(--fg); font-weight: 600; }
+.trace .warn { color: var(--warn); }
+.trace .ok { color: var(--ok); }
+.trace .danger { color: var(--danger); }
+.tiers { width: 100%; border-collapse: collapse; font-size: 11px; }
+.tiers th { text-align: left; color: var(--text-tertiary); font-weight: 500; padding: 4px; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+.tiers td { padding: 3px 4px; color: var(--fg-muted); }
+.tiers select { height: 24px; padding: 0 6px; font: 11px var(--font-mono); }
+.tiers .tier-row { cursor: pointer; }
+.tiers .tier-row:hover td { background: var(--accent-soft); }
+.tiers td { vertical-align: top; padding: 5px 4px; }
+.tiers .tm { display: block; font: 10.5px var(--font-mono); color: var(--fg-muted); overflow-wrap: anywhere; }
+.tiers .te { display: block; font: 10px var(--font-mono); color: var(--text-quaternary); }
+.prov { display: inline-flex; align-items: center; gap: 6px; }
+.prov img { width: 12px; height: 12px; object-fit: contain; }
+.plan-row { display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11.5px; color: var(--fg-muted); }
+.panel h2.with-mark { display: flex; align-items: center; gap: 8px; }
+.panel h2.with-mark img { width: 16px; height: 16px; object-fit: contain; }
+.panel .hint.note { margin: 0 0 6px; font-size: 11.5px; color: var(--text-tertiary); }
+.gallery { max-width: 1080px; margin: 0 auto; padding: 32px 16px 80px; font-family: var(--font-sans, system-ui, sans-serif); }
+.gallery h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+.gallery .sub { color: var(--text-tertiary, #8b8b95); font-size: 12px; margin: 0 0 20px; }
+.gallery section { border-top: 1px solid var(--border, #2a2d33); padding: 20px 0 26px; }
+.gallery h2 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+.gallery section p { margin: 0 0 14px; color: var(--fg-muted, #c8c8d0); font-size: 12px; }
+@media (max-width: 1150px) {
+  .app, .app.with-panel { grid-template-columns: 0 minmax(0, 1fr) 300px; }
+  .sidebar { display: none; }
+}
+.load-error { position: fixed; top: 44px; left: 50%; z-index: 30; transform: translateX(-50%); max-width: min(640px, calc(100vw - 32px)); padding: 8px 12px; border: 1px solid var(--danger); border-radius: var(--radius-md); background: var(--bg-elevated); color: var(--fg); font-size: 12px; line-height: 1.45; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="titlebar">
+    <img class="logo" src="data:image/png;base64,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" alt="Alethe">
+    <span class="app-name">Alethe</span>
+    <span class="crumb">/</span>
+    <span class="crumb-label">orchestration</span>
+    <span class="crumb">/</span>
+    <span class="crumb-current" id="wfTitle"></span>
+    <span class="edited" id="edited" title="Edited" hidden></span>
+    <span class="spacer"></span>
+    <div class="profiles" id="profiles"></div>
+    <div class="usage" id="usage"></div>
+    <button class="create-btn" id="infoToggle" aria-pressed="false">details</button>
+  </header>
+  <nav class="sidebar">
+    <div class="side-header"><span class="side-label">Playbooks</span><span class="count" id="pbCount"></span></div>
+    <div class="side-list" id="sidebar"></div>
+    <div class="side-footer">
+      <div class="footer-row"><span class="footer-label">File</span><button class="create-btn" id="yamlToggle" aria-pressed="false">alethe-playbooks.yaml</button></div>
+    </div>
+  </nav>
+  <section class="stage" id="stage">
+    <div class="canvas-wrap">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="scenario-bar" id="scenarioBar"></div>
+      <div class="zoom">
+        <button id="zoomIn" title="Zoom in">+</button>
+        <button id="zoomOut" title="Zoom out">−</button>
+        <button id="fit" title="Fit to view">⤢</button>
+      </div>
+      <div class="drawer" id="drawer" hidden>
+        <header><b>alethe-playbooks.yaml</b><span>the planner reads this before it plans or delegates</span><span class="spacer"></span><button class="btn" id="copy">copy</button><button class="btn" id="download">download</button></header>
+        <pre id="yaml"></pre>
+      </div>
+    </div>
+  </section>
+  <aside class="panel" id="panel" hidden></aside>
+</div>
+
+<script type="text/yaml" id="playbooks-yaml">
+__PLAYBOOKS_YAML__
+</script>
+<script type="application/json" id="live-usage">{}</script>
+<script type="application/json" id="model-prices">{}</script>
+<script>
+const YAML_MAX_DEPTH = 100
+const hasKey = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key)
+function parsePlaybooksYaml(text) {
+  const fail = (line, message) => { throw new Error(`line ${line}: ${message}`) }
+  const space = (ch) => ch !== undefined && /\s/.test(ch)
+  const isItem = (t) => t === '-' || t.startsWith('- ')
+  const isQuote = (ch) => ch === '"' || ch === "'"
+  const ESCAPES = { 0: '\0', a: '\x07', b: '\b', t: '\t', n: '\n', v: '\v', f: '\f', r: '\r', e: '\x1b', ' ': ' ', '"': '"', '/': '/', '\\': '\\', N: '\x85', _: '\xa0', L: '\u2028', P: '\u2029' }
+  const put = (target, key, value, line) => {
+    if (key === '__proto__') fail(line, 'the key __proto__ is reserved')
+    if (hasKey(target, key)) fail(line, `duplicate mapping key '${key}'`)
+    target[key] = value
+  }
+  function uncomment(s) {
+    let quote = null
+    let previous = ''
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i]
+      if (quote) {
+        if (ch === '\\' && quote === '"') { i++; continue }
+        if (ch === quote) {
+          if (quote === "'" && s[i + 1] === "'") { i++; continue }
+          quote = null
+        }
+      } else if (ch === '#' && (i === 0 || space(s[i - 1]))) return s.slice(0, i)
+      else if (isQuote(ch) && (!previous || ':,[{-'.includes(previous))) quote = ch
+      if (!space(ch)) previous = ch
+    }
+    return s
+  }
+  const lines = []
+  text.split(/\r\n|\r|\n/).forEach((raw, n) => {
+    const indent = raw.length - raw.replace(/^[ \t]+/, '').length
+    if (raw.slice(0, indent).includes('\t')) fail(n + 1, 'tabs are not supported for indentation')
+    const content = uncomment(raw.slice(indent)).trimEnd()
+    if (content) lines.push([n + 1, indent, content])
+  })
+  let index = 0
+  function quoted(s, start, line) {
+    const quote = s[start]
+    let out = ''
+    let i = start + 1
+    while (i < s.length) {
+      const ch = s[i]
+      if (ch === quote) {
+        if (quote === "'" && s[i + 1] === "'") { out += "'"; i += 2; continue }
+        return [out, i + 1]
+      }
+      if (ch === '\\' && quote === '"') {
+        i++
+        if (i === s.length) fail(line, 'unfinished quoted escape')
+        const escape = s[i]
+        if ('xuU'.includes(escape)) {
+          const count = { x: 2, u: 4, U: 8 }[escape]
+          const digits = s.slice(i + 1, i + 1 + count)
+          if (digits.length !== count || !/^[0-9a-fA-F]+$/.test(digits)) fail(line, 'invalid Unicode escape')
+          const code = parseInt(digits, 16)
+          if (code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) fail(line, 'invalid Unicode code point')
+          out += String.fromCodePoint(code)
+          i += count + 1
+          continue
+        }
+        if (!hasKey(ESCAPES, escape)) fail(line, `unsupported escape \\${escape}`)
+        out += ESCAPES[escape]
+        i++
+        continue
+      }
+      out += ch
+      i++
+    }
+    return fail(line, 'unterminated quoted string')
+  }
+  function scalar(s, line) {
+    if (!s || '&*!|>@%\x60,]}{[?:'.includes(s[0]) || ['---', '...', '-'].includes(s)) fail(line, 'unsupported YAML syntax or missing scalar')
+    if (/:(\s|$)/.test(s)) fail(line, 'unexpected mapping in scalar')
+    if (s === 'true' || s === 'false') return s === 'true'
+    if (['null', '~', 'yes', 'no', 'on', 'off', 'true', 'false', '.inf', '+.inf', '-.inf', '.nan'].includes(s.toLowerCase())) fail(line, 'quote this scalar; only true/false booleans are supported')
+    if (/^[-+]?(0|[1-9][0-9]*)$/.test(s)) return Number(s)
+    if (/^[-+]?([0-9]+\.[0-9]*|\.[0-9]+|[0-9]+)([eE][-+]?[0-9]+)?$/.test(s)) {
+      const number = Number(s)
+      if (!Number.isFinite(number)) fail(line, 'non-finite numbers are unsupported')
+      return number
+    }
+    if (/^[-+]?[0-9]/.test(s) && /^[-+]?[0-9_:xXoObBa-fA-F.]+$/.test(s)) fail(line, 'unsupported numeric syntax; use a decimal number or quote it')
+    return s
+  }
+  function flowValue(s, start, line, depth, flow) {
+    if (depth > YAML_MAX_DEPTH) fail(line, 'YAML nesting is too deep')
+    let i = start
+    while (i < s.length && space(s[i])) i++
+    if (i === s.length) fail(line, 'missing scalar value')
+    if (isQuote(s[i])) return quoted(s, i, line)
+    if (s[i] === '[' || s[i] === '{') {
+      const mapping = s[i] === '{'
+      const closing = mapping ? '}' : ']'
+      const result = mapping ? {} : []
+      i++
+      while (i < s.length && space(s[i])) i++
+      if (s[i] === closing) return [result, i + 1]
+      while (i < s.length) {
+        if (mapping) {
+          let key
+          if (isQuote(s[i])) {
+            const read = quoted(s, i, line)
+            key = read[0]
+            i = read[1]
+          } else {
+            let end = i
+            while (end < s.length && !':,{}[]'.includes(s[end])) end++
+            key = scalar(s.slice(i, end).trim(), line)
+            i = end
+          }
+          while (i < s.length && space(s[i])) i++
+          if (typeof key !== 'string' || !key || key === '<<') fail(line, 'flow mapping keys must be non-empty strings')
+          if (s[i] !== ':') fail(line, "expected ':' in flow mapping")
+          const read = flowValue(s, i + 1, line, depth + 1, true)
+          put(result, key, read[0], line)
+          i = read[1]
+        } else {
+          const read = flowValue(s, i, line, depth + 1, true)
+          result.push(read[0])
+          i = read[1]
+        }
+        while (i < s.length && space(s[i])) i++
+        if (s[i] === closing) return [result, i + 1]
+        if (s[i] !== ',') fail(line, `expected ',' or '${closing}'`)
+        i++
+        while (i < s.length && space(s[i])) i++
+        if (i === s.length || s[i] === closing) fail(line, "missing value after ','")
+      }
+      fail(line, `unclosed flow collection, expected '${closing}'`)
+    }
+    let end = i
+    while (end < s.length && (!flow || !',]}{'.includes(s[end]))) end++
+    return [scalar(s.slice(i, end).trim(), line), end]
+  }
+  function value(s, line) {
+    const read = flowValue(s, 0, line, 0, false)
+    if (s.slice(read[1]).trim()) fail(line, 'unexpected text after value')
+    return read[0]
+  }
+  function entry(s, line) {
+    let quote = null
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i]
+      if (quote) {
+        if (ch === '\\' && quote === '"') { i++; continue }
+        if (ch === quote) {
+          if (quote === "'" && s[i + 1] === "'") { i++; continue }
+          quote = null
+        }
+      } else if (i === 0 && isQuote(ch)) quote = ch
+      else if (ch === ':' && (i + 1 === s.length || space(s[i + 1]))) {
+        const key = value(s.slice(0, i).trim(), line)
+        if (typeof key !== 'string' || !key || key === '<<') fail(line, 'mapping keys must be non-empty strings; merges are unsupported')
+        return [key, s.slice(i + 1).trim()]
+      }
+    }
+    return fail(line, 'expected a block mapping entry')
+  }
+  function blockEntry(s, line, indent, depth) {
+    const [key, rest] = entry(s, line)
+    if (rest) return [key, value(rest, line)]
+    const empty = `${key} needs a value; use {} or [] for an empty collection`
+    if (index === lines.length) fail(line, empty)
+    const [, childIndent, childText] = lines[index]
+    if (childIndent <= indent && !(childIndent === indent && childText.startsWith('- '))) fail(line, empty)
+    return [key, block(childIndent, depth + 1)]
+  }
+  function block(indent, depth) {
+    if (depth > YAML_MAX_DEPTH) fail(lines[index][0], 'YAML nesting is too deep')
+    const isList = isItem(lines[index][2])
+    const result = isList ? [] : {}
+    while (index < lines.length) {
+      const [line, actual, text] = lines[index]
+      if (actual < indent) break
+      if (actual !== indent) fail(line, 'inconsistent indentation')
+      if (isList && !isItem(text)) break
+      if (!isList && isItem(text)) fail(line, 'cannot mix a block list and mapping')
+      index++
+      if (!isList) {
+        const [key, val] = blockEntry(text, line, indent, depth)
+        put(result, key, val, line)
+        continue
+      }
+      const item = text.slice(1).trim()
+      if (!item) fail(line, 'block list items need a scalar or mapping')
+      let mappingItem = !'[{'.includes(item[0]) && /:(\s|$)/.test(item)
+      if (isQuote(item[0])) mappingItem = /^:(\s|$)/.test(item.slice(quoted(item, 0, line)[1]).trimStart())
+      if (!mappingItem) {
+        result.push(value(item, line))
+        continue
+      }
+      const mappingIndent = indent + text.indexOf(item)
+      const fields = {}
+      const [key, val] = blockEntry(item, line, mappingIndent, depth + 1)
+      put(fields, key, val, line)
+      if (index < lines.length && lines[index][1] > indent) {
+        const more = block(mappingIndent, depth + 1)
+        if (Array.isArray(more)) fail(lines[index - 1][0], 'expected mapping fields after list item')
+        Object.entries(more).forEach(([k, v]) => put(fields, k, v, line))
+      }
+      result.push(fields)
+    }
+    return result
+  }
+  if (!lines.length) fail(1, 'playbooks must not be empty')
+  if (lines[0][1] !== 0) fail(lines[0][0], 'top-level indentation must be zero')
+  if (lines.length === 1 && '[{'.includes(lines[0][2][0])) return value(lines[0][2], lines[0][0])
+  const result = block(0, 0)
+  if (index < lines.length) fail(lines[index][0], 'unexpected indentation')
+  return result
+}
+function loadPlaybooks() {
+  const text = document.getElementById('playbooks-yaml').textContent.replace(/^\r?\n/, '').replace(/<\\\/script/gi, '</script')
+  const isMap = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+  let usage = {}
+  try { usage = JSON.parse(document.getElementById('live-usage').textContent) } catch { usage = {} }
+  let prices = {}
+  try { prices = JSON.parse(document.getElementById('model-prices').textContent) } catch { prices = {} }
+  if (!text.trim() || text.trim() === ['__PLAYBOOKS', 'YAML__'].join('_')) return { data: {}, error: 'This page has no playbooks yet: paste alethe-playbooks.yaml into its playbooks block.' }
+  try {
+    const data = parsePlaybooksYaml(text)
+    if (!isMap(data) || !isMap(data.playbooks)) throw new Error('the file has no playbooks mapping')
+    return { data: { ...data, usage: isMap(usage) && Object.keys(usage).length ? usage : undefined, prices: isMap(prices) ? prices : {} }, error: null }
+  } catch (error) {
+    return { data: {}, error: `Could not read the playbooks, ${error.message}` }
+  }
+}
+const LOADED = loadPlaybooks()
+const DATA = LOADED.data
+const PRICES = DATA.prices ?? {}
+const MARKS = {"claude": "data:image/png;base64,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", "codex": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNzIxIiBoZWlnaHQ9IjcyMSIgdmlld0JveD0iMCAwIDcyMSA3MjEiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMF8xNjM3XzI5MzUpIj4KPGcgY2xpcC1wYXRoPSJ1cmwoI2NsaXAxXzE2MzdfMjkzNSkiPgo8cGF0aCBkPSJNMzA0LjI0NiAyOTUuNDExVjI0OS44MjhDMzA0LjI0NiAyNDUuOTg5IDMwNS42ODcgMjQzLjEwOSAzMDkuMDQ0IDI0MS4xOTFMNDAwLjY5MiAxODguNDEyQzQxMy4xNjcgMTgxLjIxNSA0MjguMDQyIDE3Ny44NTggNDQzLjM5NCAxNzcuODU4QzUwMC45NzEgMTc3Ljg1OCA1MzcuNDQgMjIyLjQ4MiA1MzcuNDQgMjY5Ljk4MkM1MzcuNDQgMjczLjM0IDUzNy40NCAyNzcuMTc5IDUzNi45NTkgMjgxLjAxOEw0NDEuOTU0IDIyNS4zNThDNDM2LjE5NyAyMjIgNDMwLjQzNyAyMjIgNDI0LjY4IDIyNS4zNThMMzA0LjI0NiAyOTUuNDExWk01MTguMjQ1IDQ3Mi45NDVWMzY0LjAyNEM1MTguMjQ1IDM1Ny4zMDQgNTE1LjM2NCAzNTIuNTA3IDUwOS42MDggMzQ5LjE0OUwzODkuMTc0IDI3OS4wOTZMNDI4LjUxOSAyNTYuNTQzQzQzMS44NzcgMjU0LjYyNiA0MzQuNzU3IDI1NC42MjYgNDM4LjExNSAyNTYuNTQzTDUyOS43NjIgMzA5LjMyM0M1NTYuMTU0IDMyNC42NzkgNTczLjkwNSAzNTcuMzA0IDU3My45MDUgMzg4Ljk3MUM1NzMuOTA1IDQyNS40MzYgNTUyLjMxNSA0NTkuMDI0IDUxOC4yNDUgNDcyLjk0MVY0NzIuOTQ1Wk0yNzUuOTM3IDM3Ni45ODJMMjM2LjU5MiAzNTMuOTUyQzIzMy4yMzUgMzUyLjAzNCAyMzEuNzk0IDM0OS4xNTQgMjMxLjc5NCAzNDUuMzE1VjIzOS43NTZDMjMxLjc5NCAxODguNDE2IDI3MS4xMzkgMTQ5LjU0OCAzMjQuNCAxNDkuNTQ4QzM0NC41NTUgMTQ5LjU0OCAzNjMuMjY0IDE1Ni4yNjggMzc5LjEwMiAxNjguMjYyTDI4NC41NzggMjIyLjk2NEMyNzguODIyIDIyNi4zMjEgMjc1Ljk0MiAyMzEuMTE5IDI3NS45NDIgMjM3LjgzOFYzNzYuOTg2TDI3NS45MzcgMzc2Ljk4MlpNMzYwLjYyNiA0MjUuOTIyTDMwNC4yNDYgMzk0LjI1NVYzMjcuMDgzTDM2MC42MjYgMjk1LjQxNkw0MTcuMDAyIDMyNy4wODNWMzk0LjI1NUwzNjAuNjI2IDQyNS45MjJaTTM5Ni44NTIgNTcxLjc4OUMzNzYuNjk4IDU3MS43ODkgMzU3Ljk4OSA1NjUuMDcgMzQyLjE1MSA1NTMuMDc1TDQzNi42NzQgNDk4LjM3NEM0NDIuNDMxIDQ5NS4wMTcgNDQ1LjMxMSA0OTAuMjE5IDQ0NS4zMTEgNDgzLjQ5OVYzNDQuMzUyTDQ4NS4xMzggMzY3LjM4MkM0ODguNDk1IDM2OS4yOTkgNDg5LjkzNiAzNzIuMTc5IDQ4OS45MzYgMzc2LjAxOFY0ODEuNTc3QzQ4OS45MzYgNTMyLjkxNyA0NTAuMTA5IDU3MS43ODUgMzk2Ljg1MiA1NzEuNzg1VjU3MS43ODlaTTI4My4xMzQgNDY0Ljc5TDE5MS40ODYgNDEyLjAxQzE2NS4wOTQgMzk2LjY1NCAxNDcuMzQzIDM2NC4wMjkgMTQ3LjM0MyAzMzIuMzYyQzE0Ny4zNDMgMjk1LjQxNiAxNjkuNDE1IDI2Mi4zMDkgMjAzLjQ4IDI0OC4zOTNWMzU3Ljc5MUMyMDMuNDggMzY0LjUxIDIwNi4zNjEgMzY5LjMwOCAyMTIuMTE3IDM3Mi42NjVMMzMyLjA3NCA0NDIuMjM3TDI5Mi43MjkgNDY0Ljc5QzI4OS4zNzIgNDY2LjcwNyAyODYuNDkxIDQ2Ni43MDcgMjgzLjEzNCA0NjQuNzlaTTI3Ny44NTkgNTQzLjQ4QzIyMy42MzkgNTQzLjQ4IDE4My44MTMgNTAyLjY5NSAxODMuODEzIDQ1Mi4zMTRDMTgzLjgxMyA0NDguNDc1IDE4NC4yOTQgNDQ0LjYzNiAxODQuNzcxIDQ0MC43OTdMMjc5LjI5NSA0OTUuNDk4QzI4NS4wNTEgNDk4Ljg1NiAyOTAuODEyIDQ5OC44NTYgMjk2LjU2OCA0OTUuNDk4TDQxNy4wMDIgNDI1LjkyN1Y0NzEuNTA5QzQxNy4wMDIgNDc1LjM0OSA0MTUuNTYyIDQ3OC4yMjkgNDEyLjIwNCA0ODAuMTQ2TDMyMC41NTcgNTMyLjkyNkMzMDguMDgxIDU0MC4xMjIgMjkzLjIwNiA1NDMuNDggMjc3Ljg1NCA1NDMuNDhIMjc3Ljg1OVpNMzk2Ljg1MiA2MDAuNTc2QzQ1NC45MTEgNjAwLjU3NiA1MDMuMzcgNTU5LjMxMyA1MTQuNDEgNTA0LjYxMkM1NjguMTQ5IDQ5MC42OTYgNjAyLjY5NiA0NDAuMzE1IDYwMi42OTYgMzg4Ljk3NkM2MDIuNjk2IDM1NS4zODcgNTg4LjMwMyAzMjIuNzYyIDU2Mi4zOTIgMjk5LjI1QzU2NC43OTEgMjg5LjE3MyA1NjYuMjMxIDI3OS4wOTYgNTY2LjIzMSAyNjkuMDI0QzU2Ni4yMzEgMjAwLjQxMSA1MTAuNTcxIDE0OS4wNjcgNDQ2LjI3NCAxNDkuMDY3QzQzMy4zMjIgMTQ5LjA2NyA0MjAuODQ2IDE1MC45ODQgNDA4LjM3IDE1NS4zMDVDMzg2Ljc3NSAxMzQuMTkyIDM1Ny4wMjYgMTIwLjc1OCAzMjQuNCAxMjAuNzU4QzI2Ni4zNDIgMTIwLjc1OCAyMTcuODgzIDE2Mi4wMiAyMDYuODQzIDIxNi43MjFDMTUzLjEwNCAyMzAuNjM3IDExOC41NTcgMjgxLjAxOCAxMTguNTU3IDMzMi4zNTdDMTE4LjU1NyAzNjUuOTQ2IDEzMi45NSAzOTguNTcxIDE1OC44NjEgNDIyLjA4M0MxNTYuNDYyIDQzMi4xNiAxNTUuMDIyIDQ0Mi4yMzcgMTU1LjAyMiA0NTIuMzA5QzE1NS4wMjIgNTIwLjkyMiAyMTAuNjgyIDU3Mi4yNjYgMjc0Ljk3OCA1NzIuMjY2QzI4Ny45MzEgNTcyLjI2NiAzMDAuNDA3IDU3MC4zNDkgMzEyLjg4MyA1NjYuMDI4QzMzNC40NzMgNTg3LjE0MSAzNjQuMjIyIDYwMC41NzYgMzk2Ljg1MiA2MDAuNTc2WiIgZmlsbD0id2hpdGUiLz4KPC9nPgo8L2c+CjxkZWZzPgo8Y2xpcFBhdGggaWQ9ImNsaXAwXzE2MzdfMjkzNSI+CjxyZWN0IHdpZHRoPSI3MjAiIGhlaWdodD0iNzIwIiBmaWxsPSJ3aGl0ZSIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMC42MDY5MzQgMC44OTk5MDIpIi8+CjwvY2xpcFBhdGg+CjxjbGlwUGF0aCBpZD0iY2xpcDFfMTYzN18yOTM1Ij4KPHJlY3Qgd2lkdGg9IjQ4NC4xMzkiIGhlaWdodD0iNDc5LjgxOCIgZmlsbD0id2hpdGUiIHRyYW5zZm9ybT0idHJhbnNsYXRlKDExOC41NTcgMTIwLjc1OCkiLz4KPC9jbGlwUGF0aD4KPC9kZWZzPgo8L3N2Zz4K", "agy": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDE4MCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxwYXRoIGQ9Ik0xNDQuMjQ4IDE0OS4wNjJDMTUxLjc0OCAxNTQuNjg4IDE2Mi45OTggMTUwLjkzOCAxNTIuNjg1IDE0MC42MjVDMTIxLjc0OCAxMTAuNjI1IDEyOC4zMSAyOC4xMjUgODkuODcyNyAyOC4xMjVDNTEuNDM1MiAyOC4xMjUgNTcuOTk3NyAxMTAuNjI1IDI3LjA2MDIgMTQwLjYyNUMxNS44MTAyIDE1MS44NzUgMjcuOTk3NyAxNTQuNjg4IDM1LjQ5NzcgMTQ5LjA2MkM2NC41NjAyIDEyOS4zNzUgNjIuNjg1MiA5NC42ODc1IDg5Ljg3MjcgOTQuNjg3NUMxMTcuMDYgOTQuNjg3NSAxMTUuMTg1IDEyOS4zNzUgMTQ0LjI0OCAxNDkuMDYyWiIgZmlsbD0iIzMxODZGRiIvPgo8bWFzayBpZD0ibWFzazBfNjAwMV80MDkiIHN0eWxlPSJtYXNrLXR5cGU6YWxwaGEiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9IjIyIiB5PSIyOCIgd2lkdGg9IjEzNiIgaGVpZ2h0PSIxMjUiPgo8cGF0aCBkPSJNMTQ0LjI0OCAxNDkuMDYyQzE1MS43NDggMTU0LjY4OCAxNjIuOTk4IDE1MC45MzggMTUyLjY4NSAxNDAuNjI1QzEyMS43NDggMTEwLjYyNSAxMjguMzEgMjguMTI1IDg5Ljg3MjcgMjguMTI1QzUxLjQzNTIgMjguMTI1IDU3Ljk5NzcgMTEwLjYyNSAyNy4wNjAyIDE0MC42MjVDMTUuODEwMiAxNTEuODc1IDI3Ljk5NzcgMTU0LjY4OCAzNS40OTc3IDE0OS4wNjJDNjQuNTYwMiAxMjkuMzc1IDYyLjY4NTIgOTQuNjg3NSA4OS44NzI3IDk0LjY4NzVDMTE3LjA2IDk0LjY4NzUgMTE1LjE4NSAxMjkuMzc1IDE0NC4yNDggMTQ5LjA2MloiIGZpbGw9IndoaXRlIi8+CjwvbWFzaz4KPGcgbWFzaz0idXJsKCNtYXNrMF82MDAxXzQwOSkiPgo8ZyBmaWx0ZXI9InVybCgjZmlsdGVyMF9mXzYwMDFfNDA5KSI+CjxlbGxpcHNlIGN4PSIzNi42MjI1IiBjeT0iNDMuMDg3MiIgcng9IjM2LjYyMjUiIHJ5PSI0My4wODcyIiB0cmFuc2Zvcm09Im1hdHJpeCgtMC4xMTI3ODQgMC45OTM2MiAtMC45OTM2MiAtMC4xMTI3ODEgMTA2LjU1NyAtMjYuNDg0NykiIGZpbGw9IiNGRkU0MzIiLz4KPC9nPgo8ZyBmaWx0ZXI9InVybCgjZmlsdGVyMV9mXzYwMDFfNDA5KSI+CjxlbGxpcHNlIGN4PSIxNTUuMTYzIiBjeT0iNTQuOTI5MiIgcng9IjQ3LjQxMTgiIHJ5PSI0OC40NTQxIiB0cmFuc2Zvcm09InJvdGF0ZSg3Ni45MjQzIDE1NS4xNjMgNTQuOTI5MikiIGZpbGw9IiNGQzQxM0QiLz4KPC9nPgo8ZyBmaWx0ZXI9InVybCgjZmlsdGVyMl9mXzYwMDFfNDA5KSI+CjxlbGxpcHNlIGN4PSIxNC42MDA2IiBjeT0iNjUuNDQyNSIgcng9IjQ5LjU1MTUiIHJ5PSI2NC4xOTIiIHRyYW5zZm9ybT0icm90YXRlKDc0LjEyNTcgMTQuNjAwNiA2NS40NDI1KSIgZmlsbD0iIzAwQjk1QyIvPgo8L2c+CjxnIGZpbHRlcj0idXJsKCNmaWx0ZXIzX2ZfNjAwMV80MDkpIj4KPGVsbGlwc2UgY3g9IjE0LjYwMDYiIGN5PSI2NS40NDI1IiByeD0iNDkuNTUxNSIgcnk9IjY0LjE5MiIgdHJhbnNmb3JtPSJyb3RhdGUoNzQuMTI1NyAxNC42MDA2IDY1LjQ0MjUpIiBmaWxsPSIjMDBCOTVDIi8+CjwvZz4KPGcgZmlsdGVyPSJ1cmwoI2ZpbHRlcjRfZl82MDAxXzQwOSkiPgo8ZWxsaXBzZSBjeD0iMTguMTIyNiIgY3k9IjY3LjQxNCIgcng9IjQ4LjU2NzkiIHJ5PSI1My40Njg4IiB0cmFuc2Zvcm09InJvdGF0ZSg0NS42MDY1IDE4LjEyMjYgNjcuNDE0KSIgZmlsbD0iIzAwQjk1QyIvPgo8L2c+CjxnIGZpbHRlcj0idXJsKCNmaWx0ZXI1X2ZfNjAwMV80MDkpIj4KPGVsbGlwc2UgY3g9IjEyMS44MzciIGN5PSIxNjYuOTQ1IiByeD0iNDYuNjM1NiIgcnk9IjQ0LjkwODQiIHRyYW5zZm9ybT0icm90YXRlKDc2LjkyNDMgMTIxLjgzNyAxNjYuOTQ1KSIgZmlsbD0iIzMxODZGRiIvPgo8L2c+CjxnIGZpbHRlcj0idXJsKCNmaWx0ZXI2X2ZfNjAwMV80MDkpIj4KPGVsbGlwc2UgY3g9IjUzLjk0NTYiIGN5PSI1Ni44OTk3IiByeD0iNTMuOTQ1NiIgcnk9IjU2Ljg5OTciIHRyYW5zZm9ybT0ibWF0cml4KC0wLjQwOTUzOSAwLjkxMjI5MyAtMC45MTIyOTQgLTAuNDA5NTM3IDE2Mi44MTEgLTI1Ljg5NSkiIGZpbGw9IiNGQkJDMDQiLz4KPC9nPgo8ZyBmaWx0ZXI9InVybCgjZmlsdGVyN19mXzYwMDFfNDA5KSI+CjxwYXRoIGQ9Ik00LjIxNTU3IDIzOS4wNjNDLTI1LjMyMzEgMjI3LjQ2NyAyNS4xNTc3IDEzMi4wNjEgMzcuNzEwNSAxMDAuMDg1QzUwLjI2MzQgNjguMTA5NyA4NC4zODUzIDUxLjU4ODggMTEzLjkyNCA2My4xODQ4QzE0My40NjMgNzQuNzgwOSAxNzguNDc0IDEzOC42NSAxNjUuOTIxIDE3MC42MjZDMTUzLjM2OCAyMDIuNjAxIDMzLjc1NDMgMjUwLjY1OSA0LjIxNTU3IDIzOS4wNjNaIiBmaWxsPSIjMzE4NkZGIi8+CjwvZz4KPGcgZmlsdGVyPSJ1cmwoI2ZpbHRlcjhfZl82MDAxXzQwOSkiPgo8cGF0aCBkPSJNMTgzLjE5NyAxMjAuMzE1QzE3NS4yODkgMTI5LjU0NSAxNTQuNjUyIDEyNC44MzkgMTM3LjEwMiAxMDkuODAzQzExOS41NTMgOTQuNzY2OCAxMTEuNzM4IDc1LjA5NTUgMTE5LjY0NiA2NS44NjU2QzEyNy41NTQgNTYuNjM1NyAxNDguMTkxIDYxLjM0MjMgMTY1Ljc0IDc2LjM3ODJDMTgzLjI4OSA5MS40MTQgMTkxLjEwNSAxMTEuMDg1IDE4My4xOTcgMTIwLjMxNVoiIGZpbGw9IiM3NDlCRkYiLz4KPC9nPgo8ZyBmaWx0ZXI9InVybCgjZmlsdGVyOV9mXzYwMDFfNDA5KSI+CjxlbGxpcHNlIGN4PSIxNDguOTI4IiBjeT0iMzYuNzI1MiIgcng9IjcxLjEwMTgiIHJ5PSI0NC4xOTkiIHRyYW5zZm9ybT0icm90YXRlKDM0LjA3NjMgMTQ4LjkyOCAzNi43MjUyKSIgZmlsbD0iI0ZDNDEzRCIvPgo8L2c+CjxnIGZpbHRlcj0idXJsKCNmaWx0ZXIxMF9mXzYwMDFfNDA5KSI+CjxlbGxpcHNlIGN4PSIzNy44NDgiIGN5PSI0Ni4wMzQ2IiByeD0iMzguMTAwOCIgcnk9IjIyLjE1NzUiIHRyYW5zZm9ybT0icm90YXRlKDExMi41MTYgMzcuODQ4IDQ2LjAzNDYpIiBmaWxsPSIjRkZFRTQ4Ii8+CjwvZz4KPC9nPgo8ZGVmcz4KPGZpbHRlciBpZD0iZmlsdGVyMF9mXzYwMDFfNDA5IiB4PSI0LjA5NTkxIiB5PSItNDQuMTc2MSIgd2lkdGg9IjExMS4wMzciIGhlaWdodD0iOTguNDQxNiIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPgo8ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSI2LjI1MjM0Ii8+CjwvZmlsdGVyPgo8ZmlsdGVyIGlkPSJmaWx0ZXIxX2ZfNjAwMV80MDkiIHg9IjQ2LjI5NzQiIHk9Ii01My4wMDA5IiB3aWR0aD0iMjE3LjczMSIgaGVpZ2h0PSIyMTUuODYiIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMzAuMjI2OCIvPgo8L2ZpbHRlcj4KPGZpbHRlciBpZD0iZmlsdGVyMl9mXzYwMDFfNDA5IiB4PSItMTAwLjAxOCIgeT0iLTM2Ljc1NTgiIHdpZHRoPSIyMjkuMjM4IiBoZWlnaHQ9IjIwNC4zOTciIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMjUuNjk1NyIvPgo8L2ZpbHRlcj4KPGZpbHRlciBpZD0iZmlsdGVyM19mXzYwMDFfNDA5IiB4PSItMTAwLjAxOCIgeT0iLTM2Ljc1NTgiIHdpZHRoPSIyMjkuMjM4IiBoZWlnaHQ9IjIwNC4zOTciIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMjUuNjk1NyIvPgo8L2ZpbHRlcj4KPGZpbHRlciBpZD0iZmlsdGVyNF9mXzYwMDFfNDA5IiB4PSItODQuMzk4NSIgeT0iLTM1LjAwMyIgd2lkdGg9IjIwNS4wNDIiIGhlaWdodD0iMjA0LjgzNCIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPgo8ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIyNS42OTU3Ii8+CjwvZmlsdGVyPgo8ZmlsdGVyIGlkPSJmaWx0ZXI1X2ZfNjAwMV80MDkiIHg9IjI3Ljk5MTUiIHk9IjcxLjU0OTMiIHdpZHRoPSIxODcuNjkxIiBoZWlnaHQ9IjE5MC43OTEiIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMjQuNDE4NCIvPgo8L2ZpbHRlcj4KPGZpbHRlciBpZD0iZmlsdGVyNl9mXzYwMDFfNDA5IiB4PSItMTEuODgwOCIgeT0iLTk4LjcwODUiIHdpZHRoPSIyMDEuMzgiIGhlaWdodD0iMTk3LjQ1IiBmaWx0ZXJVbml0cz0idXNlclNwYWNlT25Vc2UiIGNvbG9yLWludGVycG9sYXRpb24tZmlsdGVycz0ic1JHQiI+CjxmZUdhdXNzaWFuQmx1ciBzdGREZXZpYXRpb249IjIyLjEzMDEiLz4KPC9maWx0ZXI+CjxmaWx0ZXIgaWQ9ImZpbHRlcjdfZl82MDAxXzQwOSIgeD0iLTQ0LjQ0MzIiIHk9IjE5Ljk1MjIiIHdpZHRoPSIyNTIuNTEzIiBoZWlnaHQ9IjI2MC40MDQiIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMTkuNzYzMSIvPgo8L2ZpbHRlcj4KPGZpbHRlciBpZD0iZmlsdGVyOF9mXzYwMDFfNDA5IiB4PSI4MS4xOTE1IiB5PSIyNS43NzIyIiB3aWR0aD0iMTQwLjQ2IiBoZWlnaHQ9IjEzNC42MzciIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMTcuNjg0MyIvPgo8L2ZpbHRlcj4KPGZpbHRlciBpZD0iZmlsdGVyOV9mXzYwMDFfNDA5IiB4PSI1NS4xNDk5IiB5PSItNDcuMjUzMSIgd2lkdGg9IjE4Ny41NTUiIGhlaWdodD0iMTY3Ljk1NyIgZmlsdGVyVW5pdHM9InVzZXJTcGFjZU9uVXNlIiBjb2xvci1pbnRlcnBvbGF0aW9uLWZpbHRlcnM9InNSR0IiPgo8ZmVHYXVzc2lhbkJsdXIgc3RkRGV2aWF0aW9uPSIxNC45MzY1Ii8+CjwvZmlsdGVyPgo8ZmlsdGVyIGlkPSJmaWx0ZXIxMF9mXzYwMDFfNDA5IiB4PSItMjQuMjYzMyIgeT0iLTI3LjE1MTUiIHdpZHRoPSIxMjQuMjIzIiBoZWlnaHQ9IjE0Ni4zNzIiIGZpbHRlclVuaXRzPSJ1c2VyU3BhY2VPblVzZSIgY29sb3ItaW50ZXJwb2xhdGlvbi1maWx0ZXJzPSJzUkdCIj4KPGZlR2F1c3NpYW5CbHVyIHN0ZERldmlhdGlvbj0iMTguNDg2NSIvPgo8L2ZpbHRlcj4KPC9kZWZzPgo8L3N2Zz4K", "kimi": "data:image/png;base64,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", "kiro": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSIxMjAwIiB2aWV3Qm94PSIwIDAgMTIwMCAxMjAwIiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPg0KPHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iMTIwMCIgcng9IjI2MCIgZmlsbD0iIzkwNDZGRiIvPg0KPG1hc2sgaWQ9Im1hc2swXzExMDZfNDg1NiIgc3R5bGU9Im1hc2stdHlwZTpsdW1pbmFuY2UiIG1hc2tVbml0cz0idXNlclNwYWNlT25Vc2UiIHg9IjI3MiIgeT0iMjAyIiB3aWR0aD0iNjU1IiBoZWlnaHQ9Ijc5NiI+DQo8cGF0aCBkPSJNOTI2LjU3OCAyMDIuNzkzSDI3Mi42MzdWOTk3Ljg1N0g5MjYuNTc4VjIwMi43OTNaIiBmaWxsPSJ3aGl0ZSIvPg0KPC9tYXNrPg0KPGcgbWFzaz0idXJsKCNtYXNrMF8xMTA2XzQ4NTYpIj4NCjxwYXRoIGQ9Ik0zOTguNTU0IDgxOC45MTRDMzE2LjMxNSAxMDAxLjAzIDQ5MS40NzcgMTA0Ni43NCA2MjAuNjcyIDk0MC4xNTZDNjU4LjY4NyAxMDU5LjY2IDgwMS4wNTIgOTcwLjQ3MyA4NTIuMjM0IDg3Ny43OTVDOTY0Ljc4NyA2NzMuNTY3IDkxOS4zMTggNDY1LjM1NyA5MDcuNjQgNDIyLjM3NEM4MjcuNjM3IDEyOS40NDMgNDI3LjYyMyAxMjguOTQ2IDM1OC44IDQyMy44NjVDMzQyLjY1MSA0NzUuNTQ0IDM0Mi40MDIgNTM0LjE4IDMzMy40NTggNTk1LjA1MUMzMjguOTg2IDYyNS44NiAzMjUuNTA3IDY0NS40ODggMzEzLjgzIDY3Ny43ODVDMzA2Ljg3MyA2OTYuNDI0IDI5Ny42OCA3MTIuODE5IDI4Mi43NzMgNzQwLjY0NUMyNTkuOTE1IDc4My44ODEgMjY5LjYwNCA4NjcuMTEzIDM4Ny44NyA4MjMuODgzTDM5OS4wNTEgODE4LjkxNEgzOTguNTU0WiIgZmlsbD0id2hpdGUiLz4NCjxwYXRoIGQ9Ik02MzYuMTIzIDU0OS4zNTNDNjAzLjMyOCA1NDkuMzUzIDU5OC4zNTkgNTEwLjA5NyA1OTguMzU5IDQ4Ni43NDJDNTk4LjM1OSA0NjUuNjIzIDYwMi4wODYgNDQ4Ljk3NyA2MDkuMjkzIDQzOC4yOTNDNjE1LjUwNCA0MjguODUyIDYyNC42OTcgNDI0LjEzMSA2MzYuMTIzIDQyNC4xMzFDNjQ3LjU1NSA0MjQuMTMxIDY1Ny40OTIgNDI4Ljg1MiA2NjQuNDQ3IDQzOC41NDFDNjcyLjM5OCA0NDkuNDc0IDY3Ni42MjMgNDY2LjEyIDY3Ni42MjMgNDg2Ljc0MkM2NzYuNjIzIDUyNS45OTggNjYxLjQ3MSA1NDkuMzUzIDYzNi4zNzUgNTQ5LjM1M0g2MzYuMTIzWiIgZmlsbD0iYmxhY2siLz4NCjxwYXRoIGQ9Ik03NzEuMjQgNTQ5LjM1M0M3MzguNDQ1IDU0OS4zNTMgNzMzLjQ3NyA1MTAuMDk3IDczMy40NzcgNDg2Ljc0MkM3MzMuNDc3IDQ2NS42MjMgNzM3LjIwMyA0NDguOTc3IDc0NC40MSA0MzguMjkzQzc1MC42MjEgNDI4Ljg1MiA3NTkuODE0IDQyNC4xMzEgNzcxLjI0IDQyNC4xMzFDNzgyLjY3MiA0MjQuMTMxIDc5Mi42MDkgNDI4Ljg1MiA3OTkuNTY0IDQzOC41NDFDODA3LjUxNiA0NDkuNDc0IDgxMS43NCA0NjYuMTIgODExLjc0IDQ4Ni43NDJDODExLjc0IDUyNS45OTggNzk2LjU4OCA1NDkuMzUzIDc3MS40OTIgNTQ5LjM1M0g3NzEuMjRaIiBmaWxsPSJibGFjayIvPg0KPC9nPg0KPC9zdmc+DQo=", "copilot": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iI2YzZjRmNiI+PHBhdGggZD0iTTcuOTk4IDE1LjAzNWMtNC41NjIgMC03Ljg3My0yLjkxNC03Ljk5OC0zLjc0OVY5LjMzOGMuMDg1LS42MjguNjc3LTEuNjg2IDEuNTg4LTIuMDY1LjAxMy0uMDcuMDI0LS4xNDMuMDM2LS4yMTguMDI5LS4xODMuMDYtLjM4NC4xMjYtLjYxMi0uMjAxLS41MDgtLjI1NC0xLjA4NC0uMjU0LTEuNjU2IDAtLjg3LjEyOC0xLjc2OS42OTMtMi40ODQuNTc5LS43MzMgMS40OTQtMS4xMjQgMi43MjQtMS4yNjEgMS4yMDYtLjEzNCAyLjI2Mi4wMzQgMi45NDQuNzY1LjA1LjA1My4wOTYuMTA4LjEzOS4xNjUuMDQ0LS4wNTcuMDk0LS4xMTIuMTQzLS4xNjUuNjgyLS43MzEgMS43MzgtLjg5OSAyLjk0NC0uNzY1IDEuMjMuMTM3IDIuMTQ1LjUyOCAyLjcyNCAxLjI2MS41NjYuNzE1LjY5MyAxLjYxNC42OTMgMi40ODQgMCAuNTcyLS4wNTMgMS4xNDgtLjI1NCAxLjY1Ni4wNjYuMjI4LjA5OC40MjkuMTI2LjYxMi4wMTIuMDc2LjAyNC4xNDguMDM3LjIxOC45MjQuMzg1IDEuNTIyIDEuNDcxIDEuNTkxIDIuMDk1djEuODcyYzAgLjc2Ni0zLjM1MSAzLjc5NS04LjAwMiAzLjc5NVptMC0xLjQ4NWMyLjI4IDAgNC41ODQtMS4xMSA1LjAwMi0xLjQzM1Y3Ljg2MmwtLjAyMy0uMTE2Yy0uNDkuMjEtMS4wNzUuMjkxLTEuNzI3LjI5MS0xLjE0NiAwLTIuMDU5LS4zMjctMi43MS0uOTkxQTMuMjIyIDMuMjIyIDAgMCAxIDggNi4zMDNhMy4yNCAzLjI0IDAgMCAxLS41NDQuNzQzYy0uNjUuNjY0LTEuNTYzLjk5MS0yLjcxLjk5MS0uNjUyIDAtMS4yMzYtLjA4MS0xLjcyNy0uMjkxbC0uMDIzLjExNnY0LjI1NWMuNDE5LjMyMyAyLjcyMiAxLjQzMyA1LjAwMiAxLjQzM1pNNi43NjIgMi44M2MtLjE5My0uMjA2LS42MzctLjQxMy0xLjY4Mi0uMjk3LTEuMDE5LjExMy0xLjQ3OS40MDQtMS43MTMuNy0uMjQ3LjMxMi0uMzY5Ljc4OS0uMzY5IDEuNTU0IDAgLjc5My4xMjkgMS4xNzEuMzA4IDEuMzcxLjE2Mi4xODEuNTE5LjM3OSAxLjQ0Mi4zNzkuODUzIDAgMS4zMzktLjIzNSAxLjYzOC0uNTQuMzE1LS4zMjIuNTI3LS44MjcuNjE3LTEuNTUzLjExNy0uOTM1LS4wMzctMS4zOTUtLjI0MS0xLjYxNFptNC4xNTUtLjI5N2MtMS4wNDQtLjExNi0xLjQ4OC4wOTEtMS42ODEuMjk3LS4yMDQuMjE5LS4zNTkuNjc5LS4yNDIgMS42MTQuMDkxLjcyNi4zMDMgMS4yMzEuNjE4IDEuNTUzLjI5OS4zMDUuNzg0LjU0IDEuNjM4LjU0LjkyMiAwIDEuMjgtLjE5OCAxLjQ0Mi0uMzc5LjE3OS0uMi4zMDgtLjU3OC4zMDgtMS4zNzEgMC0uNzY1LS4xMjMtMS4yNDItLjM3LTEuNTU0LS4yMzMtLjI5Ni0uNjkzLS41ODctMS43MTMtLjdaIi8+PHBhdGggZD0iTTYuMjUgOS4wMzdhLjc1Ljc1IDAgMCAxIC43NS43NXYxLjUwMWEuNzUuNzUgMCAwIDEtMS41IDBWOS43ODdhLjc1Ljc1IDAgMCAxIC43NS0uNzVabTQuMjUuNzV2MS41MDFhLjc1Ljc1IDAgMCAxLTEuNSAwVjkuNzg3YS43NS43NSAwIDAgMSAxLjUgMFoiLz48L3N2Zz4K", "gemini": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzhhYjRmOCIgZD0iTTEyIDJjLjYgNS40IDQuNiA5LjQgMTAgMTAtNS40LjYtOS40IDQuNi0xMCAxMC0uNi01LjQtNC42LTkuNC0xMC0xMCA1LjQtLjYgOS40LTQuNiAxMC0xMHoiLz48L3N2Zz4K", "router9": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHJ4PSI2IiBmaWxsPSJ1cmwoI2dyYWRpZW50KSIvPgogIDx0ZXh0IHg9IjE2IiB5PSIyNCIgZm9udC1mYW1pbHk9InN5c3RlbS11aSwgLWFwcGxlLXN5c3RlbSwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMCIgZm9udC13ZWlnaHQ9IjcwMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPjk8L3RleHQ+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImdyYWRpZW50IiB4MT0iMCIgeTE9IjAiIHgyPSIzMiIgeTI9IjMyIiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CiAgICAgIDxzdG9wIHN0b3AtY29sb3I9IiNmOTc4MTUiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjYzI1OTBhIi8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KPC9zdmc+Cgo="}
+const PROVIDERS = {
+  claude: {
+    label: 'Claude', cli: 'claude', adapter: 'built-in', readOnly: true, effort: true, reader: true, dialect: 'anthropic', soft: 'rgba(236, 147, 51, 0.15)', models: ['haiku', 'sonnet', 'opus'],
+    windows: [{ key: 'short', token: '5h', label: '5h', main: true }, { key: 'week', token: 'week', label: 'week', main: true, long: true, cycle: 'week' }, { key: 'opus', token: 'opus', label: 'opus wk', short: 'Opus' }],
+  },
+  codex: {
+    label: 'Codex', cli: 'codex', adapter: 'built-in', readOnly: true, effort: true, reader: true, dialect: 'openai', soft: 'rgba(6, 182, 212, 0.15)', models: [],
+    windows: [{ key: 'short', token: '5h', label: '5h', main: true }, { key: 'week', token: 'week', label: 'week', main: true, long: true, cycle: 'week' }],
+  },
+  agy: {
+    label: 'Antigravity', cli: 'agy', adapter: 'built-in', readOnly: true, effort: true, reader: true, soft: 'rgba(66, 133, 244, 0.15)', models: [],
+    windows: [{ key: 'gemini', token: 'gemini', label: 'gemini', main: true }, { key: 'claude', token: 'claude', label: 'claude', main: true }, { key: 'gpt', token: 'gpt', label: 'gpt' }],
+  },
+  kimi: {
+    label: 'Kimi', cli: 'kimi', adapter: 'built-in', readOnly: true, effort: false, reader: true, soft: 'rgba(46, 107, 230, 0.15)', models: [],
+    windows: [{ key: 'short', token: '5h', label: '5h', main: true }, { key: 'week', token: 'week', label: 'week', main: true, long: true, cycle: 'week' }, { key: 'month', token: 'month', label: 'month' }],
+  },
+  kiro: {
+    label: 'Kiro', cli: 'kiro-cli', adapter: 'custom', readOnly: false, effort: true, reader: false, soft: 'rgba(144, 70, 255, 0.15)', models: [],
+    windows: [{ key: 'month', token: 'credits', label: 'credits', main: true, long: true, cycle: 'credit cycle' }],
+  },
+  copilot: {
+    label: 'Copilot', cli: 'copilot', adapter: 'custom', readOnly: false, effort: false, reader: false, soft: 'rgba(243, 244, 246, 0.08)', models: [],
+    windows: [{ key: 'month', token: 'premium', label: 'premium', main: true, long: true, cycle: 'premium cycle' }],
+  },
+  gemini: {
+    label: 'Gemini CLI', cli: 'gemini', adapter: 'custom', readOnly: false, effort: false, reader: false, soft: 'rgba(66, 133, 244, 0.15)', models: [],
+    windows: [{ key: 'day', token: 'day', label: 'day', main: true }],
+  },
+}
+const ROUTES = { router9: { label: '9router', dialects: ['anthropic', 'openai'] } }
+// A provider that is not listed above (for example opencode in front of NVIDIA models) still needs a label,
+// a mark and a quota window, or its boxes would render without a name or icon. Build it from `providers` and `adapters`.
+const customMark = (label) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='#6b7280'/><text x='32' y='42' font-family='Arial,sans-serif' font-size='28' font-weight='700' text-anchor='middle' fill='#fff'>${label.slice(0, 1).toUpperCase()}</text></svg>`)}`
+;[...(Array.isArray(DATA.providers) ? DATA.providers : []), ...Object.keys(DATA.adapters ?? {})].forEach((id) => {
+  if (typeof id !== 'string' || PROVIDERS[id]) return
+  PROVIDERS[id] = {
+    label: id, cli: DATA.adapters?.[id]?.command ?? id, adapter: 'custom', readOnly: false, effort: false, reader: false, soft: 'rgba(107, 114, 128, 0.15)', models: [],
+    windows: [{ key: 'month', token: 'credits', label: 'credits', main: true, long: true, cycle: 'credit cycle' }],
+  }
+  MARKS[id] = MARKS[id] ?? customMark(id)
+})
+const AGENTS = Object.fromEntries(Object.entries(PROVIDERS).map(([id, p]) => [id, p.label]))
+const modelIdOf = (m) => (m && typeof m === 'object' ? m.id : m)
+const modelsOf = (id) => [...new Set([...(PROVIDERS[id]?.models ?? []), ...(DATA.models?.[id] ?? []).map(modelIdOf)])]
+const modelCost = (id, model) => (DATA.models?.[id] ?? []).find((m) => m && typeof m === 'object' && m.id === model)?.cost ?? null
+const modelOwner = (model) => Object.keys(PROVIDERS).find((id) => modelsOf(id).includes(model)) ?? null
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+const TIER_NAMES = ['cheap', 'standard', 'strong']
+const RUNNERS = ['economy', 'balanced', 'quality', 'research', 'parallel', 'rescue']
+const KINDS = ['research', 'code', 'review', 'command', 'scrap', 'docs']
+const EFFORT_CLASSES = ['light', 'standard', 'deep']
+const WINDOWS = { short: '5h', week: '7d', opus: 'Opus 7d' }
+const OUTCOMES = new Set(['checks-failed', 'checks-failed-twice', 'report-weak', 'conflict', 'stuck', 'no-pass', 'findings-left'])
+const TASKS = {
+  all: { label: 'All' },
+  narrow: { label: 'Narrow fix', kind: 'code', effort: 'light', narrow: true },
+  research: { label: 'Research', kind: 'research', effort: 'standard' },
+  light: { label: 'Light code', kind: 'code', effort: 'light' },
+  code: { label: 'Code', kind: 'code', effort: 'standard' },
+  deep: { label: 'Deep code', kind: 'code', effort: 'deep' },
+  review: { label: 'Review', kind: 'review', effort: 'standard' },
+}
+const PLENTY = {
+  claude: { short: 22, week: 38, opus: 12, reset: 96, expires: null },
+  codex: { short: 14, week: 26, reset: 120, expires: null },
+  agy: { gemini: 18, claude: 30, gpt: 6, reset: null, expires: null },
+  kimi: { short: 10, week: 21, month: 15, reset: 110, expires: null },
+  kiro: { month: 34, reset: 400, expires: null },
+  copilot: { month: 12, reset: 300, expires: null },
+  gemini: { day: 8, reset: null, expires: null },
+}
+const USAGE_PRESETS = {
+  ...(DATA.usage ? { now: { label: 'now', patch: DATA.usage } } : {}),
+  plenty: { label: 'plenty', patch: {} },
+  'claude-5h': { label: 'claude 5h out', patch: { claude: { short: 94, week: 46, opus: 30 } } },
+  'claude-week': { label: 'claude week out', patch: { claude: { short: 35, week: 88, opus: 72, reset: 48 } } },
+  'codex-out': { label: 'codex out', patch: { codex: { short: 91, week: 64 } } },
+  'all-out': { label: 'all out', patch: 'all' },
+  'codex-ending': { label: 'codex plan ends', patch: { codex: { short: 10, week: 30, reset: 144, expires: 2 } } },
+  'claude-reset': { label: 'claude reset soon', patch: { claude: { short: 18, week: 41, opus: 20, reset: 12 } } },
+  'kiro-reset': { label: 'kiro credits reset', patch: { kiro: { month: 38, reset: 20 } } },
+}
+const LEGACY_USAGE = { normal: 'plenty', claude: 'claude-5h', codex: 'codex-out', both: 'all-out', 'both-out': 'all-out' }
+const CHECKS = { pass: 'Pass', fail: 'Fail once', twice: 'Fail twice' }
+const BUDGET = { ok: 'OK', low: 'Over 80%' }
+const SPENT = { 0: '$0', 1: '$1', 5: '$5', 10: '$10', 20: '$20', 50: '$50' }
+const BOTH = { ask: 'Ask', 'run-cheapest': 'Run cheapest', block: 'Block' }
+const inventory = () => (DATA.providers ?? ['claude', 'codex']).filter((id) => PROVIDERS[id])
+const presetFits = (key) => USAGE_PRESETS[key].patch === 'all' || Object.keys(USAGE_PRESETS[key].patch).every((id) => inventory().includes(id))
+function presetUsage(key) {
+  const patch = (USAGE_PRESETS[key] ?? USAGE_PRESETS.plenty).patch
+  const usage = {}
+  inventory().forEach((id, n) => {
+    usage[id] = { ...(PLENTY[id] ?? { reset: null, expires: null }) }
+    if (patch === 'all') PROVIDERS[id].windows.filter((w) => w.main).forEach((w, i) => { usage[id][w.key] = 91 + ((n + i * 2) % 7) })
+    else Object.assign(usage[id], patch[id] ?? {})
+  })
+  return usage
+}
+
+const role = (name, agent, model, effort, readOnly, fallback = null) => ({ name, agent, model, effort, readOnly, fallback })
+const rule = (kinds, efforts, target, gates = []) => ({ kinds, efforts, gates, role: target })
+const ROUTING = {
+  economy: {
+    name: 'Economy',
+    blurb: 'Cheapest roles first; Codex does the building.',
+    roles: [
+      role('scout', 'claude', 'haiku', 'low', false, 'handyman'),
+      role('handyman', 'codex', null, 'low', true),
+      role('builder', 'codex', null, 'medium', false, 'scout'),
+    ],
+    rules: [rule(['research', 'scrap', 'docs'], [], 'scout'), rule([], ['light'], 'scout'), rule(['review'], [], 'handyman'), rule([], ['standard', 'deep'], 'builder')],
+  },
+  balanced: {
+    name: 'Balanced',
+    blurb: 'Sonnet builds; Opus only for deep work while its window has room.',
+    roles: [
+      role('scout', 'claude', 'haiku', 'low', false, 'handyman'),
+      role('handyman', 'codex', null, 'low', true),
+      role('builder', 'claude', 'sonnet', 'medium', false, 'codex-builder'),
+      role('codex-builder', 'codex', null, 'medium', false),
+      role('expert', 'claude', 'opus', 'high', false, 'builder'),
+    ],
+    rules: [
+      rule(['research', 'scrap', 'docs'], [], 'scout'),
+      rule([], ['light'], 'scout'),
+      rule(['review'], [], 'handyman'),
+      rule([], ['deep'], 'expert', [{ agent: 'claude', window: 'opus', below: 50 }]),
+      rule([], [], 'builder'),
+    ],
+  },
+  performance: {
+    name: 'Performance',
+    blurb: 'Sonnet by default; Opus for deep work until 80% of its window.',
+    roles: [
+      role('builder', 'claude', 'sonnet', 'medium', false, 'codex-builder'),
+      role('codex-builder', 'codex', null, 'medium', false),
+      role('expert', 'claude', 'opus', 'high', false, 'builder'),
+    ],
+    rules: [rule([], ['light'], 'builder'), rule([], ['deep'], 'expert', [{ agent: 'claude', window: 'opus', below: 80 }]), rule([], [], 'builder')],
+  },
+}
+
+const clone = (value) => JSON.parse(JSON.stringify(value))
+const workflows = {}
+const pickRank = (key) => {
+  if (key === 'complete') return -1
+  const index = (DATA.pickOrder ?? []).findIndex((item) => item.playbook === key)
+  return index === -1 ? 99 : index
+}
+Object.entries(DATA.playbooks ?? {})
+  .sort((a, b) => pickRank(a[0]) - pickRank(b[0]))
+  .forEach(([key, pb]) => { workflows[`playbook:${key}`] = { id: `playbook:${key}`, kind: 'playbook', key, pb: clone(pb), positions: {}, edited: false } })
+Object.entries(ROUTING).forEach(([key, preset]) => { workflows[`routing:${key}`] = { id: `routing:${key}`, kind: 'routing', key, ...clone(preset), positions: {}, edited: false } })
+
+const params = new URLSearchParams(location.search)
+const [hashWf, hashTask, hashTokens, hashChecks, hashBudget, hashBoth, hashProfile, hashSpent] = decodeURIComponent(location.hash.slice(1)).split('/')
+const firstWf = Object.keys(workflows)[0]
+const startProfiles = clone(DATA.profiles ?? { base: { name: 'Base', summary: 'The tiers as written.' } })
+const state = {
+  wf: workflows[hashWf] ? hashWf : firstWf,
+  task: TASKS[hashTask] ? hashTask : 'all',
+  usage: presetUsage(USAGE_PRESETS[hashTokens] ? hashTokens : LEGACY_USAGE[hashTokens] ?? (DATA.usage ? 'now' : 'plenty')),
+  usageOpen: params.has('usage') ? params.get('usage') || inventory()[0] : null,
+  checks: CHECKS[hashChecks] ? hashChecks : 'pass',
+  budget: BUDGET[hashBudget] ? hashBudget : 'ok',
+  spent: SPENT[hashSpent] ? Number(hashSpent) : 0,
+  providers: inventory(),
+  routes: clone(DATA.routes ?? {}),
+  profiles: startProfiles,
+  profile: startProfiles[hashProfile] ? hashProfile : startProfiles[DATA.profile] ? DATA.profile : Object.keys(startProfiles)[0],
+  quota: { criticalThreshold: 80, stopAt: 95, whenLow: 'switch-provider', onBothCritical: 'ask', whenSpare: 'spend-strong', spareWithinHours: 24, spareMinLeft: 30, planEnds: {}, ...clone(DATA.quota ?? {}) },
+  budgetRule: { warnAt: 80, whenLow: 'finish-and-report', ...clone(DATA.budget ?? {}) },
+  tiers: clone(DATA.tiers ?? {}),
+  globalEdited: false,
+  routingWf: 'routing:balanced',
+  selected: params.get('select') ? { id: params.get('select') } : null,
+  info: params.has('details'),
+  sketch: params.has('sketch'),
+  yaml: params.has('yaml'),
+  view: null,
+  pulse: 0,
+}
+if (BOTH[hashBoth]) state.quota.onBothCritical = hashBoth
+Object.entries(state.quota.planEnds ?? {}).forEach(([provider, date]) => { if (state.usage[provider]) state.usage[provider].expires = daysUntil(String(date)) })
+
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s)
+const prettyModel = (m) => (/^[a-z]+$/.test(m) ? cap(m) : m)
+const modelName = (provider, model) => (model ? `${AGENTS[provider]} ${prettyModel(model)}` : `${AGENTS[provider]} default`)
+const trunc = (s, n) => (s && s.length > n ? `${s.slice(0, n - 1)}…` : s ?? '')
+const canFallBack = (from, to) => Boolean(to) && to.name !== from.name && (!from.readOnly || to.readOnly)
+const taskRuleName = (r) => {
+  const parts = []
+  if (r.kinds.length) parts.push(r.kinds.join(' · '))
+  if (r.efforts.length) parts.push(r.efforts.join(' / '))
+  return parts.length ? parts.join(' · ') : 'anything else'
+}
+const gateName = (g) => `${AGENTS[g.agent]} ${WINDOWS[g.window] ?? g.window} < ${g.below}%`
+
+const profileNow = () => state.profiles[state.profile] ?? {}
+const Q = () => ({ ...state.quota, ...(profileNow().quota ?? {}) })
+function activeOrder() {
+  const order = (profileNow().order ?? state.providers).filter((id) => state.providers.includes(id))
+  return [...order, ...state.providers.filter((id) => !order.includes(id))]
+}
+function tiersNow() {
+  const out = {}
+  TIER_NAMES.forEach((tier) => { out[tier] = { ...(state.tiers[tier] ?? {}), ...(profileNow().tiers?.[tier] ?? {}) } })
+  return out
+}
+const routedVia = (provider) => Object.entries(state.routes).find(([, route]) => (route.carries ?? []).includes(provider))?.[0] ?? null
+
+const PID = Object.keys(PROVIDERS).join('|')
+const STATE_RE = new RegExp(`^(${PID})-(low|spare)$`)
+const ABOVE_RE = new RegExp(`^(${PID})(?:-([a-z0-9]+))?-above:(\\d+)$`)
+const COST_RE = /^(price|spent)-above:(\d+(?:\.\d{1,2})?)$/
+const windowByToken = (provider, token) => (PROVIDERS[provider]?.windows ?? []).find((w) => w.token === token) ?? null
+
+function condLabel(token) {
+  const negated = token.startsWith('not ')
+  const t = negated ? token.slice(4) : token
+  const names = {
+    narrow: 'narrow task', light: 'light effort', standard: 'standard effort', deep: 'deep effort',
+    'both-low': 'every provider low', 'all-low': 'every provider low',
+    'budget-low': 'budget over 80%', 'checks-failed': 'checks failed', 'checks-failed-twice': 'checks failed twice',
+    'report-weak': 'a report is weak', conflict: 'reports conflict', stuck: 'executor stuck', 'no-pass': 'no attempt passed', 'findings-left': 'findings remain',
+  }
+  let text = names[t]
+  let m
+  if (!text && t.startsWith('kind:')) text = `${t.slice(5)} task`
+  if (!text && (m = t.match(COST_RE))) text = m[1] === 'price' ? `model over $${m[2]}/1M input` : `spent over $${m[2]}`
+  if (!text && (m = t.match(STATE_RE))) text = m[2] === 'low' ? `${AGENTS[m[1]]} low` : `${AGENTS[m[1]]} quota would be lost`
+  if (!text && (m = t.match(ABOVE_RE))) text = `${AGENTS[m[1]]}${m[2] ? ` ${windowByToken(m[1], m[2])?.label ?? m[2]}` : ''} over ${m[3]}%`
+  text = text ?? t
+  return negated ? `not ${text}` : text
+}
+const condList = (c) => (c === undefined || c === null ? [] : Array.isArray(c) ? c : [c])
+const condText = (c) => condList(c).map(condLabel).join(' + ')
+const conditionList = () => [
+  ...activeOrder().flatMap((p) => [`${p}-low`, `${p}-spare`]), 'all-low', 'budget-low', 'price-above:5', 'price-above:15', 'spent-above:5', 'spent-above:20',
+  ...(state.providers.includes('claude') ? ['claude-opus-above:50', 'claude-opus-above:80', 'claude-5h-above:80', 'claude-week-above:80'] : []),
+  ...(state.providers.includes('codex') ? ['codex-5h-above:80', 'codex-week-above:80'] : []),
+  'deep', 'standard', 'light', 'narrow', 'not narrow', 'kind:research', 'not kind:research', 'kind:code', 'kind:review', 'kind:docs',
+  'checks-failed', 'checks-failed-twice', 'report-weak', 'conflict', 'stuck', 'no-pass', 'findings-left',
+]
+
+const usageOf = (provider, key) => state.usage?.[provider]?.[key] ?? 0
+const resetOf = (provider) => state.usage?.[provider]?.reset ?? null
+const expiresOf = (provider) => state.usage?.[provider]?.expires ?? null
+const hoursText = (hours) => (hours % 24 === 0 ? `${hours / 24}d` : `${hours}h`)
+const windowsOf = (provider) => PROVIDERS[provider]?.windows ?? []
+const longWindow = (provider) => windowsOf(provider).find((w) => w.long) ?? null
+const mainLoad = (provider) => Math.max(0, ...windowsOf(provider).filter((w) => w.main).map((w) => usageOf(provider, w.key)))
+const lowProviders = () => state.providers.filter((p) => mainLoad(p) >= Q().criticalThreshold)
+function spareOf(provider) {
+  const long = longWindow(provider)
+  if (!long) return null
+  const q = Q()
+  const left = 100 - usageOf(provider, long.key)
+  if (lowProviders().includes(provider) || left < q.spareMinLeft) return null
+  const reset = resetOf(provider)
+  const ends = expiresOf(provider)
+  const cycle = long.cycle ?? long.label
+  if (ends !== null && (reset === null || ends * 24 < reset)) return { provider, left, hours: ends * 24, cycle, why: `plan ends in ${ends}d, before its ${cycle} resets${reset === null ? '' : ` in ${hoursText(reset)}`}` }
+  if (reset !== null && reset <= q.spareWithinHours) return { provider, left, hours: reset, cycle, why: `its ${cycle} resets in ${hoursText(reset)}` }
+  return null
+}
+const spareProviders = () => state.providers.map(spareOf).filter(Boolean).sort((a, b) => a.hours - b.hours).map((x) => x.provider)
+function daysUntil(date) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const days = Math.round((new Date(`${date}T00:00:00`) - today) / 86400000)
+  return Number.isFinite(days) && days > 0 ? days : null
+}
+const usageKey = () => Object.keys(USAGE_PRESETS).find((k) => JSON.stringify(presetUsage(k)) === JSON.stringify(state.usage)) ?? 'custom'
+function context() {
+  return { all: state.task === 'all', task: TASKS[state.task], low: lowProviders(), spare: spareProviders(), failed: state.checks !== 'pass', failedTwice: state.checks === 'twice', budgetLow: state.budget === 'low', spent: state.spent }
+}
+function evalToken(token, c) {
+  const negated = token.startsWith('not ')
+  const t = negated ? token.slice(4) : token
+  let value
+  let m
+  if (t === 'narrow' || t.startsWith('kind:') || EFFORT_CLASSES.includes(t)) {
+    if (c.all) return 'maybe'
+    if (t === 'narrow') value = Boolean(c.task.narrow)
+    else if (t.startsWith('kind:')) value = c.task.kind === t.slice(5)
+    else value = c.task.effort === t
+  } else if (t === 'both-low' || t === 'all-low') value = activeOrder().every((p) => c.low.includes(p))
+  else if ((m = t.match(STATE_RE))) value = (m[2] === 'low' ? c.low : c.spare).includes(m[1])
+  else if ((m = t.match(COST_RE))) value = m[1] === 'spent' ? c.spent > Number(m[2]) : priceOf(c.subject) > Number(m[2])
+  else if ((m = t.match(ABOVE_RE))) {
+    const win = m[2] ? windowByToken(m[1], m[2]) : null
+    value = (m[2] ? (win ? usageOf(m[1], win.key) : 0) : mainLoad(m[1])) >= Number(m[3])
+  } else if (t === 'budget-low') value = c.budgetLow
+  else if (t === 'checks-failed-twice') value = c.failedTwice
+  else if (OUTCOMES.has(t)) value = c.failed
+  else value = false
+  return negated ? !value : value
+}
+function evalCond(cond, c) {
+  let result = true
+  for (const token of condList(cond)) {
+    const value = evalToken(token, c)
+    if (value === false) return false
+    if (value === 'maybe') result = 'maybe'
+  }
+  return result
+}
+
+const tierOf = (tier, provider) => (tier ? tiersNow()[tier]?.[provider] ?? {} : {})
+function finalize(u) {
+  const defaults = tierOf(u.tier, u.provider)
+  const effort = PROVIDERS[u.provider]?.effort === false ? null : u.effort ?? defaults.effort ?? null
+  return { provider: u.provider, tier: u.tier, model: u.model ?? defaults.model ?? null, effort, via: routedVia(u.provider) }
+}
+const priceOf = (u) => (u?.model ? Number(PRICES[`${u.provider}/${u.model}`]?.input ?? NaN) : NaN)
+function applyUse(base, use = {}) {
+  const next = { ...base }
+  if (use.tier) { next.tier = use.tier; next.model = null; next.effort = null }
+  if (use.provider && use.provider !== next.provider) { next.provider = use.provider; next.model = null }
+  if (use.model) next.model = use.model
+  if (use.effort) next.effort = use.effort
+  return next
+}
+const ruleFits = (r, provider) => !r.use?.model || Boolean(r.use.provider) || [null, provider].includes(modelOwner(r.use.model))
+const supports = (provider, p) => !p.readOnly || PROVIDERS[provider]?.readOnly !== false
+const leadProvider = () => inventory()[0] ?? 'claude'
+const pinOf = (p) => (p.provider && p.provider !== 'auto' && state.providers.includes(p.provider) ? p.provider : null)
+function phaseBase(p) {
+  const provider = p.who === 'lead' ? leadProvider() : pinOf(p) ?? activeOrder().find((id) => supports(id, p)) ?? activeOrder()[0] ?? 'claude'
+  const keepModel = p.model && [null, provider].includes(modelOwner(p.model))
+  return { provider, tier: p.tier ?? 'standard', model: keepModel ? p.model : null, effort: p.effort ?? null }
+}
+const subjectOf = (p) => finalize(phaseBase(p))
+function nextProvider(from, p, c) {
+  const order = activeOrder()
+  const start = order.indexOf(from)
+  for (let i = 1; i <= order.length; i++) {
+    const id = order[(start + i + order.length) % order.length]
+    if (id !== from && supports(id, p) && !(c?.low ?? []).includes(id)) return id
+  }
+  return null
+}
+function resolvePhase(p, c) {
+  const lead = p.who === 'lead'
+  const base = phaseBase(p)
+  const rc = { ...c, subject: finalize(base) }
+  let chosen = null
+  let picked = base
+  ;(p.rules ?? []).some((r, i) => {
+    if (!ruleFits(r, base.provider) || evalCond(r.if, rc) !== true) return false
+    chosen = { i, cond: condList(r.if), use: r.use ?? {} }
+    picked = applyUse(base, r.use ?? {})
+    return true
+  })
+  const q = Q()
+  let switched = false
+  let stuck = false
+  if (!lead && c.low.includes(picked.provider)) {
+    const next = chosen?.use.provider || q.whenLow !== 'switch-provider' ? null : nextProvider(picked.provider, p, c)
+    if (next) { picked = { ...picked, provider: next, model: null }; switched = true } else stuck = true
+  }
+  let spent = null
+  const pinnedTo = chosen?.use.provider ?? pinOf(p)
+  const spareTo = (c.spare ?? []).find((provider) => !c.low.includes(provider) && supports(provider, p) && (!pinnedTo || picked.provider === provider))
+  const spareMode = q.whenSpare ?? 'ignore'
+  if (!lead && !stuck && spareTo && spareMode !== 'ignore' && !c.budgetLow && !(chosen && isProblemCond(chosen.cond))) {
+    const next = spareMode === 'spend-strong' ? { provider: spareTo, tier: 'strong', model: null, effort: null } : { ...picked, provider: spareTo, model: picked.provider === spareTo ? picked.model : null }
+    if (next.provider !== picked.provider || next.tier !== picked.tier) { picked = next; spent = spareTo }
+  }
+  const plannedRule = (p.rules ?? []).find((r) => ruleFits(r, base.provider) && !isProblemCond(r.if) && evalCond(r.if, rc) === true)
+  const planned = finalize(plannedRule ? applyUse(base, plannedRule.use ?? {}) : base)
+  return { lead, base: rc.subject, final: finalize(picked), planned, chosen, switched, stuck, spent }
+}
+function phaseAlts(p) {
+  const base = phaseBase(p)
+  const alts = (p.rules ?? []).map((r, i) => (ruleFits(r, base.provider) ? { key: `r${i}`, cond: condList(r.if), use: finalize(applyUse(base, r.use ?? {})), ruleIndex: i } : null)).filter(Boolean)
+  const next = nextProvider(base.provider, p, null)
+  if (p.who !== 'lead' && Q().whenLow === 'switch-provider' && next && !(p.rules ?? []).some((r) => condList(r.if).includes(`${base.provider}-low`))) {
+    alts.push({ key: 'quota', cond: [`${base.provider}-low`], use: finalize({ ...base, provider: next, model: null }), implicit: true })
+  }
+  return alts
+}
+function resolveRoutingRole(wf, roleDef, c) {
+  const fallback = roleDef.fallback ? wf.roles.find((r) => r.name === roleDef.fallback) : null
+  const base = { provider: roleDef.agent, tier: null, model: roleDef.model, effort: roleDef.effort }
+  const usable = canFallBack(roleDef, fallback)
+  let final = base
+  let switched = false
+  let stuck = false
+  if (c.low.includes(roleDef.agent)) {
+    if (usable && !c.low.includes(fallback.agent)) { final = { provider: fallback.agent, tier: null, model: fallback.model, effort: fallback.effort }; switched = true } else stuck = true
+  }
+  const alts = fallback ? [{ key: 'fallback', cond: [`${roleDef.agent}-low`], use: { provider: fallback.agent, model: fallback.model, effort: fallback.effort }, as: fallback.name }] : []
+  return { resolved: { lead: false, base, final, planned: base, chosen: null, switched, stuck }, alts }
+}
+
+const CARD_W = 214
+const CARD_H = 54
+const DIA_W = 156
+const DIA_H = 88
+const V_GAP = 44
+const SIDE_GAP = 64
+
+const STYLES = {
+  dark: {
+    canvas: '#101114', card: '#1a1c1f', strong: '#1a1c1f', border: '#2a2d33', text: '#f3f4f6', muted: '#8b8b95',
+    on: '#10b981', warn: '#f59e0b', danger: '#ef4444', idle: '#3a3d44', diamond: '#1a1c1f', font: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif", mono: "'Cascadia Mono', Consolas, monospace", grid: true, leadDash: null, strongText: '#f3f4f6', chip: true,
+  },
+}
+const sty = () => STYLES.dark
+
+function condShort(token) {
+  const negated = token.startsWith('not ')
+  const t = negated ? token.slice(4) : token
+  const names = {
+    narrow: 'narrow', light: 'light', standard: 'standard', deep: 'deep', 'both-low': 'all low', 'all-low': 'all low',
+    'budget-low': 'budget > 80%', 'checks-failed': 'checks fail', 'checks-failed-twice': 'fails twice',
+    'report-weak': 'weak report', conflict: 'conflict', stuck: 'stuck', 'no-pass': 'none pass', 'findings-left': 'findings left',
+  }
+  let text = names[t]
+  let m
+  if (!text && t.startsWith('kind:')) text = t.slice(5)
+  if (!text && (m = t.match(COST_RE))) text = m[1] === 'price' ? `> $${m[2]}/1M` : `spent > $${m[2]}`
+  if (!text && (m = t.match(STATE_RE))) text = `${AGENTS[m[1]]} ${m[2]}`
+  if (!text && (m = t.match(ABOVE_RE))) {
+    const win = m[2] ? windowByToken(m[1], m[2]) : null
+    text = `${win?.short ?? (m[2] ? `${AGENTS[m[1]]} ${win?.label ?? m[2]}` : AGENTS[m[1]])} > ${m[3]}%`
+  }
+  text = text ?? t
+  return negated ? `not ${text}` : text
+}
+const condShortText = (c) => condList(c).map(condShort).join(' + ')
+const shortModel = (use) => `${use.model ? prettyModel(use.model) : AGENTS[use.provider]}${use.effort ? ` · ${use.effort}` : ''}`
+
+function wrapLines(paragraphs, width) {
+  const lines = []
+  paragraphs.forEach((para, index) => {
+    if (index) lines.push('')
+    let current = ''
+    para.split(' ').forEach((word) => {
+      if ((current + ' ' + word).trim().length > width) { lines.push(current.trim()); current = word } else current += ` ${word}`
+    })
+    if (current.trim()) lines.push(current.trim())
+  })
+  return lines
+}
+function globalRuleLines() {
+  const q = Q()
+  const b = state.budgetRule
+  const whenLow = q.whenLow === 'switch-provider' ? 'same tier on the next provider' : 'keep the provider'
+  const both = { ask: 'run, and suggest waiting for a reset', 'run-cheapest': 'run on the cheapest tier, flagged', block: 'refuse new work' }[q.onBothCritical]
+  const budget = { 'finish-and-report': 'finish running units, then report', 'downgrade-tier': 'drop new units one tier', stop: 'stop and report' }[b.whenLow] ?? b.whenLow
+  const spare = { 'spend-strong': 'spend it on the strong tier', prefer: 'prefer that provider, same tier', ignore: 'ignore' }[q.whenSpare] ?? q.whenSpare
+  return [`A usage window past ${q.criticalThreshold}% → ${whenLow}`, `Every provider low → ${both}`, `Quota that would be lost → ${spare}`, `Budget past ${b.warnAt}% → ${budget}`]
+}
+
+const asQuestion = (text) => {
+  const clean = String(text).trim().replace(/[.?]+$/, '')
+  return `${clean[0].toUpperCase()}${clean.slice(1)}?`
+}
+const card = (id, cx, cy, info) => ({ id, type: 'role', x: cx - CARD_W / 2, y: cy - CARD_H / 2, w: CARD_W, h: CARD_H, cx, cy, ...info })
+const diamond = (id, cx, cy, text, extra) => ({ id, type: 'decision', x: cx - DIA_W / 2, y: cy - DIA_H / 2, w: DIA_W, h: DIA_H, cx, cy, text, ...extra })
+const terminal = (id, type, cx, cy, title, subtitle = null) => ({ id, type, x: cx - 62, y: cy - 20, w: 124, h: 40, cx, cy, title, subtitle })
+
+function branchEval(cond, subject = null) {
+  return (ctx) => {
+    const value = evalCond(cond, { ...ctx, subject })
+    if (ctx.all) return new Set(value === false ? [0] : value === true ? [1] : [0, 1])
+    return new Set(value === true ? [1] : [0])
+  }
+}
+
+function playbookGraph(wf, c) {
+  const pb = wf.pb
+  const phases = pb.phases ?? []
+  const nodes = []
+  const edges = []
+  const steps = []
+  phases.filter((p) => !p.after).forEach((p) => {
+    const host = p.with && steps.find((s) => s.some((q) => q.id === p.with))
+    if (host) host.push(p)
+    else steps.push([p])
+  })
+  const chainOf = (id) => {
+    const out = []
+    const seen = new Set([id])
+    let current = phases.find((q) => q.after === id)
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id)
+      out.push(current)
+      const from = current.id
+      current = phases.find((q) => q.after === from)
+    }
+    return out
+  }
+  const info = (p) => ({
+    title: p.role, lead: p.who === 'lead', readOnly: Boolean(p.readOnly), workers: p.workers ?? 1, isolate: Boolean(p.isolate),
+    runner: p.runner ?? null, tier: p.tier ?? 'standard', resolved: resolvePhase(p, c), alts: phaseAlts(p), ref: { kind: 'phase', id: p.id },
+  })
+  const connect = (froms, to, toSide = 'top', extra = {}) => froms.forEach((src) => edges.push({ from: src.id, out: src.out, fromSide: src.side, to, toSide, label: src.label, ...extra }))
+  const sideX = DIA_W / 2 + SIDE_GAP + CARD_W / 2
+  nodes.push({ id: 'start', type: 'start', x: 0, y: 0, w: 0, h: 0, cx: 0, cy: 0 })
+  let y = 0
+  let prev = [{ id: 'start', side: 'bottom' }]
+  const toEnd = []
+  steps.forEach((step) => {
+    const routed = step.some((p) => p.if !== undefined)
+    const pending = []
+    if (routed) {
+      step.slice(0, -1).forEach((branch) => {
+        const did = `dec:${branch.id}`
+        const cy = y + DIA_H / 2
+        nodes.push(diamond(did, 0, cy, asQuestion(condText(branch.if ?? 'otherwise')), {
+          ref: { kind: 'route', ids: step.map((p) => p.id) }, labels: ['no', 'yes'], evaluate: branchEval(condList(branch.if), subjectOf(branch)),
+        }))
+        connect(prev, did)
+        const rid = `phase:${branch.id}`
+        nodes.push(card(rid, sideX, cy, info(branch)))
+        edges.push({ from: did, out: 1, fromSide: 'right', to: rid, toSide: 'left', label: 'yes' })
+        if (branch.then === 'done') toEnd.push({ id: rid, side: 'right', lane: true })
+        else pending.push({ id: rid, side: 'bottom' })
+        prev = [{ id: did, out: 0, side: 'bottom', label: 'no' }]
+        y = cy + DIA_H / 2 + V_GAP
+      })
+      const spine = step[step.length - 1]
+      const sid = `phase:${spine.id}`
+      const cy = y + CARD_H / 2
+      nodes.push(card(sid, 0, cy, info(spine)))
+      connect(prev, sid)
+      y = cy + CARD_H / 2 + V_GAP
+      prev = spine.then === 'done' ? [] : [{ id: sid, side: 'bottom' }]
+      if (spine.then === 'done') toEnd.push({ id: sid, side: 'bottom' })
+      prev = prev.concat(pending)
+    } else {
+      const cy = y + CARD_H / 2
+      const next = []
+      step.forEach((p, k) => {
+        const id = `phase:${p.id}`
+        nodes.push(card(id, k * (CARD_W + 36), cy, info(p)))
+        connect(prev, id)
+        if (p.then === 'done') toEnd.push({ id, side: k ? 'right' : 'bottom', lane: k > 0 })
+        else next.push({ id, side: 'bottom' })
+      })
+      prev = next
+      y = cy + CARD_H / 2 + V_GAP
+    }
+    const gated = step.find((p) => p.gate)
+    if (gated && prev.length) {
+      const gid = `gate:${gated.id}`
+      const cy = y + DIA_H / 2
+      nodes.push(diamond(gid, 0, cy, asQuestion(gated.gate), { ref: { kind: 'gate', id: gated.id }, labels: ['yes', 'no'], gate: true }))
+      connect(prev, gid)
+      const chain = chainOf(gated.id)
+      let left = DIA_W / 2 + SIDE_GAP
+      let from = { id: gid, out: 1, side: 'right', label: 'no' }
+      chain.forEach((q) => {
+        const qid = `phase:${q.id}`
+        const qInfo = info(q)
+        qInfo.chain = true
+        qInfo.cond = q.if !== undefined ? condText(q.if) : null
+        nodes.push(card(qid, left + CARD_W / 2, cy, qInfo))
+        edges.push({ from: from.id, out: from.out, fromSide: from.side, to: qid, toSide: 'left', label: from.label, kind: 'fail', cond: q.if !== undefined ? condList(q.if) : null, subject: subjectOf(q) })
+        left += CARD_W + SIDE_GAP
+        if (q.gate) {
+          const qg = `gate:${q.id}`
+          nodes.push(diamond(qg, left + DIA_W / 2, cy, asQuestion(q.gate), { ref: { kind: 'gate', id: q.id }, labels: ['yes', 'no'], gate: true, chain: true }))
+          edges.push({ from: qid, fromSide: 'right', to: qg, toSide: 'left', kind: 'fail' })
+          toEnd.push({ id: qg, out: 0, side: 'bottom', label: 'yes', kind: 'fail', drop: true })
+          from = { id: qg, out: 1, side: 'right', label: 'no' }
+          left += DIA_W + SIDE_GAP
+        } else from = { id: qid, side: 'right' }
+      })
+      if (chain.length) {
+        const last = chain[chain.length - 1]
+        if (last.then === 'done') toEnd.push({ id: `phase:${last.id}`, side: 'right', lane: true, kind: 'fail' })
+        else edges.push({ from: `phase:${last.id}`, fromSide: 'top', to: gid, toSide: 'top', kind: 'recheck', label: 're-check' })
+      }
+      prev = [{ id: gid, out: 0, side: 'bottom', label: 'yes' }]
+      y = cy + DIA_H / 2 + V_GAP
+    }
+  })
+  nodes.push(terminal('end', 'end', 0, y + 20, 'Result', pb.next ? `then ${pb.next}` : null))
+  connect(prev, 'end')
+  toEnd.forEach((t) => edges.push({ from: t.id, out: t.out, fromSide: t.side, to: 'end', toSide: t.lane || t.drop ? 'right' : 'top', label: t.label, kind: t.kind, lane: t.lane }))
+  return { nodes, edges }
+}
+
+function routingGraph(wf, c) {
+  const nodes = []
+  const edges = []
+  const byName = Object.fromEntries(wf.roles.map((r) => [r.name, r]))
+  const sideX = DIA_W / 2 + SIDE_GAP + CARD_W / 2
+  const roleInfo = (name) => {
+    const r = byName[name]
+    const { resolved, alts } = resolveRoutingRole(wf, r, c)
+    return { title: name, lead: false, readOnly: r.readOnly, workers: 1, isolate: false, runner: null, tier: null, resolved, alts, ref: { kind: 'role', name } }
+  }
+  nodes.push({ id: 'start', type: 'start', x: 0, y: 0, w: 0, h: 0, cx: 0, cy: 0 })
+  nodes.push({ id: 'entry', type: 'entry', ...card('entry', 0, CARD_H / 2, {}), type: 'entry', title: 'planner' })
+  let y = CARD_H + V_GAP
+  edges.push({ from: 'start', fromSide: 'bottom', to: 'entry', toSide: 'top' })
+  let prev = [{ id: 'entry', side: 'bottom' }]
+  const placed = {}
+  const exits = []
+  wf.rules.forEach((r, i) => {
+    if (!byName[r.role]) return
+    const isElse = i === wf.rules.length - 1 && !r.kinds.length && !r.efforts.length && !r.gates.length
+    const cardId = `role:${r.role}`
+    if (isElse) {
+      if (!placed[r.role]) {
+        const cy = y + CARD_H / 2
+        nodes.push(card(cardId, 0, cy, roleInfo(r.role)))
+        placed[r.role] = 'spine'
+        y = cy + CARD_H / 2 + V_GAP
+      }
+      prev.forEach((src) => edges.push({ from: src.id, out: src.out, fromSide: src.side, to: cardId, toSide: placed[r.role] === 'spine' ? 'top' : 'bottom', label: src.label }))
+      prev = placed[r.role] === 'spine' ? [{ id: cardId, side: 'bottom' }] : []
+      return
+    }
+    const did = `dec:${i}`
+    const cy = y + DIA_H / 2
+    const question = `${taskRuleName(r)}${r.gates.length ? ` while ${gateName(r.gates[0])}` : ''}`
+    nodes.push(diamond(did, 0, cy, asQuestion(question), {
+      ref: { kind: 'routing-rules' }, labels: ['no', 'yes'],
+      evaluate: (ctx) => {
+        const closed = r.gates.some((g) => usageOf(g.agent, g.window) >= g.below)
+        if (closed) return new Set([0])
+        if (ctx.all) return new Set([0, 1])
+        const matches = (!r.kinds.length || r.kinds.includes(ctx.task.kind)) && (!r.efforts.length || r.efforts.includes(ctx.task.effort))
+        return new Set(matches ? [1] : [0])
+      },
+    }))
+    prev.forEach((src) => edges.push({ from: src.id, out: src.out, fromSide: src.side, to: did, toSide: 'top', label: src.label }))
+    if (!placed[r.role]) {
+      nodes.push(card(cardId, sideX, cy, roleInfo(r.role)))
+      placed[r.role] = 'side'
+      exits.push(cardId)
+      edges.push({ from: did, out: 1, fromSide: 'right', to: cardId, toSide: 'left', label: 'yes' })
+    } else {
+      edges.push({ from: did, out: 1, fromSide: 'right', to: cardId, toSide: 'bottom', label: 'yes', climb: true })
+    }
+    prev = [{ id: did, out: 0, side: 'bottom', label: 'no' }]
+    y = cy + DIA_H / 2 + V_GAP
+  })
+  nodes.push(terminal('end', 'end', 0, y + 20, 'Result'))
+  prev.forEach((src) => edges.push({ from: src.id, out: src.out, fromSide: src.side, to: 'end', toSide: 'top', label: src.label }))
+  exits.forEach((id) => edges.push({ from: id, fromSide: 'right', to: 'end', toSide: 'right', lane: true }))
+  return { nodes, edges }
+}
+
+const PROBLEM_TOKEN = new RegExp(`^(budget-low|spent-above:\\d+(\\.\\d+)?|both-low|all-low|(${PID})-(low|spare)|(${PID})(-[a-z0-9]+)?-above:\\d+)$`)
+const isSpareCond = (cond) => condList(cond).some((token) => /-spare$/.test(token))
+function isProblemCond(cond) {
+  return condList(cond).some((token) => PROBLEM_TOKEN.test(token.replace(/^not /, '')))
+}
+const GHOST_W = 200
+const GHOST_H = 40
+const GHOST_GAP = 34
+function addGhosts(graph) {
+  const ghosts = []
+  graph.nodes.filter((n) => n.type === 'role' && !n.lead).forEach((n) => {
+    const spent = n.resolved?.spent
+    const alts = (n.alts ?? []).filter((alt) => (alt.implicit ? !spent : alt.key === 'fallback' || isProblemCond(alt.cond)))
+    if (spent) alts.push({ key: 'spare', spare: true, cond: [`${spent}-spare`], use: n.resolved.final })
+    if (!alts.length) return
+    const side = n.cx > 1 ? 'right' : 'left'
+    const total = alts.length * GHOST_H + (alts.length - 1) * 8
+    alts.forEach((alt, i) => {
+      const x = side === 'left' ? n.x - GHOST_GAP - GHOST_W : n.x + n.w + GHOST_GAP
+      const y = n.cy - total / 2 + i * (GHOST_H + 8)
+      ghosts.push({ id: `${n.id}~fallback${i}`, type: 'ghost', parent: n.id, side, alt, x, y, w: GHOST_W, h: GHOST_H, cx: x + GHOST_W / 2, cy: y + GHOST_H / 2 })
+    })
+  })
+  graph.nodes.push(...ghosts)
+}
+
+function buildGraph(wf = wfNow()) {
+  const c = context()
+  const graph = wf.kind === 'playbook' ? playbookGraph(wf, c) : routingGraph(wf, c)
+  graph.nodes.forEach((n) => {
+    const p = wf.positions[n.id]
+    if (p) { n.x = p.x; n.y = p.y; n.cx = p.x + n.w / 2; n.cy = p.y + n.h / 2 }
+  })
+  addGhosts(graph)
+  graph.byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n]))
+  graph.sim = simulate(graph, c)
+  return graph
+}
+
+function simulate(graph, c) {
+  const outgoing = {}
+  graph.edges.forEach((e, i) => (outgoing[e.from] ??= []).push(i))
+  const reached = new Set(['start'])
+  const edgeOn = new Set()
+  const queue = ['start']
+  const openOf = {}
+  while (queue.length) {
+    const id = queue.shift()
+    const n = graph.byId[id]
+    let open = null
+    if (n.type === 'decision') open = n.gate ? new Set((n.chain ? c.failedTwice : c.failed) ? [0, 1] : [0]) : n.evaluate(c)
+    openOf[id] = open
+    for (const i of outgoing[id] ?? []) {
+      const e = graph.edges[i]
+      if (open && e.out !== undefined && !open.has(e.out)) continue
+      if (e.kind === 'recheck' && !c.failed) continue
+      if (e.kind === 'fail' && e.cond && evalCond(e.cond, { ...c, subject: e.subject }) === false) continue
+      edgeOn.add(i)
+      if (!reached.has(e.to)) { reached.add(e.to); queue.push(e.to) }
+    }
+  }
+  const bothLow = activeOrder().every((p) => c.low.includes(p))
+  return { reached, edgeOn, openOf, bothLow, blocked: bothLow && Q().onBothCritical === 'block', c }
+}
+
+const NS = 'http://www.w3.org/2000/svg'
+const svg = document.getElementById('canvas')
+function el(name, attrs = {}, parent) {
+  const node = document.createElementNS(NS, name)
+  for (const [k, v] of Object.entries(attrs)) if (v !== undefined && v !== null && v !== false) node.setAttribute(k, v)
+  parent?.appendChild(node)
+  return node
+}
+function txt(parent, x, y, content, attrs = {}) {
+  const node = el('text', { x, y, fill: sty().text, 'font-size': 12, 'font-family': sty().font, ...attrs }, parent)
+  node.textContent = content
+  return node
+}
+const f = (n) => Math.round(n * 10) / 10
+
+function initDefs() {
+  const shared = el('svg', { id: 'shared-defs', width: 0, height: 0, style: 'position:absolute;width:0;height:0;overflow:hidden' }, document.body)
+  const defs = el('defs', {}, shared)
+  Object.entries(MARKS).forEach(([id, href]) => {
+    const symbol = el('symbol', { id: `mark-${id}`, viewBox: '0 0 26 26' }, defs)
+    el('image', { href, width: 26, height: 26 }, symbol)
+  })
+  const local = el('defs', {}, svg)
+  const pattern = el('pattern', { id: 'grid', width: 20, height: 20, patternUnits: 'userSpaceOnUse' }, local)
+  el('circle', { cx: 1, cy: 1, r: 1, fill: '#ffffff', opacity: 0.08 }, pattern)
+  el('rect', { id: 'canvas-bg', width: '100%', height: '100%', fill: sty().canvas }, svg)
+  el('rect', { id: 'canvas-grid', width: '100%', height: '100%', fill: 'url(#grid)' }, svg)
+  el('g', { id: 'viewport' }, svg)
+}
+
+function port(n, side) {
+  if (side === 'top') return [n.cx, n.y]
+  if (side === 'bottom') return [n.cx, n.y + n.h]
+  if (side === 'left') return [n.x, n.cy]
+  return [n.x + n.w, n.cy]
+}
+function rounded(points, radius = 26) {
+  let d = `M${f(points[0][0])} ${f(points[0][1])}`
+  for (let i = 1; i < points.length - 1; i++) {
+    const [px, py] = points[i - 1]
+    const [x, y] = points[i]
+    const [nx, ny] = points[i + 1]
+    const inLen = Math.hypot(x - px, y - py)
+    const outLen = Math.hypot(nx - x, ny - y)
+    const r = Math.min(radius, inLen / 2, outLen / 2)
+    const ax = x - ((x - px) / (inLen || 1)) * r
+    const ay = y - ((y - py) / (inLen || 1)) * r
+    const bx = x + ((nx - x) / (outLen || 1)) * r
+    const by = y + ((ny - y) / (outLen || 1)) * r
+    d += ` L${f(ax)} ${f(ay)} Q${f(x)} ${f(y)} ${f(bx)} ${f(by)}`
+  }
+  const [lx, ly] = points[points.length - 1]
+  return `${d} L${f(lx)} ${f(ly)}`
+}
+function route(e, graph, laneX) {
+  const a = graph.byId[e.from]
+  const b = graph.byId[e.to]
+  const p1 = port(a, e.fromSide)
+  const p2 = port(b, e.toSide)
+  if (e.lane) {
+    const [bx, by] = port(a, 'bottom')
+    const below = by + 26
+    return [[bx, by], [bx, below], [laneX, below], [laneX, p2[1]], p2]
+  }
+  if (e.fromSide === 'bottom' && e.toSide === 'right') return [p1, [p1[0], p2[1]], p2]
+  if (e.fromSide === 'right' && e.toSide === 'bottom') return [p1, [p2[0], p1[1]], p2]
+  if (e.fromSide === 'top' && e.toSide === 'top') {
+    const top = Math.min(p1[1], p2[1]) - 36
+    return [p1, [p1[0], top], [p2[0], top], p2]
+  }
+  if (e.fromSide === 'right' && e.toSide === 'left') {
+    if (Math.abs(p1[1] - p2[1]) < 1) return [p1, p2]
+    const mid = (p1[0] + p2[0]) / 2
+    return [p1, [mid, p1[1]], [mid, p2[1]], p2]
+  }
+  if (Math.abs(p1[0] - p2[0]) < 1) return [p1, p2]
+  const turn = p2[1] - 34
+  return [p1, [p1[0], turn], [p2[0], turn], p2]
+}
+function arrowHead(parent, points, color) {
+  const [x, y] = points[points.length - 1]
+  const [px, py] = points[points.length - 2]
+  const angle = Math.atan2(y - py, x - px)
+  const size = 8
+  const spread = 4.5
+  const bx = x - size * Math.cos(angle)
+  const by = y - size * Math.sin(angle)
+  el('path', { d: `M${f(x)} ${f(y)} L${f(bx + spread * Math.sin(angle))} ${f(by - spread * Math.cos(angle))} L${f(bx - spread * Math.sin(angle))} ${f(by + spread * Math.cos(angle))} Z`, fill: color }, parent)
+}
+function rng(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+function hash(text) {
+  let h = 2166136261
+  for (const ch of text) h = Math.imul(h ^ ch.charCodeAt(0), 16777619)
+  return h >>> 0
+}
+
+function drawEdge(layer, e, on, graph, laneX) {
+  const s = sty()
+  const points = route(e, graph, laneX)
+  const end = points[points.length - 1]
+  const prev = points[points.length - 2]
+  const len = Math.hypot(end[0] - prev[0], end[1] - prev[1]) || 1
+  points[points.length - 1] = [end[0] - ((end[0] - prev[0]) / len) * 2, end[1] - ((end[1] - prev[1]) / len) * 2]
+  const to = graph.byId[e.to]
+  const blocked = on && graph.sim.blocked && (to.type === 'role' ? !to.lead : to.type === 'end')
+  const special = e.kind === 'fail' || e.kind === 'recheck'
+  const color = !on ? s.idle : blocked ? s.danger : special ? s.warn : s.on
+  const g = el('g', {}, layer)
+  let d = rounded(points)
+  if (state.sketch) {
+    const rand = rng(hash(`${e.from}${e.to}${e.out ?? ''}`))
+    d = rounded(points.map(([x, y], i) => (i === 0 || i === points.length - 1 ? [x, y] : [x + (rand() - 0.5) * 6, y + (rand() - 0.5) * 6])), 14)
+  }
+  el('path', { d, fill: 'none', stroke: color, 'stroke-width': on ? 1.8 : 1.2, 'stroke-dasharray': on && !blocked ? null : '5 5', 'stroke-linejoin': 'round' }, g)
+  arrowHead(g, points, color)
+  if (e.label === 're-check') {
+    const [x1, y1] = points[1]
+    const [x2] = points[2]
+    txt(g, (x1 + x2) / 2, y1 - 7, 're-check', { 'font-size': 10.5, fill: on ? color : s.muted, 'text-anchor': 'middle' })
+  }
+}
+
+function decisionLabels(layer, n, sim) {
+  const s = sty()
+  const open = sim.openOf[n.id] ?? new Set()
+  const reached = sim.reached.has(n.id)
+  ;[0, 1].forEach((i) => {
+    const label = n.labels[i]
+    const isOpen = reached && open.has(i)
+    const negative = (n.gate && i === 1) || (!n.gate && i === 0)
+    const color = isOpen ? (n.gate && i === 1 ? s.warn : s.on) : s.muted
+    const [x, y] = i === 0 ? [n.cx + 7, n.y + n.h + 15] : [n.x + n.w + 7, n.cy - 7]
+    txt(layer, x, y, label, { 'font-size': 11, fill: color, 'font-style': negative ? 'normal' : 'normal', opacity: isOpen ? 1 : 0.8 })
+  })
+}
+
+const isSelected = (n) => Boolean(state.selected) && state.selected.id === n.id
+function roleStatus(n, sim) {
+  if (!sim.reached.has(n.id)) return 'idle'
+  if (n.lead) return 'ok'
+  if (sim.blocked) return 'blocked'
+  if (n.resolved.stuck) return 'warn'
+  if (n.resolved.spent || (n.resolved.chosen && isSpareCond(n.resolved.chosen.cond))) return 'spare'
+  return n.resolved.switched ? 'warn' : 'ok'
+}
+
+function drawRole(layer, n, sim) {
+  const s = sty()
+  const status = roleStatus(n, sim)
+  const reached = sim.reached.has(n.id)
+  const sel = isSelected(n)
+  const g = el('g', { class: 'node', 'data-id': n.id, opacity: reached ? 1 : 0.36 }, layer)
+  const stroke = sel ? s.text : status === 'blocked' ? s.danger : status === 'warn' ? s.warn : status === 'spare' ? s.on : s.border
+  if (n.workers > 1) el('rect', { x: n.x + 5, y: n.y - 5, width: n.w, height: n.h, rx: 10, fill: s.card, stroke: s.border, 'stroke-width': 1, opacity: 0.8 }, g)
+  el('rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 10, fill: s.card, stroke, 'stroke-width': sel ? 2 : 1.3, 'stroke-dasharray': n.lead ? s.leadDash : null }, g)
+  const { switched, stuck, chosen } = n.resolved
+  const planned = n.resolved.planned ?? n.resolved.final
+  const fallbackOn = reached && (switched || Boolean(n.resolved.spent) || (chosen && isProblemCond(chosen.cond)))
+  if (s.chip) el('rect', { x: n.x + 9, y: n.y + 15, width: 24, height: 24, rx: 6, fill: PROVIDERS[planned.provider]?.soft ?? 'rgba(243, 244, 246, 0.08)', opacity: fallbackOn ? 0.45 : 1 }, g)
+  el('use', { href: `#mark-${planned.provider}`, x: n.x + 13, y: n.y + 19, width: 16, height: 16, opacity: fallbackOn ? 0.45 : 1 }, g)
+  if (planned.via) el('use', { href: `#mark-${planned.via}`, x: n.x + 25, y: n.y + 31, width: 11, height: 11, opacity: fallbackOn ? 0.45 : 1 }, g)
+  txt(g, n.x + 40, n.y + 24, trunc(n.title, 20), { 'font-size': 13, 'font-weight': 600, fill: s.text })
+  if (n.workers > 1) txt(g, n.x + n.w - 10, n.y + 22, `×${n.workers}`, { 'font-size': 11.5, fill: s.muted, 'text-anchor': 'end' })
+  if (n.lead) txt(g, n.x + n.w - 10, n.y + 22, 'you', { 'font-size': 11, 'font-style': 'italic', fill: s.muted, 'text-anchor': 'end' })
+  txt(g, n.x + 40, n.y + 41, trunc(shortModel(planned).toLowerCase(), 26), { 'font-size': 11, 'font-family': s.mono, fill: s.muted, opacity: fallbackOn ? 0.5 : 1, 'text-decoration': fallbackOn ? 'line-through' : null })
+  let note = ''
+  if (reached && stuck) note = 'no provider left'
+  else if (reached && chosen && !isProblemCond(chosen.cond)) note = condShortText(chosen.cond)
+  if (note) txt(layer, n.cx + 10, n.y + n.h + 15, note, { 'font-size': 10.5, fill: stuck ? s.warn : s.muted })
+}
+
+function drawGhost(layer, linkLayer, n, graph) {
+  const s = sty()
+  const parent = graph.byId[n.parent]
+  const reached = graph.sim.reached.has(parent.id)
+  const r = parent.resolved
+  const active = reached && (n.alt.spare ? Boolean(r.spent) : n.alt.implicit || n.alt.key === 'fallback' ? r.switched && !r.spent : Boolean(r.chosen && r.chosen.i === n.alt.ruleIndex))
+  const tone = n.alt.spare || isSpareCond(n.alt.cond) ? s.on : s.warn
+  const opacity = active ? 1 : reached ? 0.4 : 0.2
+  const [px, py] = n.side === 'left' ? [parent.x, parent.cy] : [parent.x + parent.w, parent.cy]
+  const [gx, gy] = n.side === 'left' ? [n.x + n.w, n.cy] : [n.x, n.cy]
+  const mid = (px + gx) / 2
+  el('path', { d: rounded([[px, py], [mid, py], [mid, gy], [gx, gy]], 12), fill: 'none', stroke: active ? tone : s.idle, 'stroke-width': active ? 1.6 : 1.1, 'stroke-dasharray': active ? null : '3 4', opacity }, linkLayer)
+  const g = el('g', { class: 'node', 'data-id': parent.id, opacity }, layer)
+  el('rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 9, fill: s.card, stroke: active ? tone : s.border, 'stroke-width': active ? 1.6 : 1, 'stroke-dasharray': active ? null : '4 3' }, g)
+  txt(g, n.x + 10, n.y + 15, trunc(`if ${condShortText(n.alt.cond)}`, 30), { 'font-size': 10.5, fill: active ? tone : s.muted })
+  const use = active && (n.alt.spare || n.alt.implicit || n.alt.key === 'fallback') ? r.final : n.alt.use
+  el('use', { href: `#mark-${use.provider}`, x: n.x + 10, y: n.y + 21, width: 13, height: 13 }, g)
+  txt(g, n.x + 29, n.y + 32, trunc(`${s.chip ? shortModel(use).toLowerCase() : shortModel(use)}${n.alt.as ? ` · ${n.alt.as}` : ''}`, 26), { 'font-size': 11, 'font-family': s.mono })
+}
+
+function drawDecision(layer, n, sim) {
+  const s = sty()
+  const reached = sim.reached.has(n.id)
+  const sel = isSelected(n)
+  const g = el('g', { class: 'node', 'data-id': n.id, opacity: reached ? 1 : 0.36 }, layer)
+  el('path', { d: `M${n.cx} ${n.y} L${n.x + n.w} ${n.cy} L${n.cx} ${n.y + n.h} L${n.x} ${n.cy} Z`, fill: s.diamond, stroke: sel ? s.text : s.border, 'stroke-width': sel ? 2 : 1.3, 'stroke-linejoin': 'round' }, g)
+  const lines = wrapLines([n.text], 17)
+  const shown = lines.length > 3 ? [...lines.slice(0, 2), trunc(lines.slice(2).join(' '), 17)] : lines
+  shown.forEach((line, i) => txt(g, n.cx, n.cy + 4 + (i - (shown.length - 1) / 2) * 14, line, { 'font-size': 11.5, 'text-anchor': 'middle', 'font-weight': i === 0 ? 600 : 400 }))
+  decisionLabels(layer, n, sim)
+}
+
+function drawStart() {}
+
+function drawEntry(layer, n, sim) {
+  const s = sty()
+  const g = el('g', { class: 'node', 'data-id': n.id }, layer)
+  el('rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: 10, fill: s.card, stroke: isSelected(n) ? s.text : s.border, 'stroke-width': 1.3, 'stroke-dasharray': s.leadDash }, g)
+  txt(g, n.x + 16, n.y + 23, 'planner', { 'font-size': 13.5, 'font-weight': 700, fill: s.text })
+  txt(g, n.x + n.w - 10, n.y + 22, 'you', { 'font-size': 11, 'font-style': 'italic', fill: s.muted, 'text-anchor': 'end' })
+  txt(g, n.x + 16, n.y + 41, 'delegates one task at a time', { 'font-size': 12, fill: s.muted })
+}
+
+function drawTerminal(layer, n, sim) {
+  const s = sty()
+  const reached = sim.reached.has(n.id)
+  const blocked = n.type === 'end' && sim.blocked && reached
+  const g = el('g', { class: 'node', 'data-id': n.id, opacity: reached ? 1 : 0.36 }, layer)
+  el('rect', { x: n.x, y: n.y, width: n.w, height: n.h, rx: n.h / 2, fill: s.card, stroke: blocked ? s.danger : s.border, 'stroke-width': 1.3 }, g)
+  txt(g, n.cx, n.cy + 4.5, blocked ? 'Blocked' : n.title, { 'font-size': 13, 'font-weight': 700, 'text-anchor': 'middle', fill: blocked ? s.danger : s.text })
+  const sub = blocked ? 'both providers low' : n.subtitle
+  if (sub) txt(layer, n.cx, n.y + n.h + 16, sub, { 'font-size': 10.5, fill: blocked ? s.danger : s.muted, 'text-anchor': 'middle' })
+}
+
+const wfNow = () => workflows[state.wf]
+let currentGraph = null
+
+function paint(viewport, graph) {
+  viewport.replaceChildren()
+  const edgeLayer = el('g', {}, viewport)
+  const linkLayer = el('g', {}, viewport)
+  const nodeLayer = el('g', {}, viewport)
+  const right = Math.max(...graph.nodes.map((n) => n.x + n.w))
+  let lane = 0
+  graph.edges.forEach((e, i) => { if (e.from !== 'start') drawEdge(edgeLayer, e, graph.sim.edgeOn.has(i), graph, right + 40 + (e.lane ? lane++ * 14 : 0)) })
+  graph.nodes.forEach((n) => {
+    if (n.type === 'role') drawRole(nodeLayer, n, graph.sim)
+    else if (n.type === 'ghost') drawGhost(nodeLayer, linkLayer, n, graph)
+    else if (n.type === 'decision') drawDecision(nodeLayer, n, graph.sim)
+    else if (n.type === 'start') drawStart(nodeLayer, n)
+    else if (n.type === 'entry') drawEntry(nodeLayer, n, graph.sim)
+    else drawTerminal(nodeLayer, n, graph.sim)
+  })
+}
+
+function render() {
+  const graph = buildGraph()
+  currentGraph = graph
+  const viewport = document.getElementById('viewport')
+  document.getElementById('canvas-bg').setAttribute('fill', sty().canvas)
+  document.getElementById('canvas-grid').setAttribute('opacity', sty().grid ? 1 : 0)
+  if (!state.view) fitView(graph)
+  applyView()
+  paint(viewport, graph)
+  if (state.pulse) {
+    let i = 0
+    viewport.querySelectorAll('g.node').forEach((node) => node.animate([{ opacity: 0 }, { opacity: Number(node.getAttribute('opacity') ?? 1) }], { duration: 220, delay: Math.min(i++ * 25, 600), fill: 'backwards' }))
+    state.pulse = 0
+  }
+  return graph
+}
+
+function bounds(graph) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  graph.nodes.forEach((n) => {
+    minX = Math.min(minX, n.x - 10); minY = Math.min(minY, n.y - 36)
+    maxX = Math.max(maxX, n.x + n.w + 30); maxY = Math.max(maxY, n.y + n.h + 24)
+  })
+  const lanes = graph.edges.filter((e) => e.lane).length
+  return { minX, minY, maxX: maxX + 24 + lanes * 12, maxY }
+}
+function fitView(graph = currentGraph) {
+  const b = bounds(graph)
+  const rect = svg.getBoundingClientRect()
+  const drawerH = state.yaml ? rect.height * 0.45 : 0
+  const pad = 30
+  const k = Math.min(1.25, (rect.width - pad * 2) / (b.maxX - b.minX), (rect.height - drawerH - pad * 2) / (b.maxY - b.minY))
+  state.view = { k, x: (rect.width - (b.maxX - b.minX) * k) / 2 - b.minX * k, y: Math.max(pad, (rect.height - drawerH - (b.maxY - b.minY) * k) / 2) - b.minY * k }
+}
+
+function renderGallery() {
+  document.querySelector('.app').style.display = 'none'
+  document.body.style.overflow = 'auto'
+  document.body.style.background = sty().canvas
+  const page = document.createElement('main')
+  page.className = 'gallery'
+  page.innerHTML = '<h1>Playbooks</h1><p class="sub">Compact decision diagrams; models come from the tiers in playbooks.yaml.</p>'
+  Object.values(workflows).filter((w) => w.kind === 'playbook').forEach((w) => {
+    state.wf = w.id
+    const graph = buildGraph(w)
+    graph.sim = {
+      reached: new Set(graph.nodes.map((n) => n.id)),
+      edgeOn: new Set(graph.edges.map((_, i) => i)),
+      openOf: Object.fromEntries(graph.nodes.filter((n) => n.type === 'decision').map((n) => [n.id, new Set([0, 1])])),
+      bothLow: false,
+      blocked: false,
+    }
+    const b = bounds(graph)
+    const section = document.createElement('section')
+    section.innerHTML = `<h2></h2><p></p>`
+    section.querySelector('h2').textContent = w.pb.name
+    section.querySelector('p').textContent = w.pb.goal
+    const figure = el('svg', { viewBox: `${b.minX} ${b.minY} ${b.maxX - b.minX} ${b.maxY - b.minY}`, width: b.maxX - b.minX, style: 'max-width:100%;height:auto;display:block' }, section)
+    el('rect', { x: b.minX, y: b.minY, width: b.maxX - b.minX, height: b.maxY - b.minY, fill: sty().canvas }, figure)
+    paint(el('g', {}, figure), graph)
+    page.appendChild(section)
+  })
+  document.body.appendChild(page)
+}
+
+function applyView() {
+  const { x, y, k } = state.view
+  document.getElementById('viewport').setAttribute('transform', `translate(${x} ${y}) scale(${k})`)
+  document.getElementById('grid').setAttribute('patternTransform', `translate(${x} ${y}) scale(${k})`)
+}
+function toWorld(clientX, clientY) {
+  const rect = svg.getBoundingClientRect()
+  return [(clientX - rect.left - state.view.x) / state.view.k, (clientY - rect.top - state.view.y) / state.view.k]
+}
+function zoomAt(px, py, k) {
+  k = Math.min(2, Math.max(0.2, k))
+  state.view.x = px - ((px - state.view.x) / state.view.k) * k
+  state.view.y = py - ((py - state.view.y) / state.view.k) * k
+  state.view.k = k
+  applyView()
+}
+
+let drag = null
+svg.addEventListener('pointerdown', (event) => {
+  svg.setPointerCapture(event.pointerId)
+  const nodeEl = event.target.closest('.node')
+  if (nodeEl?.dataset.id) {
+    const node = currentGraph.byId[nodeEl.dataset.id]
+    const [wx, wy] = toWorld(event.clientX, event.clientY)
+    drag = { kind: 'node', id: node.id, ox: wx - node.x, oy: wy - node.y, sx: event.clientX, sy: event.clientY, moved: false }
+  } else {
+    drag = { kind: 'pan', sx: event.clientX, sy: event.clientY, vx: state.view.x, vy: state.view.y, moved: false }
+    svg.classList.add('panning')
+  }
+})
+svg.addEventListener('pointermove', (event) => {
+  if (!drag) return
+  if (Math.hypot(event.clientX - drag.sx, event.clientY - drag.sy) > 3) drag.moved = true
+  if (!drag.moved) return
+  if (drag.kind === 'pan') {
+    state.view.x = drag.vx + event.clientX - drag.sx
+    state.view.y = drag.vy + event.clientY - drag.sy
+    applyView()
+  } else {
+    const [wx, wy] = toWorld(event.clientX, event.clientY)
+    wfNow().positions[drag.id] = { x: Math.round((wx - drag.ox) / 10) * 10, y: Math.round((wy - drag.oy) / 10) * 10 }
+    render()
+  }
+})
+svg.addEventListener('pointerup', () => {
+  if (drag && !drag.moved) {
+    state.selected = drag.kind === 'node' ? { id: drag.id } : null
+    refresh()
+  }
+  drag = null
+  svg.classList.remove('panning')
+})
+svg.addEventListener('wheel', (event) => {
+  event.preventDefault()
+  const rect = svg.getBoundingClientRect()
+  zoomAt(event.clientX - rect.left, event.clientY - rect.top, state.view.k * Math.exp(-event.deltaY * 0.0015))
+}, { passive: false })
+
+function h(tag, props = {}, children = []) {
+  const node = document.createElement(tag)
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'style') node.setAttribute('style', v)
+    else node[k] = v
+  }
+  node.append(...children.filter((child) => child !== null && child !== undefined && child !== false))
+  return node
+}
+const field = (label, control) => h('label', { className: 'field' }, [h('span', { textContent: label }), control])
+function selectOf(options, value, onChange, isDisabled = () => false) {
+  const s = h('select')
+  options.forEach(([v, label]) => s.append(h('option', { value: v, textContent: label, selected: v === value, disabled: isDisabled(v) })))
+  s.onchange = () => onChange(s.value)
+  return s
+}
+function checkbox(label, checked, onChange) {
+  const input = h('input', { type: 'checkbox', checked })
+  input.onchange = () => onChange(input.checked)
+  return h('label', {}, [input, label])
+}
+function facts(rows) {
+  const list = h('dl', { className: 'facts' })
+  rows.filter(([, v]) => v).forEach(([k, v]) => list.append(h('dt', { textContent: k }), h('dd', { textContent: v })))
+  return list
+}
+function touched(global = false) {
+  if (global) state.globalEdited = true
+  else wfNow().edited = true
+  refresh()
+}
+
+function condEditor(get, set) {
+  const wrap = h('div', { className: 'conds' })
+  const list = condList(get())
+  const write = (next) => set(next.length === 0 ? undefined : next.length === 1 ? next[0] : next)
+  list.forEach((token, i) => {
+    if (i) wrap.append(h('span', { className: 'and', textContent: 'and' }))
+    const known = conditionList()
+    const options = known.includes(token) ? known : [token, ...known]
+    wrap.append(selectOf(options.map((t) => [t, condLabel(t)]), token, (v) => { const next = [...list]; next[i] = v; write(next) }))
+    if (list.length > 1) {
+      const remove = h('button', { className: 'btn', textContent: '×', title: 'Remove condition' })
+      remove.onclick = () => write(list.filter((_, k) => k !== i))
+      wrap.append(remove)
+    }
+  })
+  const add = h('button', { className: 'btn', textContent: list.length ? '+ and' : '+ condition' })
+  add.onclick = () => write([...list, 'deep'])
+  wrap.append(add)
+  return wrap
+}
+
+function useEditor(use, baseProvider) {
+  const provider = use.provider ?? baseProvider
+  const keep = (label) => [['', label]]
+  const modelOptions = [...keep('keep'), ...modelsOf(provider).map((m) => [m, prettyModel(m)])]
+  if (use.model && !modelsOf(provider).includes(use.model)) modelOptions.push([use.model, use.model])
+  const setKey = (key, value) => { if (value) use[key] = value; else delete use[key]; touched() }
+  return h('div', {}, [
+    h('div', { className: 'row' }, [
+      field('Tier', selectOf([...keep('keep'), ...TIER_NAMES.map((t) => [t, t])], use.tier ?? '', (v) => setKey('tier', v))),
+      field('Provider', selectOf([...keep('keep'), ...state.providers.map((id) => [id, AGENTS[id]])], use.provider ?? '', (v) => { if (v) use.provider = v; else delete use.provider; delete use.model; touched() })),
+    ]),
+    h('div', { className: 'row' }, [
+      field('Model', selectOf(modelOptions, use.model ?? '', (v) => setKey('model', v))),
+      field('Effort', selectOf([...keep('keep'), ...EFFORTS.map((e) => [e, e])], use.effort ?? '', (v) => setKey('effort', v))),
+    ]),
+  ])
+}
+
+function phaseEditor(panel, wf, p, n) {
+  const lead = p.who === 'lead'
+  const base = phaseBase(p)
+  const tierDefaults = tierOf(base.tier, base.provider)
+  panel.append(
+    h('div', { className: 'kind', textContent: lead ? 'Role · your session' : `Role · ${p.tier}` }),
+    h('h2', { textContent: p.role }),
+    h('p', { className: 'hint', textContent: p.does ?? '' }),
+    facts([
+      ['Returns', p.returns], ['Then checks', p.gate], ['Runs only if', p.if !== undefined ? condText(p.if) : null],
+      ['After', p.after ? `phase ${p.after}` : null], ['Limit', p.limit], ['Runner', lead ? null : p.runner],
+    ]),
+  )
+  const name = h('input', { type: 'text', value: p.role })
+  name.onchange = () => { if (name.value.trim()) { p.role = name.value.trim(); touched() } }
+  panel.append(field('Role', name))
+  const modelOptions = [['', `tier default (${tierDefaults.model ? prettyModel(tierDefaults.model) : 'CLI default'})`], ...modelsOf(base.provider).map((m) => [m, prettyModel(m)])]
+  if (p.model && !modelsOf(base.provider).includes(p.model)) modelOptions.push([p.model, p.model])
+  modelOptions.push(['__other', 'other…'])
+  panel.append(
+    h('div', { className: 'row' }, [
+      field('Tier', selectOf(TIER_NAMES.map((t) => [t, t]), p.tier ?? 'standard', (v) => { p.tier = v; touched() })),
+      field('Provider', selectOf([['auto', 'auto (first in the order)'], ...state.providers.map((id) => [id, AGENTS[id]])], p.provider ?? 'auto', (v) => { if (v === 'auto') delete p.provider; else p.provider = v; delete p.model; touched() })),
+    ]),
+    h('div', { className: 'row' }, [
+      field('Model', selectOf(modelOptions, p.model ?? '', (v) => {
+        if (v === '__other') {
+          const typed = prompt(`${AGENTS[base.provider]} model id`, p.model ?? '')
+          if (typed && !/\s/.test(typed.trim())) p.model = typed.trim()
+        } else if (v) p.model = v
+        else delete p.model
+        touched()
+      })),
+      field('Effort', selectOf([['', `tier default (${tierDefaults.effort ?? 'CLI default'})`], ...EFFORTS.map((e) => [e, e])], p.effort ?? '', (v) => { if (v) p.effort = v; else delete p.effort; touched() })),
+    ]),
+  )
+  if (!lead) {
+    const workers = h('input', { type: 'number', value: p.workers ?? 1, min: 1, max: 16 })
+    workers.onchange = () => { const v = Math.round(Number(workers.value)); if (v >= 1 && v <= 16) { if (v === 1) delete p.workers; else p.workers = v } touched() }
+    panel.append(
+      h('div', { className: 'row' }, [field('Workers', workers), field('Runner', selectOf(RUNNERS.map((r) => [r, r]), p.runner ?? 'economy', (v) => { p.runner = v; touched() }))]),
+      h('div', { className: 'checks' }, [checkbox('read-only', Boolean(p.readOnly), (v) => { p.readOnly = v; touched() }), checkbox('own worktree', Boolean(p.isolate), (v) => { if (v) p.isolate = true; else delete p.isolate; touched() })]),
+    )
+  }
+  const rules = p.rules ?? []
+  const section = h('div', { className: 'section' }, [
+    h('h4', { textContent: 'Use another model when…' }),
+    h('p', { className: 'hint', textContent: `Checked top to bottom; the first match wins. ${lead ? '' : `If the provider it lands on is low on tokens, the role still moves to the next provider in the order on the same tier.`}` }),
+  ])
+  const cards = h('div', { className: 'cards' })
+  rules.forEach((r, i) => {
+    const move = (d) => { const to = i + d; if (to < 0 || to >= rules.length) return; [rules[i], rules[to]] = [rules[to], rules[i]]; touched() }
+    const up = h('button', { textContent: '↑' }); up.onclick = () => move(-1)
+    const down = h('button', { textContent: '↓' }); down.onclick = () => move(1)
+    const remove = h('button', { textContent: '×' }); remove.onclick = () => { rules.splice(i, 1); if (!rules.length) delete p.rules; touched() }
+    r.use = r.use ?? {}
+    const preview = finalize(applyUse(base, r.use))
+    cards.append(h('div', { className: 'card' }, [
+      h('header', {}, [h('b', { textContent: `→ ${modelName(preview.provider, preview.model)} · ${preview.effort ?? 'default'}` }), h('span', { className: 'mini' }, [up, down, remove])]),
+      field('If', condEditor(() => r.if, (v) => { r.if = v ?? 'claude-low'; touched() })),
+      useEditor(r.use, base.provider),
+    ]))
+  })
+  const add = h('button', { className: 'btn', textContent: '+ Condition' })
+  add.onclick = () => { p.rules = [...rules, { if: `${base.provider}-low`, use: { provider: nextProvider(base.provider, p, null) ?? base.provider } }]; touched() }
+  section.append(cards, h('div', { className: 'actions' }, [add]))
+  panel.append(section)
+  if (lead) panel.append(h('p', { className: 'hint', textContent: 'This phase runs in your own session; the tier says which model to start the lead on.' }))
+  if (n?.alts?.some((alt) => alt.implicit)) panel.append(h('p', { className: 'hint', textContent: `The dashed "${condLabel(`${base.provider}-low`)}" chip comes from the rule for every role; add a condition for it here to override it.` }))
+}
+
+function routingRoleEditor(panel, wf, roleDef) {
+  const users = wf.rules.map((r, i) => (r.role === roleDef.name ? i + 1 : null)).filter(Boolean)
+  panel.append(
+    h('div', { className: 'kind', textContent: 'Role' }),
+    h('h2', { textContent: roleDef.name }),
+    h('p', { className: 'hint', textContent: users.length ? `Runs tasks from rule ${users.join(', ')}.` : 'No rule routes here; it only serves as a fallback.' }),
+  )
+  const modelOptions = [['', 'CLI default'], ...modelsOf(roleDef.agent).map((m) => [m, prettyModel(m)])]
+  if (roleDef.model && !modelsOf(roleDef.agent).includes(roleDef.model)) modelOptions.push([roleDef.model, roleDef.model])
+  panel.append(
+    h('div', { className: 'row' }, [
+      field('Provider', selectOf(builtInProviders(), roleDef.agent, (v) => { roleDef.agent = v; roleDef.model = null; touched() })),
+      field('Model', selectOf(modelOptions, roleDef.model ?? '', (v) => { roleDef.model = v || null; touched() })),
+    ]),
+    field('Effort', selectOf([['', 'default'], ...EFFORTS.map((e) => [e, e])], roleDef.effort ?? '', (v) => { roleDef.effort = v || null; touched() })),
+    h('div', { className: 'checks' }, [checkbox('read-only', roleDef.readOnly, (v) => {
+      roleDef.readOnly = v
+      const fb = wf.roles.find((r) => r.name === roleDef.fallback)
+      if (fb && !canFallBack(roleDef, fb)) roleDef.fallback = null
+      touched()
+    })]),
+    h('div', { className: 'section' }, [
+      h('h4', { textContent: `If ${AGENTS[roleDef.agent]} tokens run low` }),
+      field('Run as', selectOf(
+        [['', 'keep running here'], ...wf.roles.filter((r) => r.name !== roleDef.name).map((r) => [r.name, `${r.name} · ${modelName(r.agent, r.model)} · ${r.effort ?? 'default'}`])],
+        roleDef.fallback ?? '',
+        (v) => { roleDef.fallback = v || null; touched() },
+        (v) => v !== '' && !canFallBack(roleDef, wf.roles.find((r) => r.name === v)),
+      )),
+      h('p', { className: 'hint', textContent: 'A read-only role can only fall back to a read-only role.' }),
+    ]),
+  )
+}
+
+function routingRulesEditor(panel, wf) {
+  panel.append(
+    h('div', { className: 'kind', textContent: 'Condition' }),
+    h('h2', { textContent: 'Which role?' }),
+    h('p', { className: 'hint', textContent: 'Checked top to bottom; the first rule that matches picks the role. Empty kind and effort means any task.' }),
+  )
+  const cards = h('div', { className: 'cards' })
+  wf.rules.forEach((r, i) => {
+    const toggle = (list, value, on) => (on ? [...new Set([...list, value])] : list.filter((x) => x !== value))
+    const move = (d) => { const to = i + d; if (to < 0 || to >= wf.rules.length) return; [wf.rules[i], wf.rules[to]] = [wf.rules[to], wf.rules[i]]; touched() }
+    const up = h('button', { textContent: '↑' }); up.onclick = () => move(-1)
+    const down = h('button', { textContent: '↓' }); down.onclick = () => move(1)
+    const remove = h('button', { textContent: '×' }); remove.onclick = () => { wf.rules.splice(i, 1); touched() }
+    const gate = r.gates[0]
+    const below = gate ? h('input', { type: 'number', value: gate.below, min: 1, max: 100 }) : null
+    if (below) below.onchange = () => { const v = Number(below.value); if (v > 0 && v <= 100) gate.below = v; touched() }
+    cards.append(h('div', { className: 'card' }, [
+      h('header', {}, [h('b', { textContent: `${i + 1}. ${taskRuleName(r)}` }), h('span', { className: 'mini' }, [up, down, remove])]),
+      field('Kind', h('div', { className: 'checks' }, KINDS.map((k) => checkbox(k, r.kinds.includes(k), (v) => { r.kinds = toggle(r.kinds, k, v); touched() })))),
+      field('Effort class', h('div', { className: 'checks' }, EFFORT_CLASSES.map((k) => checkbox(k, r.efforts.includes(k), (v) => { r.efforts = toggle(r.efforts, k, v); touched() })))),
+      field('Runs as', selectOf(wf.roles.map((x) => [x.name, `${x.name} · ${modelName(x.agent, x.model)} · ${x.effort ?? 'default'}`]), r.role, (v) => { r.role = v; touched() })),
+      h('div', { className: 'checks' }, [checkbox('only while a quota window has room', Boolean(gate), (v) => { r.gates = v ? [{ agent: 'claude', window: 'opus', below: 50 }] : []; touched() })]),
+      gate ? h('div', { className: 'row' }, [
+        field('Provider', selectOf(builtInProviders(), gate.agent, (v) => { gate.agent = v; touched() })),
+        field('Window', selectOf(Object.entries(WINDOWS), gate.window, (v) => { gate.window = v; touched() })),
+        field('Below %', below),
+      ]) : null,
+    ]))
+  })
+  const addRule = h('button', { className: 'btn', textContent: '+ Rule' })
+  addRule.onclick = () => { wf.rules.splice(Math.max(0, wf.rules.length - 1), 0, rule(['code'], [], wf.roles[0]?.name ?? '')); touched() }
+  const addRole = h('button', { className: 'btn', textContent: '+ Role' })
+  addRole.onclick = () => {
+    let k = 1
+    while (wf.roles.some((r) => r.name === `role-${k}`)) k++
+    wf.roles.push(role(`role-${k}`, 'claude', 'sonnet', 'medium', false))
+    touched()
+  }
+  panel.append(cards, h('div', { className: 'actions' }, [addRule, addRole]))
+}
+
+function playbookRouteEditor(panel, wf, ids) {
+  panel.append(
+    h('div', { className: 'kind', textContent: 'Condition' }),
+    h('h2', { textContent: 'Which path?' }),
+    h('p', { className: 'hint', textContent: 'Each path runs only when its condition holds. The first true path wins; a path without a condition catches the rest.' }),
+  )
+  const cards = h('div', { className: 'cards' })
+  ids.forEach((id) => {
+    const p = wf.pb.phases.find((q) => q.id === id)
+    const base = phaseBase(p)
+    const use = tierOf(base.tier, base.provider)
+    cards.append(h('div', { className: 'card' }, [
+      h('header', {}, [h('b', { textContent: `→ ${p.role} · ${modelName(base.provider, base.model ?? use.model)} · ${base.effort ?? use.effort ?? 'default'}` })]),
+      field('Runs if', condEditor(() => p.if, (v) => { if (v === undefined) delete p.if; else p.if = v; touched() })),
+    ]))
+  })
+  panel.append(cards)
+}
+
+function gateEditor(panel, wf, id) {
+  const p = wf.pb.phases.find((q) => q.id === id)
+  const chain = []
+  let current = wf.pb.phases.find((q) => q.after === id)
+  while (current && !chain.includes(current)) { chain.push(current); const from = current.id; current = wf.pb.phases.find((q) => q.after === from) }
+  panel.append(
+    h('div', { className: 'kind', textContent: 'Condition' }),
+    h('h2', { textContent: 'Check before moving on' }),
+    h('p', { className: 'hint', textContent: 'You check this yourself after the phase. On fail, the escalation below runs once per unit, then the check runs again.' }),
+  )
+  const area = h('textarea', { value: p.gate ?? '' })
+  area.onchange = () => { p.gate = area.value.trim() || p.gate; touched() }
+  panel.append(field('Passes when', area))
+  if (chain.length) {
+    panel.append(h('div', { className: 'section' }, [
+      h('h4', { textContent: 'On fail' }),
+      ...chain.map((q, i) => h('p', { className: 'hint', textContent: `${i + 1}. ${q.role}${q.if !== undefined ? ` (if ${condText(q.if)})` : ''}: ${q.does ?? ''}` })),
+    ]))
+  }
+}
+
+const builtInProviders = () => Object.keys(PROVIDERS).filter((id) => PROVIDERS[id].adapter === 'built-in' && (state.providers.includes(id) || id === 'claude' || id === 'codex')).map((id) => [id, AGENTS[id]])
+const tierCell = (u) => h('td', {}, [h('span', { className: 'tm', textContent: u.model ?? 'default' }), u.effort ? h('span', { className: 'te', textContent: u.effort }) : null])
+function tiersEditor() {
+  const table = h('table', { className: 'tiers' })
+  table.append(h('tr', {}, [h('th', { textContent: '' }), ...TIER_NAMES.map((t) => h('th', { textContent: t }))]))
+  activeOrder().forEach((id) => {
+    const row = h('tr', { className: 'tier-row', title: `Change ${AGENTS[id]}` }, [
+      h('td', {}, [h('span', { className: 'prov' }, [h('img', { src: MARKS[id], alt: '' }), AGENTS[id]])]),
+      ...TIER_NAMES.map((tier) => tierCell(finalize({ provider: id, tier }))),
+    ])
+    row.onclick = () => { state.selected = { id: `provider:${id}` }; refresh() }
+    table.append(row)
+  })
+  return h('div', { className: 'section' }, [
+    h('h4', { textContent: `Tiers · ${profileNow().name ?? state.profile}` }),
+    h('p', { className: 'hint', textContent: 'Providers in the order this profile tries them. Click one to change its models.' }),
+    table,
+  ])
+}
+
+const quotaTarget = () => (state.profile === 'base' ? state.quota : (profileNow().quota ??= {}))
+function globalRulesEditor(panel) {
+  const q = Q()
+  const target = quotaTarget()
+  const b = state.budgetRule
+  panel.append(
+    h('div', { className: 'kind', textContent: `Rules for every role · ${profileNow().name ?? state.profile}` }),
+    h('h2', { textContent: 'Tokens and budget' }),
+    h('p', { className: 'hint', textContent: state.profile === 'base' ? 'Apply to every role in every playbook unless a role has its own condition.' : `Changes here apply to the ${profileNow().name ?? state.profile} profile only.` }),
+  )
+  const number = (key, min, max, into = target) => {
+    const input = h('input', { type: 'number', value: (into === state.budgetRule ? b : q)[key], min, max })
+    input.onchange = () => { const v = Number(input.value); if (v >= min && v <= max) into[key] = v; touched(true) }
+    return input
+  }
+  const choose = (key, options, into = target) => selectOf(options, q[key], (v) => { into[key] = v; touched(true) })
+  const planEnd = (provider) => {
+    const input = h('input', { type: 'date', value: state.quota.planEnds?.[provider] ?? '' })
+    input.onchange = () => {
+      const next = { ...(state.quota.planEnds ?? {}) }
+      if (input.value) next[provider] = input.value
+      else delete next[provider]
+      state.quota.planEnds = next
+      state.usage[provider].expires = input.value ? daysUntil(input.value) : null
+      touched(true)
+    }
+    return input
+  }
+  const ending = state.providers.filter((id) => longWindow(id))
+  panel.append(
+    h('div', { className: 'row' }, [field('Tokens low at %', number('criticalThreshold', 1, 100)), field('Budget low at %', number('warnAt', 1, 100, state.budgetRule))]),
+    field('When a provider is low', choose('whenLow', [['switch-provider', 'same tier on the next provider'], ['keep', 'keep the provider']])),
+    field('When every provider is low', choose('onBothCritical', [['ask', 'run, suggest waiting for a reset'], ['run-cheapest', 'run on the cheapest tier, flagged'], ['block', 'refuse new work']], state.quota)),
+    field('When quota would be lost', choose('whenSpare', [['spend-strong', 'spend it on the strong tier'], ['prefer', 'prefer that provider, same tier'], ['ignore', 'ignore']])),
+    h('div', { className: 'row' }, [field('Reset within h', number('spareWithinHours', 1, 168)), field('Spare from % left', number('spareMinLeft', 1, 100))]),
+    h('div', { className: 'section' }, [
+      h('h4', { textContent: 'Plan ends' }),
+      ...ending.map((id) => h('div', { className: 'plan-row' }, [h('span', { className: 'prov' }, [h('img', { src: MARKS[id], alt: '' }), AGENTS[id]]), planEnd(id)])),
+      h('p', { className: 'hint', textContent: 'Quota is spare when a plan ends before its cycle resets, or the cycle resets soon with enough left. Leave a date empty when the plan renews.' }),
+    ]),
+    field('When the budget is low', selectOf([['finish-and-report', 'finish running units, then report'], ['downgrade-tier', 'drop new units one tier'], ['stop', 'stop and report']], b.whenLow, (v) => { b.whenLow = v; touched(true) })),
+    tiersEditor(),
+  )
+}
+
+function providerPanel(panel, id) {
+  const def = PROVIDERS[id]
+  const adapter = DATA.adapters?.[id]
+  const order = activeOrder()
+  const name = profileNow().name ?? state.profile
+  const via = routedVia(id)
+  panel.append(
+    h('div', { className: 'kind', textContent: `Provider · ${def.adapter} adapter` }),
+    h('h2', { className: 'with-mark' }, [h('img', { src: MARKS[id], alt: '' }), def.label]),
+    facts([
+      ['Command', adapter ? [adapter.command, ...(adapter.args ?? [])].join(' ') : def.cli],
+      ['Read-only work', def.readOnly ? 'yes' : 'no: the runner cannot enforce read-only here, so scouts skip it'],
+      ['Usage', def.reader ? `read by Alethe: ${windowsOf(id).map((w) => w.label).join(', ')}` : 'not read by Alethe yet; the planner asks you'],
+      ['Traffic', via ? `through ${ROUTES[via]?.label ?? via}` : 'direct'],
+      ['Checked', adapter?.checked],
+    ]),
+  )
+  const pos = order.indexOf(id)
+  const move = (d) => {
+    const list = state.profile === 'base' ? state.providers : (profileNow().order = [...activeOrder()])
+    const i = list.indexOf(id)
+    const to = i + d
+    if (i < 0 || to < 0 || to >= list.length) return
+    ;[list[i], list[to]] = [list[to], list[i]]
+    touched(true)
+  }
+  const up = h('button', { className: 'btn', textContent: '↑ earlier' }); up.onclick = () => move(-1); up.disabled = pos <= 0
+  const down = h('button', { className: 'btn', textContent: '↓ later' }); down.onclick = () => move(1); down.disabled = pos >= order.length - 1
+  panel.append(h('div', { className: 'section' }, [
+    h('h4', { textContent: `Order · ${name}` }),
+    h('p', { className: 'hint', textContent: `Tried ${pos + 1} of ${order.length}. A role on auto takes the first provider that can run it; a low provider hands over to the next.` }),
+    h('div', { className: 'actions' }, [up, down]),
+  ]))
+  const routes = Object.entries(state.routes).filter(([rid]) => ROUTES[rid]?.dialects.includes(def.dialect))
+  if (routes.length) {
+    panel.append(h('div', { className: 'section' }, [
+      h('h4', { textContent: 'Route' }),
+      ...routes.map(([rid, route]) => h('div', { className: 'checks' }, [checkbox(`through ${ROUTES[rid].label}`, (route.carries ?? []).includes(id), (on) => {
+        route.carries = on ? [...new Set([...(route.carries ?? []), id])] : (route.carries ?? []).filter((x) => x !== id)
+        touched(true)
+      })])),
+      h('p', { className: 'hint', textContent: 'Alethe points this CLI at the local gateway; model names then go to whatever the gateway maps them to.' }),
+    ]))
+  }
+  const tiers = tiersNow()
+  const rows = TIER_NAMES.map((tier) => {
+    const current = tiers[tier]?.[id] ?? {}
+    const write = (key, value) => {
+      let holder
+      if (state.profile === 'base') holder = state.tiers[tier] = state.tiers[tier] ?? {}
+      else {
+        const profile = profileNow()
+        profile.tiers = profile.tiers ?? {}
+        holder = profile.tiers[tier] = profile.tiers[tier] ?? {}
+      }
+      const entry = { ...(tiers[tier]?.[id] ?? {}), ...(holder[id] ?? {}) }
+      if (value) entry[key] = value
+      else delete entry[key]
+      holder[id] = entry
+      touched(true)
+    }
+    const models = modelsOf(id)
+    const modelOptions = [['', 'CLI default'], ...models.map((m) => [m, modelCost(id, m) !== null ? `${m} · ${modelCost(id, m)}×` : m])]
+    if (current.model && !models.includes(current.model)) modelOptions.push([current.model, current.model])
+    return h('div', { className: 'card' }, [
+      h('header', {}, [h('b', { textContent: tier })]),
+      h('div', { className: 'row wide-first' }, [
+        field('Model', selectOf(modelOptions, current.model ?? '', (v) => write('model', v))),
+        def.effort ? field('Effort', selectOf([['', '—'], ...EFFORTS.map((e) => [e, e])], current.effort ?? '', (v) => write('effort', v))) : null,
+      ]),
+    ])
+  })
+  panel.append(h('div', { className: 'section' }, [
+    h('h4', { textContent: `Tiers · ${name}` }),
+    h('p', { className: 'hint', textContent: modelsOf(id).length ? 'Models the planner found for this CLI.' : 'No model list was recorded; the CLI picks its default unless you name one.' }),
+    h('div', { className: 'cards' }, rows),
+  ]))
+}
+
+function routePanel(panel, rid) {
+  const route = state.routes[rid]
+  const def = ROUTES[rid]
+  panel.append(
+    h('div', { className: 'kind', textContent: 'Route' }),
+    h('h2', { className: 'with-mark' }, [h('img', { src: MARKS[rid], alt: '' }), def?.label ?? rid]),
+    h('p', { className: 'hint', textContent: 'A local gateway on the model traffic path, not a worker. Alethe starts it and points a CLI at it; the planner never starts, installs or reconfigures it.' }),
+    facts([['Port', String(route.port ?? '')], ['Status', route.running ? 'running' : 'installed, not running'], ['Carries', (route.carries ?? []).map((id) => AGENTS[id]).join(', ') || 'nothing yet']]),
+  )
+  const eligible = state.providers.filter((id) => def?.dialects.includes(PROVIDERS[id].dialect))
+  panel.append(h('div', { className: 'checks' }, eligible.map((id) => checkbox(AGENTS[id], (route.carries ?? []).includes(id), (on) => {
+    route.carries = on ? [...new Set([...(route.carries ?? []), id])] : (route.carries ?? []).filter((x) => x !== id)
+    touched(true)
+  }))))
+}
+
+function setupSection() {
+  const setup = DATA.setup
+  const box = h('div', { className: 'section' }, [h('h4', { textContent: setup ? `Setup · ${setup.date}` : 'Setup' })])
+  if (!setup) {
+    box.append(h('p', { className: 'hint', textContent: 'Bundled defaults. Ask the planner to set up orchestration: it checks which CLIs, models and routes you have, proposes base, savings and aggressive profiles, and saves them once you approve.' }))
+    return box
+  }
+  box.append(h('p', { className: 'hint', textContent: `The planner found ${state.providers.length} providers and built ${Object.keys(state.profiles).length} profiles; you approved them on ${setup.date}.` }))
+  ;(setup.notes ?? []).forEach((note) => box.append(h('p', { className: 'hint note', textContent: note })))
+  return box
+}
+function profileSection() {
+  const p = profileNow()
+  const lines = []
+  lines.push(`Switches providers at ${Q().criticalThreshold}%.`)
+  if (p.order) lines.push(`Tries ${activeOrder().map((id) => AGENTS[id]).join(' → ')}.`)
+  const changed = Object.values(p.tiers ?? {}).reduce((n, byProvider) => n + Object.keys(byProvider).length, 0)
+  if (changed) lines.push(`${changed} tier models differ from base.`)
+  return h('div', { className: 'section' }, [h('h4', { textContent: `Profile · ${p.name ?? state.profile}` }), h('p', { className: 'hint', textContent: p.summary ?? '' }), ...lines.map((line) => h('p', { className: 'hint', textContent: line, style: 'margin:0 0 4px' }))])
+}
+
+function overviewPanel(panel, wf) {
+  if (wf.kind === 'playbook') {
+    const pb = wf.pb
+    panel.append(
+      h('div', { className: 'kind', textContent: 'Playbook' }),
+      h('h2', { textContent: pb.name }),
+      h('p', { className: 'hint', textContent: pb.goal }),
+      facts([['Pick when', pb.pickWhen], ['Saves', pb.saves], ['Avoid when', pb.avoidWhen], ['Then', pb.next]]),
+    )
+    if (pb.source) panel.append(h('p', { className: 'hint' }, [h('a', { href: pb.source, textContent: 'Source', target: '_blank', rel: 'noreferrer' })]))
+  } else {
+    panel.append(
+      h('div', { className: 'kind', textContent: 'Task routing' }),
+      h('h2', { textContent: wf.name }),
+      h('p', { className: 'hint', textContent: `${wf.blurb} The same presets as Preferences → Orchestration.` }),
+    )
+  }
+  const rules = h('button', { className: 'btn', textContent: 'Edit rules for every role' })
+  rules.onclick = () => { state.selected = { id: 'rules' }; refresh() }
+  panel.append(
+    profileSection(),
+    h('div', { className: 'section' }, [h('h4', { textContent: 'Rules for every role' }), ...globalRuleLines().map((line) => h('p', { className: 'hint', textContent: line, style: 'margin:0 0 4px' })), h('div', { className: 'actions' }, [rules])]),
+    tiersEditor(),
+  )
+}
+
+function traceSection(graph) {
+  const trace = h('div', { className: 'trace' })
+  const sim = graph.sim
+  graph.nodes.filter((n) => n.type === 'role' && sim.reached.has(n.id)).forEach((n) => {
+    const { final, base, chosen, switched, stuck, spent } = n.resolved
+    const line = h('div')
+    const reasons = []
+    if (chosen) reasons.push(`<span class="ok">because ${condText(chosen.cond)}</span>`)
+    if (switched) reasons.push(`<span class="warn">${AGENTS[base.provider]} low, moved to ${AGENTS[final.provider]}</span>`)
+    if (stuck) reasons.push('<span class="warn">no provider with tokens left</span>')
+    if (spent) reasons.push(`<span class="ok">${AGENTS[spent]} quota would be lost, spent on ${final.tier}</span>`)
+    if (final.via) reasons.push(`through ${ROUTES[final.via]?.label ?? final.via}`)
+    const why = reasons.length ? ` · ${reasons.join(' · ')}` : ''
+    line.innerHTML = `<b>${n.title}</b>${n.lead ? ' (your session)' : ''}${n.workers > 1 ? ` ×${n.workers}` : ''} → ${modelName(final.provider, final.model)} · ${final.effort ?? 'default'}${why}`
+    trace.append(line)
+  })
+  if (sim.bothLow) {
+    const text = { ask: 'Every provider is low: work runs and the result suggests waiting for a reset.', 'run-cheapest': 'Every provider is low: work runs on the cheapest tier, flagged.', block: 'Every provider is low: new work is refused.' }[Q().onBothCritical]
+    trace.append(h('div', { className: sim.blocked ? 'danger' : 'warn', textContent: text }))
+  }
+  state.providers.map(spareOf).filter(Boolean).forEach((x) => trace.append(h('div', { className: 'ok', textContent: `${AGENTS[x.provider]}: ${x.why}, so ${x.left}% of it would be lost.` })))
+  if (state.budget === 'low') trace.append(h('div', { className: 'warn', textContent: globalRuleLines().at(-1) }))
+  const scenario = `${TASKS[state.task].label} · ${USAGE_PRESETS[usageKey()]?.label ?? 'custom usage'} · checks: ${CHECKS[state.checks].toLowerCase()} · spent: ${SPENT[state.spent]}`
+  return h('div', { className: 'section' }, [h('h4', { textContent: `What runs · ${scenario}` }), trace])
+}
+
+function renderPanel(graph) {
+  const panel = document.getElementById('panel')
+  panel.replaceChildren()
+  const close = h('button', { textContent: '×', title: 'Close' })
+  close.onclick = () => { state.selected = null; state.info = false; refresh() }
+  panel.append(h('div', { className: 'panel-head' }, [h('span', { className: 'side-label', textContent: state.selected ? 'Inspector' : 'Details' }), close]))
+  const body = h('div', { className: 'panel-body' })
+  panel.append(body)
+  const wf = wfNow()
+  const n = state.selected ? graph.byId[state.selected.id] : null
+  if (state.selected?.id === 'rules') globalRulesEditor(body)
+  else if (state.selected?.id?.startsWith('provider:')) providerPanel(body, state.selected.id.slice(9))
+  else if (state.selected?.id?.startsWith('route:')) routePanel(body, state.selected.id.slice(6))
+  else if (n?.type === 'role' && n.ref.kind === 'phase') phaseEditor(body, wf, wf.pb.phases.find((p) => p.id === n.ref.id), n)
+  else if (n?.type === 'role' && n.ref.kind === 'role') routingRoleEditor(body, wf, wf.roles.find((r) => r.name === n.ref.name))
+  else if (n?.type === 'decision' && n.ref.kind === 'routing-rules') routingRulesEditor(body, wf)
+  else if (n?.type === 'decision' && n.ref.kind === 'route') playbookRouteEditor(body, wf, n.ref.ids)
+  else if (n?.type === 'decision' && n.ref.kind === 'gate') gateEditor(body, wf, n.ref.id)
+  else {
+    overviewPanel(body, wf)
+    body.append(traceSection(graph), setupSection())
+  }
+}
+
+function yScalar(v) {
+  if (v === null || v === undefined) return 'null'
+  if (typeof v === 'boolean' || typeof v === 'number') return String(v)
+  const s = String(v)
+  if (/^[A-Za-z0-9_][A-Za-z0-9_.:\/-]*$/.test(s) && !/^(true|false|null|yes|no|on|off)$/i.test(s) && !/^[\d.]+$/.test(s) && !/^\d{4}-\d{2}-\d{2}/.test(s)) return s
+  return JSON.stringify(s)
+}
+const isScalar = (v) => v === null || typeof v !== 'object'
+function inlineMap(obj) {
+  return `{ ${Object.entries(obj).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}: ${Array.isArray(v) ? `[${v.map(yScalar).join(', ')}]` : yScalar(v)}`).join(', ')} }`
+}
+const inlinable = (obj) => Object.values(obj).every((v) => v === undefined || isScalar(v) || (Array.isArray(v) && v.every(isScalar)))
+function emit(value, indent) {
+  const pad = ' '.repeat(indent)
+  if (Array.isArray(value)) {
+    if (!value.length) return ' []'
+    if (value.every(isScalar)) {
+      const flat = `[${value.map(yScalar).join(', ')}]`
+      return flat.length < 80 ? ` ${flat}` : '\n' + value.map((v) => `${pad}- ${yScalar(v)}`).join('\n')
+    }
+    return '\n' + value.map((item) => {
+      if (isScalar(item)) return `${pad}- ${yScalar(item)}`
+      const entries = Object.entries(item).filter(([, v]) => v !== undefined)
+      if (inlinable(item) && inlineMap(item).length < 96) return `${pad}- ${inlineMap(item)}`
+      return entries.map(([k, v], i) => `${pad}${i === 0 ? '- ' : '  '}${k}:${emit(v, indent + 4)}`).join('\n')
+    }).join('\n')
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value).filter(([, v]) => v !== undefined)
+    if (!entries.length) return ' {}'
+    if (indent > 0 && inlinable(value) && inlineMap(value).length < 72) return ` ${inlineMap(value)}`
+    return '\n' + entries.map(([k, v]) => `${pad}${k}:${emit(v, indent + 2)}`).join('\n')
+  }
+  return ` ${yScalar(value)}`
+}
+const PB_KEYS = ['name', 'goal', 'pickWhen', 'saves', 'avoidWhen', 'source', 'next', 'phases']
+const PHASE_KEYS = ['id', 'role', 'who', 'tier', 'provider', 'model', 'effort', 'readOnly', 'workers', 'isolate', 'runner', 'with', 'after', 'if', 'then', 'does', 'returns', 'limit', 'gate', 'rules']
+function ordered(obj, keys) {
+  const out = {}
+  keys.forEach((k) => { if (obj[k] !== undefined && obj[k] !== null) out[k] = obj[k] })
+  Object.keys(obj).forEach((k) => { if (!(k in out) && obj[k] !== undefined && obj[k] !== null) out[k] = obj[k] })
+  return out
+}
+function exportData() {
+  const routing = workflows[state.routingWf]
+  const playbooks = {}
+  Object.values(workflows).filter((w) => w.kind === 'playbook').forEach((w) => {
+    playbooks[w.key] = ordered({ ...w.pb, phases: w.pb.phases.map((p) => ordered({ ...p, rules: p.rules?.length ? p.rules.map((r) => ({ if: r.if, use: r.use })) : undefined }, PHASE_KEYS)) }, PB_KEYS)
+  })
+  return ordered({
+    version: 1,
+    goal: DATA.goal ?? 'orchestrate-and-save',
+    setup: DATA.setup,
+    principles: DATA.principles ?? [],
+    providers: state.providers,
+    models: DATA.models,
+    adapters: DATA.adapters,
+    routes: Object.keys(state.routes).length ? state.routes : undefined,
+    tiers: state.tiers,
+    quota: state.quota,
+    budget: state.budgetRule,
+    profile: state.profile,
+    profiles: state.profiles,
+    pickOrder: DATA.pickOrder ?? [],
+    playbooks,
+    routing: {
+      basedOn: routing.key,
+      roles: routing.roles.map((r) => ordered({ name: r.name, agent: r.agent, model: r.model ?? 'default', effort: r.effort ?? 'default', readOnly: r.readOnly, fallback: r.fallback ?? undefined }, [])),
+      rules: routing.rules.map((r) => ordered({ when: { kinds: r.kinds.length ? r.kinds : undefined, efforts: r.efforts.length ? r.efforts : undefined }, onlyIf: r.gates.length ? r.gates : undefined, role: r.role }, [])),
+    },
+    sources: DATA.sources ?? [],
+  }, [])
+}
+function toYaml() {
+  return ['# alethe-playbooks.yaml', '# The lead reads this file (scripts/orchestrate.py playbook) before it plans or delegates.', emit(exportData(), 0).replace(/^\n/, '')].join('\n') + '\n'
+}
+
+const LUCIDE = {
+  route: '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>',
+  user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+  chevronsDown: '<path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/>',
+  compass: '<circle cx="12" cy="12" r="10"/><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/>',
+  network: '<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+  listChecks: '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+  gitBranch: '<path d="M6 3v12"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>',
+  listOrdered: '<path d="M10 12h11"/><path d="M10 18h11"/><path d="M10 6h11"/><path d="M4 10h2"/><path d="M4 6h1v4"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>',
+  lifeBuoy: '<circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/><circle cx="12" cy="12" r="4"/>',
+  trophy: '<path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>',
+  shieldCheck: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  coins: '<circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/>',
+  scale: '<path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>',
+  gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  piggyBank: '<path d="M19 5c-1.5 0-2.8 1.4-3 2-3.5-1.5-11-.3-11 5 0 1.8 0 3 2 4.5V20h4v-2h3v2h4v-4c1-.5 1.7-1 2-2h2v-4h-2c0-1-.5-1.5-1-2V5z"/><path d="M2 9v1c0 1.1.9 2 2 2h1"/><path d="M16 11h.01"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+}
+const WORKFLOW_ICONS = {
+  complete: 'route', direct: 'user', cascade: 'chevronsDown', 'scout-then-build': 'compass', 'plan-big-execute-small': 'network',
+  'audit-at-scale': 'listChecks', 'parallel-worktrees': 'gitBranch', 'plan-execute': 'listOrdered', 'advisor-escalation': 'lifeBuoy',
+  'best-of-n': 'trophy', 'review-gate': 'shieldCheck', economy: 'coins', balanced: 'scale', performance: 'gauge',
+}
+function iconOf(key) {
+  const span = document.createElement('span')
+  span.className = 'ico'
+  span.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LUCIDE[WORKFLOW_ICONS[key]] ?? LUCIDE.route}</svg>`
+  return span
+}
+
+const RESET_HOURS = [6, 12, 20, 24, 48, 72, 96, 120, 144, 168, 300, 400, 720]
+const PLAN_DAYS = [1, 2, 3, 5, 7, 14, 30]
+const withCurrent = (list, value) => (value === null || list.includes(value) ? list : [...list, value].sort((a, b) => a - b))
+const PROFILE_ICONS = { base: 'scale', savings: 'piggyBank', aggressive: 'flame' }
+function lucide(name, size = 13) {
+  const span = document.createElement('span')
+  span.className = 'ico'
+  span.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LUCIDE[name] ?? LUCIDE.route}</svg>`
+  return span
+}
+function renderProfiles() {
+  const root = document.getElementById('profiles')
+  root.replaceChildren()
+  Object.entries(state.profiles).forEach(([key, profile]) => {
+    const b = h('button', { type: 'button', title: profile.summary ?? '' }, [lucide(PROFILE_ICONS[key] ?? 'route'), (profile.name ?? key).toLowerCase()])
+    b.setAttribute('aria-pressed', String(key === state.profile))
+    b.onclick = () => { if (key === state.profile) return; state.profile = key; state.globalEdited = true; state.pulse = 1; refresh() }
+    root.append(b)
+  })
+}
+
+function renderUsage() {
+  const root = document.getElementById('usage')
+  root.replaceChildren()
+  const q = Q()
+  const low = lowProviders()
+  const tone = (value) => (value >= q.criticalThreshold ? 'var(--danger)' : value >= q.criticalThreshold - 20 ? 'var(--warn)' : 'var(--fg-muted)')
+  state.providers.forEach((id) => {
+    const def = PROVIDERS[id]
+    const load = mainLoad(id)
+    const detail = windowsOf(id).filter((w) => w.main).map((w) => `${w.label} ${usageOf(id, w.key)}%`).join(', ')
+    const pill = h('button', { className: `usage-pill${def.reader ? '' : ' unread'}`, title: `${def.label}: ${detail}${def.reader ? '' : '. Alethe does not read this yet; simulated'}`, style: `--pill-color:${tone(load)}` }, [
+      h('img', { src: MARKS[id], alt: '' }),
+      document.createTextNode(`${load}%`),
+      spareOf(id) ? h('span', { className: 'dot spare' }) : low.includes(id) ? h('span', { className: 'dot low' }) : null,
+    ])
+    pill.setAttribute('aria-pressed', String(state.usageOpen === id))
+    pill.onclick = (event) => { event.stopPropagation(); state.usageOpen = state.usageOpen === id ? null : id; refresh() }
+    root.append(pill)
+  })
+  Object.entries(state.routes).forEach(([rid, route]) => {
+    const chip = h('button', { className: 'usage-pill route', title: `${ROUTES[rid]?.label ?? rid}: ${route.running ? `running on :${route.port}` : 'installed, not running'}` }, [h('img', { src: MARKS[rid], alt: '' }), route.running ? 'on' : 'off'])
+    chip.onclick = (event) => { event.stopPropagation(); state.selected = { id: `route:${rid}` }; refresh() }
+    root.append(chip)
+  })
+  const id = state.usageOpen
+  if (!id || !state.providers.includes(id)) return
+  const def = PROVIDERS[id]
+  const pop = h('div', { className: 'usage-popover' })
+  pop.onclick = (event) => event.stopPropagation()
+  const tabs = h('div', { className: 'tabs' })
+  state.providers.forEach((pid) => {
+    const tab = h('button', { title: AGENTS[pid] }, [h('img', { src: MARKS[pid], alt: '' })])
+    tab.setAttribute('aria-pressed', String(pid === id))
+    tab.onclick = () => { state.usageOpen = pid; refresh() }
+    tabs.append(tab)
+  })
+  pop.append(h('div', { className: 'title' }, ['Usage', tabs]))
+  const presets = h('div', { className: 'presets' })
+  const current = usageKey()
+  Object.entries(USAGE_PRESETS).filter(([key]) => presetFits(key)).forEach(([key, preset]) => {
+    const b = h('button', { textContent: preset.label })
+    b.setAttribute('aria-pressed', String(key === current))
+    b.onclick = () => { state.usage = presetUsage(key); state.pulse = 1; refresh() }
+    presets.append(b)
+  })
+  pop.append(presets)
+  const spare = spareOf(id)
+  const status = low.includes(id) ? h('span', { className: 'state low', textContent: 'low' }) : spare ? h('span', { className: 'state spare', textContent: 'spare' }) : null
+  pop.append(h('div', { className: 'provider' }, [h('img', { src: MARKS[id], alt: '' }), def.label, status]))
+  if (!def.reader) pop.append(h('div', { className: 'unread-note', textContent: 'Alethe does not read this usage yet; the values below are a simulation.' }))
+  const set = (key, value) => { state.usage[id][key] = value; state.pulse = 1; refresh() }
+  windowsOf(id).forEach((w) => {
+    const value = h('span', { className: `val${usageOf(id, w.key) >= q.criticalThreshold ? ' hot' : ''}`, textContent: `${usageOf(id, w.key)}%` })
+    const range = h('input', { type: 'range', min: 0, max: 100, step: 1, value: usageOf(id, w.key) })
+    range.oninput = () => { value.textContent = `${range.value}%`; value.classList.toggle('hot', Number(range.value) >= q.criticalThreshold) }
+    range.onchange = () => set(w.key, Number(range.value))
+    pop.append(h('div', { className: 'line' }, [h('span', { textContent: w.label }), range, value]))
+  })
+  if (longWindow(id)) {
+    const reset = resetOf(id) ?? 168
+    const ends = expiresOf(id)
+    const resetSelect = selectOf(withCurrent(RESET_HOURS, reset).map((hours) => [String(hours), `in ${hoursText(hours)}`]), String(reset), (v) => set('reset', Number(v)))
+    const planSelect = selectOf([['renews', 'renews'], ...withCurrent(PLAN_DAYS, ends).map((days) => [String(days), `ends in ${days}d`])], ends === null ? 'renews' : String(ends), (v) => set('expires', v === 'renews' ? null : Number(v)))
+    pop.append(h('div', { className: 'meta' }, [h('span', { textContent: 'resets' }), resetSelect]), h('div', { className: 'meta' }, [h('span', { textContent: 'plan' }), planSelect]))
+  }
+  if (spare) pop.append(h('div', { className: 'why', textContent: `${spare.why}; ${spare.left}% would be lost` }))
+  pop.append(h('div', { className: 'foot', textContent: `Low: a main window past ${q.criticalThreshold}%. Stop: from ${q.stopAt}% the runner refuses to start work there. Spare: ${q.spareMinLeft}% or more left on a weekly or monthly cycle that ends with the plan or resets within ${q.spareWithinHours}h.` }))
+  root.append(pop)
+}
+document.addEventListener('click', () => { if (state.usageOpen) { state.usageOpen = null; refresh() } })
+
+function renderSidebar() {
+  const nav = document.getElementById('sidebar')
+  nav.replaceChildren()
+  const playbooks = Object.values(workflows).filter((w) => w.kind === 'playbook')
+  const routing = Object.values(workflows).filter((w) => w.kind === 'routing')
+  document.getElementById('pbCount').textContent = String(playbooks.length + routing.length)
+  const group = (title, items, color) => {
+    const box = h('div', { className: 'group' }, [h('div', { className: 'group-title' }, [h('span', { className: 'dot', style: `background:${color}` }), title])])
+    items.forEach((w) => {
+      const name = w.kind === 'playbook' ? w.pb.name : w.name
+      const count = w.kind === 'playbook' ? w.pb.phases.length : w.rules.length
+      const b = h('button', { className: 'wf', title: (w.kind === 'playbook' ? w.pb.pickWhen : w.blurb) ?? '' }, [iconOf(w.key), h('span', { className: 'name', textContent: name }), w.edited ? h('span', { className: 'edited-dot' }) : null, h('span', { className: 'n', textContent: String(count) })])
+      b.setAttribute('aria-current', String(w.id === state.wf))
+      b.onclick = () => {
+        state.wf = w.id
+        if (w.kind === 'routing') state.routingWf = w.id
+        state.selected = null
+        state.view = null
+        state.pulse = 1
+        refresh()
+      }
+      box.append(b)
+    })
+    nav.append(box)
+  }
+  group('strategies', playbooks, 'var(--ok)')
+  group('task routing', routing, '#0ea5e9')
+  const box = h('div', { className: 'group' }, [h('div', { className: 'group-title' }, [h('span', { className: 'dot', style: 'background:var(--fg-muted)' }), 'providers', h('span', { className: 'group-note', textContent: profileNow().name ?? state.profile })])])
+  activeOrder().forEach((id, i) => {
+    const via = routedVia(id)
+    const b = h('button', { className: 'wf', title: `${AGENTS[id]} · ${PROVIDERS[id].adapter} adapter` }, [
+      h('span', { className: 'ico' }, [h('img', { src: MARKS[id], alt: '' })]),
+      h('span', { className: 'name', textContent: AGENTS[id] }),
+      via ? h('img', { className: 'via', src: MARKS[via], alt: '', title: `through ${ROUTES[via]?.label ?? via}` }) : null,
+      h('span', { className: 'n', textContent: String(i + 1) }),
+    ])
+    b.setAttribute('aria-current', String(state.selected?.id === `provider:${id}`))
+    b.onclick = () => { state.selected = { id: `provider:${id}` }; refresh() }
+    box.append(b)
+  })
+  Object.entries(state.routes).forEach(([rid, route]) => {
+    const b = h('button', { className: 'wf', title: 'Route on the model traffic path' }, [h('span', { className: 'ico' }, [h('img', { src: MARKS[rid], alt: '' })]), h('span', { className: 'name', textContent: ROUTES[rid]?.label ?? rid }), h('span', { className: 'n', textContent: route.running ? 'on' : 'off' })])
+    b.setAttribute('aria-current', String(state.selected?.id === `route:${rid}`))
+    b.onclick = () => { state.selected = { id: `route:${rid}` }; refresh() }
+    box.append(b)
+  })
+  nav.append(box)
+}
+
+function renderScenarioBar() {
+  const bar = document.getElementById('scenarioBar')
+  bar.replaceChildren()
+  const item = (label, options, value, onPick) => h('label', {}, [label, selectOf(Object.entries(options).map(([k, v]) => [k, (typeof v === 'string' ? v : v.label).toLowerCase()]), value, onPick)])
+  const pick = (key) => (value) => { state[key] = value; state.pulse = 1; refresh() }
+  const parts = [
+    item('task', TASKS, state.task, pick('task')),
+    item('checks', CHECKS, state.checks, pick('checks')),
+    item('budget', BUDGET, state.budget, pick('budget')),
+    item('spent', SPENT, String(state.spent), (value) => { state.spent = Number(value); state.pulse = 1; refresh() }),
+  ]
+  if (activeOrder().every((p) => lowProviders().includes(p))) parts.push(item('all low', BOTH, state.quota.onBothCritical, (value) => { state.quota.onBothCritical = value; state.globalEdited = true; refresh() }))
+  parts.forEach((part, i) => {
+    if (i) bar.append(h('span', { className: 'divider' }))
+    bar.append(part)
+  })
+}
+
+function refresh() {
+  const wf = wfNow()
+  document.getElementById('wfTitle').textContent = wf.kind === 'playbook' ? wf.pb.name : `${wf.name} routing`
+  document.getElementById('edited').hidden = !(wf.edited || state.globalEdited)
+  renderProfiles()
+  renderUsage()
+  renderScenarioBar()
+  renderSidebar()
+  const open = Boolean(state.selected || state.info)
+  document.getElementById('app').classList.toggle('with-panel', open)
+  document.getElementById('panel').hidden = !open
+  document.getElementById('infoToggle').setAttribute('aria-pressed', String(state.info && !state.selected))
+  const graph = render()
+  if (open) renderPanel(graph)
+  document.getElementById('yaml').textContent = toYaml()
+  history.replaceState(null, '', `${location.search}#${encodeURIComponent([state.wf, state.task, usageKey(), state.checks, state.budget, state.quota.onBothCritical, state.profile, state.spent].join('/'))}`)
+}
+
+document.getElementById('infoToggle').onclick = () => {
+  state.info = !(state.info && !state.selected)
+  state.selected = null
+  refresh()
+}
+document.getElementById('yamlToggle').onclick = (event) => {
+  state.yaml = !state.yaml
+  event.currentTarget.setAttribute('aria-pressed', String(state.yaml))
+  document.getElementById('drawer').hidden = !state.yaml
+  fitView()
+  applyView()
+}
+document.getElementById('zoomIn').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, state.view.k * 1.2) }
+document.getElementById('zoomOut').onclick = () => { const r = svg.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, state.view.k / 1.2) }
+document.getElementById('fit').onclick = () => { fitView(); applyView() }
+document.getElementById('copy').onclick = () => navigator.clipboard?.writeText(toYaml())
+document.getElementById('download').onclick = () => {
+  const a = h('a', { href: URL.createObjectURL(new Blob([toYaml()], { type: 'text/yaml' })), download: 'alethe-playbooks.yaml' })
+  a.click()
+}
+window.addEventListener('resize', () => { fitView(); applyView() })
+
+initDefs()
+document.getElementById('drawer').hidden = !state.yaml
+document.getElementById('yamlToggle').setAttribute('aria-pressed', String(state.yaml))
+if (LOADED.error) document.body.prepend(h('div', { className: 'load-error', role: 'alert', textContent: LOADED.error }))
+if (params.has('gallery')) { renderGallery(); document.querySelector('.gallery').style.color = sty().text } else refresh()
+</script>
+</body>
+</html>

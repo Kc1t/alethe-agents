@@ -20,14 +20,19 @@ connect when enabled or used.
 Alethe uses Tauri's platform-specific application local-data directory. It keeps a profile registry at
 the root and isolates most state under `profiles/<profileId>/`. Typical data includes:
 
-- `projects.json`: projects, groups, terminal and layout state, preferences, custom CLI paths, recent
-  items, and Spotify client ID/client secret if entered in Preferences;
+- `projects.json`: projects, groups, terminal and layout state, preferences, custom CLI paths, and
+  recent items;
 - `scrollback/*.bin`: terminal scrollback snapshots;
 - `activity-stats.json`: local activity summaries;
 - `spawn.log`: process-launch and suspension diagnostics, including command/launcher representations,
   a PATH preview, identifiers, and timing data;
-- `spotify_tokens.json` and `github_sync.json`: integration credentials and sync metadata when those
-  integrations are connected;
+- `github_sync.json` and `cloud_sync.json`: non-secret sync metadata (account login, plan, device id)
+  when GitHub Gist Sync or Alethe Cloud is connected; the credentials themselves live in the
+  operating-system keyring;
+- `sync-state.json`: the last version of each Alethe Cloud scope this device synced, used to merge
+  changes from other devices;
+- `plugins/` and `plugin-data/<pluginId>.json`: installed local plugins and the record each one keeps
+  through its storage API;
 - `handoffs/<handoffId>/context.md`: a temporary cross-agent context packet when a handoff is used;
 - `mcp/registry-cache.json` and MCP backup files: registry results and backups made while managing
   agent configuration; and
@@ -43,7 +48,9 @@ state outside Alethe's profile directory.
 ### Retention
 
 Most profile data remains until it is overwritten, the profile is deleted, or app data is reset.
-There is no general time-based retention policy. Crash and frontend errors keep at most 20 files per
+There is no general time-based retention policy for local data. Alethe Cloud keeps synced documents
+until the account is deleted, revisions for at most 30 days, revoked devices for 30 days, and data
+from Supporter-only features for 30 days after a subscription ends. Crash and frontend errors keep at most 20 files per
 prefix, and the newest 500 event traces are retained in memory. Profile `spawn.log`, root
 `resource.log`, `app-events.log`, and `telemetry.jsonl` are append-only and currently have no rotation
 or size cap. Scrollback and logs may contain commands, output, paths, timing/resource facts, error
@@ -52,36 +59,50 @@ messages, or payloads supplied by app features.
 ### Export and deletion controls
 
 - **Backup export/import** writes a ZIP to a location the user chooses. A profile export includes the
-  profile tree, including persisted integration secrets and handoff/MCP artifacts, except `.log` and
-  `.tmp` files, embedded-webview runtime data, the shared browser session (`browser-session/`), MCP
-  configuration backups (`mcp/backups/`), downloaded models and tools (`speech-models/`, `tools/`),
-  and the device-bound Alethe Cloud files (`cloud_sync.json`, `sync-state.json`). Profile `spawn.log`
-  is therefore excluded. A file another program holds open is skipped and named instead of failing
-  the export. The archive also carries `alethe-backup.json` with the profile name and the profile's
-  local interface state (terminal prompt history, open Markdown tabs, folded settings sections), and
-  the exported `projects.json` embeds the profile photo and project, group, and tab icons that were
-  stored as links, so exporting downloads those images. Importing restores all of it. Treat exported
-  backups as sensitive and delete old copies yourself.
+  profile tree and handoff artifacts, except `.log` and `.tmp` files, embedded-webview runtime data,
+  the shared browser session (`browser-session/`), MCP configuration backups (`mcp/backups/`),
+  downloaded models and tools (`speech-models/`, `tools/`), and the device-bound Alethe Cloud files
+  (`cloud_sync.json`, `sync-state.json`). Profile `spawn.log` is therefore excluded. Importing a backup
+  keeps this device's Alethe Cloud session and resets its sync state, so the next sync merges without
+  deleting anything. A file another program holds open is skipped and named instead of failing the
+  export. The archive also carries `alethe-backup.json` with the profile name and the profile's local
+  interface state (terminal prompt history, open Markdown tabs, folded settings sections), and the
+  exported `projects.json` embeds the profile photo and project, group, and tab icons that were stored
+  as links, so exporting downloads those images. Importing restores all of it. Treat exported backups
+  as sensitive and delete old copies yourself.
+- **Settings export/import** (Sync → File) writes a `.alethe` file with the same include-listed
+  preferences, plugin state, project settings, and MCP/skill list that Alethe Cloud syncs. It never
+  contains API keys, MCP secret values, terminals, or scrollback. Importing merges into local data and
+  shows what will change first.
 - **Log export** writes the files in the root `logs/` directory to a user-chosen ZIP. Review and redact
   it before sharing. It does not include profile `spawn.log`.
 - **Delete profile** removes that profile directory; Alethe prevents deletion of the last profile.
 - **Reset/factory reset** removes active-profile data or, for the full reset, the app local-data root.
   The reset is best effort while files are open, and the app should be relaunched afterward.
-- **Spotify disconnect** removes `spotify_tokens.json`. **GitHub Sync logout** clears its stored token
-  but leaves non-secret sync metadata in `github_sync.json`.
+- **Spotify disconnect** removes the stored Spotify tokens. **GitHub Sync logout** clears its stored
+  token but leaves non-secret sync metadata in `github_sync.json`.
+- **Alethe Cloud sign out** revokes this device's session on the server and removes the local token,
+  metadata, and sync state. **Download my cloud data** saves everything the server holds for the
+  account as JSON. **Delete account** removes the account, its devices, synced documents, and
+  revisions from the server and cancels an active subscription; local data is not touched.
 
 Deleting Alethe data does not delete copies already exported or synced, repositories, coding-agent
-histories/configuration, operating-system credentials, remote GitHub Gists, or data held by external
-services. Remove those at their source as well.
+histories/configuration, operating-system credentials, remote GitHub Gists, the Alethe Cloud account,
+or data held by external services. Remove those at their source as well.
 
 ## Secrets and credentials
 
-Alethe does not currently move all integration secrets into an operating-system keyring:
+Alethe keeps integration credentials it owns in the operating-system keyring (service
+`com.kc1t.alethe`, one entry per profile), and migrates older plaintext copies there on load:
 
-- Spotify client ID/client secret are persisted as preferences in `projects.json`; Spotify access and
-  refresh tokens are JSON fields in `spotify_tokens.json`.
-- A GitHub personal access token is a JSON field in `github_sync.json`.
-- Profile backups can contain those files and values.
+- The Spotify client secret and the Spotify access and refresh tokens. The Spotify client ID stays in
+  `projects.json`.
+- The GitHub personal access token used by GitHub Gist Sync.
+- The Alethe Cloud session token.
+
+Some values are still plaintext: the 9router endpoint key in `projects.json`, and, when the Jev plugin
+is installed, its OpenRouter decisions key in `plugin-data/alethe.jev.json`. Alethe Cloud and settings
+exports never include them, but profile backups do. Uninstalling the plugin deletes its record.
 - MCP credentials remain in the agent configuration files where the user adds them. Alethe masks
   environment values in normal MCP views and reveals one value only on explicit request, but config
   files and Alethe-created MCP backups can still contain plaintext secrets.
@@ -123,7 +144,9 @@ does not necessarily mean it sends a request before the stated trigger.
 | Provider usage polling | **On** | While the title bar is mounted, Alethe schedules Claude, Codex, and Antigravity usage reads shortly after startup and every five minutes; ticks are skipped while the window is unfocused/hidden. The three topbar indicators default visible. Claude sends its bearer credential to `https://api.anthropic.com/api/oauth/usage`; Antigravity sends its bearer credential to `https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels`; Codex sends its bearer credential to `https://chatgpt.com/backend-api/wham/usage` and, when reset credits are available, to `https://chatgpt.com/backend-api/wham/rate-limit-reset-credits` for their titles and expiry, falling back to a short-lived `codex app-server` subprocess when that read fails. While the orchestrator or agent canvas is open, they also read Codex usage every minute through the same 60-second cache as the title bar, so all three share at most one Codex read per minute. The current visibility preferences hide indicators but do not gate the polling effects. |
 | Discord Rich Presence | **On** | Every 30 seconds, Alethe sends generic activity text (Alethe and the current app view, not project names) to the local Discord desktop IPC client. Discord controls any onward network publication under the Discord account's settings and terms. It can be disabled in Preferences. |
 | Spotify Now Playing | **Off / unconfigured** | No Spotify request succeeds on a clean profile because credentials and OAuth tokens are absent. Connecting opens Spotify authorization, temporarily listens only on `127.0.0.1:8888`, exchanges/refreshes tokens at `accounts.spotify.com`, and polls current or recent playback at `api.spotify.com` when a Now Playing widget is enabled. Returned cover-image URLs may cause requests to Spotify's image host. |
-| GitHub Sync | **Off / disconnected; manual** | Entering a token validates it against `https://api.github.com/user`. Explicit Push uploads `projects.json` and, if present, `activity-stats.json` to a secret GitHub Gist; explicit Pull downloads them. A secret Gist is access-controlled by GitHub, not end-to-end encrypted by Alethe. Alethe does not periodically push or pull. |
+| Alethe Cloud | **Off / signed out** | Signing in uses the GitHub device flow (`github.com/login/device/code`, `github.com/login/oauth/access_token`) and requests no GitHub scopes. The resulting GitHub token is sent once to the Alethe Cloud server (`https://cloud.kc1t.com`, hosted on Cloudflare Workers and D1), which reads the public GitHub profile and discards it; the server returns its own session token and registers the device by host name, platform, and app version. Synced data is limited to include-listed preferences, plugin enable state, project settings with the Git remote URL (embedded credentials are stripped), the folder each computer uses for the project (relative to its home folder) together with that computer's host name and a random installation id kept in the root `machine-id` file, and the MCP/skill list without secret values. Terminals, scrollback, API keys, and MCP secret values are never sent. Documents are stored as plaintext JSON, not end-to-end encrypted, with the previous version kept (free plan) or 30 days of versions (Supporter). On the free plan Alethe syncs when the user clicks Sync now or signs in, and checks once at startup whether another device changed something. On the Supporter plan it also syncs automatically after synced data changes, when the window gains focus, and every five minutes while focused. |
+| Alethe Cloud billing | **Only when subscribing** | Supporter checkout and subscription management open Polar pages in the system browser. Polar is the merchant of record and processes payment details; Alethe Cloud only receives the subscription state for the GitHub account (`gh:<GitHub user id>`). |
+| GitHub Sync | **Off / disconnected; manual** | Legacy and being retired: new connections are no longer offered, and a connected profile can only download. Pull downloads `projects.json` and, if present, `activity-stats.json` from the secret GitHub Gist uploaded earlier. A secret Gist is access-controlled by GitHub, not end-to-end encrypted by Alethe. |
 | MCP registry | **MCP feature on; search on demand** | Local agent configs are scanned without registry traffic. Searching the add flow queries `https://registry.modelcontextprotocol.io/v0/servers` and caches the first page of up to 20 search terms under the profile. Adding a result writes agent configuration; package runtimes or remote URLs connect later when an agent/MCP client runs them. |
 | MCP health checks and server tools | **On demand** | A Check action launches the selected coding-agent CLI so that CLI can test configured servers. The generic health probe may start a user-configured server command and probe it on an ephemeral loopback port. Those subprocesses and MCP servers can contact their configured hosts. |
 | Embedded web content | **Browser feature on; no page open** | A page is loaded only after the user adds a URL. The desktop build creates an incognito native webview with autofill off; JavaScript is **on by default** for each pane. The visited site and all resources it embeds receive ordinary network requests and can observe data normally exposed by the OS webview and network. Incognito mode is not anonymity and does not stop the site from collecting data. |

@@ -2,6 +2,7 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
+  ExternalLink,
   FileText,
   Folder,
   Link2,
@@ -10,28 +11,30 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { agentLabel as agentTypeLabel } from '../../../lib/agentProviders'
 import { useT } from '../../../lib/i18n'
 import {
   groupSkillsByName,
   hasBundledUpdate,
-  isBundledSkillOffered,
   pendingBundledAgents,
+  SHARED_SKILL_AGENT,
   type SkillGroup,
+  splitBundledReport,
 } from '../../../lib/skills'
+import { scanSkills } from '../../../lib/skillsScan'
 import {
-  skillsCatalog,
-  skillsDetail,
-  skillsInstallBundled,
-  skillsUninstall,
   type BundledSkill,
   type BundledSkillState,
+  openInBrowser,
   type SkillAgentSnapshot,
   type SkillDetail,
   type SkillNode,
+  skillsCatalog,
+  skillsDetail,
+  skillsInstallBundled,
   type SkillSummary,
+  skillsUninstall,
 } from '../../../lib/tauri'
-import { scanSkills } from '../../../lib/skillsScan'
-import { agentLabel as agentTypeLabel } from '../../../lib/agentProviders'
 import { useUiStore } from '../../../stores/uiStore'
 import { EmptyState } from '../../EmptyState'
 import { MarkdownRenderer } from '../../MarkdownPane/MarkdownRenderer'
@@ -64,6 +67,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
   const [detail, setDetail] = useState<SkillDetail | null>(null)
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null)
   const [busy, setBusy] = useState(false)
+  const [revision, setRevision] = useState(0)
 
   useEffect(() => {
     // Set on every mount: StrictMode unmounts and remounts once in development.
@@ -81,6 +85,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
     if (!mountedRef.current) return
     setCatalog(bundled)
     setSnapshots(next)
+    setRevision((current) => current + 1)
   }
 
   useEffect(() => {
@@ -88,7 +93,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
   }, [])
 
   const groups = useMemo(() => groupSkillsByName(snapshots ?? []), [snapshots])
-  const offers = useMemo(() => catalog.filter(isBundledSkillOffered), [catalog])
+  const offers = catalog
   const activeOffer =
     offers.find((skill) => offerKey(skill.name) === selected) ??
     (groups.length === 0 ? (offers[0] ?? null) : null)
@@ -117,7 +122,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
     return () => {
       cancelled = true
     }
-  }, [active?.name])
+  }, [active?.name, revision])
 
   const confirmRemove = async () => {
     const target = removeTarget
@@ -163,20 +168,26 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
     setBusy(true)
     try {
       const report = await skillsInstallBundled(skill.name, pendingBundledAgents(skill))
-      const done = report.filter((entry) => entry.state === 'installed')
+      const { done, failed } = splitBundledReport(report, (entry) => entry.state === 'installed')
       if (done.length > 0) {
         pushToast({
           title: t('skills.installed', { name: skill.name }),
           body: done.map((entry) => agentLabel(entry.agent)).join(', '),
         })
-      } else {
+      }
+      if (failed.length > 0) {
+        pushToast({
+          title: t('skills.installFailed'),
+          body: failed.map((entry) => `${agentLabel(entry.agent)}: ${entry.error}`).join(' · '),
+        })
+      } else if (done.length === 0) {
         pushToast({ title: t('skills.installFailed'), body: t('skills.conflictNote') })
       }
     } catch {
       pushToast({ title: t('skills.installFailed'), body: t('mcp.errGeneric') })
     }
     if (!mountedRef.current) return
-    setSelected(skill.name)
+    setSelected(offerKey(skill.name))
     await load(true)
     if (mountedRef.current) setBusy(false)
   }
@@ -201,7 +212,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
       <aside className={styles.list}>
         {offers.length > 0 ? (
           <>
-            <div className={styles.listTitle}>{t('skills.fromAlethe')}</div>
+            <div className={styles.listTitle}>{t('skills.official')}</div>
             {offers.map((skill) => (
               <button
                 key={skill.name}
@@ -212,7 +223,8 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
                 onClick={() => setSelected(offerKey(skill.name))}
               >
                 <span className={styles.skillName}>{skill.name}</span>
-                <Download size={11} />
+                {pendingBundledAgents(skill).length > 0 ? <Download size={11} /> : null}
+                <span className={styles.skillCount}>v{skill.version}</span>
               </button>
             ))}
             {groups.length > 0 ? (
@@ -349,10 +361,23 @@ function BundledSkillView({
       <header className={styles.detailHead}>
         <div className={styles.detailTitleRow}>
           <span className={styles.detailName}>{skill.name}</span>
-          <span className={styles.badge}>{t('skills.badgeAlethe')}</span>
+          <span className={styles.badge}>{t('skills.badgeOfficial')}</span>
+          <span className={styles.badge}>{t('skills.versionLabel', { version: skill.version })}</span>
+          {skill.repository ? (
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnSm}`}
+              onClick={() => void openInBrowser(skill.repository)}
+              title={skill.repository}
+            >
+              <ExternalLink size={11} />
+              {t('skills.sourceAction')}
+            </button>
+          ) : null}
           <InstallButton skill={skill} busy={busy} onInstall={onInstall} />
         </div>
         {skill.description ? <p className={styles.description}>{skill.description}</p> : null}
+        <p className={styles.note}>{t('skills.projectHint')}</p>
       </header>
 
       <section>
@@ -461,7 +486,7 @@ function SkillDetailView({
               <span className={styles.path} title={entry.path}>
                 {entry.path}
               </span>
-              {entry.bundled ? null : (
+              {entry.bundled || entry.agent === SHARED_SKILL_AGENT ? null : (
                 <button
                   type="button"
                   className={`${controls.btn} ${controls.btnSm} ${controls.btnSmDanger}`}

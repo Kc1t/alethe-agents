@@ -78,6 +78,12 @@ streaming through the Tauri events `pty://data/{id}` and `pty://exit/{id}`.
   writes (tmp → rename) — preserve that pattern.
 - The `projects.json` schema is versioned with migration/backfill — when changing its shape, keep the
   migration.
+- The official `alethe` skill (formerly `alethe-orchestrate`) is developed in
+  [`Kc1t/alethe-orchestrate-skill`](https://github.com/Kc1t/alethe-orchestrate-skill). Change it
+  there, push, then run `npm run skill:sync` (or `-- --from <checkout>`), which vendors
+  `skills/alethe/` into `src-tauri/assets/skills/alethe/` and rewrites the version and file list in
+  `src-tauri/src/skills.rs`; never edit the vendored folder here. Official skills are listed in
+  `BUNDLED_SKILLS` and install globally or into a project (`.claude/skills`, `.agents/skills`).
 
 ## 6. Gotchas / security
 

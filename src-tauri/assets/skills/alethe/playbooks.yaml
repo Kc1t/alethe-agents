@@ -1,0 +1,608 @@
+# Strategy playbooks for alethe-orchestrate.
+# The lead reads this file (scripts/orchestrate.py playbook) before it plans or delegates.
+# A user copy created with `playbook --init` replaces this file entirely.
+# Field and condition reference: references/playbooks.md
+
+version: 1
+goal: orchestrate-and-save
+
+principles:
+  - Do the work yourself when briefing a worker would cost more; delegation always has a floor cost.
+  - Spend the strong tier on decisions and the cheap tier on volume.
+  - Pin every worker's model and effort; a worker without them runs on its CLI's default model, which can be the most expensive one.
+  - Keep your context small; workers return answers, evidence and diffs, never transcripts.
+  - Split by independent unit and no finer; more, narrower briefs raised the bill in Anthropic's own run.
+  - Escalate on a failed check, never on a worker's own claim, one tier at a time and once per unit.
+  - Review a finished diff, never work in progress.
+  - Keep a worker's model and effort fixed for its whole session; switching discards its prompt cache.
+  - Use xhigh only to escalate, and avoid max.
+  - Cap every run with a budget and compare cost per finished task.
+  - Cheap models triage and skip; judging whether code is correct takes the standard tier or above.
+  - A risky unit never runs on the cheap tier, and its diff goes through review-gate.
+
+providers: [claude, codex]
+
+tiers:
+  cheap:
+    claude: { model: haiku, effort: low }
+    codex: { effort: low }
+  standard:
+    claude: { model: sonnet, effort: medium }
+    codex: { effort: medium }
+  strong:
+    claude: { model: opus, effort: high }
+    codex: { effort: high }
+
+quota:
+  criticalThreshold: 80
+  stopAt: 95
+  whenLow: switch-provider
+  onBothCritical: ask
+  whenSpare: spend-strong
+  spareWithinHours: 24
+  spareMinLeft: 30
+  planEnds: {}
+
+budget:
+  warnAt: 80
+  whenLow: finish-and-report
+
+profile: base
+profiles:
+  base:
+    name: Base
+    summary: Each tier on its usual model.
+  savings:
+    name: Savings
+    summary: One step cheaper on every tier.
+    quota: { criticalThreshold: 70, stopAt: 90 }
+    tiers:
+      standard:
+        claude: { model: haiku, effort: medium }
+        codex: { effort: low }
+      strong:
+        claude: { model: sonnet, effort: high }
+        codex: { effort: medium }
+  aggressive:
+    name: Aggressive
+    summary: One step stronger on every tier, spending more of each window before switching.
+    quota: { criticalThreshold: 95, stopAt: 98 }
+    tiers:
+      cheap:
+        claude: { model: sonnet, effort: low }
+        codex: { effort: medium }
+      standard:
+        claude: { model: opus, effort: medium }
+        codex: { effort: high }
+
+pickOrder:
+  - { when: "Narrow, clear task touching up to about 3 files", playbook: direct }
+  - { when: "Mechanical change with an automatic check", playbook: cascade }
+  - { when: "Unfamiliar code with much to read and little to write", playbook: scout-then-build }
+  - { when: "Up to about 10 independent questions or reads", playbook: plan-big-execute-small }
+  - { when: "Dozens or hundreds of similar items to check", playbook: audit-at-scale }
+  - { when: "Independent modules to change at the same time", playbook: parallel-worktrees }
+  - { when: "One feature built in sequential steps", playbook: plan-execute }
+  - { when: "Long, mostly mechanical task with a few hard decisions", playbook: advisor-escalation }
+  - { when: "Hard, high-stakes bug worth paying for several attempts", playbook: best-of-n }
+  - { when: "A finished diff before merge", playbook: review-gate }
+  - { when: "Anything else, letting the conditions decide per unit", playbook: complete }
+
+playbooks:
+  complete:
+    name: Complete
+    goal: One adaptive flow; the task picks the role, the tokens left pick the model, a failed check escalates.
+    pickWhen: You want one default that adapts per unit instead of choosing a playbook up front.
+    saves: Each unit runs on the cheapest role that fits, and moves to the other provider instead of stalling when tokens run out.
+    avoidWhen: A specialized playbook clearly fits better.
+    phases:
+      - id: plan
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Read the task; unless it is narrow, split it into bounded units and tag each one with a kind and an effort class.
+      - id: quick
+        role: do it yourself
+        who: lead
+        tier: strong
+        if: narrow
+        then: done
+        does: A narrow task never leaves your session; make the change and run the checks.
+      - id: read
+        role: scout
+        tier: cheap
+        readOnly: true
+        workers: 4
+        runner: research
+        with: quick
+        if: kind:research
+        then: done
+        does: One question per scout.
+        returns: The answer with file:line evidence, under 1.5K tokens.
+      - id: build
+        role: builder
+        tier: standard
+        readOnly: false
+        runner: economy
+        with: quick
+        if: not kind:research
+        does: Implement one unit.
+        returns: Changed files, checks run, failures and risks.
+        rules:
+          - if: [deep, claude-opus-above:50]
+            use: { model: sonnet, effort: high }
+          - if: deep
+            use: { tier: strong }
+          - if: [risky, light]
+            use: { tier: standard }
+          - if: light
+            use: { tier: cheap }
+      - id: review
+        role: reviewer
+        tier: standard
+        provider: codex
+        readOnly: true
+        runner: economy
+        does: Review the finished diff against the plan and the repository rules.
+        gate: Checks pass and the diff matches the plan.
+      - id: fix
+        role: fixer
+        tier: strong
+        readOnly: false
+        runner: economy
+        after: review
+        if: checks-failed
+        then: recheck
+        does: Fix from the failure excerpt and the review notes.
+        rules:
+          - if: budget-low
+            use: { tier: standard, effort: high }
+          - if: claude-low
+            use: { provider: codex, effort: xhigh }
+
+  direct:
+    name: Direct
+    goal: Finish it yourself without orchestration overhead.
+    pickWhen: The task is narrow and clear, up to about 3 files.
+    saves: No briefing and no second reader of the same files.
+    avoidWhen: There is real independent work to split.
+    phases:
+      - id: do
+        role: planner
+        who: lead
+        tier: standard
+        readOnly: false
+        does: Make the change and run the checks yourself; no workers.
+        gate: Checks pass.
+      - id: consult
+        role: advisor
+        tier: strong
+        readOnly: true
+        runner: economy
+        after: do
+        if: checks-failed-twice
+        then: recheck
+        does: Send only the failure summary and the diff; ask for a diagnosis, not a rewrite.
+        returns: The likely cause and the next step, in under 300 words.
+
+  plan-execute:
+    name: Plan, then execute
+    goal: A strong planner writes the steps once; a standard worker carries them out.
+    pickWhen: One feature built in sequential steps.
+    saves: The strong tier is billed only for planning, as in Claude Code's opusplan.
+    avoidWhen: The steps are obvious; plan inline and use direct.
+    next: review-gate
+    phases:
+      - id: plan
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Write numbered steps with file paths, interfaces and the check that proves each step.
+      - id: execute
+        role: executor
+        tier: standard
+        readOnly: false
+        runner: economy
+        does: Follow the plan step by step; stop and report when a step is wrong instead of improvising.
+        returns: Changed files, checks run, failures and risks.
+        gate: Checks pass.
+      - id: replan
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        after: execute
+        if: checks-failed-twice
+        does: Re-plan only the failing part, from the failure summary.
+      - id: strong-fix
+        role: fixer
+        tier: strong
+        readOnly: false
+        runner: economy
+        after: replan
+        then: recheck
+        does: Apply the revised steps.
+        rules:
+          - if: claude-low
+            use: { provider: codex, effort: xhigh }
+
+  plan-big-execute-small:
+    name: Plan big, execute small
+    goal: The strong lead only decomposes and synthesizes; standard workers do all the reading.
+    pickWhen: Read-heavy coverage work with up to about 10 independent units, such as auditing modules, verifying facts or triaging logs.
+    saves: In Anthropic's cookbook run, 84-98% of the team's input tokens were billed at the worker rate.
+    avoidWhen: The task is narrow, you can answer from what you already know, or the raw material itself needs strong judgment.
+    source: https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/CMA_plan_big_execute_small.ipynb
+    phases:
+      - id: decompose
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Split the question into independent units and write one plain brief per unit that says what to return. Do not read the raw material yourself.
+      - id: investigate
+        role: worker
+        tier: standard
+        readOnly: true
+        workers: 4
+        runner: research
+        does: One unit per worker, up to 8; never split one unit across several briefs.
+        returns: The answer, its evidence as file:line or URL, and what remains uncertain.
+        gate: Every worker reported and the evidence supports each answer.
+      - id: follow-up
+        role: worker
+        tier: standard
+        readOnly: true
+        runner: rescue
+        after: investigate
+        if: report-weak
+        then: recheck
+        does: Resume that worker's session with one focused question. After an infrastructure error, give the same brief to a fresh worker instead.
+        limit: One follow-up per unit.
+      - id: synthesize
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Wait for every report, then answer from the reports alone.
+
+  scout-then-build:
+    name: Scout, then build
+    goal: Cheap read-only scouts map the code; one standard worker writes the change.
+    pickWhen: Unfamiliar code with much to read and little to write.
+    saves: Scouts hand back short summaries instead of raw files filling your context.
+    avoidWhen: You already know which files change.
+    next: review-gate
+    phases:
+      - id: brief
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Name the areas to map and send one scout per area.
+      - id: scout
+        role: scout
+        tier: cheap
+        readOnly: true
+        workers: 4
+        runner: research
+        does: One area per scout; keep each slice well under 100K tokens.
+        returns: A summary under 1.5K tokens with file:line pointers.
+        gate: The scout reports agree.
+      - id: settle
+        role: checker
+        tier: standard
+        effort: high
+        readOnly: true
+        runner: economy
+        after: scout
+        if: conflict
+        then: recheck
+        does: Settle only the contradiction, from the cited lines.
+      - id: plan
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Turn the summaries into one concrete change plan.
+      - id: build
+        role: builder
+        tier: standard
+        readOnly: false
+        runner: economy
+        does: Implement the plan.
+        returns: Changed files, checks run, failures and risks.
+        gate: Checks pass.
+      - id: fix
+        role: fixer
+        tier: strong
+        readOnly: false
+        runner: economy
+        after: build
+        if: checks-failed
+        then: recheck
+        does: Fix from the failure excerpt and the diff.
+
+  advisor-escalation:
+    name: Advisor on call
+    goal: A standard executor does the work and consults a strong advisor only at decision points.
+    pickWhen: A long, mostly mechanical task with a few hard calls and a cheap signal for when to ask.
+    saves: Anthropic reports Sonnet with an Opus advisor gaining 2.7 points on SWE-bench Multilingual at 11.9% lower cost.
+    avoidWhen: Every step is hard; use plan-execute with a strong executor instead.
+    source: https://claude.com/blog/the-advisor-strategy
+    next: review-gate
+    phases:
+      - id: brief
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Hand the task to one executor and name the decisions it must stop at.
+      - id: execute
+        role: executor
+        tier: standard
+        readOnly: false
+        runner: economy
+        does: Work until done, stuck, or about to make a hard-to-reverse decision; then stop with a status under 1K tokens.
+        returns: The status, the decision needed and the options considered.
+        gate: Done and checks pass.
+      - id: advise
+        role: advisor
+        tier: strong
+        readOnly: true
+        runner: economy
+        after: execute
+        if: stuck
+        does: Read only the status and the cited files, then answer the decision.
+        limit: At most 3 consults per task.
+        rules:
+          - if: claude-low
+            use: { provider: codex, effort: xhigh }
+      - id: resume
+        role: executor
+        tier: standard
+        readOnly: false
+        runner: rescue
+        after: advise
+        then: recheck
+        does: Resume the executor's session with the advice.
+
+  cascade:
+    name: Cascade
+    goal: Try the cheap tier first and escalate only when an automatic check fails.
+    pickWhen: A mechanical change with an automatic check such as tests, a type check or a linter.
+    saves: FrugalGPT reports up to 98% savings at GPT-4-level quality; the savings vanish when retries pile up.
+    avoidWhen: There is no automatic check; a worker saying it is done is not a check.
+    source: https://arxiv.org/abs/2305.05176
+    next: review-gate
+    phases:
+      - id: brief
+        role: planner
+        who: lead
+        tier: standard
+        readOnly: true
+        does: Brief the cheap attempt and name the automatic check that decides.
+      - id: try-cheap
+        role: attempt
+        tier: cheap
+        readOnly: false
+        runner: economy
+        does: Make the change and run the check.
+        gate: The automatic check passes.
+      - id: try-standard
+        role: attempt
+        tier: standard
+        readOnly: false
+        runner: economy
+        after: try-cheap
+        if: checks-failed
+        does: Start fresh from the failure excerpt, not from the cheap attempt's transcript.
+        gate: The automatic check passes.
+      - id: try-strong
+        role: attempt
+        tier: strong
+        readOnly: false
+        runner: economy
+        after: try-standard
+        if: checks-failed
+        then: done
+        does: One last attempt with both failure excerpts; report the result either way.
+        rules:
+          - if: budget-low
+            use: { tier: standard, effort: high }
+
+  parallel-worktrees:
+    name: Parallel worktrees
+    goal: Write independent modules at the same time, each in its own worktree.
+    pickWhen: Truly independent modules with disjoint files and agreed interfaces.
+    saves: Wall time, not tokens; each worker reads its own slice again.
+    avoidWhen: The units share files or one needs another's output.
+    next: review-gate
+    phases:
+      - id: plan
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Assign disjoint files and fix the interfaces between units before anyone writes.
+      - id: build
+        role: builder
+        tier: standard
+        readOnly: false
+        workers: 3
+        isolate: true
+        runner: parallel
+        does: One unit per worker, 2 to 4 workers, each in its own worktree.
+        returns: Diff, checks run, failures and risks.
+      - id: integrate
+        role: integrator
+        tier: standard
+        readOnly: false
+        runner: economy
+        does: Combine the diffs and run the full test suite.
+        gate: The full test suite passes.
+      - id: replan
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        after: integrate
+        if: checks-failed
+        then: recheck
+        does: Re-plan only the failing slice.
+
+  best-of-n:
+    name: Best of N
+    goal: Several isolated attempts; failing ones are dropped and a strong judge picks the winner.
+    pickWhen: A hard, ambiguous, high-stakes fix where paying several times over is acceptable.
+    saves: Nothing; it costs about N times as much and buys reliability instead.
+    avoidWhen: Cost matters more than the extra reliability.
+    next: review-gate
+    phases:
+      - id: brief
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Write one brief and hand it to 2 or 3 isolated attempts.
+      - id: attempts
+        role: attempt
+        tier: standard
+        readOnly: false
+        workers: 3
+        isolate: true
+        runner: parallel
+        does: 2 or 3 independent attempts; mix Claude and Codex when both are installed.
+        returns: Diff and test results.
+        gate: At least one attempt passes the tests.
+      - id: strong-attempt
+        role: attempt
+        tier: strong
+        readOnly: false
+        runner: economy
+        after: attempts
+        if: no-pass
+        then: recheck
+        does: One attempt that starts from the failure summaries.
+      - id: judge
+        role: judge
+        tier: strong
+        readOnly: true
+        runner: economy
+        does: Compare the passing diffs and pick one.
+        returns: The chosen attempt and why.
+
+  review-gate:
+    name: Review gate
+    goal: A cheap triage decides whether review is worth it; strong review is spent only on bugs.
+    pickWhen: A finished diff before merge; the default last step of every playbook that writes.
+    saves: The strong tier only hunts bugs, and only in diffs worth reviewing.
+    avoidWhen: The diff is trivial, such as a rename or a comment fix.
+    source: https://github.com/anthropics/claude-code/blob/main/plugins/code-review/commands/code-review.md
+    phases:
+      - id: brief
+        role: planner
+        who: lead
+        tier: standard
+        readOnly: true
+        does: Hand the finished diff and the repository rules to triage.
+      - id: triage
+        role: triage
+        tier: cheap
+        readOnly: true
+        runner: economy
+        does: Skip trivial diffs; otherwise list the paths that need review.
+      - id: conventions
+        role: reviewer
+        tier: standard
+        readOnly: true
+        workers: 2
+        runner: research
+        does: Check the diff against the repository's rules and conventions; give each reviewer its own focus, such as naming and structure, or tests and error handling.
+        returns: Findings with file:line and the rule each one breaks, plus the checks that passed.
+      - id: bugs
+        role: bug-hunter
+        tier: strong
+        readOnly: true
+        with: conventions
+        does: Look only for real bugs in the diff.
+        returns: Findings with file:line and a failure scenario.
+        rules:
+          - if: claude-opus-above:80
+            use: { model: sonnet, effort: high }
+      - id: validate
+        role: validator
+        tier: strong
+        readOnly: true
+        runner: economy
+        does: Confirm or reject each finding against the code; a finding two providers reported on their own needs no second check.
+        returns: Each finding confirmed or rejected with evidence, then a VERDICT line of PASS, FAIL or NOT_PROVEN.
+        gate: The verdict is PASS and no confirmed finding is left.
+      - id: fix
+        role: fixer
+        tier: standard
+        readOnly: false
+        runner: economy
+        after: validate
+        if: findings-left
+        then: recheck
+        does: Fix the confirmed findings only.
+        limit: At most 2 rounds, then hand the rest to the user.
+
+  audit-at-scale:
+    name: Audit at scale
+    goal: Cheap workers check many similar items; only the hits reach more careful reviewers.
+    pickWhen: Dozens or hundreds of similar items, such as endpoints, migrations or dependencies.
+    saves: The volume runs on the cheap tier; only confirmed findings get a second, stronger look.
+    avoidWhen: There are fewer than about 10 items; use plan-big-execute-small.
+    phases:
+      - id: brief
+        role: planner
+        who: lead
+        tier: strong
+        readOnly: true
+        does: Define what counts as an item and the fixed verdict schema.
+      - id: extract
+        role: extractor
+        tier: standard
+        readOnly: true
+        runner: economy
+        does: List every item to check, with a fixed output schema.
+        returns: The item list.
+      - id: check
+        role: checker
+        tier: cheap
+        readOnly: true
+        workers: 8
+        runner: research
+        does: One item per worker in waves of up to 8, repeated until every item is checked.
+        returns: A verdict per item in the fixed schema, with evidence.
+      - id: skeptic
+        role: skeptic
+        tier: standard
+        effort: high
+        readOnly: true
+        workers: 2
+        runner: research
+        does: Re-check confirmed findings only; mark what cannot be checked as unverified, never as refuted.
+      - id: report
+        role: planner
+        who: lead
+        tier: standard
+        readOnly: true
+        does: Report confirmed, refuted and unverified items separately.
+
+sources:
+  - https://github.com/anthropics/claude-cookbooks/tree/main/managed_agents
+  - https://claude.com/blog/the-advisor-strategy
+  - https://code.claude.com/docs/en/model-config
+  - https://code.claude.com/docs/en/sub-agents
+  - https://www.anthropic.com/engineering/building-effective-agents
+  - https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+  - https://www.anthropic.com/engineering/multi-agent-research-system
+  - https://aider.chat/2025/01/24/r1-sonnet.html
+  - https://arxiv.org/abs/2305.05176
+  - https://lmsys.org/blog/2024-07-01-routellm/
+  - https://github.com/anthropics/claude-code/blob/main/plugins/code-review/commands/code-review.md

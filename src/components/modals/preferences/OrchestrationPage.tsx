@@ -1,4 +1,4 @@
-import { Minus, Plus, Trash2 } from 'lucide-react'
+import { Minus, Plus, Route, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { agentLabel } from '../../../lib/agentProviders'
@@ -13,29 +13,44 @@ import {
   pluginIds,
 } from '../../../lib/orchestrationSettings'
 import { type CodexModelOption, orchestratorCodexModels } from '../../../lib/tauri/orchestrator'
+import { isLightTheme, useAppliedTheme } from '../../../lib/themes'
 import type {
+  AgentType,
   OrchestrationRole,
   OrchestrationSettings,
   OrchestrationSkillSettings,
+  Theme,
 } from '../../../lib/types'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { AgentIcon } from '../../icons/AgentIcons'
 import { Dropdown } from '../../ui/Dropdown'
 import controls from '../controls.module.css'
 import styles from './OrchestrationPage.module.css'
 import { SettingsSection } from './primitives'
 import { RoutingSection } from './RoutingSection'
+import { StrategyArchitecture } from './StrategyArchitecture'
 
 const AGENTS: OrchestrationRole['agent'][] = ['codex', 'claude']
 const ORCHESTRATORS: NonNullable<OrchestrationRole['orchestrator']>[] = ['claude', 'codex']
 const SKILL_PROVIDERS: Array<{
   value: OrchestrationSkillSettings['conserveProvider']
   label: string
+  agent: AgentType
 }> = [
-  { value: 'codex', label: 'Codex' },
-  { value: 'claude', label: 'Claude Code' },
-  { value: 'agy', label: 'Agy / Antigravity' },
-  { value: 'kimi', label: 'Kimi Code' },
+  { value: 'codex', label: 'Codex', agent: 'codex' },
+  { value: 'claude', label: 'Claude Code', agent: 'claude' },
+  { value: 'agy', label: 'Agy / Antigravity', agent: 'antigravity' },
+  { value: 'kimi', label: 'Kimi Code', agent: 'kimi' },
 ]
+
+function agentOptionLabel(agent: AgentType, label: string, theme: Theme) {
+  return (
+    <span className={controls.iconLabel}>
+      <AgentIcon type={agent} size={14} theme={theme} />
+      {label}
+    </span>
+  )
+}
 
 function nextRoleName(roles: OrchestrationRole[]): string {
   const taken = new Set(roles.map((role) => role.name))
@@ -51,9 +66,12 @@ function secondsFrom(raw: string): number | null | undefined {
   return Number.isInteger(value) && value >= 0 && value <= MAX_TIMEOUT_SECONDS ? value : undefined
 }
 
-export function OrchestrationPage() {
+export function OrchestrationPage({ onOpenPlaybooks }: { onOpenPlaybooks?: () => void } = {}) {
   const t = useT()
   const settings = useProjectsStore((state) => state.preferences.orchestration)
+  const router9 = useProjectsStore((state) => state.preferences.router9)
+  const uiTheme = useProjectsStore((state) => state.preferences.uiTheme)
+  const appliedTheme = useAppliedTheme(uiTheme)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   const [models, setModels] = useState<CodexModelOption[] | null>(null)
   const [modelsError, setModelsError] = useState<string | null>(null)
@@ -213,7 +231,7 @@ export function OrchestrationPage() {
                 { value: '', label: t('prefs.orchestrationSkillProviderNone') },
                 ...SKILL_PROVIDERS.map((provider) => ({
                   value: provider.value ?? '',
-                  label: provider.label,
+                  label: agentOptionLabel(provider.agent, provider.label, uiTheme),
                 })),
               ]}
               onChange={(value) =>
@@ -249,7 +267,7 @@ export function OrchestrationPage() {
                 { value: '', label: t('prefs.orchestrationSkillProviderAuto') },
                 ...SKILL_PROVIDERS.map((provider) => ({
                   value: provider.value ?? '',
-                  label: provider.label,
+                  label: agentOptionLabel(provider.agent, provider.label, uiTheme),
                 })),
               ]}
               onChange={(value) =>
@@ -263,6 +281,22 @@ export function OrchestrationPage() {
           <p className={`${controls.hint} ${styles.skillHint}`}>
             {t('prefs.orchestrationSkillHint')}
           </p>
+          <StrategyArchitecture
+            strategy={settings.skill.defaultStrategy}
+            provider={settings.skill.preferredProvider}
+            routedThrough9router={Boolean(router9?.enabled && router9.defaultForNewAgents)}
+            lightTheme={isLightTheme(appliedTheme)}
+          />
+          {onOpenPlaybooks ? (
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnSm} ${styles.playbooksLink}`}
+              onClick={onOpenPlaybooks}
+            >
+              <Route size={14} />
+              {t('prefs.strategyDiagramOpenPlaybooks')}
+            </button>
+          ) : null}
         </div>
       </SettingsSection>
 
@@ -272,8 +306,14 @@ export function OrchestrationPage() {
         description={t('prefs.orchestrationLimitsDesc')}
       >
         <div className={styles.limits}>
-          <label className={controls.field}>
-            <span className={controls.label}>{t('prefs.orchestrationConcurrency')}</span>
+          <div
+            className={controls.field}
+            role="group"
+            aria-labelledby="orchestration-concurrency-label"
+          >
+            <span id="orchestration-concurrency-label" className={controls.label}>
+              {t('prefs.orchestrationConcurrency')}
+            </span>
             <div className={styles.stepper}>
               <button
                 type="button"
@@ -295,7 +335,7 @@ export function OrchestrationPage() {
                 <Plus size={15} />
               </button>
             </div>
-          </label>
+          </div>
           <label className={controls.field}>
             <span className={controls.label}>{t('prefs.orchestrationDefaultTimeout')}</span>
             <input
@@ -391,7 +431,7 @@ export function OrchestrationPage() {
                         { value: '', label: t('prefs.orchestrationOrchestratorAny') },
                         ...ORCHESTRATORS.map((agent) => ({
                           value: agent,
-                          label: agentLabel(agent),
+                          label: agentOptionLabel(agent, agentLabel(agent), uiTheme),
                         })),
                       ].map((option) => ({
                         ...option,
@@ -412,7 +452,10 @@ export function OrchestrationPage() {
                     <Dropdown
                       value={role.agent}
                       ariaLabel={t('prefs.orchestrationAgentFor', { name: label })}
-                      options={AGENTS.map((agent) => ({ value: agent, label: agentLabel(agent) }))}
+                      options={AGENTS.map((agent) => ({
+                        value: agent,
+                        label: agentOptionLabel(agent, agentLabel(agent), uiTheme),
+                      }))}
                       onChange={(value) => {
                         if (value !== role.agent)
                           setAgent(index, value as OrchestrationRole['agent'])

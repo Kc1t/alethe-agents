@@ -268,6 +268,13 @@
   margin: 0;
   padding: 28px 34px 52px;
 }
+.contentFill {
+  min-height: 0;
+  overflow: hidden;
+}
+.contentFillInner {
+  height: 100%;
+}
 .section {
   padding: 0 0 24px;
   outline: none;
@@ -755,10 +762,6 @@
   font-size: 10px;
 }
 
-.dictationMicSelect {
-  width: min(360px, 100%);
-}
-
 .agentList {
   display: flex;
   flex-direction: column;
@@ -849,6 +852,27 @@
   color: var(--status-waiting);
 }
 
+.select {
+  width: min(320px, 100%);
+}
+
+.selectInline {
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.selectSwatches {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+}
+.selectSwatches span {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
 .segmented {
   display: inline-flex;
   padding: 3px;
@@ -879,47 +903,6 @@
   align-items: flex-start;
   gap: 14px;
 }
-.resourceGrid {
-  width: min(620px, 100%);
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.resourceGrid label {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.resourceGrid label > span {
-  color: var(--fg-muted);
-  font-size: 10px;
-  font-weight: 600;
-}
-.errorState {
-  font-size: 11px;
-  color: var(--status-offline);
-  background: var(--status-offline-soft);
-  border: 1px solid var(--status-offline);
-  border-radius: var(--radius-sm);
-  padding: 8px 10px;
-}
-
-.resourceGrid input {
-  min-width: 0;
-  height: 38px;
-  padding: 0 10px;
-  color: var(--fg);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  outline: none;
-}
-.resourceGrid input:focus {
-  border-color: var(--accent);
-}
 .resourceHint {
   max-width: 620px;
   margin: 0;
@@ -948,9 +931,6 @@
     padding-inline: 10px;
   }
   .themeGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .resourceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .contentInner {
@@ -1018,7 +998,7 @@
 }
 
 .cliPathWarning {
-  color: var(--danger);
+  color: var(--status-offline);
 }
 
 .cliPathActions {
@@ -1208,18 +1188,4 @@
 .mutedNote {
   color: var(--fg-faint);
   font-size: 12px;
-}
-.voiceKeyInput {
-  width: 100%;
-  padding: 8px 10px;
-  color: var(--fg);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font: inherit;
-}
-
-.voiceKeyInput:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }

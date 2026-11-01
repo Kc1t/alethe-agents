@@ -7,6 +7,7 @@ import { themeDescription, themeLabel, useThemeOptions } from '../../../lib/them
 import type { MotionPreference, VisualStyle } from '../../../lib/types'
 import { UI_ZOOM_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { Dropdown } from '../../ui/Dropdown'
+import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
 
@@ -198,7 +199,7 @@ export function AppearancePage() {
         description={t('prefs.terminalThemeDesc')}
       >
         <Dropdown
-          className={styles.select}
+          rootClassName={styles.select}
           value={preferences.terminalTheme ?? ''}
           onChange={(value) =>
             setTerminalTheme(value ? (value as typeof preferences.uiTheme) : null)
@@ -206,7 +207,19 @@ export function AppearancePage() {
           ariaLabel={t('prefs.terminalTheme')}
           options={[
             { value: '', label: t('common.followUi') },
-            ...themeOptions.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
+            ...themeOptions.map((theme) => ({
+              value: theme.id,
+              label: (
+                <span className={controls.iconLabel}>
+                  <span className={styles.selectSwatches} aria-hidden>
+                    {theme.colors.map((color) => (
+                      <span key={color} style={{ background: color }} />
+                    ))}
+                  </span>
+                  {themeLabel(t, theme.id)}
+                </span>
+              ),
+            })),
           ]}
         />
       </SettingsSection>
@@ -247,6 +260,7 @@ export function AppearancePage() {
         description={t('prefs.topbarStyleDesc')}
       >
         <Dropdown
+          rootClassName={styles.select}
           value={preferences.topbarStyle}
           onChange={(value) => setPreferences({ topbarStyle: value as 'classic' | 'three-areas' })}
           ariaLabel={t('prefs.topbarStyle')}
@@ -271,6 +285,7 @@ export function AppearancePage() {
               <div key={view.id} className={styles.viewPlacementRow}>
                 <span>{label}</span>
                 <Dropdown
+                  rootClassName={styles.selectInline}
                   value={preferences.viewPlacements[view.id] ?? view.side}
                   onChange={(value) =>
                     setPreferences({

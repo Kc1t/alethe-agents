@@ -23,8 +23,9 @@
   color: var(--fg-muted);
   font-size: 11px;
 }
-.setting select {
-  width: 110px;
+.select {
+  width: 200px;
+  flex-shrink: 0;
 }
 .settingRow {
   display: flex;

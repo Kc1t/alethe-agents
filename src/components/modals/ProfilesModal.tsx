@@ -30,9 +30,11 @@ import {
   setActiveProfile,
   suspendPty,
 } from '../../lib/tauri'
+import { notifyMissingProfileTooling } from '../../lib/toolingNotice'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { ToolingManifestPanel } from '../ToolingManifestPanel'
 import { Avatar } from '../ui/Avatar'
 import controls from './controls.module.css'
 import { Modal } from './Modal'
@@ -59,6 +61,7 @@ export function ProfilesModal() {
   const projects = useProjectsStore((s) => s.projects)
   const preferences = useProjectsStore((s) => s.preferences)
   const language = useProjectsStore((s) => s.preferences.language)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
   const resetTerminalRuntime = useTerminalsStore((s) => s.reset)
 
   const [summaries, setSummaries] = useState<ProfileSummary[]>([])
@@ -158,6 +161,7 @@ export function ProfilesModal() {
     await hydrate()
     setNotice(null)
     closeModal()
+    void notifyMissingProfileTooling()
   }
 
   const create = async () => {
@@ -453,6 +457,21 @@ export function ProfilesModal() {
               })}
             </div>
           )}
+        </section>
+
+        <section className={styles.listSection}>
+          <div className={styles.sectionHeader}>
+            <div>
+              <h3>{t('tooling.profileTitle')}</h3>
+              <p>{t('tooling.profileDescription')}</p>
+            </div>
+          </div>
+          <ToolingManifestPanel
+            scope="global"
+            repo={null}
+            manifest={preferences.toolingManifest}
+            onChange={(toolingManifest) => setPreferences({ toolingManifest })}
+          />
         </section>
 
         {activeProfile ? (

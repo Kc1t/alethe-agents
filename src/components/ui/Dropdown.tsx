@@ -1,4 +1,4 @@
-import { ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, Search } from 'lucide-react'
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -66,6 +66,7 @@ export function Dropdown({
   const listboxId = useId()
   const selected = options.find((option) => option.value === value)
   const selectedLabel = displayValue ?? selected?.label ?? placeholder ?? ''
+  const showsPlaceholder = displayValue === undefined && !selected && placeholder !== undefined
   const normalizedSearch = search.trim().toLocaleLowerCase()
   const visibleOptions = normalizedSearch
     ? options.filter((option) => {
@@ -260,6 +261,7 @@ export function Dropdown({
         aria-expanded={open}
         title={title}
         disabled={disabled}
+        data-placeholder={showsPlaceholder ? '' : undefined}
         onClick={(event) => {
           event.stopPropagation()
           if (open) closeMenu()
@@ -323,7 +325,10 @@ export function Dropdown({
                       if (!option.disabled) choose(option.value)
                     }}
                   >
-                    <span>{option.label}</span>
+                    <span className={styles.optionLabel}>{option.label}</span>
+                    {option.value === value ? (
+                      <Check className={styles.check} size={13} aria-hidden="true" />
+                    ) : null}
                   </button>
                 ))}
                 {showCustomOption ? (

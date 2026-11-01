@@ -264,6 +264,10 @@
   background: var(--bg-elevated);
 }
 
+.shortcutRule {
+  width: 260px;
+}
+
 .shortcutText {
   grid-column: 1 / -1;
   min-height: 64px;

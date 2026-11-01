@@ -59,7 +59,7 @@ describe('loadLocalPlugin', () => {
     const pending = loadLocalPlugin(manifest())
 
     expect(injectedScript()?.getAttribute('src')).toBe('alethe-plugin://local.demo/main.js')
-    expect(window.alethe?.apiVersion).toBe(1)
+    expect(window.alethe?.apiVersion).toBe(2)
     expect(window.alethe?.react).toBeDefined()
 
     window.alethe!.registerPlugin('local.demo', module)

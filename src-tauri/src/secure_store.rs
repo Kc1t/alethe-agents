@@ -5,6 +5,7 @@ const SERVICE: &str = "com.kc1t.alethe";
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SecretKind {
     GithubSyncToken,
+    CloudSyncToken,
     SpotifyClientSecret,
     SpotifyAccessToken,
     SpotifyRefreshToken,
@@ -14,6 +15,7 @@ impl SecretKind {
     fn suffix(self) -> &'static str {
         match self {
             Self::GithubSyncToken => "github-sync-token",
+            Self::CloudSyncToken => "cloud-sync-token",
             Self::SpotifyClientSecret => "spotify-client-secret",
             Self::SpotifyAccessToken => "spotify-access-token",
             Self::SpotifyRefreshToken => "spotify-refresh-token",
@@ -91,6 +93,10 @@ mod tests {
         assert_eq!(
             account("default", SecretKind::GithubSyncToken),
             "profile:default:github-sync-token"
+        );
+        assert_eq!(
+            account("default", SecretKind::CloudSyncToken),
+            "profile:default:cloud-sync-token"
         );
         assert_eq!(
             account("default", SecretKind::SpotifyClientSecret),

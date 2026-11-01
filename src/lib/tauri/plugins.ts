@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 export type PluginKind = 'agentType' | 'skill' | 'validationPipeline' | 'ui' | 'theme'
 
@@ -86,6 +87,13 @@ export async function pluginSetEnabled(id: string, enabled: boolean): Promise<vo
  */
 export async function pluginInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return invoke<T>(command, args)
+}
+
+export async function pluginListen<T>(
+  event: string,
+  handler: (payload: T) => void,
+): Promise<() => void> {
+  return listen<T>(event, (message) => handler(message.payload))
 }
 
 export async function pluginStorageRead(id: string): Promise<string | null> {

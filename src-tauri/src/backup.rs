@@ -512,6 +512,8 @@ fn import_backup_inner(app: AppHandle, source_path: String) -> Result<ImportRepo
         let _ = read_remaining(&mut entry);
     }
 
+    crate::cloud_sync::reset_sync_state(&dir)?;
+
     let profile_id = crate::profiles::ensure_profiles_index(&app)?.active_profile_id;
     crate::spotify::migrate_profile_plaintext_files(
         &dir,

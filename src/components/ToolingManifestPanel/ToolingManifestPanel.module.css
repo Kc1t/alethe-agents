@@ -1,0 +1,127 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.toolbar button,
+.rowMain button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.sectionTitle {
+  margin: 0 0 6px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+.row + .row {
+  border-top: 1px solid var(--border);
+}
+.rowMain {
+  display: grid;
+  grid-template-columns: 84px minmax(90px, auto) minmax(0, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 34px;
+  padding: 4px 8px 4px 10px;
+  font-size: 12px;
+}
+.agent {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+.name {
+  overflow: hidden;
+  color: var(--fg);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.detail {
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status {
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.installed {
+  color: var(--status-active);
+  background: var(--status-working-soft);
+}
+.missing {
+  color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+.unavailable {
+  color: var(--status-offline);
+  background: var(--status-offline-soft);
+}
+.secrets {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 10px 10px;
+}
+.secretField {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.secretActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.hint,
+.empty {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.error {
+  padding: 8px 10px;
+  border: 1px solid var(--status-stopped);
+  border-radius: var(--radius-md);
+  color: var(--status-stopped);
+  background: var(--status-stopped-soft);
+  font-size: 11px;
+}
+.spin {
+  animation: tooling-spin 0.8s linear infinite;
+}
+@keyframes tooling-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

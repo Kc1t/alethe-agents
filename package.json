@@ -27,7 +27,8 @@
     "replay": "wdio run e2e/wdio.conf.ts --spec e2e/specs/_replay.spec.ts",
     "release": "node scripts/release.mjs",
     "release:publish": "node scripts/release-publish.mjs",
-    "mac-port": "node scripts/mac-port-report.mjs"
+    "mac-port": "node scripts/mac-port-report.mjs",
+    "skill:sync": "node scripts/sync-skill.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

@@ -6,9 +6,11 @@ import {
   ChevronRight,
   Info,
   type LucideIcon,
+  MonitorPlay,
   Palette,
   Plug,
   Puzzle,
+  Route,
   Search,
   ShieldCheck,
   TerminalSquare,
@@ -19,6 +21,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
+import { settingsContributions, useContributions } from '../../lib/plugins'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { setSectionCollapsed } from '../../lib/settingsSections'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -32,10 +35,12 @@ import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
 import { OrchestrationPage } from './preferences/OrchestrationPage'
 import { OrganizationPage } from './preferences/OrganizationPage'
+import { PlaybooksPage } from './preferences/playbooks/PlaybooksPage'
 import { PluginsPage } from './preferences/PluginsPage'
 import { Avatar } from './preferences/primitives'
 import { RemoteControlPage } from './preferences/RemoteControlPage'
 import { TerminalPage } from './preferences/TerminalPage'
+import { TutorialsPage } from './preferences/TutorialsPage'
 import styles from './PreferencesModal.module.css'
 
 type CategoryId =
@@ -47,7 +52,9 @@ type CategoryId =
   | 'integrations'
   | 'multiagent'
   | 'orchestration'
+  | 'playbooks'
   | 'organization'
+  | 'tutorials'
   | 'about'
   | 'remoteControl'
 
@@ -77,6 +84,7 @@ export function PreferencesModal() {
   const [query, setQuery] = useState('')
   const [resultCursor, setResultCursor] = useState(0)
   const [pendingTarget, setPendingTarget] = useState<string | null>(null)
+  const contributedSettings = useContributions(settingsContributions)
   const contentRef = useRef<HTMLDivElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
 
@@ -137,10 +145,22 @@ export function PreferencesModal() {
         Icon: Workflow,
       },
       {
+        id: 'playbooks',
+        label: t('prefs.categoryPlaybooks'),
+        description: t('prefs.categoryPlaybooksDesc'),
+        Icon: Route,
+      },
+      {
         id: 'multiagent',
         label: t('prefs.categoryMultiagent'),
         description: t('prefs.categoryMultiagentDesc'),
         Icon: Activity,
+      },
+      {
+        id: 'tutorials',
+        label: t('prefs.categoryTutorials'),
+        description: t('prefs.categoryTutorialsDesc'),
+        Icon: MonitorPlay,
       },
       {
         id: 'about',
@@ -263,6 +283,14 @@ export function PreferencesModal() {
         keywords: 'memory ram performance budget limit lru suspend memória desempenho limite',
       },
       {
+        category: 'playbooks',
+        target: 'playbooks',
+        label: t('prefs.categoryPlaybooks'),
+        description: t('prefs.categoryPlaybooksDesc'),
+        keywords:
+          'playbooks flow flowchart diagram fluxo fluxograma diagrama tiers profile perfil quota cota 剧本 流程图',
+      },
+      {
         category: 'orchestration',
         target: 'orchestration-roles',
         label: t('prefs.orchestrationRoles'),
@@ -360,12 +388,20 @@ export function PreferencesModal() {
         description: t('prefs.discordPresenceHint'),
         keywords: 'discord rich presence status integração',
       },
-      {
+      ...contributedSettings.map((section): SearchItem => ({
         category: 'integrations',
-        target: 'dictation',
-        label: t('prefs.dictation'),
-        description: t('prefs.dictationDesc'),
-        keywords: 'dictation voice mic microphone ditado voz microfone speech parakeet stt',
+        target: section.id,
+        label: section.title(),
+        description: section.description?.() ?? '',
+        keywords: section.keywords ?? '',
+      })),
+      {
+        category: 'tutorials',
+        target: 'tutorials-videos',
+        label: t('tutorials.videosTitle'),
+        description: t('tutorials.videosDesc'),
+        keywords:
+          'tutorial tutorials video videos youtube learn guide help aprender ajuda guia vídeo 教程 视频 帮助',
       },
       {
         category: 'about',
@@ -413,7 +449,7 @@ export function PreferencesModal() {
           'license privacy source code data folder logs licença privacidade código pasta dados 许可证 隐私 源代码 日志',
       },
     ],
-    [t],
+    [contributedSettings, t],
   )
 
   useEffect(() => {
@@ -497,6 +533,9 @@ export function PreferencesModal() {
           ref={dialogRef}
           className={styles.dialog}
           aria-describedby={undefined}
+          onEscapeKeyDown={(event) => {
+            if (document.querySelector('[data-alethe-dropdown-menu]')) event.preventDefault()
+          }}
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             const input =
@@ -601,8 +640,13 @@ export function PreferencesModal() {
               </Dialog.Close>
             </header>
 
-            <div ref={contentRef} className={styles.content}>
-              <div className={styles.contentInner}>
+            <div
+              ref={contentRef}
+              className={category === 'playbooks' ? styles.contentFill : styles.content}
+            >
+              <div
+                className={category === 'playbooks' ? styles.contentFillInner : styles.contentInner}
+              >
                 <ErrorBoundary label="preferences-page">
                   {category === 'account' ? (
                     <AccountPage
@@ -617,8 +661,12 @@ export function PreferencesModal() {
                   {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                   {category === 'integrations' ? <IntegrationsPage /> : null}
                   {category === 'multiagent' ? <MultiagentPage /> : null}
-                  {category === 'orchestration' ? <OrchestrationPage /> : null}
+                  {category === 'orchestration' ? (
+                    <OrchestrationPage onOpenPlaybooks={() => setCategory('playbooks')} />
+                  ) : null}
+                  {category === 'playbooks' ? <PlaybooksPage /> : null}
                   {category === 'organization' ? <OrganizationPage /> : null}
+                  {category === 'tutorials' ? <TutorialsPage /> : null}
                   {category === 'about' ? <AboutPage /> : null}
                   {category === 'remoteControl' ? <RemoteControlPage /> : null}
                 </ErrorBoundary>

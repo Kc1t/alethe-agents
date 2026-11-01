@@ -139,3 +139,85 @@ export async function deliverOpenCodePrompt(
   }
   return true
 }
+
+export type CodexPromptDeliveryIo = {
+  readScreenText: () => string | Promise<string>
+  paste: (text: string) => Promise<void>
+  submit: () => Promise<void>
+  sleep: (ms: number) => Promise<void>
+  isCancelled: () => boolean
+}
+
+const CODEX_COMPOSER_FINGERPRINT = normalizeForMatch('for shortcuts')
+// Trust, hooks-review and update dialogs: an Enter sent into one picks an option.
+const CODEX_DIALOG_FINGERPRINTS = ['Press enter to continue', 'enter confirm'].map(
+  normalizeForMatch,
+)
+const CODEX_SETTLED_MS = 1_500
+const CODEX_COMPOSER_FALLBACK_MS = 15_000
+const SCREEN_POLL_MS = 250
+
+function codexDialogOpen(screenNorm: string): boolean {
+  return CODEX_DIALOG_FINGERPRINTS.some((fingerprint) => screenNorm.includes(fingerprint))
+}
+
+async function waitForCodexScreen(
+  deadline: number,
+  io: CodexPromptDeliveryIo,
+  accepts: (screenNorm: string, startedAt: number) => boolean,
+): Promise<boolean> {
+  const startedAt = Date.now()
+  let acceptedSince: number | null = null
+  while (!io.isCancelled() && Date.now() < deadline) {
+    const screenNorm = normalizeForMatch(await io.readScreenText())
+    if (codexDialogOpen(screenNorm) || !accepts(screenNorm, startedAt)) {
+      acceptedSince = null
+    } else {
+      acceptedSince ??= Date.now()
+      if (Date.now() - acceptedSince >= CODEX_SETTLED_MS) return true
+    }
+    await io.sleep(SCREEN_POLL_MS)
+  }
+  return false
+}
+
+const codexComposerShown = (screenNorm: string, startedAt: number) =>
+  screenNorm.includes(CODEX_COMPOSER_FINGERPRINT) ||
+  Date.now() - startedAt >= CODEX_COMPOSER_FALLBACK_MS
+
+export async function deliverCodexPrompt(
+  prompt: string,
+  deadline: number,
+  io: CodexPromptDeliveryIo,
+): Promise<boolean> {
+  const fingerprint = normalizeForMatch(prompt).slice(-20)
+  const promptShown = async () => normalizeForMatch(await io.readScreenText()).includes(fingerprint)
+
+  let shown = false
+  while (!shown && !io.isCancelled() && Date.now() < deadline) {
+    if (!(await waitForCodexScreen(deadline, io, codexComposerShown))) return false
+    if (!(await promptShown())) await io.paste(prompt)
+    const roundDeadline = Math.min(deadline, Date.now() + CONFIRM_ROUND_BUDGET_MS)
+    while (!io.isCancelled() && Date.now() < roundDeadline) {
+      if (await promptShown()) {
+        shown = true
+        break
+      }
+      await io.sleep(CONFIRM_POLL_MS)
+    }
+  }
+  if (!shown) return false
+
+  for (
+    let attempt = 0;
+    attempt < MAX_ENTER_ATTEMPTS && !io.isCancelled() && Date.now() < deadline;
+    attempt++
+  ) {
+    if (!(await waitForCodexScreen(deadline, io, () => true))) return false
+    const screenBefore = await io.readScreenText()
+    await io.submit()
+    await io.sleep(1_500)
+    if ((await io.readScreenText()) !== screenBefore) break
+  }
+  return true
+}

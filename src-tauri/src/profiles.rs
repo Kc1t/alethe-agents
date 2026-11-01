@@ -9,7 +9,7 @@ pub(crate) use crate::provider_common::now_ms;
 
 const PROFILES_DIR_NAME: &str = "profiles";
 const PROFILES_REGISTRY_FILE: &str = "profiles.json";
-const DEFAULT_PROFILE_ID: &str = "default";
+pub const DEFAULT_PROFILE_ID: &str = "default";
 
 const WEBVIEW_CACHE_DIR: &str = "EBWebView";
 
@@ -481,6 +481,9 @@ pub fn delete_profile_state(app: &AppHandle, profile_id: &str) -> Result<Profile
     let target_dir = profile_dir(&root, &target.id);
     if target_dir.join("github_sync.json").is_file() {
         crate::secure_store::delete_github_sync_token(&target.id)?;
+    }
+    if target_dir.join("cloud_sync.json").is_file() {
+        crate::cloud_sync::delete_profile_session(&target.id)?;
     }
     crate::spotify::delete_profile_secrets(&target.id)?;
     if target_dir.exists() {

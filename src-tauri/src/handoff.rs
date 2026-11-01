@@ -957,9 +957,70 @@ pub async fn complete_agent_handoff(app: AppHandle, handoff_id: String) -> Resul
     .map_err(|error| format!("complete_agent_handoff task failed: {error}"))?
 }
 
+// A packet written moments ago may belong to a pane that projects.json does not list yet.
+const ORPHAN_HANDOFF_MIN_AGE: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+fn prune_in_root(root: &Path, keep: &[String], min_age: std::time::Duration) -> usize {
+    let Ok(entries) = fs::read_dir(root) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if validate_handoff_id(&name).is_err() || keep.contains(&name) {
+            continue;
+        }
+        let Ok(metadata) = fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        let old_enough = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age >= min_age);
+        if metadata.is_dir() && old_enough && fs::remove_dir_all(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+#[tauri::command]
+pub async fn prune_agent_handoffs(app: AppHandle, keep: Vec<String>) -> Result<(), String> {
+    let root = crate::paths::profile_data_dir(&app)?.join("handoffs");
+    tokio::task::spawn_blocking(move || {
+        prune_in_root(&root, &keep, ORPHAN_HANDOFF_MIN_AGE);
+    })
+    .await
+    .map_err(|error| format!("prune_agent_handoffs task failed: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pruning_keeps_live_packets_and_removes_orphans() {
+        let root =
+            std::env::temp_dir().join(format!("alethe-handoff-prune-{}", nanoid::nanoid!(8)));
+        for id in ["liveHandoff00001", "orphanHandoff001"] {
+            fs::create_dir_all(root.join(id)).expect("create packet");
+            fs::write(root.join(id).join("context.md"), "context").expect("write packet");
+        }
+        fs::write(root.join("notes.txt"), "not a packet").expect("write stray file");
+
+        let keep = vec!["liveHandoff00001".to_string()];
+        assert_eq!(
+            prune_in_root(&root, &keep, std::time::Duration::from_secs(3600)),
+            0
+        );
+        assert_eq!(prune_in_root(&root, &keep, std::time::Duration::ZERO), 1);
+
+        assert!(root.join("liveHandoff00001").join("context.md").is_file());
+        assert!(!root.join("orphanHandoff001").exists());
+        assert!(root.join("notes.txt").is_file());
+        fs::remove_dir_all(root).expect("remove test directory");
+    }
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]

@@ -1,7 +1,11 @@
-import defaultProfileImage from '../assets/theme-icons/dark.png'
-import type { Preferences } from './types'
+import { getAppIconImage } from './themeIcons'
+import { type AppIconTheme, DEFAULT_PREFERENCES, type Preferences } from './types'
 
-export const DEFAULT_PROFILE_IMAGE_URL = defaultProfileImage
+export function defaultProfileImageUrl(appIconTheme: AppIconTheme): string {
+  return getAppIconImage(appIconTheme)
+}
+
+export const DEFAULT_PROFILE_IMAGE_URL = defaultProfileImageUrl(DEFAULT_PREFERENCES.appIconTheme)
 
 type ProfileAccountNameInput = {
   profileId: string
@@ -25,7 +29,7 @@ export function getProfileAccountName({
 
 export function getProfileImageUrl(preferences: Preferences): string | null {
   const url = preferences.profileImageUrl.trim()
-  return url.length > 0 ? url : DEFAULT_PROFILE_IMAGE_URL
+  return url.length > 0 ? url : defaultProfileImageUrl(preferences.appIconTheme)
 }
 
 export function getProfileInitial(displayName: string): string {

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://alethe.app/schemas/orchestrate-plan-v1.json",
+  "title": "Alethe CLI orchestration plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "workers"],
+  "properties": {
+    "version": { "const": 1 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "why": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "playbook": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$" },
+    "phase": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$" },
+    "strategy": {
+      "enum": ["auto", "economy", "balanced", "quality", "research", "parallel", "rescue"],
+      "default": "auto"
+    },
+    "preset": {
+      "enum": ["economy", "balanced", "quality", "research", "performance"],
+      "deprecated": true
+    },
+    "maxConcurrent": { "type": "integer", "minimum": 1, "maximum": 16 },
+    "defaultTimeoutSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400,
+      "default": 1200
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxCalls": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "maxWallSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "maxEstimatedPromptTokens": { "type": "integer", "minimum": 1 },
+        "maxReportedCostUsd": { "type": "number", "exclusiveMinimum": 0 },
+        "maxReportedTokens": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "workers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/worker" }
+    }
+  },
+  "$defs": {
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "provider", "cwd", "mode"],
+      "oneOf": [
+        { "required": ["task"], "not": { "required": ["taskFile"] } },
+        { "required": ["taskFile"], "not": { "required": ["task"] } }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "why": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "provider": {
+          "enum": ["auto", "codex", "claude", "agy", "antigravity", "kimi", "custom"]
+        },
+        "mode": { "enum": ["read-only", "write"] },
+        "cwd": { "type": "string", "minLength": 1 },
+        "task": { "type": "string", "minLength": 1 },
+        "taskFile": { "type": "string", "minLength": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+        "isolate": { "type": "boolean", "default": false },
+        "seedPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        },
+        "model": { "type": "string", "minLength": 1 },
+        "effort": { "type": "string", "minLength": 1 },
+        "tier": { "enum": ["cheap", "standard", "strong"], "default": "standard" },
+        "resume": { "type": "string", "minLength": 1 },
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "promptTransport": { "enum": ["stdin", "argument"] },
+        "outputFormat": { "enum": ["text", "json", "jsonl"] },
+        "allowUnsafe": { "type": "boolean", "default": false },
+        "mcp": { "type": "boolean", "default": false },
+        "idleTimeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 86400 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "provider": { "const": "custom" } } },
+          "then": { "required": ["command"] }
+        },
+        {
+          "if": { "properties": { "isolate": { "const": true } } },
+          "then": { "properties": { "mode": { "const": "write" } } }
+        }
+      ]
+    }
+  },
+  "not": { "required": ["strategy", "preset"] }
+}

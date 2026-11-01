@@ -206,8 +206,8 @@ script, released as a checksummed zip and installed from the catalogue.
 - **Orchestration board**: a lead agent delegates units of work to Claude and Codex workers that
   Alethe runs in parallel — each optionally in its own git worktree, each reporting status, cost,
   tokens and diff on its card, and each able to ask you before it leaves its sandbox. Off by default.
-- **Local voice dictation** with an on-device model, and **cloud sync** of your preferences through
-  a GitHub sign-in — both optional.
+- **Cloud sync** of your preferences through a GitHub sign-in, optional. Voice commands and local
+  dictation come from the optional **Jev** plugin.
 - **Remote Control**: an authenticated LAN web view, paired by QR code, to follow and answer agents
   from your phone. It is off by default and uses unencrypted HTTP/WebSocket transport on the LAN, so
   enable it only on a trusted network. Clean profiles are read-only; answering agents requires a
@@ -215,6 +215,55 @@ script, released as a checksummed zip and installed from the catalogue.
 - Spotify Now Playing, using your own Spotify app credentials in **Preferences ▸ Spotify** with
   `http://127.0.0.1:8888/callback` as the redirect URI. Current releases store those credentials in
   local profile files; see the privacy guide before exporting or sharing profile data.
+
+## Orchestration
+
+Alethe ships [`alethe`](https://github.com/Kc1t/alethe-orchestrate-skill), its official
+orchestration skill. The agent you talk to becomes the lead: it picks a playbook, writes bounded
+briefs, and hands them to cheaper Claude Code, Codex, Antigravity or Kimi workers, then reads back
+only their results. Install it from the Skills window, for every project or inside one repository,
+and tune it under **Preferences ▸ Orchestration**.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/orchestration/how-it-works-dark.svg">
+    <img src="./docs/assets/orchestration/how-it-works-light.svg" alt="You ask your agent to orchestrate a refactor. The lead agent picks a playbook, writes the briefs and dry-runs the plan, then orchestrate.py runs one wave of workers: Claude Code on haiku, read-only; Codex at low effort, writing in its own worktree; Antigravity, read-only. They leave result.md, diff.patch and outcome.json while full transcripts stay on disk. The lead reads only the results, checks, integrates and marks them, runs the next wave, and finally writes the orchestration report" width="900">
+  </picture>
+</p>
+
+Every orchestration follows a playbook. **Preferences ▸ Playbooks** shows each one as a canvas of
+blocks: drag workers, checks and conditions from the palette, connect their ports, and drop a
+condition on a worker to switch its model. Conditions cover the task, quota (a provider low or
+spare, a window past a percent) and cost (budget low, the model's price per million tokens, the
+spend so far). Pick a task, check result, budget and spend to light the path that would run, switch
+between the base, savings and aggressive profiles, and read Claude and Codex quota live. Saving
+writes `alethe-playbooks.yaml`, the file the skill plans with.
+
+<p align="center">
+  <img src="./docs/assets/orchestration/playbook-scout-then-build.png" alt="The scout-then-build playbook as a flow: planner, four scouts, a checker when they disagree, planner, builder, and a fixer when checks fail" width="100%">
+</p>
+
+Workers hand back results, not transcripts, so the lead's context stays small and the spend is
+what each CLI reported, never an estimate.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/orchestration/savings-dark.svg">
+    <img src="./docs/assets/orchestration/savings-light.svg" alt="Two hand-drawn bar charts. Left: one Claude haiku worker on the same one-line task used 76,160 tokens and $0.16 with version 11, and 38,157 tokens and $0.08 with version 12. Right: in a real two-worker run, 5.0 KB of worker transcripts stayed on disk while the lead read 595 bytes of results" width="820">
+  </picture>
+</p>
+
+**The skill also works without Alethe.** It is a standalone agent skill with its own repository,
+[Kc1t/alethe-orchestrate-skill](https://github.com/Kc1t/alethe-orchestrate-skill), and runs in
+Claude Code, Codex and any agent that reads `SKILL.md`:
+
+```sh
+npx skills add Kc1t/alethe-orchestrate-skill
+```
+
+Its [README](https://github.com/Kc1t/alethe-orchestrate-skill#readme) covers the Claude Code and
+Codex plugins, the `/alethe` commands, the playbooks and the cost report. Changes to the skill go to
+that repository first; `npm run skill:sync` brings them into Alethe.
 
 ## Core Concepts
 
