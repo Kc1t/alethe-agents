@@ -10,6 +10,12 @@ const MIN_OUTPUT_CHARS_AFTER_ECHO = 12
 
 type MonitorState = 'idle' | 'armed' | 'working'
 
+const monitors = new Map<string, AgentCompletionMonitor>()
+
+export function recordAgentInput(ptyId: string, data: string): void {
+  monitors.get(ptyId)?.handleInput(data)
+}
+
 export type AgentCompletionMonitorOptions = {
   ptyId: string
   agent: Exclude<AgentType, 'shell'>
@@ -30,7 +36,9 @@ export class AgentCompletionMonitor {
   private idleTimer: number | null = null
   private disposed = false
 
-  constructor(private readonly options: AgentCompletionMonitorOptions) {}
+  constructor(private readonly options: AgentCompletionMonitorOptions) {
+    monitors.set(options.ptyId, this)
+  }
 
   handleInput(data: string): void {
     if (this.disposed) return
@@ -67,6 +75,7 @@ export class AgentCompletionMonitor {
   dispose(): void {
     this.disposed = true
     this.clearIdleTimer()
+    if (monitors.get(this.options.ptyId) === this) monitors.delete(this.options.ptyId)
   }
 
   private arm(prompt: string): void {

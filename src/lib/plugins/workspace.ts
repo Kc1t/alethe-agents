@@ -5,6 +5,8 @@ import {
 } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { recordAgentActivityInput } from '../activityTracker'
+import { recordAgentInput } from '../agentCompletionMonitor'
 import { agentLabel } from '../agentProviders'
 import { writePty } from '../tauri'
 import { type AgentType, isShellAgentType, type Project, type Terminal } from '../types'
@@ -12,7 +14,7 @@ import type { PluginWorkspace, WorkspaceSnapshot, WorkspaceTerminal } from './ty
 
 type Located = { project: Project; terminal: Terminal }
 
-function isPlainTerminal(terminal: Terminal): boolean {
+export function isPlainTerminal(terminal: Terminal): boolean {
   return !terminal.kind || terminal.kind === 'terminal'
 }
 
@@ -20,8 +22,14 @@ function activeTab(terminal: Terminal) {
   return terminal.tabs.find((tab) => tab.id === terminal.activeTabId) ?? terminal.tabs[0]
 }
 
-function liveProjects(): Project[] {
+export function liveProjects(): Project[] {
   return useProjectsStore.getState().projects.filter((project) => !project.archived)
+}
+
+export async function typeIntoPty(ptyId: string, text: string): Promise<void> {
+  await writePty(ptyId, text)
+  recordAgentInput(ptyId, text)
+  recordAgentActivityInput(ptyId, text)
 }
 
 function locate(terminalId: string): Located {
@@ -122,7 +130,7 @@ export function createPluginWorkspace(require: (capability: string) => void): Pl
       require('terminal.write')
       const ptyId = activeTab(locate(terminalId).terminal)?.ptyId
       if (!ptyId) throw new Error(`terminal_not_running:${terminalId}`)
-      await writePty(ptyId, text)
+      await typeIntoPty(ptyId, text)
     },
   }
 }

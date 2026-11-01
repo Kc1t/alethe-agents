@@ -1,1 +1,1 @@
-export const PLUGIN_API_VERSION = 2
+export const PLUGIN_API_VERSION = 3

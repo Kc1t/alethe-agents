@@ -12,10 +12,12 @@ export const CAPABILITY_KEYS: Record<string, MessageKey> = {
   'ui.settings': 'prefs.pluginsCapabilitySettings',
   'workspace.read': 'prefs.pluginsCapabilityWorkspaceRead',
   'workspace.control': 'prefs.pluginsCapabilityWorkspaceControl',
+  'terminal.read': 'prefs.pluginsCapabilityTerminalRead',
   'terminal.write': 'prefs.pluginsCapabilityTerminalWrite',
   'invoke:git_*': 'prefs.pluginsCapabilityGit',
   'invoke:worktree_*': 'prefs.pluginsCapabilityWorktree',
   'invoke:speech_*': 'prefs.pluginsCapabilitySpeech',
+  'invoke:agent_voice_*': 'prefs.pluginsCapabilityAgentVoice',
   'invoke:jev_decide': 'prefs.pluginsCapabilityJevDecide',
   'listen:speech*': 'prefs.pluginsCapabilitySpeechEvents',
 }

@@ -54,8 +54,15 @@ export async function writePty(id: string, data: string): Promise<void> {
   await invoke('write_pty', { id, data })
 }
 
+const ptySizes = new Map<string, { cols: number; rows: number }>()
+
+export function lastPtySize(id: string): { cols: number; rows: number } | null {
+  return ptySizes.get(id) ?? null
+}
+
 export async function resizePty(id: string, cols: number, rows: number): Promise<void> {
   await invoke('resize_pty', { id, cols, rows })
+  ptySizes.set(id, { cols, rows })
 }
 
 export async function killPty(id: string): Promise<void> {

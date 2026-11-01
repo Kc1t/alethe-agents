@@ -29,7 +29,7 @@ pub enum PluginKind {
     Theme,
 }
 
-pub const PLUGIN_API_VERSION: u32 = 2;
+pub const PLUGIN_API_VERSION: u32 = 3;
 
 fn default_api_version() -> u32 {
     1

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { PluginManifest } from '../tauri'
+import { PLUGIN_API_VERSION } from './constants'
 import { loadLocalPlugin, pluginAssetUrl, resetLocalTransportForTests } from './localTransport'
 import type { PluginModule } from './types'
 
@@ -59,7 +60,7 @@ describe('loadLocalPlugin', () => {
     const pending = loadLocalPlugin(manifest())
 
     expect(injectedScript()?.getAttribute('src')).toBe('alethe-plugin://local.demo/main.js')
-    expect(window.alethe?.apiVersion).toBe(2)
+    expect(window.alethe?.apiVersion).toBe(PLUGIN_API_VERSION)
     expect(window.alethe?.react).toBeDefined()
 
     window.alethe!.registerPlugin('local.demo', module)

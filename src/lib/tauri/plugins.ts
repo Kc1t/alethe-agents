@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 
 export type PluginKind = 'agentType' | 'skill' | 'validationPipeline' | 'ui' | 'theme'
@@ -86,7 +86,17 @@ export async function pluginSetEnabled(id: string, enabled: boolean): Promise<vo
  * the plugin's declared capabilities before it reaches this function.
  */
 export async function pluginInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  return invoke<T>(command, args)
+  return invoke<T>(command, args && withChannels(args))
+}
+
+// a plugin cannot construct a Channel without bundling its own copy of @tauri-apps/api
+export function withChannels(args: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(args).map(([key, value]) => [
+      key,
+      typeof value === 'function' ? new Channel(value as (message: unknown) => void) : value,
+    ]),
+  )
 }
 
 export async function pluginListen<T>(

@@ -99,6 +99,8 @@ Alethe keeps integration credentials it owns in the operating-system keyring (se
   `projects.json`.
 - The GitHub personal access token used by GitHub Gist Sync.
 - The Alethe Cloud session token.
+- The Fish Audio API key saved for the Agent Voice plugin. The plugin can set or clear it but never
+  reads it back; only the backend uses it.
 
 Some values are still plaintext: the 9router endpoint key in `projects.json`, and, when the Jev plugin
 is installed, its OpenRouter decisions key in `plugin-data/alethe.jev.json`. Alethe Cloud and settings
@@ -153,6 +155,7 @@ does not necessarily mean it sends a request before the stated trigger.
 | LAN Remote Control | **Off** | When enabled, Alethe binds plain HTTP and WebSocket listeners to the detected LAN interface, choosing ports in `9340–9360` (WebSocket starts at the next port range). Pairing is opened explicitly for two minutes and uses a token; clean-profile limits are one device, one-hour sessions, read-only access on, and shell input off. Terminal/workspace metadata and scrollback are then available to authenticated paired devices. A paired device that is not read-only can also start a Claude Code or Codex terminal in an existing project, and sees the orchestrator workers (task, status, summary, time, cost) running inside projects that share at least one terminal. Use only on a trusted LAN; the transport is not TLS-encrypted. |
 | Agent-event hook listener | **On, loopback only** | At backend startup Alethe listens on the first available address from `127.0.0.1:9123–9143`. Requests require an in-memory `X-Alethe-Token`; Alethe writes a temporary hook configuration only when an agent workflow requests it. Hook payloads can feed the local event bus and therefore local telemetry. |
 | AI Memory bridge | **Off** | The feature default is disabled. Detection, when requested, checks the local `ai-memory` executable and `127.0.0.1:49374`; configured agent sessions run the third-party `ai-memory mcp` subprocess over stdio. Its own storage and network behavior belong to that tool. |
+| Agent Voice speech | **Plugin not installed** | Only with the external Agent Voice plugin installed, enabled and given a Fish Audio key: each line it speaks (the opening sentences of an agent's reply, up to about 25 words, or a fixed line when a shell exits) is sent with the key to `https://api.fish.audio/v1/tts` by the Alethe backend, which streams the audio back. With Reply by voice on, the microphone opens after a voice ends and the recording is transcribed on the device. |
 | Development server | **Development only** | `npm run dev` and `npm run app` start Vite with hot-module reload on a loopback development port. This server and development CSP are not part of packaged releases; do not expose the development server to an untrusted network. |
 | Git remotes, installers, and external links | **On demand** | Clone, fetch/pull/push, agent install/update/uninstall, and opened links run only after a user action. Alethe delegates to Git, package managers/vendor installers, or the system browser; those tools contact the user-selected remote or their package/vendor services and apply their own credential and telemetry rules. |
 

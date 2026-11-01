@@ -117,6 +117,53 @@ export type PluginWorkspace = {
   writeToTerminal: (terminalId: string, text: string) => Promise<void>
 }
 
+export type TerminalSessionStatus = 'working' | 'waiting' | 'stopped' | 'disabled' | 'offline'
+
+export type TerminalSession = {
+  // opaque, and replaced whenever the tab's process is
+  id: string
+  terminalId: string
+  projectId: string
+  name: string
+  agent: string
+  agentLabel: string
+  shell: boolean
+  status: TerminalSessionStatus
+}
+
+export type TerminalExit = {
+  code: number | null
+  reason: string
+}
+
+export type PluginTerminals = {
+  sessions: () => TerminalSession[]
+  onChange: (handler: () => void) => Disposable
+  onOutput: (sessionId: string, handler: (chunk: string) => void) => Disposable
+  onExit: (sessionId: string, handler: (exit: TerminalExit) => void) => Disposable
+  size: (sessionId: string) => { cols: number; rows: number } | null
+  write: (sessionId: string, text: string) => Promise<void>
+}
+
+export type PluginAgents = {
+  label: (agent: string) => string
+  // a CSS color that follows the active theme
+  accent: (agent: string) => string
+}
+
+export type PluginDropdownProps = {
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+  ariaLabel: string
+  disabled?: boolean
+}
+
+export type PluginComponents = {
+  AgentIcon: ComponentType<{ agent: string; size?: number }>
+  Dropdown: ComponentType<PluginDropdownProps>
+}
+
 export type PluginToast = {
   title: string
   body?: string
@@ -203,6 +250,10 @@ export type PluginContext = {
     toast: (toast: PluginToast) => void
   }
   readonly workspace: PluginWorkspace
+  readonly terminals: PluginTerminals
+  readonly agents: PluginAgents
+  readonly components: PluginComponents
+  locale: () => Locale
   /** Registers messages under `plugin.<id>.` — the prefix is added for you. */
   registerMessages: (locale: Locale, messages: Record<string, string>) => Disposable
   /** Translates one of this plugin's own keys, without the prefix. */

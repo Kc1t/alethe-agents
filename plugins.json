@@ -36,6 +36,56 @@
         "url": "https://github.com/Kc1t/alethe-jev/releases/download/v1.0.0/alethe-jev-1.0.0.zip",
         "sha256": "e4f26fdd8cad32f296677562ba4af4ef78b6f43dfd95e7fd5fa3c6bec1b83d11"
       }
+    },
+    {
+      "id": "alethe.agent-voice",
+      "name": "Agent Voice",
+      "description": "Each terminal speaks with its own Fish Audio voice when an agent finishes a turn, and you can answer it by voice.",
+      "author": "Alethe",
+      "repo": "Kc1t/alethe-agent-voice",
+      "downloadUrl": "https://github.com/Kc1t/alethe-agent-voice/releases/latest",
+      "version": "1.0.0",
+      "minApiVersion": 3,
+      "capabilities": [
+        "ui.overlay",
+        "ui.settings",
+        "ui.sidebarTab",
+        "ui.command",
+        "workspace.read",
+        "workspace.control",
+        "terminal.read",
+        "terminal.write",
+        "invoke:agent_voice_*",
+        "invoke:speech_*",
+        "listen:speech*"
+      ],
+      "package": {
+        "url": "https://github.com/Kc1t/alethe-agent-voice/releases/download/v1.0.0/alethe-agent-voice-1.0.0.zip",
+        "sha256": "536ab730644b39a9b86f4c0b67000ae1d9d433362b216df655a09f5d968f48eb"
+      }
+    }
+  ],
+  "builtIn": [
+    {
+      "id": "alethe.theme-pack",
+      "name": "Theme Pack",
+      "description": "Ember, Golden Premium, Dark Lemon and Orca.",
+      "version": "1.0.0",
+      "capabilities": ["ui.theme"]
+    },
+    {
+      "id": "alethe.git-control",
+      "name": "Git Control",
+      "description": "Source control panel: status, staging, commits, branches and the commit graph.",
+      "version": "1.0.0",
+      "capabilities": ["ui.sidebarTab", "ui.command", "invoke:git_*", "invoke:worktree_*"]
+    },
+    {
+      "id": "alethe.todos",
+      "name": "Todo List",
+      "description": "A checklist in the right sidebar, with tags and per-project assignment.",
+      "version": "1.0.0",
+      "capabilities": ["ui.sidebarTab", "ui.command", "ui.modal", "invoke:ensure_todo_template"]
     }
   ]
 }

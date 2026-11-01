@@ -189,6 +189,8 @@ JavaScript with no build step; the [plugin guide](docs/PLUGINS.md) has the full 
 For a plugin with a real toolchain, [Jev](https://github.com/Kc1t/alethe-jev) is the reference
 external plugin: its own repository, TypeScript, React and CSS Modules built by Vite into one
 script, released as a checksummed zip and installed from the catalogue.
+[Agent Voice](https://github.com/Kc1t/alethe-agent-voice) builds the same way on plugin API 3,
+following terminal output and using the app's own agent icons and dropdowns.
 
 **Stay in control**
 
@@ -207,7 +209,8 @@ script, released as a checksummed zip and installed from the catalogue.
   Alethe runs in parallel — each optionally in its own git worktree, each reporting status, cost,
   tokens and diff on its card, and each able to ask you before it leaves its sandbox. Off by default.
 - **Cloud sync** of your preferences through a GitHub sign-in, optional. Voice commands and local
-  dictation come from the optional **Jev** plugin.
+  dictation come from the optional **Jev** plugin, and agents that speak their replies from the
+  optional **Agent Voice** plugin.
 - **Remote Control**: an authenticated LAN web view, paired by QR code, to follow and answer agents
   from your phone. It is off by default and uses unencrypted HTTP/WebSocket transport on the LAN, so
   enable it only on a trusted network. Clean profiles are read-only; answering agents requires a

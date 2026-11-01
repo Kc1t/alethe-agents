@@ -23,6 +23,7 @@ import { pluginIcon } from './icons'
 import { loadLocalPlugin } from './localTransport'
 import { openContributedModal, revealContributedView } from './navigation'
 import { canInvoke, grants, isValidCapability } from './permissions'
+import { pluginAgents, pluginComponents } from './presentation'
 import {
   commandContributions,
   modalContributions,
@@ -33,6 +34,7 @@ import {
   themeContributions,
 } from './registry'
 import { createPluginStorage } from './storage'
+import { createPluginTerminals } from './terminals'
 import type {
   Disposable,
   PluginContext,
@@ -146,6 +148,10 @@ function createContext(manifest: PluginManifest): PluginContext {
       },
     },
     workspace: createPluginWorkspace(require),
+    terminals: createPluginTerminals(require, subscriptions),
+    agents: pluginAgents,
+    components: pluginComponents,
+    locale: getLocale,
     registerView: (viewId, component) => {
       const declared = sidebarTabContributions.get(viewId)
       if (!declared || declared.pluginId !== manifest.id) {

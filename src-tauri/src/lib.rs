@@ -74,6 +74,7 @@ mod resource_manager;
 mod resources;
 mod router9;
 mod scheduler;
+mod agent_voice;
 mod secure_store;
 mod session_watcher;
 // The handoff it reports goes over D-Bus, which only the Linux build links (zbus).
@@ -561,6 +562,9 @@ pub fn run() {
             crash_watch::get_job_guard_status,
             set_window_opacity,
             jev::jev_decide,
+            agent_voice::agent_voice_key_status,
+            agent_voice::agent_voice_set_key,
+            agent_voice::agent_voice_tts,
             speech::speech_list_models,
             speech::speech_list_input_devices,
             speech::speech_model_states,

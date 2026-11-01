@@ -11,6 +11,19 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ## [Unreleased]
 
 ### Added
+- **Agent Voice plugin.** A new plugin in the catalogue (Preferences → Plugins), kept in
+  [its own repository](https://github.com/Kc1t/alethe-agent-voice), makes each terminal speak with
+  its own Fish Audio voice when an agent finishes a turn: the first sentence or two of its reply, or
+  a success or failure line when a shell exits. Voices queue, a card shows who is speaking, and with
+  Reply by voice on, the terminal that just spoke listens for a few seconds and types the reply it
+  hears, transcribed on this computer. The Fish Audio key lives in the system keychain and requests
+  go through the app backend; the plugin can set or clear the key but never reads it.
+- **Plugin API 3.** Plugins can follow every running terminal tab, including background ones: its
+  status, its output and its exit, and type into that exact tab. Reading terminal output is a new
+  permission, *Read what your terminals print*, named in the trust dialog. Plugins can also show the
+  app's own agent names, colors, icons and dropdowns, read the app language, and receive results a
+  host command streams back. Text a plugin types into an agent, including Jev's, now counts as a
+  prompt the same way typing it does, so the agent shows as working and its completion is detected.
 - **Tutorials in Preferences.** A new Tutorials page plays the videos that show Alethe in real work
   inside Settings, one at a time, with a link to open each on YouTube and to the channel.
 - **Playbooks editor in Preferences.** A new Playbooks page shows every orchestration playbook as a

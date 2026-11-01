@@ -14,6 +14,9 @@ import {
   Settings,
   Sparkles,
   Terminal,
+  Users,
+  Volume2,
+  VolumeX,
 } from 'lucide-react'
 
 /**
@@ -35,6 +38,9 @@ const PLUGIN_ICONS: Record<string, LucideIcon> = {
   settings: Settings,
   sparkles: Sparkles,
   terminal: Terminal,
+  users: Users,
+  'volume-2': Volume2,
+  'volume-x': VolumeX,
 }
 
 export function pluginIcon(name?: string | null): LucideIcon {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PluginManifest } from '../tauri'
+import { PLUGIN_API_VERSION } from './constants'
 import type { PluginContext, PluginModule, ThemeContribution } from './types'
 
 const bundled: { manifest: PluginManifest; load: () => Promise<PluginModule> }[] = []
@@ -43,6 +44,15 @@ const pushToastMock = vi.fn()
 vi.mock('../../stores/uiStore', () => ({
   useUiStore: { getState: () => ({ pushToast: pushToastMock }) },
 }))
+vi.mock('./terminals', () => ({
+  createPluginTerminals: (require: (capability: string) => void) => ({
+    sessions: () => {
+      require('terminal.read')
+      return []
+    },
+  }),
+}))
+vi.mock('./presentation', () => ({ pluginAgents: {}, pluginComponents: {} }))
 vi.mock('./workspace', () => ({
   createPluginWorkspace: (require: (capability: string) => void) => ({
     snapshot: () => {
@@ -255,12 +265,12 @@ describe('manifest validation', () => {
 
   it('refuses a manifest built for a newer api version', async () => {
     const load = vi.fn(async () => ({ activate: vi.fn() }))
-    bundled.push({ manifest: manifest({ apiVersion: 3 }), load })
+    bundled.push({ manifest: manifest({ apiVersion: PLUGIN_API_VERSION + 1 }), load })
 
     await initPluginHost()
 
     expect(load).not.toHaveBeenCalled()
-    expect(entryFor('test.plugin')?.error).toBe('unsupported_api_version:3')
+    expect(entryFor('test.plugin')?.error).toBe(`unsupported_api_version:${PLUGIN_API_VERSION + 1}`)
   })
 
   it('still runs a manifest written for api version 1', async () => {
