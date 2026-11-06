@@ -612,23 +612,41 @@ export type RuleSet = {
 /** Which 9router install Alethe runs: the one it manages, or one the user installed themselves. */
 export type Router9Source = 'managed' | 'external'
 
-/** Local 9router proxy. Opt-in and off by default — nothing is installed or started implicitly. */
+/** Where routed agents connect: the local 9router process, or a hosted 9router-compatible gateway. */
+export type Router9Mode = 'local' | 'remote'
+
+/** Model ids the gateway expects. An empty id keeps the agent's own default. */
+export type Router9Models = {
+  opus: string
+  sonnet: string
+  haiku: string
+  codex: string
+}
+
+/** 9router routing. Opt-in and off by default — nothing is installed or started implicitly. */
 export type Router9Preferences = {
   enabled: boolean
   autoStart: boolean
+  mode: Router9Mode
   source: Router9Source
   port: number
   /** Endpoint key issued by the 9router dashboard. Stored in plaintext, like the Spotify secret. */
   apiKey: string
+  /** Remote mode: gateway base URL, without the `/v1` suffix. */
+  remoteUrl: string
+  models: Router9Models
   defaultForNewAgents: boolean
 }
 
 export const DEFAULT_ROUTER9_PREFERENCES: Router9Preferences = {
   enabled: false,
   autoStart: false,
+  mode: 'local',
   source: 'managed',
   port: ROUTER9_DEFAULT_PORT,
   apiKey: '',
+  remoteUrl: '',
+  models: { opus: '', sonnet: '', haiku: '', codex: '' },
   defaultForNewAgents: false,
 }
 

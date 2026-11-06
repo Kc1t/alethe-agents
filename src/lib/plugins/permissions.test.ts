@@ -60,6 +60,7 @@ describe('canInvoke', () => {
       'write_text_file',
       'delete_filesystem_entry',
       'mcp_reveal_env',
+      'router9_set_remote_key',
       'plugin_set_enabled',
       'plugin_import_dir',
       // Storage is reachable only through `context.storage`, which binds the

@@ -105,7 +105,8 @@ function MemoryPillButton({ ramMb }: { ramMb: number }) {
 function Router9PillButton() {
   const t = useT()
   const { config, status, hasInstall, busy, start, stop } = useRouter9Runtime()
-  if (!config.enabled || !hasInstall) return null
+  // Start/stop only applies to the local process; a remote gateway is always up.
+  if (!config.enabled || config.mode === 'remote' || !hasInstall) return null
   return (
     <button
       type="button"

@@ -30,7 +30,7 @@ import { isOrchestratorShellPty } from '../../lib/orchestratorShells'
 import { isWindows } from '../../lib/platform'
 import { ptyLaunchTarget } from '../../lib/ptyLaunchTarget'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
-import { router9EnvFor } from '../../lib/router9'
+import { router9ArgsFor, router9EnvFor, router9KeyEnvFor } from '../../lib/router9'
 import {
   claimDiscoveredSession,
   claimMostRecentSession,
@@ -1283,10 +1283,15 @@ export function useXtermSession(params: {
 
         // Read at spawn time rather than through a selector: the PTY environment is fixed when the
         // process starts, so turning 9router off only ever affects terminals opened afterwards.
+        const router9Config = useProjectsStore.getState().preferences.router9
+        const routeThroughRouter9 = Boolean(useRouter9 && command && router9Config?.enabled)
         const router9Env =
-          useRouter9 && command
-            ? router9EnvFor(command, useProjectsStore.getState().preferences.router9)
-            : {}
+          routeThroughRouter9 && command ? router9EnvFor(command, router9Config) : {}
+        const router9Args =
+          routeThroughRouter9 && command ? router9ArgsFor(command, router9Config) : []
+        // The backend fills these from the keychain and fails the launch when no key is saved.
+        const router9KeyEnv =
+          routeThroughRouter9 && command ? router9KeyEnvFor(command, router9Config) : []
         // The Codex hook forwarder and MCP bridge are shared per port, so they read the terminal
         // they belong to from here instead of from a path Codex would ask to trust again.
         const launchEnv = {
@@ -1388,7 +1393,8 @@ export function useXtermSession(params: {
               hooksSettingsPath,
             )
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
-        const spawnArgs = launch.args.length > 0 ? launch.args : undefined
+        const launchArgs = [...launch.args, ...router9Args]
+        const spawnArgs = launchArgs.length > 0 ? launchArgs : undefined
         attachedSessionId = launch.sessionId
         if (command && command !== 'shell') {
           console.info(
@@ -1444,6 +1450,7 @@ export function useXtermSession(params: {
             runAsAdmin: !command && runAsAdmin,
             launcherOverride,
             env: launchEnv,
+            router9KeyEnv: router9KeyEnv.length > 0 ? router9KeyEnv : undefined,
           })
         } finally {
           releaseSpawnSlot()

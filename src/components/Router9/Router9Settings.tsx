@@ -3,13 +3,20 @@ import { useId, useState } from 'react'
 
 import { useRouter9Runtime } from '../../hooks/useRouter9Runtime'
 import { useT } from '../../lib/i18n'
-import { normalizePort, ROUTER9_ADVISORIES_URL, router9BaseUrl } from '../../lib/router9'
+import {
+  normalizePort,
+  normalizeRemoteUrl,
+  ROUTER9_ADVISORIES_URL,
+  router9BaseUrl,
+  router9RoutingReady,
+} from '../../lib/router9'
 import { openInBrowser } from '../../lib/tauri'
-import type { Router9Preferences } from '../../lib/types'
+import { DEFAULT_ROUTER9_PREFERENCES, type Router9Preferences } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import controls from '../modals/controls.module.css'
 import { SettingsSection } from '../modals/preferences/primitives'
 import { Router9InstallModal } from './Router9InstallModal'
+import { Router9RemoteFields } from './Router9RemoteFields'
 import styles from './Router9Settings.module.css'
 
 type Notice = { key: string; text: string; tone: 'warn' | 'info' }
@@ -17,14 +24,27 @@ type Notice = { key: string; text: string; tone: 'warn' | 'info' }
 export function Router9Settings() {
   const t = useT()
   const setPreferences = useProjectsStore((state) => state.setPreferences)
-  const { config, status, toolchain, resolved, hasInstall, busy, refresh, start, stop } =
-    useRouter9Runtime()
+  const {
+    config,
+    status,
+    toolchain,
+    resolved,
+    hasInstall,
+    remoteKeySaved,
+    refreshRemoteKey,
+    busy,
+    refresh,
+    start,
+    stop,
+  } = useRouter9Runtime()
   const [error, setError] = useState<string | null>(null)
   const [installAction, setInstallAction] = useState<'install' | 'uninstall' | null>(null)
   const fieldId = useId()
 
+  // Merge into the stored value, not this render's copy: a blur and a click in one tick both land.
   const patch = (next: Partial<Router9Preferences>) => {
-    setPreferences({ router9: { ...config, ...next } })
+    const current = useProjectsStore.getState().preferences.router9 ?? DEFAULT_ROUTER9_PREFERENCES
+    setPreferences({ router9: { ...current, ...next } })
   }
 
   const act = async (action: () => Promise<void>) => {
@@ -46,45 +66,68 @@ export function Router9Settings() {
   )
   const probing = status === null || toolchain === null
 
-  const state = !config.enabled ? 'off' : running ? 'running' : 'ready'
+  const remote = config.mode === 'remote'
+  // Claude stands in for any routable agent: remote readiness does not depend on the agent.
+  const remoteReady = remote && router9RoutingReady(config, 'claude', false, remoteKeySaved)
+  const state = !config.enabled ? 'off' : running || remoteReady ? 'running' : 'ready'
   const stateLabel =
-    state === 'running'
-      ? t('router9.stateRunning', { url: router9BaseUrl(config.port) })
-      : state === 'ready'
-        ? t('router9.stateReady')
-        : t('router9.stateOff')
+    state === 'off'
+      ? t('router9.stateOff')
+      : remote
+        ? remoteReady
+          ? t('router9.stateRemoteActive', { url: normalizeRemoteUrl(config.remoteUrl) })
+          : t('router9.stateRemoteIncomplete')
+        : state === 'running'
+          ? t('router9.stateRunning', { url: router9BaseUrl(config.port) })
+          : t('router9.stateReady')
 
-  const notices: Notice[] = []
-  if (toolchain !== null && !npmReady) {
-    notices.push({ key: 'node', text: t('router9.nodeMissing'), tone: 'warn' })
-  }
-  if (resolved && resolved.source !== config.source) {
-    notices.push({
-      key: 'fallback',
-      text: t(
-        resolved.source === 'external' ? 'router9.fallbackExternal' : 'router9.fallbackManaged',
-      ),
-      tone: 'warn',
-    })
-  }
-  if (config.enabled && !config.apiKey.trim()) {
-    notices.push({ key: 'key', text: t('router9.missingKey'), tone: 'warn' })
-  }
-  if (status && status.portInUse && !running) {
-    notices.push({
-      key: 'port',
-      text: t('router9.portInUse', { port: String(status.port) }),
-      tone: 'warn',
-    })
-  }
-  if (managed?.installed && managed.version && status && managed.version !== status.pinnedVersion) {
-    notices.push({ key: 'pinned', text: t('router9.pinnedMismatch'), tone: 'info' })
-  }
-  // Only worth saying once it can actually bite: routing is on and agents may already be attached.
-  if (config.enabled && running) {
-    notices.push({ key: 'restart', text: t('router9.runningTerminalsHint'), tone: 'info' })
-  }
+  const notices: Notice[] = remote ? remoteNotices() : localNotices()
   if (error) notices.push({ key: 'error', text: error, tone: 'warn' })
+
+  // What is missing shows in the remote checklist; only the restart rule needs saying here.
+  function remoteNotices(): Notice[] {
+    if (!config.enabled) return []
+    return [{ key: 'restart', text: t('router9.runningTerminalsHint'), tone: 'info' }]
+  }
+
+  function localNotices(): Notice[] {
+    const notices: Notice[] = []
+    if (toolchain !== null && !npmReady) {
+      notices.push({ key: 'node', text: t('router9.nodeMissing'), tone: 'warn' })
+    }
+    if (resolved && resolved.source !== config.source) {
+      notices.push({
+        key: 'fallback',
+        text: t(
+          resolved.source === 'external' ? 'router9.fallbackExternal' : 'router9.fallbackManaged',
+        ),
+        tone: 'warn',
+      })
+    }
+    if (config.enabled && !config.apiKey.trim()) {
+      notices.push({ key: 'key', text: t('router9.missingKey'), tone: 'warn' })
+    }
+    if (status && status.portInUse && !running) {
+      notices.push({
+        key: 'port',
+        text: t('router9.portInUse', { port: String(status.port) }),
+        tone: 'warn',
+      })
+    }
+    if (
+      managed?.installed &&
+      managed.version &&
+      status &&
+      managed.version !== status.pinnedVersion
+    ) {
+      notices.push({ key: 'pinned', text: t('router9.pinnedMismatch'), tone: 'info' })
+    }
+    // Only worth saying once it can actually bite: routing is on and agents may already be attached.
+    if (config.enabled && running) {
+      notices.push({ key: 'restart', text: t('router9.runningTerminalsHint'), tone: 'info' })
+    }
+    return notices
+  }
 
   return (
     <SettingsSection id="router9" title={t('router9.title')} description={t('router9.desc')}>
@@ -94,7 +137,7 @@ export function Router9Settings() {
             <span className={styles.dot} aria-hidden />
             {probing ? t('router9.probing') : stateLabel}
           </span>
-          {hasInstall && config.enabled ? (
+          {!remote && hasInstall && config.enabled ? (
             <div className={styles.statusActions}>
               <button
                 type="button"
@@ -120,7 +163,63 @@ export function Router9Settings() {
           ) : null}
         </div>
 
-        {!probing && !hasInstall ? (
+        <label className={styles.field}>
+          <span>{t('router9.modeLabel')}</span>
+          <div className={styles.segmented}>
+            <button
+              type="button"
+              className={!remote ? styles.segmentActive : undefined}
+              aria-pressed={!remote}
+              onClick={() => patch({ mode: 'local' })}
+            >
+              {t('router9.modeLocal')}
+            </button>
+            <button
+              type="button"
+              className={remote ? styles.segmentActive : undefined}
+              aria-pressed={remote}
+              onClick={() => patch({ mode: 'remote' })}
+            >
+              {t('router9.modeRemote')}
+            </button>
+          </div>
+        </label>
+
+        {remote ? (
+          <>
+            <label className={styles.field}>
+              <span>{t('router9.enabled')}</span>
+              <div className={styles.segmented}>
+                <button
+                  type="button"
+                  className={config.enabled ? styles.segmentActive : undefined}
+                  aria-pressed={config.enabled}
+                  onClick={() => patch({ enabled: true })}
+                >
+                  {t('router9.enabledOn')}
+                </button>
+                <button
+                  type="button"
+                  className={!config.enabled ? styles.segmentActive : undefined}
+                  aria-pressed={!config.enabled}
+                  onClick={() => patch({ enabled: false })}
+                >
+                  {t('router9.enabledOff')}
+                </button>
+              </div>
+            </label>
+            {config.enabled ? (
+              <Router9RemoteFields
+                config={config}
+                patch={patch}
+                keySaved={remoteKeySaved}
+                onKeyChanged={refreshRemoteKey}
+              />
+            ) : null}
+          </>
+        ) : null}
+
+        {!remote && !probing && !hasInstall ? (
           <div className={styles.setup}>
             <p className={styles.setupCopy}>{t('router9.setupIntro')}</p>
             <div className={styles.row}>
@@ -136,7 +235,7 @@ export function Router9Settings() {
           </div>
         ) : null}
 
-        {hasInstall ? (
+        {!remote && hasInstall ? (
           <>
             <div className={styles.installRow}>
               <div className={styles.installCopy}>
@@ -189,6 +288,7 @@ export function Router9Settings() {
                   <button
                     type="button"
                     className={config.source === 'managed' ? styles.segmentActive : undefined}
+                    aria-pressed={config.source === 'managed'}
                     onClick={() => patch({ source: 'managed' })}
                   >
                     {t('router9.sourceManaged')}
@@ -196,6 +296,7 @@ export function Router9Settings() {
                   <button
                     type="button"
                     className={config.source === 'external' ? styles.segmentActive : undefined}
+                    aria-pressed={config.source === 'external'}
                     onClick={() => patch({ source: 'external' })}
                   >
                     {t('router9.sourceExternal')}
@@ -210,6 +311,7 @@ export function Router9Settings() {
                 <button
                   type="button"
                   className={config.enabled ? styles.segmentActive : undefined}
+                  aria-pressed={config.enabled}
                   onClick={() => patch({ enabled: true })}
                 >
                   {t('router9.enabledOn')}
@@ -217,6 +319,7 @@ export function Router9Settings() {
                 <button
                   type="button"
                   className={!config.enabled ? styles.segmentActive : undefined}
+                  aria-pressed={!config.enabled}
                   onClick={() =>
                     void act(async () => {
                       patch({ enabled: false })
@@ -263,6 +366,7 @@ export function Router9Settings() {
                     <button
                       type="button"
                       className={config.autoStart ? styles.segmentActive : undefined}
+                      aria-pressed={config.autoStart}
                       onClick={() => patch({ autoStart: true })}
                     >
                       {t('router9.autoStartOn')}
@@ -270,6 +374,7 @@ export function Router9Settings() {
                     <button
                       type="button"
                       className={!config.autoStart ? styles.segmentActive : undefined}
+                      aria-pressed={!config.autoStart}
                       onClick={() => patch({ autoStart: false })}
                     >
                       {t('router9.autoStartOff')}

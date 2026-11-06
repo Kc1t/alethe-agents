@@ -421,6 +421,30 @@ describe('preference normalization', () => {
   })
 })
 
+describe('router9 preference normalization', () => {
+  it('backfills remote-mode fields for preferences saved before they existed', () => {
+    const { router9 } = normalizePreferences({
+      router9: { enabled: true, source: 'managed', port: 20128, apiKey: 'k' },
+    } as never)
+    expect(router9.mode).toBe('local')
+    expect(router9.remoteUrl).toBe('')
+    expect(router9.models).toEqual({ opus: '', sonnet: '', haiku: '', codex: '' })
+  })
+
+  it('keeps a remote gateway and trims its URL down to the base', () => {
+    const { router9 } = normalizePreferences({
+      router9: {
+        mode: 'remote',
+        remoteUrl: 'https://gw.example.com/v1/',
+        models: { opus: 'cc/opus', codex: 'cx/sol' },
+      },
+    } as never)
+    expect(router9.mode).toBe('remote')
+    expect(router9.remoteUrl).toBe('https://gw.example.com')
+    expect(router9.models).toEqual({ opus: 'cc/opus', sonnet: '', haiku: '', codex: 'cx/sol' })
+  })
+})
+
 describe('todos normalization', () => {
   it('backfills PR fields when present and drops them when absent', () => {
     const todos = normalizeTodos([

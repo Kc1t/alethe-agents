@@ -15,7 +15,7 @@ import {
   recordLegacyVoicePreferences,
 } from '../lib/plugins/legacyMigration'
 import { normalizeProjectGrids, projectGridContainer } from '../lib/projectGrids'
-import { normalizePort } from '../lib/router9'
+import { normalizePort, normalizeRemoteUrl, normalizeRouter9Models } from '../lib/router9'
 import { normalizeAppIconTheme } from '../lib/themeIcons'
 import { normalizeTodoTags, normalizeTodoTitle } from '../lib/todos'
 import {
@@ -235,9 +235,12 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       enabled: Boolean(router9.enabled),
       autoStart: Boolean(router9.autoStart),
       defaultForNewAgents: Boolean(router9.defaultForNewAgents),
+      mode: router9.mode === 'remote' ? 'remote' : 'local',
       source: router9.source === 'external' ? 'external' : 'managed',
       port: normalizePort(Number(router9.port)),
       apiKey: String(router9.apiKey ?? '').trim(),
+      remoteUrl: normalizeRemoteUrl(String(router9.remoteUrl ?? '')),
+      models: normalizeRouter9Models(router9.models),
     },
     pomodoroWorkMinutes: clampPomodoroMinutes(
       preferences.pomodoroWorkMinutes,

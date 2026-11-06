@@ -23,7 +23,7 @@ import { useT } from '../../lib/i18n'
 import { basename, pathSegments } from '../../lib/paths'
 import { formatShortcut, isWindows } from '../../lib/platform'
 import { DEFAULT_GRID_ID } from '../../lib/projectGrids'
-import { router9SupportsAgent } from '../../lib/router9'
+import { router9RoutingReady } from '../../lib/router9'
 import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { wslTargetFor } from '../../lib/wsl'
 import { enableOrchestratorFeature } from '../../lib/orchestratorUsageAccess'
@@ -186,12 +186,13 @@ export function NewTerminalModal() {
   }
 
   // Without a key the injected environment would be empty, so the toggle would silently do nothing.
-  const routingAvailable = Boolean(
-    router9.config.enabled &&
-    router9.config.apiKey.trim() &&
-    router9.hasInstall &&
-    router9SupportsAgent(type),
+  const routingAvailable = router9RoutingReady(
+    router9.config,
+    type,
+    router9.hasInstall,
+    router9.remoteKeySaved,
   )
+  const routingRemote = router9.config.mode === 'remote'
 
   const submit = async () => {
     if (!context?.projectId) return
@@ -542,7 +543,9 @@ export function NewTerminalModal() {
                   <span className={styles.permissionToggleCopy}>
                     <span className={styles.permissionToggleTitle}>{t('router9.routeToggle')}</span>
                     <span className={styles.permissionToggleDescription}>
-                      {t('router9.routeToggleDesc')}
+                      {routingRemote
+                        ? t('router9.routeToggleDescRemote', { url: router9.config.remoteUrl })
+                        : t('router9.routeToggleDesc')}
                     </span>
                   </span>
                   <span className={styles.permissionToggleState}>
@@ -550,7 +553,7 @@ export function NewTerminalModal() {
                   </span>
                 </button>
 
-                {useRouter9 && !router9.status?.running ? (
+                {useRouter9 && !routingRemote && !router9.status?.running ? (
                   <button
                     type="button"
                     className={styles.router9Start}

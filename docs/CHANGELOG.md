@@ -11,6 +11,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ## [Unreleased]
 
 ### Added
+
+- **9router remote gateway.** Preferences → 9router now has a *Remote gateway* mode that routes
+  Claude Code and Codex through a hosted 9router-compatible gateway (URL, key, model ids) instead
+  of a local install. The key is kept in the system keychain, is never shown again, and only reaches
+  the terminals routed through the gateway. The per-terminal *Route through 9router* toggle picks
+  gateway or own account when the terminal opens. A checklist marks what is missing, and *Done*
+  confirms the setup is saved and routing is live.
 - **Agent Voice plugin.** A new plugin in the catalogue (Preferences → Plugins), kept in
   [its own repository](https://github.com/Kc1t/alethe-agent-voice), makes each terminal speak with
   its own Fish Audio voice when an agent finishes a turn: the first sentence or two of its reply, or

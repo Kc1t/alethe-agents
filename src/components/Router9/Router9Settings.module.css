@@ -139,7 +139,8 @@
   gap: 6px;
 }
 
-.field > span {
+.field > span,
+.field > label {
   color: var(--fg-muted);
   font-size: 11px;
   font-weight: 600;
@@ -183,6 +184,24 @@
   color: var(--fg-muted);
   font-size: 11px;
   cursor: pointer;
+  transition:
+    color var(--anim-fast),
+    background var(--anim-fast),
+    box-shadow var(--anim-fast);
+}
+
+.segmented button:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.segmented button:active:not(:disabled) {
+  background: var(--border);
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
 }
 
 .segmented button:disabled {
@@ -190,9 +209,86 @@
   cursor: default;
 }
 
-.segmentActive {
-  background: var(--panel-hover);
+.segmented button.segmentActive {
+  background: var(--panel);
   color: var(--fg);
+  font-weight: 600;
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 0 0 1px var(--accent-border);
+}
+
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.checkItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg);
+  word-break: break-word;
+}
+
+.checkIcon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.checkItem[data-state='ok'] .checkIcon {
+  color: var(--status-working);
+}
+
+.checkItem[data-state='bad'] .checkIcon {
+  color: var(--status-offline);
+}
+
+.checkItem[data-state='info'] .checkIcon {
+  color: var(--status-waiting);
+}
+
+.keyRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.keyRow input {
+  flex: 1;
+  min-width: 0;
+}
+
+.doneRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.doneStatus {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg);
+  border-left: 2px solid var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+
+.doneStatus[data-tone='ok'] {
+  border-left-color: var(--status-working);
+  background: var(--status-working-soft);
 }
 
 .notices {
