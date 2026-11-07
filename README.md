@@ -466,18 +466,19 @@ Thanks to everyone helping shape Alethe.
   <a href="https://github.com/moisesz10"><img src="https://github.com/moisesz10.png?size=100" width="80" height="80" alt="moisesz10" title="moisesz10" /></a>
   <a href="https://github.com/Bakurinodev"><img src="https://github.com/Bakurinodev.png?size=100" width="80" height="80" alt="Bakurinodev" title="Bakurinodev" /></a>
   <a href="https://github.com/diegoliveiraa"><img src="https://github.com/diegoliveiraa.png?size=100" width="80" height="80" alt="diegoliveiraa" title="diegoliveiraa" /></a>
-  <a href="https://github.com/VicktorMS"><img src="https://github.com/VicktorMS.png?size=100" width="80" height="80" alt="VicktorMS" title="VicktorMS" /></a>
-  <a href="https://github.com/rad4manthys"><img src="https://github.com/rad4manthys.png?size=100" width="80" height="80" alt="rad4manthys" title="rad4manthys" /></a>
-  <a href="https://github.com/valencestoredigital-design"><img src="https://github.com/valencestoredigital-design.png?size=100" width="80" height="80" alt="valencestoredigital-design" title="valencestoredigital-design" /></a>
-  <a href="https://github.com/lucianoschirmer"><img src="https://github.com/lucianoschirmer.png?size=100" width="80" height="80" alt="lucianoschirmer" title="lucianoschirmer" /></a>
-  <a href="https://github.com/lb1192176991-lab"><img src="https://github.com/lb1192176991-lab.png?size=100" width="80" height="80" alt="lb1192176991-lab" title="lb1192176991-lab" /></a>
-  <a href="https://github.com/hgshreyas"><img src="https://github.com/hgshreyas.png?size=100" width="80" height="80" alt="hgshreyas" title="hgshreyas" /></a>
-  <a href="https://github.com/fernando-c-lima"><img src="https://github.com/fernando-c-lima.png?size=100" width="80" height="80" alt="fernando-c-lima" title="fernando-c-lima" /></a>
-  <a href="https://github.com/feejunior"><img src="https://github.com/feejunior.png?size=100" width="80" height="80" alt="feejunior" title="feejunior" /></a>
-  <a href="https://github.com/eudehh"><img src="https://github.com/eudehh.png?size=100" width="80" height="80" alt="eudehh" title="eudehh" /></a>
-  <a href="https://github.com/dudukings1"><img src="https://github.com/dudukings1.png?size=100" width="80" height="80" alt="dudukings1" title="dudukings1" /></a>
-  <a href="https://github.com/davidwallaci"><img src="https://github.com/davidwallaci.png?size=100" width="80" height="80" alt="davidwallaci" title="davidwallaci" /></a>
   <a href="https://github.com/tomatotomata"><img src="https://github.com/tomatotomata.png?size=100" width="80" height="80" alt="tomatotomata" title="tomatotomata" /></a>
+  <a href="https://github.com/beb0pp"><img src="https://github.com/beb0pp.png?size=100" width="80" height="80" alt="beb0pp" title="beb0pp" /></a>
+  <a href="https://github.com/davidwallaci"><img src="https://github.com/davidwallaci.png?size=100" width="80" height="80" alt="davidwallaci" title="davidwallaci" /></a>
+  <a href="https://github.com/dudukings1"><img src="https://github.com/dudukings1.png?size=100" width="80" height="80" alt="dudukings1" title="dudukings1" /></a>
+  <a href="https://github.com/eudehh"><img src="https://github.com/eudehh.png?size=100" width="80" height="80" alt="eudehh" title="eudehh" /></a>
+  <a href="https://github.com/feejunior"><img src="https://github.com/feejunior.png?size=100" width="80" height="80" alt="feejunior" title="feejunior" /></a>
+  <a href="https://github.com/fernando-c-lima"><img src="https://github.com/fernando-c-lima.png?size=100" width="80" height="80" alt="fernando-c-lima" title="fernando-c-lima" /></a>
+  <a href="https://github.com/hgshreyas"><img src="https://github.com/hgshreyas.png?size=100" width="80" height="80" alt="hgshreyas" title="hgshreyas" /></a>
+  <a href="https://github.com/lb1192176991-lab"><img src="https://github.com/lb1192176991-lab.png?size=100" width="80" height="80" alt="lb1192176991-lab" title="lb1192176991-lab" /></a>
+  <a href="https://github.com/lucianoschirmer"><img src="https://github.com/lucianoschirmer.png?size=100" width="80" height="80" alt="lucianoschirmer" title="lucianoschirmer" /></a>
+  <a href="https://github.com/valencestoredigital-design"><img src="https://github.com/valencestoredigital-design.png?size=100" width="80" height="80" alt="valencestoredigital-design" title="valencestoredigital-design" /></a>
+  <a href="https://github.com/rad4manthys"><img src="https://github.com/rad4manthys.png?size=100" width="80" height="80" alt="rad4manthys" title="rad4manthys" /></a>
+  <a href="https://github.com/VicktorMS"><img src="https://github.com/VicktorMS.png?size=100" width="80" height="80" alt="VicktorMS" title="VicktorMS" /></a>
   <a href="https://github.com/ThiagoSales17"><img src="https://github.com/ThiagoSales17.png?size=100" width="80" height="80" alt="ThiagoSales17" title="ThiagoSales17" /></a>
   <a href="https://github.com/opedrooz"><img src="https://github.com/opedrooz.png?size=100" width="80" height="80" alt="opedrooz" title="opedrooz" /></a>
   <a href="https://github.com/devmatheusmota"><img src="https://github.com/devmatheusmota.png?size=100" width="80" height="80" alt="devmatheusmota" title="devmatheusmota" /></a>
