@@ -21,6 +21,8 @@ export type SpawnPtyArgs = {
    * rather than guessing when the work finished.
    */
   commandLine?: string
+  /** Env var names the backend fills with the remote 9router key from the OS keychain. */
+  router9KeyEnv?: string[]
 }
 
 export async function spawnPty(args: SpawnPtyArgs): Promise<{ id: string }> {
@@ -35,6 +37,7 @@ export async function spawnPty(args: SpawnPtyArgs): Promise<{ id: string }> {
     launcherOverride: args.launcherOverride,
     env: args.env,
     commandLine: args.commandLine,
+    router9KeyEnv: args.router9KeyEnv,
   })
 }
 

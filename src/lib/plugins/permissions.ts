@@ -49,6 +49,8 @@ const FORBIDDEN_COMMANDS = new Set([
   'write_text_file',
   'delete_filesystem_entry',
   'mcp_reveal_env',
+  // Replaces the remote 9router key in the OS keychain.
+  'router9_set_remote_key',
   'remote_control_open_pairing',
 ])
 

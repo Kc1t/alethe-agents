@@ -12,7 +12,7 @@ export function useRouter9AutoStart(hydrated: boolean): void {
   useEffect(() => {
     if (!hydrated || attemptedRef.current) return
     const config = useProjectsStore.getState().preferences.router9 ?? DEFAULT_ROUTER9_PREFERENCES
-    if (!config.enabled || !config.autoStart) return
+    if (!config.enabled || !config.autoStart || config.mode === 'remote') return
     attemptedRef.current = true
 
     void router9Status(config.port)

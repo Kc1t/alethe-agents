@@ -10,6 +10,7 @@ pub enum SecretKind {
     SpotifyAccessToken,
     SpotifyRefreshToken,
     FishAudioApiKey,
+    Router9RemoteKey,
 }
 
 impl SecretKind {
@@ -21,6 +22,7 @@ impl SecretKind {
             Self::SpotifyAccessToken => "spotify-access-token",
             Self::SpotifyRefreshToken => "spotify-refresh-token",
             Self::FishAudioApiKey => "fish-audio-api-key",
+            Self::Router9RemoteKey => "router9-remote-key",
         }
     }
 }

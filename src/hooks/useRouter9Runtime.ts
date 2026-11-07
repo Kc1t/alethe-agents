@@ -4,6 +4,7 @@ import type { InstallToolchain } from '../lib/agentInstall'
 import { router9HasInstall, router9ResolveSource } from '../lib/router9'
 import {
   probeInstallToolchain,
+  router9RemoteKeyStatus,
   router9Start,
   type Router9Status,
   router9Status,
@@ -20,15 +21,23 @@ export function useRouter9Runtime(active = true) {
   const [status, setStatus] = useState<Router9Status | null>(null)
   const [toolchain, setToolchain] = useState<InstallToolchain | null>(null)
   const [busy, setBusy] = useState(false)
+  const [remoteKeySaved, setRemoteKeySaved] = useState(false)
+
+  const refreshRemoteKey = useCallback(async () => {
+    if (!active) return
+    setRemoteKeySaved(await router9RemoteKeyStatus().catch(() => false))
+  }, [active])
 
   const refresh = useCallback(async () => {
     if (!active) return
-    const [next, tools] = await Promise.all([
+    const [next, tools, keySaved] = await Promise.all([
       router9Status(config.port).catch(() => null),
       probeInstallToolchain().catch(() => null),
+      router9RemoteKeyStatus().catch(() => false),
     ])
     setStatus(next)
     setToolchain(tools)
+    setRemoteKeySaved(keySaved)
   }, [active, config.port])
 
   useEffect(() => {
@@ -63,6 +72,8 @@ export function useRouter9Runtime(active = true) {
     toolchain,
     resolved,
     hasInstall: router9HasInstall(status),
+    remoteKeySaved,
+    refreshRemoteKey,
     busy,
     refresh,
     start,

@@ -340,7 +340,13 @@ pub async fn spawn_pty(
     env: Option<std::collections::HashMap<String, String>>,
     // Set only by orchestrator shells: the line the shell runs and exits with.
     command_line: Option<String>,
+    // Env var names that receive the remote 9router key, read here from the OS keychain.
+    router9_key_env: Option<Vec<String>>,
 ) -> Result<SpawnPtyResponse, String> {
+    let agent_launch =
+        command.as_deref().is_some_and(|c| !c.trim().is_empty()) && command_line.is_none();
+    let router9_env =
+        crate::router9_remote::key_env(&app, router9_key_env.as_deref(), agent_launch)?;
     // OUTRO comando IPC (spawn de outro terminal, poll do GSD Sync, leitura de
 
     // `activity_stats`, `agent_cost`).
@@ -424,6 +430,9 @@ pub async fn spawn_pty(
                 for (key, value) in extra_env {
                     command.env(key, value);
                 }
+            }
+            for (key, value) in &router9_env {
+                command.env(key, value);
             }
             command
         };
@@ -1034,6 +1043,7 @@ pub async fn restart_pty(
         launcher_override,
         env,
         command_line,
+        None,
     )
     .await
 }
