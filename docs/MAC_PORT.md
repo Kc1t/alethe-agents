@@ -36,7 +36,16 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
-- `pending` · `backend` · fix: saving a voice server under a new base URL deletes its keychain key unless the same save passes a new one
+- `skip` · `contract` · feat: expose typed plugin voice API with core-managed provider keys
+  - Files: `src/lib/plugins/voice.ts`, `src/lib/plugins/types.ts`, `src-tauri/src/voice_providers/keys.rs`
+  - Contract: additive API 3 `context.voice` and boolean-only `voice_provider_key_status(provider)`; no persisted format changes. The Swift Mac app hosts no web plugins.
+- `pending` · `ui` · feat: add core Voice preferences for provider keys, custom servers, and local speech model management
+  - Files: `src/components/modals/PreferencesModal.tsx`, `src/components/modals/preferences/voice/VoicePage.tsx`, `src/lib/tauri/speech.ts`
+- `pending` · `contract` · feat: persist non-secret voice provider connection flags in profile preferences
+  - Files: `src/lib/types.ts`, `src/components/modals/preferences/voice/CloudKeyForm.tsx`
+  - Contract: additive `preferences.voiceProviders` map keyed by `openai`, `elevenlabs`, `gemini`, or `openrouter`, containing `configured` and `invalid` booleans; defaults to `{}`. Keys remain in the existing profile-scoped system keychain.
+
+- `pending` · `backend` · `cb59a4a4` fix: saving a voice server under a new base URL deletes its keychain key unless the same save passes a new one
   - Files: `src-tauri/src/voice_servers/commands.rs`
 - `pending` · `contract` · feat: route agents through a hosted 9router-compatible gateway
   - Files: `src/lib/router9.ts`, `src-tauri/src/router9_remote.rs`, `src-tauri/src/pty.rs`, `src/components/Router9/Router9RemoteFields.tsx`, `src/components/XTermView/useXtermSession.ts`

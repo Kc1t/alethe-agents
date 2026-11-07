@@ -633,6 +633,7 @@ pub fn run() {
             tts::tts_resume,
             tts::tts_set_muted,
             tts::tts_voices,
+            voice_providers::keys::voice_provider_key_status,
             voice_providers::keys::voice_provider_set_key,
             voice_providers::keys::voice_provider_delete_key,
             voice_providers::keys::voice_provider_test,

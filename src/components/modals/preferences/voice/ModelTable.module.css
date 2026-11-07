@@ -1,0 +1,240 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.emptyRow td {
+  padding: 16px 14px;
+  color: var(--fg-muted);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.filter {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.filterOption {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--anim-fast) var(--ease-out-fluid);
+}
+
+.filterOption:hover {
+  color: var(--fg);
+}
+
+.filterOption[aria-pressed='true'] {
+  color: var(--fg);
+  background: var(--surface-card-default);
+}
+
+.search {
+  flex: 1;
+  max-width: 260px;
+}
+
+.table {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  background: var(--surface-card-default);
+  font-size: 12px;
+}
+
+.head th {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.sectionRow th {
+  padding: 14px 14px 8px;
+  text-align: left;
+}
+
+.section + .section .sectionRow th {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sectionTitle {
+  margin-right: 10px;
+  color: var(--fg);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sectionHint {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.row td {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--fg);
+  vertical-align: middle;
+}
+
+.row[data-open='true'] td {
+  background: var(--bg-sunken);
+}
+
+.nameCell {
+  min-width: 0;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--fg);
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chevron {
+  flex: none;
+  color: var(--fg-muted);
+  transition: transform var(--anim-fast) var(--ease-out-fluid);
+}
+
+.toggle[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
+}
+
+.name {
+  overflow-wrap: anywhere;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cell {
+  color: var(--fg-muted);
+}
+
+.cell[data-column='status'] {
+  color: var(--fg);
+}
+
+.action {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.detailsRow td {
+  padding: 4px 14px 16px 34px;
+  background: var(--bg-sunken);
+}
+
+/* Narrow table: stack each row's cells under their labels. */
+@container (max-width: 640px) {
+  .table,
+  .table tbody {
+    display: block;
+  }
+
+  .head {
+    display: none;
+  }
+
+  .sectionRow,
+  .detailsRow,
+  .emptyRow {
+    display: block;
+  }
+
+  .sectionRow th,
+  .detailsRow td,
+  .emptyRow td {
+    display: block;
+  }
+
+  .detailsRow td {
+    padding-left: 14px;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .row td {
+    padding: 0;
+    border-top: 0;
+  }
+
+  .nameCell,
+  .action {
+    grid-column: 1 / -1;
+  }
+
+  .action {
+    text-align: left;
+  }
+
+  .cell::before {
+    display: block;
+    color: var(--fg-faint);
+    font-size: 10.5px;
+    content: attr(data-label);
+  }
+}

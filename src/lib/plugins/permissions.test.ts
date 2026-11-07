@@ -73,6 +73,34 @@ describe('canInvoke', () => {
   })
 })
 
+describe('voice permissions', () => {
+  it('keeps typed voice permissions separate from raw invoke capabilities', () => {
+    for (const capability of ['voice.listen', 'voice.speak', 'voice.hud']) {
+      expect(isValidCapability(capability)).toBe(true)
+      expect(grants([capability], capability)).toBe(true)
+      expect(grants(['invoke:*'], capability)).toBe(false)
+      expect(canInvoke([capability], 'speech_start_capture')).toBe(false)
+    }
+  })
+
+  it('never lets a plugin write voice provider keys or servers', () => {
+    for (const command of [
+      'voice_provider_set_key',
+      'voice_provider_delete_key',
+      'voice_servers_save',
+      'voice_servers_delete',
+    ]) {
+      expect(canInvoke(['invoke:*'], command)).toBe(false)
+    }
+    expect(canInvoke(['invoke:voice_*'], 'voice_servers_list')).toBe(true)
+  })
+
+  it('preserves the published Agent Voice key command behind its explicit permission', () => {
+    expect(canInvoke(['invoke:agent_voice_*'], 'agent_voice_set_key')).toBe(true)
+    expect(canInvoke([], 'agent_voice_set_key')).toBe(false)
+  })
+})
+
 describe('grants', () => {
   it('is satisfied by any matching capability in the list', () => {
     expect(grants(['ui.theme', 'invoke:git_*'], 'ui.theme')).toBe(true)

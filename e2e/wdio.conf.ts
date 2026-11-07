@@ -16,7 +16,12 @@ const launch = prepareIsolatedLaunch()
 
 export const config: Options.Testrunner = {
   runner: 'local',
-  specs: ['./specs/smoke.spec.ts', './specs/onboarding.spec.ts', './specs/git-pipeline.spec.ts'],
+  specs: [
+    './specs/smoke.spec.ts',
+    './specs/onboarding.spec.ts',
+    './specs/git-pipeline.spec.ts',
+    './specs/voice-preferences.spec.ts',
+  ],
   maxInstances: 1,
   logLevel: 'warn',
   framework: 'mocha',

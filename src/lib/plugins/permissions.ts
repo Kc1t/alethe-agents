@@ -51,6 +51,11 @@ const FORBIDDEN_COMMANDS = new Set([
   'mcp_reveal_env',
   // Replaces the remote 9router key in the OS keychain.
   'router9_set_remote_key',
+  // Voice keys and servers are managed only in Preferences -> Voice.
+  'voice_provider_set_key',
+  'voice_provider_delete_key',
+  'voice_servers_save',
+  'voice_servers_delete',
   'remote_control_open_pairing',
 ])
 

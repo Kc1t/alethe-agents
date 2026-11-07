@@ -204,6 +204,14 @@ pub(crate) fn delete_secret(profile: &str, kind: SecretKind) -> Result<(), Strin
 }
 
 #[tauri::command]
+pub async fn voice_provider_key_status(
+    app: AppHandle,
+    provider: CloudProvider,
+) -> Result<bool, String> {
+    Ok(read_key_async(&app, provider).await?.is_some())
+}
+
+#[tauri::command]
 pub async fn voice_provider_set_key(
     app: AppHandle,
     provider: CloudProvider,

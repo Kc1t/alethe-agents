@@ -273,6 +273,61 @@ Text typed through `write` or `workspace.writeToTerminal` counts as input the ag
 like the keyboard: a prompt ending in Enter marks the agent as working and arms the same completion
 detection.
 
+### Voice: context.voice
+
+This is an additive **API 3** feature. Declare `apiVersion: 3` and the matching catalogue
+`minApiVersion`, and require an app build that supplies `context.voice`. Earlier API 3 builds do
+not have it: check `if (!context.voice)` before using it and explain the app requirement in your
+plugin's install instructions. The API number alone does not detect this addition.
+
+| API | Capability | Result / behavior |
+|---|---|---|
+| `inputDevices()` | `voice.listen` | input devices: `deviceId`, `label`, `isDefault` |
+| `nativeLocales()` | `voice.listen` | native locales: `id`, `name`, `installed` |
+| `modelStates(locale?)` | `voice.listen` | model status, progress, error, downloaded and total bytes |
+| `prepare({ modelId, provider?, locale? })` | `voice.listen` | prepares a transcription engine; resolves to a boolean |
+| `startCapture(deviceId?)`, `captureLevel()` | `voice.listen` | starts the shared microphone capture; polls its audio level |
+| `vadStatus()`, `prepareVad()` | `voice.listen` | nullable VAD status (`level`, `voice`, `heardMs`, `silenceMs`, `segments`); prepares VAD and resolves to a boolean |
+| `stopCapture()` | `voice.listen` | captured `samples`, `sampleRate`, `peak` |
+| `stopAndTranscribe(options)` | `voice.listen` | transcript; options: `modelId`, `provider?`, `locale?`, `fallbackLocale?`, `usage?` |
+| `transcribePartial({ modelId, locale? })` | `voice.listen` | transcript from the current capture's tail, using a local/native engine |
+| `speak(text, options?)` | `voice.speak` | utterance id (number); options: `provider?`, `model?`, `voice?`, `rate?`, `server?` |
+| `prefetch(text, options?)` | `voice.speak` | warms speech audio; same options except `server`, which the backend does not accept |
+| `stop()`, `pause()`, `resume()`, `setMuted(boolean)` | `voice.speak` | controls shared playback |
+| `voices({ provider?, model?, server? }?)` | `voice.speak` | voices: `id`, `name`, `language` |
+| `onStart(handler)`, `onEnd(handler)` | `voice.speak` | `tts://start` / `tts://end`: `{ id: number }` |
+| `hud.show(placement)`, `hud.hide()` | `voice.hud` | shows or hides the shared floating HUD |
+| `hud.publish(state)` | `voice.hud` | publishes the HUD's serialized state string unchanged |
+| `hud.onAction(handler)` | `voice.hud` | `voice-hud://action` string payload |
+| `hud.onMoved(handler)` | `voice.hud` | `voice-hud://moved`: `{ monitor, x, y, bounds }` |
+| `hud.setShortcut(accelerator)` | `voice.hud` | sets the shared global shortcut; `null` unregisters it |
+| `hud.onShortcut(handler)` | `voice.hud` | `voice://shortcut`: pressed/released `state` and boolean `jev` |
+| `providers()` | none | provider catalog (`provider`, `keyUrl`, `models`, `voices`) plus boolean `hasKey`; never a credential |
+| `openSettings()` | none | opens Preferences on category `voice` |
+
+Command methods return promises and propagate backend errors; `openSettings()` returns immediately.
+Event methods return a `Disposable` and register it in `context.subscriptions`, including when
+registration is still pending at deactivation. Failed listener registration is recorded in the Audit
+Center and its subscription is removed.
+
+STT providers are `local`, `apple`, `openai`, `elevenlabs`, `gemini`, and `openrouter`.
+TTS providers replace `apple` with `system` and also include `server`. Omitting a provider preserves
+the backend's defaults. `server` is a configured server id, never a URL or credential.
+`prepareVad()` may download the VAD model. `providers()` reads key availability locally without
+calling provider test endpoints; the OS keychain may ask for access.
+
+HUD placement is `{ kind: 'preset', preset }` with `bottom-center`, `bottom-left`, `bottom-right`,
+`top-center`, `top-left`, or `top-right`, or `{ kind: 'custom', custom: { monitor, x, y, bounds? } }`.
+Custom `x` and `y` are screen fractions; bounds are `{ x, y, width, height }` in physical pixels.
+Capture, playback, HUD, and shortcut are shared app resources, so plugins must coordinate their use.
+
+The core owns provider keys and voice-server configuration. Send users to `openSettings()` to manage
+them; no typed method accepts or returns keys. Cloud transcription uses
+`speech_stop_and_transcribe` with the core's saved key. The legacy
+`speech_stop_and_transcribe_cloud` requires a raw `apiKey` and is deliberately absent from this API.
+`agent_voice_set_key` remains available through its existing explicit invoke permission for the
+published Agent Voice plugin.
+
 ### Agents and shared components
 
 `context.agents.label(agent)` and `context.agents.accent(agent)` give an agent's display name and a

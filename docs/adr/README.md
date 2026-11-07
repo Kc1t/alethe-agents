@@ -10,6 +10,8 @@ expected.
 | [004](004-graphify-integration.md) | Graphify stays an external tool that Alethe manages | Accepted |
 | [006](006-merge-analyzer.md) | The app, not the agent, decides whether a merge conflicts | Accepted |
 | [007](007-conflict-resolution.md) | Conflicts are resolved in an ephemeral merge environment | Accepted |
+| [008](008-plugin-voice-api.md) | Plugins use typed core voice services without owning provider keys | Accepted |
+| [009](009-voice-resource-preferences.md) | Voice keys, servers and models are managed in core Preferences | Accepted |
 
 New record: copy the shape of an existing one (Context, Decision, Consequences), take the next free
 number, and cite it from the code it governs.

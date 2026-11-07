@@ -12,6 +12,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Typed plugin voice API.** Plugins can request microphone transcription, speech playback, and
+  floating voice HUD access through separate permissions, inspect provider key availability, and
+  open Preferences → Voice while the app manages provider credentials.
+- **Voice in Preferences.** A new Voice page manages cloud provider API keys, custom speech servers
+  and local speech models, with Hugging Face search and downloads you can pause, resume, cancel or
+  remove. Keys stay in the system keychain; plugins can only check whether one is set.
+
 - **9router remote gateway.** Preferences → 9router now has a *Remote gateway* mode that routes
   Claude Code and Codex through a hosted 9router-compatible gateway (URL, key, model ids) instead
   of a local install. The key is kept in the system keychain, is never shown again, and only reaches

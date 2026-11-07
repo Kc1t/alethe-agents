@@ -145,6 +145,95 @@ export type PluginTerminals = {
   write: (sessionId: string, text: string) => Promise<void>
 }
 
+export type VoiceCloudProvider = 'openai' | 'elevenlabs' | 'gemini' | 'openrouter'
+export type VoiceSttProvider = 'local' | 'apple' | VoiceCloudProvider
+export type VoiceTtsProvider = 'system' | 'local' | 'server' | VoiceCloudProvider
+export type VoiceInputDevice = { deviceId: string; label: string; isDefault: boolean }
+export type VoiceNativeLocale = { id: string; name: string; installed: boolean }
+export type VoiceModelState = {
+  id: string
+  status: string
+  progress: number | null
+  error: string | null
+  downloadedBytes: number | null
+  totalBytes: number | null
+}
+export type VoiceCapturedAudio = { samples: number[]; sampleRate: number; peak: number }
+export type VoiceVadStatus = {
+  level: number
+  voice: boolean
+  heardMs: number
+  silenceMs: number
+  segments: number
+}
+export type VoiceTranscriptionOptions = { modelId: string; locale?: string }
+export type VoicePrepareOptions = VoiceTranscriptionOptions & { provider?: VoiceSttProvider }
+export type VoiceTranscribeOptions = VoicePrepareOptions & {
+  fallbackLocale?: string
+  usage?: string
+}
+export type VoiceVoicesOptions = { provider?: VoiceTtsProvider; model?: string; server?: string }
+export type VoicePrefetchOptions = {
+  provider?: VoiceTtsProvider
+  model?: string
+  voice?: string
+  rate?: number
+}
+export type VoiceSpeakOptions = VoicePrefetchOptions & { server?: string }
+export type VoiceTtsVoice = { id: string; name: string; language: string }
+export type VoiceUtteranceEvent = { id: number }
+export type VoiceHudRect = { x: number; y: number; width: number; height: number }
+export type VoiceHudPosition = { monitor: string; x: number; y: number; bounds?: VoiceHudRect }
+export type VoiceHudPlacement =
+  | {
+      kind: 'preset'
+      preset:
+        'bottom-center' | 'bottom-left' | 'bottom-right' | 'top-center' | 'top-left' | 'top-right'
+    }
+  | { kind: 'custom'; custom: VoiceHudPosition }
+export type VoiceShortcutEvent = { state: 'pressed' | 'released'; jev: boolean }
+export type VoiceProviderCatalog = {
+  provider: VoiceCloudProvider
+  keyUrl: string
+  models: { id: string; label: string; capability: 'stt' | 'tts' }[]
+  voices: { id: string; label: string }[]
+  hasKey: boolean
+}
+
+export type PluginVoice = {
+  inputDevices: () => Promise<VoiceInputDevice[]>
+  nativeLocales: () => Promise<VoiceNativeLocale[]>
+  modelStates: (locale?: string) => Promise<VoiceModelState[]>
+  prepare: (options: VoicePrepareOptions) => Promise<boolean>
+  startCapture: (deviceId?: string) => Promise<void>
+  captureLevel: () => Promise<number>
+  vadStatus: () => Promise<VoiceVadStatus | null>
+  prepareVad: () => Promise<boolean>
+  stopCapture: () => Promise<VoiceCapturedAudio>
+  stopAndTranscribe: (options: VoiceTranscribeOptions) => Promise<string>
+  transcribePartial: (options: VoiceTranscriptionOptions) => Promise<string>
+  speak: (text: string, options?: VoiceSpeakOptions) => Promise<number>
+  prefetch: (text: string, options?: VoicePrefetchOptions) => Promise<void>
+  stop: () => Promise<void>
+  pause: () => Promise<void>
+  resume: () => Promise<void>
+  setMuted: (muted: boolean) => Promise<void>
+  voices: (options?: VoiceVoicesOptions) => Promise<VoiceTtsVoice[]>
+  onStart: (handler: (event: VoiceUtteranceEvent) => void) => Disposable
+  onEnd: (handler: (event: VoiceUtteranceEvent) => void) => Disposable
+  hud: {
+    show: (placement: VoiceHudPlacement) => Promise<void>
+    hide: () => Promise<void>
+    publish: (state: string) => Promise<void>
+    onAction: (handler: (action: string) => void) => Disposable
+    onMoved: (handler: (position: VoiceHudPosition) => void) => Disposable
+    setShortcut: (accelerator: string | null) => Promise<void>
+    onShortcut: (handler: (event: VoiceShortcutEvent) => void) => Disposable
+  }
+  providers: () => Promise<VoiceProviderCatalog[]>
+  openSettings: () => void
+}
+
 export type PluginAgents = {
   label: (agent: string) => string
   // a CSS color that follows the active theme
@@ -250,6 +339,7 @@ export type PluginContext = {
     toast: (toast: PluginToast) => void
   }
   readonly workspace: PluginWorkspace
+  readonly voice: PluginVoice
   readonly terminals: PluginTerminals
   readonly agents: PluginAgents
   readonly components: PluginComponents

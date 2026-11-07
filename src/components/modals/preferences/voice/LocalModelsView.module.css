@@ -1,0 +1,99 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.intro {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.failure {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.summary {
+  margin: 0;
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.text {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.label {
+  margin-right: 8px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.uses {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  color: var(--accent);
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.note {
+  display: block;
+  margin-top: 2px;
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.hint {
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 11.5px;
+}
+
+.uses button[aria-pressed='true'] {
+  border-color: var(--accent);
+  opacity: 1;
+}
+
+.modes {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}

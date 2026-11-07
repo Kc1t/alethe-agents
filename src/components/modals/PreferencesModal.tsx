@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Info,
   type LucideIcon,
+  Mic,
   MonitorPlay,
   Palette,
   Plug,
@@ -41,6 +42,7 @@ import { Avatar } from './preferences/primitives'
 import { RemoteControlPage } from './preferences/RemoteControlPage'
 import { TerminalPage } from './preferences/TerminalPage'
 import { TutorialsPage } from './preferences/TutorialsPage'
+import { VoicePage } from './preferences/voice/VoicePage'
 import styles from './PreferencesModal.module.css'
 
 type CategoryId =
@@ -48,6 +50,7 @@ type CategoryId =
   | 'appearance'
   | 'features'
   | 'plugins'
+  | 'voice'
   | 'terminal'
   | 'integrations'
   | 'multiagent'
@@ -125,6 +128,12 @@ export function PreferencesModal() {
         label: t('prefs.categoryPlugins'),
         description: t('prefs.categoryPluginsDesc'),
         Icon: Puzzle,
+      },
+      {
+        id: 'voice',
+        label: t('prefs.categoryVoice'),
+        description: t('prefs.categoryVoiceDesc'),
+        Icon: Mic,
       },
       {
         id: 'terminal',
@@ -274,6 +283,13 @@ export function PreferencesModal() {
         label: t('prefs.terminalTheme'),
         description: t('prefs.terminalThemeDesc'),
         keywords: 'terminal theme tema colors cores',
+      },
+      {
+        category: 'voice',
+        target: 'voice-providers',
+        label: t('prefs.categoryVoice'),
+        description: t('prefs.categoryVoiceDesc'),
+        keywords: 'voice speech providers api keys servers models download hugging face',
       },
       {
         category: 'terminal',
@@ -658,6 +674,7 @@ export function PreferencesModal() {
                   {category === 'appearance' ? <AppearancePage /> : null}
                   {category === 'features' ? <FeaturesPage /> : null}
                   {category === 'plugins' ? <PluginsPage /> : null}
+                  {category === 'voice' ? <VoicePage /> : null}
                   {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                   {category === 'integrations' ? <IntegrationsPage /> : null}
                   {category === 'multiagent' ? <MultiagentPage /> : null}

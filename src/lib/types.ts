@@ -754,8 +754,24 @@ export const DEFAULT_ROUTING_SETTINGS: RoutingSettings = {
   onBothCritical: 'ask',
 }
 
+export type CloudVoiceProviderId = 'openai' | 'elevenlabs' | 'gemini' | 'openrouter'
+export type VoiceServerKind = 'openai' | 'fish'
+export interface VoiceServer {
+  id: string
+  name: string
+  kind: VoiceServerKind
+  baseUrl: string
+  model: string | null
+  hasKey: boolean
+}
+export type VoiceServerErrorKind =
+  'policy' | 'network' | 'timeout' | 'auth' | 'badRequest' | 'badAudio' | 'missing' | 'other'
+export type VoiceProviderFlags = Partial<
+  Record<CloudVoiceProviderId, { configured: boolean; invalid: boolean }>
+>
+
 export type Preferences = {
-  /** Idioma da UI. Default 'en'. */
+  voiceProviders: VoiceProviderFlags
   language: Locale
   uiTheme: Theme
   /** Application-wide visual language. Normal preserves the production UI. */
@@ -968,6 +984,7 @@ export type ProjectsFile = {
 export const DEFAULT_TERMINAL_FONT_FAMILY = 'Cascadia Mono, Consolas, "Courier New", monospace'
 
 export const DEFAULT_PREFERENCES: Preferences = {
+  voiceProviders: {},
   language: 'en',
   uiTheme: 'elite-pure-black',
   visualStyle: 'clean',

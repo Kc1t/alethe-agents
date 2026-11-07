@@ -133,6 +133,8 @@ beforeEach(() => {
   bundled.length = 0
   disabledIds.length = 0
   invokeMock.mockClear()
+  listenMock.mockClear()
+  unlistenMock.mockClear()
   setEnabledMock.mockClear()
   for (const key of Object.keys(registeredMessages)) delete registeredMessages[key]
 })
@@ -467,6 +469,48 @@ describe('imperative contributions', () => {
 })
 
 describe('plugin context', () => {
+  it('exposes voice through its capability gate and disposes listeners on disable', async () => {
+    let captured: PluginContext | null = null
+    bundled.push({
+      manifest: manifest({ apiVersion: 3, capabilities: ['voice.speak'] }),
+      load: async () => ({
+        activate: (ctx: PluginContext) => {
+          captured = ctx
+        },
+      }),
+    })
+    await initPluginHost()
+    expect(() => captured!.voice.startCapture()).toThrow(
+      'capability_denied:test.plugin:voice.listen',
+    )
+    await captured!.voice.speak('hello')
+    expect(invokeMock).toHaveBeenCalledWith('tts_speak', expect.objectContaining({ text: 'hello' }))
+    const stop = vi.fn()
+    listenMock.mockResolvedValueOnce(stop)
+    captured!.voice.onStart(() => {})
+    await Promise.resolve()
+    await setPluginEnabled('test.plugin', false)
+    expect(stop).toHaveBeenCalledOnce()
+  })
+
+  it('rolls voice listeners back when activation fails', async () => {
+    const stop = vi.fn()
+    listenMock.mockResolvedValueOnce(stop)
+    bundled.push({
+      manifest: manifest({ apiVersion: 3, capabilities: ['voice.hud'] }),
+      load: async () => ({
+        activate: (ctx: PluginContext) => {
+          ctx.voice.hud.onAction(() => {})
+          throw new Error('activation_failed')
+        },
+      }),
+    })
+    await initPluginHost()
+    await Promise.resolve()
+    expect(entryFor('test.plugin')).toMatchObject({ active: false, error: 'activation_failed' })
+    expect(stop).toHaveBeenCalledOnce()
+  })
+
   it('namespaces registered messages and resolves them through t()', async () => {
     let captured: PluginContext | null = null
     bundled.push({

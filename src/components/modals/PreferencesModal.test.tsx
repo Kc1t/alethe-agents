@@ -13,7 +13,30 @@ afterEach(() => {
   useUiStore.getState().closeModal()
 })
 
+vi.mock('./preferences/voice/VoicePage', () => ({
+  VoicePage: () => <div data-testid="voice-page" />,
+}))
+
 describe('PreferencesModal', () => {
+  it('opens the core Voice page by its stable modal context id', () => {
+    useUiStore.getState().openModal_('preferences', { category: 'voice' })
+    render(<PreferencesModal />)
+    expect(screen.getByTestId('voice-page')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Voice Manage cloud/ })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+  })
+
+  it('finds Voice resource settings through Preferences search', () => {
+    useUiStore.getState().openModal_('preferences')
+    render(<PreferencesModal />)
+    fireEvent.change(screen.getByPlaceholderText('Search settings'), {
+      target: { value: 'hugging face' },
+    })
+    fireEvent.click(screen.getByRole('option', { name: /Voice/ }))
+    expect(screen.getByTestId('voice-page')).toBeInTheDocument()
+  })
   it('closes an open dropdown on Escape and keeps the settings open', () => {
     useUiStore.getState().openModal_('preferences')
     render(<PreferencesModal />)

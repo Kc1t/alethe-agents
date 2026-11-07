@@ -43,6 +43,7 @@ import type {
   PluginSource,
   SidebarTabProps,
 } from './types'
+import { createPluginVoice } from './voice'
 import { createPluginWorkspace } from './workspace'
 
 const STARTUP_EVENT = 'onStartupFinished'
@@ -149,6 +150,7 @@ function createContext(manifest: PluginManifest): PluginContext {
     },
     workspace: createPluginWorkspace(require),
     terminals: createPluginTerminals(require, subscriptions),
+    voice: createPluginVoice(require, subscriptions),
     agents: pluginAgents,
     components: pluginComponents,
     locale: getLocale,
