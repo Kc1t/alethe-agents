@@ -638,19 +638,14 @@ pub async fn jev_decide(
     context: JevContext,
     native: Option<bool>,
     model: Option<String>,
-    api_key: Option<String>,
 ) -> Result<JevDecision, String> {
-    let stored = crate::voice_providers::keys::read_key_async(
+    let api_key = crate::voice_providers::keys::read_key_async(
         &app,
         crate::voice_providers::CloudProvider::Openrouter,
     )
-    .await?;
-    // Jev 1.0.0 passes its own key; the keychain wins once one is saved there.
-    let present = |key: &String| !key.trim().is_empty();
-    let api_key = stored
-        .filter(present)
-        .or(api_key.filter(present))
-        .ok_or_else(|| "missing Jev API key".to_string())?;
+    .await?
+    .filter(|key| !key.trim().is_empty())
+    .ok_or_else(|| "missing Jev API key".to_string())?;
 
     let state = json!({
         "spoken_command": spoken,

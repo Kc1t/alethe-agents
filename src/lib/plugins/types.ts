@@ -157,6 +157,7 @@ export type VoiceModelState = {
   error: string | null
   downloadedBytes: number | null
   totalBytes: number | null
+  kind: 'stt' | 'tts'
 }
 export type VoiceCapturedAudio = { samples: number[]; sampleRate: number; peak: number }
 export type VoiceVadStatus = {

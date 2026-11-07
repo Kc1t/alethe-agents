@@ -38,7 +38,10 @@ describe('plugins.json', () => {
   })
 
   it('offers only installable listings this build understands', () => {
-    const ids = [...catalogue.plugins, ...catalogue.builtIn].map((plugin) => plugin.id)
+    const ids = [
+      ...new Set(catalogue.plugins.map((plugin) => plugin.id)),
+      ...catalogue.builtIn.map((plugin) => plugin.id),
+    ]
     expect(new Set(ids).size).toBe(ids.length)
     for (const plugin of catalogue.plugins) {
       expect(plugin.id).toMatch(/^[A-Za-z0-9._-]+$/)
@@ -47,6 +50,16 @@ describe('plugins.json', () => {
       if (!plugin.package) continue
       expect(plugin.package.url.startsWith('https://')).toBe(true)
       expect(plugin.package.sha256).toMatch(/^[0-9a-f]{64}$/)
+    }
+  })
+
+  it('lists an older release of a plugin only after a newer one that needs a newer app', () => {
+    const lastMinApi = new Map<string, number>()
+    for (const plugin of catalogue.plugins) {
+      const minApi = plugin.minApiVersion ?? 1
+      const previous = lastMinApi.get(plugin.id)
+      if (previous !== undefined) expect(minApi).toBeLessThan(previous)
+      lastMinApi.set(plugin.id, minApi)
     }
   })
 })

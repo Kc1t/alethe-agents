@@ -1,9 +1,12 @@
+import { pluginsList } from '../tauri/plugins'
+import { voiceProviderKeyStatus, voiceProviderSetKey } from '../tauri/voiceProviders'
 import { setPluginEnabled } from './host'
 import { createPluginStorage } from './storage'
 
 export const GIT_CONTROL_PLUGIN_ID = 'alethe.git-control'
 export const TODOS_PLUGIN_ID = 'alethe.todos'
 export const JEV_PLUGIN_ID = 'alethe.jev'
+const JEV_KEYCHAIN_VERSION = [1, 1, 0]
 
 /** Preference keys the voice features used before Jev moved to its own plugin. */
 export const LEGACY_VOICE_PREFERENCE_KEYS = [
@@ -55,6 +58,46 @@ async function handOffVoicePreferences(preferences: Record<string, unknown>): Pr
   await storage.set('legacyPreferences', preferences)
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
+function nonEmpty(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function atLeast(version: string, minimum: number[]): boolean {
+  const parts = version.split('.').map((part) => Number.parseInt(part, 10) || 0)
+  for (let index = 0; index < minimum.length; index += 1) {
+    const part = parts[index] ?? 0
+    if (part !== minimum[index]) return part > minimum[index]
+  }
+  return true
+}
+
+async function jevReadsKeychain(): Promise<boolean> {
+  const jev = (await pluginsList()).find((plugin) => plugin.id === JEV_PLUGIN_ID)
+  return jev !== undefined && atLeast(jev.version, JEV_KEYCHAIN_VERSION)
+}
+
+// Jev 1.0 kept its OpenRouter key in plugin storage; 1.1 reads the keychain instead.
+async function moveJevKeyToKeychain(): Promise<void> {
+  const storage = createPluginStorage(JEV_PLUGIN_ID)
+  const stored = await storage.read()
+  const settings = record(stored.settings)
+  const legacy = record(stored.legacyPreferences)
+  const key = nonEmpty(settings?.apiKey) ?? nonEmpty(legacy?.voiceCommandApiKey)
+  if (!key) return
+  if (!(await voiceProviderKeyStatus('openrouter'))) await voiceProviderSetKey('openrouter', key)
+  if (!(await jevReadsKeychain())) return
+  if (settings && nonEmpty(settings.apiKey))
+    await storage.set('settings', { ...settings, apiKey: '' })
+  if (legacy && nonEmpty(legacy.voiceCommandApiKey)) {
+    const { voiceCommandApiKey: _key, ...rest } = legacy
+    await storage.set('legacyPreferences', rest)
+  }
+}
+
 /**
  * Carries the old Git feature toggle over to the plugin's enabled state, once
  * per profile load. Safe to call whenever hydration finishes.
@@ -69,4 +112,7 @@ export async function applyLegacyPluginMigrations(): Promise<void> {
   if (gitFlag === false) await setPluginEnabled(GIT_CONTROL_PLUGIN_ID, false)
   if (todosFlag === false) await setPluginEnabled(TODOS_PLUGIN_ID, false)
   if (voicePreferences) await handOffVoicePreferences(voicePreferences)
+  await moveJevKeyToKeychain().catch((error) => {
+    console.error('[plugins] could not move the Jev key to the keychain', error)
+  })
 }

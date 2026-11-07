@@ -136,7 +136,7 @@ export default plugin
 | Hello | `docs/examples/hello-plugin/` | the smallest local plugin, no build step |
 | Scratch Notes | `docs/examples/notes-plugin/` | plain JavaScript, a sidebar tab, translated strings and a command |
 | Agent Voice | [`Kc1t/alethe-agent-voice`](https://github.com/Kc1t/alethe-agent-voice) | an **external** plugin on API 3: it reads agent output through `context.terminals`, types spoken replies back, streams audio from a host command through a function argument, and draws the app's own agent icons and dropdowns from `context.components`; the Fish Audio key stays behind narrow `agent_voice_*` commands in the core |
-| Jev | [`Kc1t/alethe-jev`](https://github.com/Kc1t/alethe-jev) | an **external** plugin with a real toolchain: its own repository, TypeScript, React and CSS Modules built by Vite into one IIFE, overlays, settings sections, a sidebar view, the workspace API, host commands through `invoke`, and a reproducible release zip listed in the catalogue |
+| Jev | [`Kc1t/alethe-jev`](https://github.com/Kc1t/alethe-jev) | an **external** plugin with a real toolchain: its own repository, TypeScript, React and CSS Modules built by Vite into one IIFE, overlays, settings sections, a sidebar view, the workspace API, `context.voice` for capture and transcription, and a reproducible release zip listed in the catalogue |
 
 Start from Jev's `vite.config.ts` and `scripts/package.mjs` when a plugin outgrows a single
 hand-written `main.js`.
@@ -284,7 +284,7 @@ plugin's install instructions. The API number alone does not detect this additio
 |---|---|---|
 | `inputDevices()` | `voice.listen` | input devices: `deviceId`, `label`, `isDefault` |
 | `nativeLocales()` | `voice.listen` | native locales: `id`, `name`, `installed` |
-| `modelStates(locale?)` | `voice.listen` | model status, progress, error, downloaded and total bytes |
+| `modelStates(locale?)` | `voice.listen` | model status, `kind` (`stt` or `tts`), progress, error, downloaded and total bytes |
 | `prepare({ modelId, provider?, locale? })` | `voice.listen` | prepares a transcription engine; resolves to a boolean |
 | `startCapture(deviceId?)`, `captureLevel()` | `voice.listen` | starts the shared microphone capture; polls its audio level |
 | `vadStatus()`, `prepareVad()` | `voice.listen` | nullable VAD status (`level`, `voice`, `heardMs`, `silenceMs`, `segments`); prepares VAD and resolves to a boolean |
@@ -323,8 +323,7 @@ Capture, playback, HUD, and shortcut are shared app resources, so plugins must c
 
 The core owns provider keys and voice-server configuration. Send users to `openSettings()` to manage
 them; no typed method accepts or returns keys. Cloud transcription uses
-`speech_stop_and_transcribe` with the core's saved key. The legacy
-`speech_stop_and_transcribe_cloud` requires a raw `apiKey` and is deliberately absent from this API.
+`stopAndTranscribe` with a cloud `provider`, and the core reads that provider's saved key.
 `agent_voice_set_key` remains available through its existing explicit invoke permission for the
 published Agent Voice plugin.
 
@@ -530,7 +529,7 @@ request against `main` adding one entry to `plugins.json`.
 | `author` | no | Shown as *By …*. |
 | `repo` | no | `owner/name`, displayed only — never used to build a path. |
 | `version` | no | Shown next to the name. |
-| `minApiVersion` | no | Defaults to `1`. Older apps hide the entry instead of failing on it. |
+| `minApiVersion` | no | Defaults to `1`. Older apps hide the entry instead of failing on it. To keep an older release for older apps, list it again under the same `id` after the newer one: each app offers the first entry it can run. |
 | `capabilities` | no | Copy them from `plugin.json` so the list can show what the plugin asks for. |
 | `package.url` | no | `https` link to a zip. Adding it makes the plugin installable from the app. |
 | `package.sha256` | with `package` | 64 hex characters over the exact zip bytes. |
@@ -578,9 +577,11 @@ string-keyed: the app is minified with `mangle.toplevel`, so nothing is reachabl
 `docs/examples/notes-plugin/` is a working plugin in plain JavaScript with no build step at all, and
 is the shortest way to see the contract. Jev (`alethe.jev`, in `Kc1t/alethe-jev`) is the full-size
 case: TypeScript and CSS Modules built by Vite into one IIFE that takes React from
-`window.alethe.react`, using overlays, settings sections, a sidebar view, the workspace API and the
-speech commands. When a built-in feature moves out like this, `legacyMigration.ts` hands its old
-preferences to the plugin's storage as `legacyPreferences`, and the plugin converts them once.
+`window.alethe.react`, using overlays, settings sections, a sidebar view, the workspace API and `context.voice`. When a
+built-in feature moves out like this, `legacyMigration.ts` hands its old preferences to the plugin's
+storage as `legacyPreferences`, and the plugin converts them once. Secrets do not travel that way:
+the OpenRouter key Jev 1.0 kept in its storage is moved into the keychain at startup, and blanked
+there once Jev 1.1 or newer, which reads the keychain, is installed.
 
 ## Where things live
 

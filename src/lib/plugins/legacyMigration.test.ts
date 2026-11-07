@@ -15,6 +15,20 @@ vi.mock('./storage', () => ({
   }),
 }))
 
+const keychain: { openrouter?: string } = {}
+const setKeyMock = vi.fn(async (_provider: string, key: string) => {
+  keychain.openrouter = key
+})
+vi.mock('../tauri/voiceProviders', () => ({
+  voiceProviderKeyStatus: async () => keychain.openrouter !== undefined,
+  voiceProviderSetKey: (provider: string, key: string) => setKeyMock(provider, key),
+}))
+
+let installed: { id: string; version: string }[] = []
+vi.mock('../tauri/plugins', () => ({
+  pluginsList: async () => installed,
+}))
+
 const {
   applyLegacyPluginMigrations,
   GIT_CONTROL_PLUGIN_ID,
@@ -92,5 +106,51 @@ describe('legacy voice preferences', () => {
     recordLegacyVoicePreferences({ uiTheme: 'dark' })
     await applyLegacyPluginMigrations()
     expect(records[JEV_PLUGIN_ID]).toBeUndefined()
+  })
+})
+
+describe('Jev OpenRouter key', () => {
+  beforeEach(() => {
+    for (const id of Object.keys(records)) delete records[id]
+    delete keychain.openrouter
+    installed = []
+    setKeyMock.mockClear()
+  })
+
+  it('copies the stored key into the keychain and leaves it for Jev 1.0', async () => {
+    records[JEV_PLUGIN_ID] = { settings: { apiKey: ' sk-or-1 ', voiceEnabled: true } }
+    installed = [{ id: JEV_PLUGIN_ID, version: '1.0.0' }]
+    await applyLegacyPluginMigrations()
+    expect(setKeyMock).toHaveBeenCalledWith('openrouter', 'sk-or-1')
+    expect(records[JEV_PLUGIN_ID]).toEqual({
+      settings: { apiKey: ' sk-or-1 ', voiceEnabled: true },
+    })
+  })
+
+  it('never replaces a key the keychain already holds', async () => {
+    keychain.openrouter = 'saved'
+    records[JEV_PLUGIN_ID] = { settings: { apiKey: 'sk-or-1' } }
+    await applyLegacyPluginMigrations()
+    expect(setKeyMock).not.toHaveBeenCalled()
+  })
+
+  it('blanks the stored key once Jev reads the keychain', async () => {
+    records[JEV_PLUGIN_ID] = {
+      settings: { apiKey: 'sk-or-1', voiceEnabled: true },
+      legacyPreferences: { voiceCommandApiKey: 'sk-or-0', dictationEnabled: true },
+    }
+    installed = [{ id: JEV_PLUGIN_ID, version: '1.1.0' }]
+    await applyLegacyPluginMigrations()
+    expect(keychain.openrouter).toBe('sk-or-1')
+    expect(records[JEV_PLUGIN_ID]).toEqual({
+      settings: { apiKey: '', voiceEnabled: true },
+      legacyPreferences: { dictationEnabled: true },
+    })
+  })
+
+  it('does nothing when Jev never had a key', async () => {
+    records[JEV_PLUGIN_ID] = { settings: { apiKey: '' } }
+    await applyLegacyPluginMigrations()
+    expect(setKeyMock).not.toHaveBeenCalled()
   })
 })

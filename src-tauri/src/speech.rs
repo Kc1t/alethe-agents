@@ -62,6 +62,8 @@ pub struct SpeechModelState {
     /// Bytes on disk (finished files plus `.part` sizes); `None` for the native engine.
     pub downloaded_bytes: Option<u64>,
     pub total_bytes: Option<u64>,
+    /// `stt` for speech recognition, `tts` for a local voice.
+    pub kind: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -962,14 +964,26 @@ pub async fn speech_model_states(
                 .map(|file| (file.name, file.size_bytes))
                 .collect();
             let disk = speech_download::disk_state(&dir, &files, model_ready(&dir, entry));
-            disk_model_state(&state.downloads, entry.id, disk, entry_size_bytes(entry))
+            disk_model_state(
+                &state.downloads,
+                entry.id,
+                disk,
+                entry_size_bytes(entry),
+                "stt",
+            )
         })
         .collect();
     states.extend(TTS_CATALOG.iter().map(|entry| {
         let dir = root.join(entry.id);
         let archive = [(entry.archive.name, entry.archive.size_bytes)];
         let disk = speech_download::disk_state(&dir, &archive, tts_ready(&dir, entry));
-        disk_model_state(&state.downloads, entry.id, disk, entry.archive.size_bytes)
+        disk_model_state(
+            &state.downloads,
+            entry.id,
+            disk,
+            entry.archive.size_bytes,
+            "tts",
+        )
     }));
     states.extend(installed::list(&root).into_iter().map(|(dir, manifest)| {
         let files: Vec<(&str, u64)> = manifest
@@ -978,7 +992,13 @@ pub async fn speech_model_states(
             .map(|f| (f.path.as_str(), f.size))
             .collect();
         let disk = speech_download::disk_state(&dir, &files, installed::is_ready(&dir, &manifest));
-        disk_model_state(&state.downloads, &manifest.id, disk, manifest.total_bytes())
+        disk_model_state(
+            &state.downloads,
+            &manifest.id,
+            disk,
+            manifest.total_bytes(),
+            manifest.family.use_name(),
+        )
     }));
     if let Some(bridge) = crate::speech_apple::bridge() {
         let status = tokio::task::spawn_blocking(move || {
@@ -999,6 +1019,7 @@ pub async fn speech_model_states(
                 error: None,
                 downloaded_bytes: None,
                 total_bytes: None,
+                kind: "stt",
             },
         );
     }
@@ -1011,6 +1032,7 @@ fn disk_model_state(
     id: &str,
     disk: speech_download::DiskState,
     total: u64,
+    kind: &'static str,
 ) -> SpeechModelState {
     let status = if downloads.is_active(id) {
         "downloading"
@@ -1024,6 +1046,7 @@ fn disk_model_state(
         error: None,
         downloaded_bytes: Some(disk.downloaded_bytes),
         total_bytes: Some(total),
+        kind,
     }
 }
 
@@ -1087,6 +1110,7 @@ async fn install_native_locale(
         error: None,
         downloaded_bytes: None,
         total_bytes: None,
+        kind: "stt",
     })
 }
 
@@ -1155,6 +1179,7 @@ pub async fn speech_download_model(
         error: None,
         downloaded_bytes: Some(total_bytes),
         total_bytes: Some(total_bytes),
+        kind: if tts_entry.is_some() { "tts" } else { "stt" },
     })
 }
 
@@ -1219,6 +1244,7 @@ async fn download_hub_model(
         error: None,
         downloaded_bytes: Some(total),
         total_bytes: Some(total),
+        kind: manifest.family.use_name(),
     })
 }
 
@@ -1985,28 +2011,6 @@ pub async fn speech_stop_and_transcribe(
         },
     );
     transcribe_on_worker(transcriber, audio.samples, audio.sample_rate).await
-}
-
-// Jev 1.0.0 still sends its own OpenRouter key and model instead of using the keychain.
-#[tauri::command]
-pub async fn speech_stop_and_transcribe_cloud(
-    state: State<'_, SpeechState>,
-    api_key: String,
-    model: String,
-) -> Result<String, String> {
-    let audio = stop_capture(&state)?;
-    let (api_key, model) = (api_key.trim(), model.trim());
-    if api_key.is_empty() {
-        return Err("missing OpenRouter API key".into());
-    }
-    if model.is_empty() {
-        return Err("missing OpenRouter transcription model".into());
-    }
-    validate_capture(&audio)?;
-    let trimmed = trim_silence(&audio.samples).to_vec();
-    transcribe_cloud(CloudProvider::Openrouter, model, api_key, &trimmed, audio.sample_rate)
-        .await
-        .map_err(|error| error.to_string())
 }
 
 /// OpenRouter's chat audio models answer through chat completions; every other cloud model

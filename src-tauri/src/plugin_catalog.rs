@@ -138,6 +138,8 @@ fn is_offerable(plugin: &CatalogPlugin, api_version: u32) -> bool {
 
 pub fn parse_index(raw: &str, api_version: u32) -> Result<Vec<CatalogPlugin>, String> {
     let index: Index = serde_json::from_str(raw).map_err(|e| format!("bad_index:{e}"))?;
+    // Newest entries come first, so an older app still finds the release it can run.
+    let mut seen = std::collections::HashSet::new();
     if index.schema != SUPPORTED_SCHEMA {
         return Err(format!("unsupported_schema:{}", index.schema));
     }
@@ -145,6 +147,7 @@ pub fn parse_index(raw: &str, api_version: u32) -> Result<Vec<CatalogPlugin>, St
         .plugins
         .into_iter()
         .filter(|plugin| is_offerable(plugin, api_version))
+        .filter(|plugin| seen.insert(plugin.id.clone()))
         .collect())
 }
 
@@ -349,6 +352,23 @@ mod tests {
         }"#;
         assert!(parse_index(&index(entry), 1).unwrap().is_empty());
         assert_eq!(parse_index(&index(entry), 2).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn offers_the_first_release_of_a_plugin_this_app_can_run() {
+        let entries = r#"{
+            "id": "acme.panel", "name": "Panel", "version": "2.0.0",
+            "downloadUrl": "https://example.com/x", "minApiVersion": 3
+        }, {
+            "id": "acme.panel", "name": "Panel", "version": "1.0.0",
+            "downloadUrl": "https://example.com/x", "minApiVersion": 2
+        }"#;
+        let newer = parse_index(&index(entries), 3).unwrap();
+        assert_eq!(newer.len(), 1);
+        assert_eq!(newer[0].version, "2.0.0");
+        let older = parse_index(&index(entries), 2).unwrap();
+        assert_eq!(older.len(), 1);
+        assert_eq!(older[0].version, "1.0.0");
     }
 
     #[test]

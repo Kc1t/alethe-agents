@@ -36,6 +36,10 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `contract` · feat(voice): move the Jev OpenRouter key into the keychain and drop the raw-key voice shims
+  - Commit: feat(voice): move Jev onto the core voice API and list Jev 1.1
+  - Files: `src/lib/plugins/legacyMigration.ts`, `src-tauri/src/jev.rs`, `src-tauri/src/speech.rs`, `plugins.json`
+  - Contract: at startup a non-empty `settings.apiKey` (or `legacyPreferences.voiceCommandApiKey`) in `plugin-data/alethe.jev.json` is written to the `openrouter` voice provider keychain secret when that secret is empty, and blanked in the record once the installed Jev is 1.1.0 or newer; `jev_decide` no longer takes `apiKey` (keychain only); `speech_stop_and_transcribe_cloud` is removed; `speech_model_states` and the download results gain `kind` (`stt` | `tts`). The Mac app hosts no web plugins
 - `skip` · `contract` · feat: expose typed plugin voice API with core-managed provider keys
   - Commit: feat(voice): manage voice keys in Preferences and give plugins a typed voice API
   - Files: `src/lib/plugins/voice.ts`, `src/lib/plugins/types.ts`, `src-tauri/src/voice_providers/keys.rs`

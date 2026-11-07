@@ -26,6 +26,10 @@ export type VoiceTestResult = {
   hint?: 'provisioningKey'
 }
 
+export function voiceProviderKeyStatus(provider: CloudVoiceProviderId): Promise<boolean> {
+  return invoke<boolean>('voice_provider_key_status', { provider })
+}
+
 export async function voiceProviderSetKey(
   provider: CloudVoiceProviderId,
   key: string,

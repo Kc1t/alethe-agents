@@ -620,7 +620,6 @@ pub fn run() {
             speech::speech_stop_capture,
             speech::speech_prepare,
             speech::speech_stop_and_transcribe,
-            speech::speech_stop_and_transcribe_cloud,
             speech::speech_transcribe_partial,
             speech::speech_transcribe,
             speech::speech_native_locales,

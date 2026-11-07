@@ -73,6 +73,7 @@ export type HubModelInfo = {
   likes: number
   fileCount: number | null
   totalBytes: number | null
+  kind: 'stt' | 'tts'
 }
 
 export type HubSearchResult = { id: string; use: 'stt' | 'tts'; label: string; hub: HubModelInfo }

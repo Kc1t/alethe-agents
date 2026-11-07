@@ -443,6 +443,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **Jev uses the app's OpenRouter key.** The OpenRouter key Jev kept in its own settings moves to
+  the system keychain at startup, where Preferences → Voice manages it. Jev 1.1 reads it from there
+  and leaves local model downloads to Preferences → Voice; Jev 1.0 needs that update for cloud
+  dictation, since the command that took a raw key from the plugin is gone. The catalogue offers
+  each app the newest release it can run, so older Alethe versions keep listing Jev 1.0.
 - **New default look.** A fresh install starts on the Elite Pure Black theme with the clean visual
   style, reduced motion, 90% zoom, the Dark Lemon terminal theme, and wider sidebars. Saved
   preferences are kept. Without a profile photo, the avatar shows the app icon and follows the
