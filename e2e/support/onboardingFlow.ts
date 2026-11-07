@@ -31,31 +31,23 @@ export async function completeOnboarding(displayName: string): Promise<void> {
   if (!appeared) return
   await nameInput.setValue(displayName)
 
-  const ptButton = await $('button*=Português')
-  await markScreenshotAndClick(ptButton, nextShotName('select-pt-br'))
+  const ptButton = await $('[role="dialog"]').$('button=PT')
+  if (await ptButton.isExisting()) {
+    await markScreenshotAndClick(ptButton, nextShotName('select-pt-br'))
+  }
 
-  const nextButtonFilled = await $('button[class*="buttonPrimary"]')
-  await nextButtonFilled.waitForEnabled({ timeout: 5_000 })
-  await markScreenshotAndClick(nextButtonFilled, nextShotName('next-profile'))
+  for (let index = 0; index < 10; index += 1) {
+    const next = await $('[role="dialog"] button[class*="buttonPrimary"]')
+    if (!(await next.isExisting())) break
+    await next.waitForClickable({ timeout: 10_000 })
+    await markScreenshotAndClick(next, nextShotName('next-step-' + (index + 1)))
+    await browser.pause(300)
+  }
 
-  // Step 1 (theme) and 2 (agents) — "Next" is always enabled on these.
-  const step1Next = await $('button[class*="buttonPrimary"]')
-  await step1Next.waitForClickable({ timeout: 10_000 })
-  await markScreenshotAndClick(step1Next, nextShotName('next-theme'))
-
-  const step2Next = await $('button[class*="buttonPrimary"]')
-  await step2Next.waitForClickable({ timeout: 10_000 })
-  await markScreenshotAndClick(step2Next, nextShotName('next-agents'))
-
-  // Step 3 (features) — last step, button becomes "Finish setup".
-  const finishButton = await $('button[class*="buttonPrimary"]')
-  await finishButton.waitForClickable({ timeout: 10_000 })
-  await markScreenshotAndClick(finishButton, nextShotName('finish-setup'))
-
-  await browser.waitUntil(async () => !(await $('#onboarding-name').isExisting()), {
-    timeout: 20_000,
-    timeoutMsg: 'onboarding did not close after "Finish setup"',
-  })
+  await browser.waitUntil(
+    async () => !(await $('[role="dialog"] button[class*="buttonPrimary"]').isExisting()),
+    { timeout: 20_000, timeoutMsg: 'onboarding did not close after its last step' },
+  )
 }
 
 /** A more direct name for the same behavior — "get into the app, regardless of the

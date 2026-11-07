@@ -37,6 +37,7 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 ## Unreleased
 
 - `skip` · `contract` · feat: expose typed plugin voice API with core-managed provider keys
+  - Commit: feat(voice): manage voice keys in Preferences and give plugins a typed voice API
   - Files: `src/lib/plugins/voice.ts`, `src/lib/plugins/types.ts`, `src-tauri/src/voice_providers/keys.rs`
   - Contract: additive API 3 `context.voice` and boolean-only `voice_provider_key_status(provider)`; no persisted format changes. The Swift Mac app hosts no web plugins.
 - `pending` · `ui` · feat: add core Voice preferences for provider keys, custom servers, and local speech model management

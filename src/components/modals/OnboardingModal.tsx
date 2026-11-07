@@ -329,6 +329,7 @@ export function OnboardingModal() {
                 <p className={styles.questionDesc}>{t('onboarding.profileSubtitle')}</p>
 
                 <input
+                  id="onboarding-name"
                   data-autofocus
                   className={styles.nameInput}
                   value={name}
