@@ -36,6 +36,8 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `backend` · fix: saving a voice server under a new base URL deletes its keychain key unless the same save passes a new one
+  - Files: `src-tauri/src/voice_servers/commands.rs`
 - `pending` · `contract` · feat: route agents through a hosted 9router-compatible gateway
   - Files: `src/lib/router9.ts`, `src-tauri/src/router9_remote.rs`, `src-tauri/src/pty.rs`, `src/components/Router9/Router9RemoteFields.tsx`, `src/components/XTermView/useXtermSession.ts`
   - Contract: `preferences.router9` in `projects.json` gains `mode` (`local` | `remote`, default `local`), `remoteUrl` (base without `/v1`, `https://` only, `http://` on loopback), and `models` (`opus`, `sonnet`, `haiku`, `codex` gateway ids, empty keeps the agent default). New keychain secret `router9-remote-key` (commands `router9_remote_key_status`, `router9_set_remote_key`; the key is never returned to the UI). `spawn_pty` gains `router9_key_env`: the env var names the backend fills with that key, limited to `ANTHROPIC_AUTH_TOKEN`, `ALETHE_ROUTER9_KEY` and `OPENAI_API_KEY`; a missing key fails the launch. Remote Claude gets `ANTHROPIC_BASE_URL` and the `ANTHROPIC_*MODEL` vars; remote Codex gets `-c model_provider="alethe_router9"` overrides reading `ALETHE_ROUTER9_KEY`

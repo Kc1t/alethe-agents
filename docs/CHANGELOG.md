@@ -564,6 +564,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Voice server keys follow their URL.** Changing the address of a saved voice server now clears
+  its key unless a new one is entered with it, so a stored key is never sent to a host it was not
+  typed for.
 - **Handing a conversation to Codex survives its startup dialogs.** The handoff prompt now waits
   until Codex's composer is ready and no trust, hooks-review or update dialog is open, so it no longer
   picks an option in one and fails with "config/read failed"; it is sent once the dialog is closed.

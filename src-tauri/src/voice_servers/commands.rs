@@ -53,7 +53,14 @@ pub async fn voice_servers_save(
     let (_, dir) = active_dir(&app)?;
     let mut servers = store::load(&dir);
     let is_new = input.id.is_none();
+    let previous_url = input
+        .id
+        .as_deref()
+        .and_then(ServerId::parse)
+        .and_then(|id| servers.iter().find(|server| server.id == id))
+        .map(|server| server.base_url.clone());
     let mut server = store::upsert(&mut servers, input)?;
+    let key = key_for_save(key, previous_url.as_deref(), &server.base_url);
     let url = netpolicy::parse_base(&server.base_url).map_err(|kind| kind.to_string())?;
     let target = netpolicy::resolve(&url)
         .await
@@ -136,4 +143,36 @@ pub async fn voice_servers_test(app: AppHandle, id: String) -> Result<ServerTest
         voices,
         loopback,
     })
+}
+
+// A key kept across a URL change would be sent to the new host without the user retyping it.
+fn key_for_save(
+    key: Option<Option<String>>,
+    previous_url: Option<&str>,
+    url: &str,
+) -> Option<Option<String>> {
+    match (key, previous_url) {
+        (None, Some(previous)) if previous != url => Some(None),
+        (key, _) => key,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_for_save;
+
+    #[test]
+    fn moving_a_server_drops_its_key_unless_a_new_one_is_given() {
+        let url = "https://b.example";
+        assert_eq!(
+            key_for_save(None, Some("https://a.example"), url),
+            Some(None)
+        );
+        assert_eq!(
+            key_for_save(Some(Some("k".into())), Some("https://a.example"), url),
+            Some(Some("k".into()))
+        );
+        assert_eq!(key_for_save(None, Some(url), url), None);
+        assert_eq!(key_for_save(None, None, url), None);
+    }
 }
