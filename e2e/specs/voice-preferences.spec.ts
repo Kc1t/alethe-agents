@@ -33,7 +33,9 @@ describe('Voice resource preferences', () => {
 
   it('opens provider setup and local models, and rejects an invalid custom server', async () => {
     await $('[aria-label="' + messages['profile.preferences'] + '"]').click()
-    await $('nav').$('button*=' + messages['prefs.categoryVoice']).click()
+    await $('nav')
+      .$('button*=' + messages['prefs.categoryVoice'])
+      .click()
     await $('[data-setting-id="voice-providers"]').waitForDisplayed()
     await $(
       '[aria-label="' +
