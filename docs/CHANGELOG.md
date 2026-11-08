@@ -593,6 +593,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   again when it is saved, after your edits, its generated title is redacted too, and the temporary
   context file is created owner-only and never overwrites an existing one.
 
+### Security
+
+- **Agent hooks.** Hook endpoints accept only POST requests to exact routes, hook payloads stay
+  out of logs, and temporary Claude hook settings are removed on exit.
+
 ### Fixed
 
 - ai-memory installs accept Unix archives with a root directory entry, find manually installed

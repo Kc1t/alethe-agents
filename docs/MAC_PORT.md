@@ -55,6 +55,9 @@ Mac synced through: `v1.7.0` (`80e44a3`)
   - Also: `76107508` fix: give light terminal themes a WCAG-AA palette and contrast floor (#97)
   - Files: `src/components/XTermView/xtermThemes.ts`, `src/components/XTermView/useXtermSession.ts`, `src/components/XTermView/index.tsx`
   - Behavior: use the shared light-theme detection, including plugin overrides, to apply a 4.5 contrast floor on creation and theme changes; darken failing bright ANSI colors while preserving dark themes.
+- `pending` · `backend` · fix(security): protect agent hook settings
+  - Files: `src-tauri/src/agent_events.rs`, `src-tauri/src/lib.rs`
+  - Scope: accept POST only on exact hook server routes (including `/mcp`), redact every hook payload from logs, and remove all process-owned Claude settings files on exit without changing voice or permission handling.
 
 - `skip` · `ui` · feat(plugins): expose API 3 host support for external voice conversations
   - Commit: feat(voice): render the voice HUD in the core and give plugins conversation APIs

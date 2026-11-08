@@ -759,6 +759,7 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 EXIT_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
                 agent_events::release_all_permissions(_app_handle);
+                agent_events::cleanup_settings_files();
                 pty::kill_all_sessions_background(&sessions_for_exit);
                 browser_session::kill_running_session(
                     &_app_handle.state::<browser_session::BrowserSessionState>(),
@@ -768,6 +769,7 @@ pub fn run() {
             }
 
             if let tauri::RunEvent::Exit = event {
+                agent_events::cleanup_settings_files();
                 crash_watch::mark_clean_exit();
             }
         });

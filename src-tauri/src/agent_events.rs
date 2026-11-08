@@ -1,6 +1,4 @@
-// Listener da POC do canvas de subagents (Fase 1).
-//
-// O Claude Code dispara hooks `SubagentStart`/`SubagentStop` como POST HTTP
+// Receives agent hooks and orchestration requests over authenticated local HTTP.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -212,15 +210,12 @@ fn claude_hooks_settings(
     serde_json::Value::Object(settings)
 }
 
-/// These payloads carry commands and file contents, so only their names reach the log.
-const CONTENT_BEARING_EVENTS: [&str; 3] = ["PreToolUse", "PostToolUse", "PermissionRequest"];
-
-fn hook_log_line(event: &str, tool: Option<&str>, body: &str) -> String {
-    if CONTENT_BEARING_EVENTS.contains(&event) {
-        return format!("[agent_events] payload: {event} tool={}", tool.unwrap_or("?"));
-    }
-    let preview: String = body.chars().take(4000).collect();
-    format!("[agent_events] payload: {preview}")
+// Hook fields are untrusted too, so diagnostics retain only the received byte count.
+fn hook_log_line(body: &str) -> String {
+    format!(
+        "[agent_events] hook received ({} bytes; payload redacted)",
+        body.len()
+    )
 }
 
 /// How long a `PermissionRequest` is held for a voice answer before Alethe answers it with no
@@ -481,6 +476,54 @@ pub fn release_all_permissions(app: &AppHandle) {
     emit_released(app, &pending_permissions().release_all(), "shutdown");
 }
 
+#[derive(Default)]
+struct HookSettingsFiles {
+    paths: std::collections::HashSet<PathBuf>,
+    closing: bool,
+}
+
+impl HookSettingsFiles {
+    fn write(&mut self, path: &Path, body: &[u8]) -> Result<(), String> {
+        if self.closing {
+            return Err("the agent hook settings are shutting down".to_string());
+        }
+        write_private_file(path, body)?;
+        self.paths.insert(path.to_path_buf());
+        Ok(())
+    }
+
+    fn cleanup(&mut self) -> Result<(), String> {
+        self.closing = true;
+        self.paths.retain(|path| match std::fs::remove_file(path) {
+            Ok(()) => false,
+            Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+        });
+        if self.paths.is_empty() {
+            return Ok(());
+        }
+        Err(format!(
+            "could not remove {} agent hook settings files",
+            self.paths.len()
+        ))
+    }
+}
+
+fn hook_settings_files() -> &'static std::sync::Mutex<HookSettingsFiles> {
+    static FILES: OnceLock<std::sync::Mutex<HookSettingsFiles>> = OnceLock::new();
+    FILES.get_or_init(|| std::sync::Mutex::new(HookSettingsFiles::default()))
+}
+
+// Track only this process's files; ADR-013 explains why cleanup never scans shared folders.
+pub fn cleanup_settings_files() {
+    let result = hook_settings_files()
+        .lock()
+        .map_err(|_| "the agent hook settings lock is poisoned".to_string())
+        .and_then(|mut files| files.cleanup());
+    if let Err(error) = result {
+        let _ = crate::logging::record_app_event("agent.hooks.cleanup".to_string(), error);
+    }
+}
+
 #[tauri::command]
 pub fn agent_hooks_settings_path(
     app: AppHandle,
@@ -524,7 +567,10 @@ pub fn agent_hooks_settings_path(
         }
     }
     let body = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    write_private_file(&path, body.as_bytes())?;
+    hook_settings_files()
+        .lock()
+        .map_err(|_| "the agent hook settings lock is poisoned".to_string())?
+        .write(&path, body.as_bytes())?;
     voice_hooked_ptys().note(&planner_id, voice);
     eprintln!(
         "[agent_events] hooks settings written to {}",
@@ -591,6 +637,86 @@ fn write_private_file(path: &Path, body: &[u8]) -> Result<(), String> {
         let _ = std::fs::remove_file(&temporary);
     }
     written.map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod settings_cleanup_tests {
+    use super::HookSettingsFiles;
+    use std::path::PathBuf;
+
+    fn scratch() -> PathBuf {
+        let directory =
+            std::env::temp_dir().join(format!("alethe-hooks-cleanup-{}", nanoid::nanoid!(8)));
+        std::fs::create_dir(&directory).unwrap();
+        directory
+    }
+
+    #[test]
+    fn shutdown_removes_all_owned_variants_and_preserves_other_files() {
+        let directory = scratch();
+        let mut files = HookSettingsFiles::default();
+        let paths: Vec<_> = [
+            "full-planner1.json",
+            "session-planner2.json",
+            "full-voice-planner1.json",
+        ]
+        .iter()
+        .map(|name| directory.join(name))
+        .collect();
+        for path in &paths {
+            files.write(path, b"first").unwrap();
+        }
+        files.write(&paths[0], b"updated").unwrap();
+        assert_eq!(std::fs::read(&paths[0]).unwrap(), b"updated");
+        let unrelated = directory.join("another-process.json");
+        std::fs::write(&unrelated, b"keep").unwrap();
+        std::fs::remove_file(&paths[1]).unwrap();
+
+        files.cleanup().unwrap();
+        files.cleanup().unwrap();
+
+        assert!(paths.iter().all(|path| !path.exists()));
+        assert!(files.paths.is_empty());
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"keep");
+        std::fs::remove_file(unrelated).unwrap();
+        std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn cleanup_retries_failed_removals_on_the_next_exit_event() {
+        let directory = scratch();
+        let path = directory.join("settings.json");
+        let mut files = HookSettingsFiles::default();
+        files.write(&path, b"settings").unwrap();
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+
+        assert!(files.cleanup().is_err());
+        assert!(files.paths.contains(&path));
+        std::fs::remove_dir(&path).unwrap();
+        std::fs::write(&path, b"settings").unwrap();
+        files.cleanup().unwrap();
+
+        assert!(!path.exists());
+        assert!(files.paths.is_empty());
+        std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn failed_and_late_writes_do_not_leave_untracked_settings() {
+        let directory = scratch();
+        let mut files = HookSettingsFiles::default();
+        let missing_parent = directory.join("missing").join("settings.json");
+        assert!(files.write(&missing_parent, b"settings").is_err());
+        assert!(files.paths.is_empty());
+        assert_eq!(std::fs::read_dir(&directory).unwrap().count(), 0);
+
+        files.cleanup().unwrap();
+        let late = directory.join("late.json");
+        assert!(files.write(&late, b"settings").is_err());
+        assert!(!late.exists());
+        std::fs::remove_dir(directory).unwrap();
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -939,6 +1065,45 @@ pub async fn codex_hooks_config_write(repo: String, planner_id: String) -> Resul
         .map_err(|error| format!("codex_hooks_config_write: falha na task bloqueante: {error}"))?
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HookRoute {
+    Mcp,
+    Spawn,
+    Codex,
+    OpenCodeStatus,
+    Hook,
+}
+
+fn hook_route(method: &tiny_http::Method, url: &str) -> Result<HookRoute, u16> {
+    if method != &tiny_http::Method::Post {
+        return Err(405);
+    }
+    match url {
+        "/mcp" => Ok(HookRoute::Mcp),
+        "/spawn" => Ok(HookRoute::Spawn),
+        "/codex" => Ok(HookRoute::Codex),
+        "/opencode-status" => Ok(HookRoute::OpenCodeStatus),
+        "/hook" => Ok(HookRoute::Hook),
+        _ => Err(404),
+    }
+}
+
+fn accept_hook_request(request: tiny_http::Request) -> Option<(tiny_http::Request, HookRoute)> {
+    let route = hook_route(request.method(), request.url()).and_then(|route| {
+        if check_token(&request) {
+            return Ok(route);
+        }
+        Err(401)
+    });
+    match route {
+        Ok(route) => Some((request, route)),
+        Err(status) => {
+            let _ = request.respond(tiny_http::Response::empty(status));
+            None
+        }
+    }
+}
+
 pub fn start_listener(app: AppHandle) {
     std::thread::spawn(move || {
         let mut last_error: Option<String> = None;
@@ -975,13 +1140,10 @@ pub fn start_listener(app: AppHandle) {
             emit_released(&sweeper, &released, "timeout");
         });
 
-        for mut request in server.incoming_requests() {
-            let url = request.url().to_string();
-
-            if !check_token(&request) {
-                let _ = request.respond(tiny_http::Response::empty(401));
+        for request in server.incoming_requests() {
+            let Some((mut request, route)) = accept_hook_request(request) else {
                 continue;
-            }
+            };
 
             let mut body = String::new();
             if let Err(e) = request
@@ -994,11 +1156,7 @@ pub fn start_listener(app: AppHandle) {
                 continue;
             }
 
-            // processo real (claude/codex/opencode) via
-            // `curl -X POST /spawn -d '{"agent":"codex","task":"...","mode":"exec"}'`.
-            // O Alethe emite `agent-spawn`; o front sobe um PTY worker. Campos:
-
-            if url.starts_with("/mcp") {
+            if route == HookRoute::Mcp {
                 let planner = request
                     .headers()
                     .iter()
@@ -1029,7 +1187,7 @@ pub fn start_listener(app: AppHandle) {
                 continue;
             }
 
-            if url.starts_with("/spawn") {
+            if route == HookRoute::Spawn {
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(payload) => {
                         let agent = payload
@@ -1058,7 +1216,10 @@ pub fn start_listener(app: AppHandle) {
                                 serde_json::Value::String(job_id.clone()),
                             );
                         }
-                        eprintln!("[agent_events] /spawn agent={agent} job_id={job_id}");
+                        let _ = crate::logging::record_app_event(
+                            "agent.spawn".to_string(),
+                            format!("accepted agent={agent}"),
+                        );
                         let _ = app.emit("agent-spawn", &event_payload);
                         let response = serde_json::json!({
                             "accepted": true,
@@ -1083,10 +1244,8 @@ pub fn start_listener(app: AppHandle) {
                 continue;
             }
 
-            // Alias legado: o control plane antigo despacha texto cru pro codex
-
-            // emitindo agent-spawn com agent=codex.
-            if url.starts_with("/codex") {
+            // The legacy control plane sends raw Codex tasks through agent-spawn.
+            if route == HookRoute::Codex {
                 let task = body.trim().to_string();
                 eprintln!("[agent_events] /codex (legado) task ({} chars)", task.len());
                 let payload = serde_json::json!({ "agent": "codex", "task": task });
@@ -1097,16 +1256,18 @@ pub fn start_listener(app: AppHandle) {
                 continue;
             }
 
-            // Bridge do plugin OpenCode (opencode_bridge.rs) — reporta
-            // working/idle real de sessoes OpenCode. Campos: directory
-
-            // state ("working" | "idle").
-            if url.starts_with("/opencode-status") {
+            // The OpenCode bridge reports the session directory and working/idle state.
+            if route == HookRoute::OpenCodeStatus {
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(payload) => {
                         let _ = app.emit("opencode-bridge-status", &payload);
                     }
-                    Err(e) => eprintln!("[agent_events] /opencode-status payload inválido: {e}"),
+                    Err(_) => {
+                        let _ = crate::logging::record_app_event(
+                            "agent.opencode-status".to_string(),
+                            "invalid JSON payload ignored".to_string(),
+                        );
+                    }
                 }
                 let _ = request.respond(tiny_http::Response::empty(200));
                 continue;
@@ -1114,20 +1275,6 @@ pub fn start_listener(app: AppHandle) {
 
             match serde_json::from_str::<serde_json::Value>(&body) {
                 Ok(mut payload) => {
-                    let get = |k: &str| {
-                        payload
-                            .get(k)
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("?")
-                            .to_owned()
-                    };
-                    eprintln!(
-                        "[agent_events] {} agent_id={} agent_type={}",
-                        get("hook_event_name"),
-                        get("agent_id"),
-                        get("agent_type"),
-                    );
-
                     // Which Claude terminal this fired from, so the frontend can hang the subagent
                     // off the same planner tree as its Codex delegations.
                     let planner = request
@@ -1174,11 +1321,10 @@ pub fn start_listener(app: AppHandle) {
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let tool_name = payload
-                        .get("tool_name")
-                        .and_then(|v| v.as_str())
-                        .map(ToOwned::to_owned);
-                    eprintln!("{}", hook_log_line(&event_name, tool_name.as_deref(), &body));
+                    let _ = crate::logging::record_app_event(
+                        "agent.hook".to_string(),
+                        hook_log_line(&body),
+                    );
                     if event_name == "PermissionRequest" {
                         if let Some(planner) =
                             planner.filter(|planner| pending_permissions().is_target(planner))
@@ -1194,17 +1340,28 @@ pub fn start_listener(app: AppHandle) {
                                     serde_json::Value::String(id),
                                 );
                             }
-                            if let Err(e) = app.emit("agent-hook", &payload) {
-                                eprintln!("[agent_events] could not emit agent-hook: {e}");
+                            if app.emit("agent-hook", &payload).is_err() {
+                                let _ = crate::logging::record_app_event(
+                                    "agent.hook".to_string(),
+                                    "could not emit agent-hook".to_string(),
+                                );
                             }
                             continue;
                         }
                     }
-                    if let Err(e) = app.emit("agent-hook", &payload) {
-                        eprintln!("[agent_events] could not emit agent-hook: {e}");
+                    if app.emit("agent-hook", &payload).is_err() {
+                        let _ = crate::logging::record_app_event(
+                            "agent.hook".to_string(),
+                            "could not emit agent-hook".to_string(),
+                        );
                     }
                 }
-                Err(e) => eprintln!("[agent_events] POST não-JSON ignorado: {e}"),
+                Err(_) => {
+                    let _ = crate::logging::record_app_event(
+                        "agent.hook".to_string(),
+                        "invalid JSON payload ignored".to_string(),
+                    );
+                }
             }
 
             let _ = request.respond(tiny_http::Response::empty(200));
@@ -1220,6 +1377,109 @@ mod tests {
     };
 
     const ENDPOINT: &str = "http://127.0.0.1:9123";
+
+    const ROUTES: [(&str, super::HookRoute); 5] = [
+        ("/mcp", super::HookRoute::Mcp),
+        ("/spawn", super::HookRoute::Spawn),
+        ("/codex", super::HookRoute::Codex),
+        ("/opencode-status", super::HookRoute::OpenCodeStatus),
+        ("/hook", super::HookRoute::Hook),
+    ];
+
+    #[test]
+    fn exact_post_routes_keep_their_handlers_including_mcp() {
+        for (url, route) in ROUTES {
+            assert_eq!(super::hook_route(&tiny_http::Method::Post, url), Ok(route));
+        }
+    }
+
+    #[test]
+    fn every_hook_server_route_rejects_non_post_methods() {
+        for method in [
+            tiny_http::Method::Get,
+            tiny_http::Method::Head,
+            tiny_http::Method::Put,
+            tiny_http::Method::Delete,
+            tiny_http::Method::Patch,
+            tiny_http::Method::Options,
+            tiny_http::Method::Connect,
+            tiny_http::Method::Trace,
+            "CUSTOM".parse().unwrap(),
+        ] {
+            for (url, _) in ROUTES {
+                assert_eq!(super::hook_route(&method, url), Err(405), "{method} {url}");
+            }
+        }
+    }
+
+    #[test]
+    fn prefix_lookalikes_and_unknown_routes_are_not_hook_routes() {
+        for (url, _) in ROUTES {
+            for suffix in ["-lookalike", "/child", "/", "?query=1"] {
+                let lookalike = format!("{url}{suffix}");
+                assert_eq!(
+                    super::hook_route(&tiny_http::Method::Post, &lookalike),
+                    Err(404),
+                    "{lookalike}"
+                );
+            }
+        }
+        for url in ["/", "/unknown", "/HOOK", "/%68ook"] {
+            assert_eq!(
+                super::hook_route(&tiny_http::Method::Post, url),
+                Err(404),
+                "{url}"
+            );
+        }
+    }
+
+
+    fn http_status(method: &str, url: &str, token: Option<&str>) -> u16 {
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+        let mut client = TcpStream::connect(server.server_addr().to_ip().unwrap()).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let token_header = token
+            .map(|token| format!("x-alethe-token: {token}\r\n"))
+            .unwrap_or_default();
+        write!(client, "{method} {url} HTTP/1.1\r\nHost: localhost\r\n{token_header}Connection: close\r\nContent-Length: 0\r\n\r\n").unwrap();
+        let request = server
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .expect("HTTP request");
+        if let Some((request, _route)) = super::accept_hook_request(request) {
+            request.respond(tiny_http::Response::empty(200)).unwrap();
+        }
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        response
+            .split_whitespace()
+            .nth(1)
+            .expect("HTTP status")
+            .parse()
+            .unwrap()
+    }
+
+    #[test]
+    fn real_http_requests_enforce_routes_methods_and_authentication() {
+        let token = super::init_token();
+        for (url, _) in ROUTES {
+            assert_eq!(http_status("POST", url, Some(token)), 200, "{url}");
+            assert_eq!(http_status("GET", url, Some(token)), 405, "{url}");
+            assert_eq!(
+                http_status("POST", &format!("{url}-lookalike"), Some(token)),
+                404,
+                "{url}"
+            );
+        }
+        assert_eq!(http_status("POST", "/hook", None), 401);
+        assert_eq!(http_status("POST", "/mcp", Some("wrong-token")), 401);
+    }
 
     #[test]
     fn session_start_runs_curl_directly_because_claude_skips_http_there() {
@@ -1330,14 +1590,43 @@ mod tests {
     }
 
     #[test]
-    fn tool_and_permission_payloads_are_logged_without_their_content() {
-        let body = r#"{"tool_input":{"command":"export TOKEN=secret"}}"#;
-        let line = hook_log_line("PreToolUse", Some("Bash"), body);
-        assert!(!line.contains("secret"));
-        assert!(line.contains("PreToolUse") && line.contains("Bash"));
-        assert!(!hook_log_line("PermissionRequest", Some("Bash"), body).contains("secret"));
-        assert!(!hook_log_line("PostToolUse", Some("Read"), body).contains("secret"));
-        assert!(hook_log_line("SessionStart", None, body).contains("secret"));
+    fn every_hook_event_redacts_payload_content() {
+        for event in [
+            "SessionStart",
+            "UserPromptSubmit",
+            "SubagentStart",
+            "SubagentStop",
+            "PreToolUse",
+            "PostToolUse",
+            "PermissionRequest",
+            "Stop",
+            "custom-event",
+        ] {
+            let body = serde_json::json!({
+                "hook_event_name": event,
+                "prompt": "secret-prompt",
+                "tool_input": { "command": "secret-command" },
+                "tool_response": "secret-file-contents",
+                "transcript_path": "secret-path",
+            })
+            .to_string();
+            let line = hook_log_line(&body);
+            assert!(!line.contains("secret-"), "{event} leaked payload content");
+        }
+    }
+
+    #[test]
+    fn hook_logs_redact_untrusted_event_and_tool_names() {
+        let body = serde_json::json!({
+            "hook_event_name": "secret-event\nforged-log",
+            "tool_name": "secret-tool",
+            "agent_id": "secret-agent",
+            "agent_type": "secret-type",
+        })
+        .to_string();
+        let line = hook_log_line(&body);
+        assert!(!line.contains("secret-"));
+        assert!(!line.contains('\n'));
     }
 
     #[test]
