@@ -597,6 +597,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 - ai-memory installs accept Unix archives with a root directory entry, find manually installed
   binaries outside the app PATH, and avoid duplicating Claude Code capture hooks already configured.
+- **Light terminal contrast.** Light themes, including plugin themes, enforce a WCAG-AA contrast
+  floor for agent output and use darker bright ANSI colors for readable terminal text.
 
 - **Voice server keys follow their URL.** Changing the address of a saved voice server now clears
   its key unless a new one is entered with it, so a stored key is never sent to a host it was not

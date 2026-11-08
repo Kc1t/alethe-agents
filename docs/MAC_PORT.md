@@ -50,6 +50,11 @@ Mac synced through: `v1.7.0` (`80e44a3`)
     with the managed data directory and server URL (OpenCode adds `--no-session-id`). Version
     probes stop after three seconds. Discover manually installed binaries, accept Unix archive root
     entries, and omit Claude capture events already supplied by user settings.
+- `pending` · `ui` · fix(terminal): enforce WCAG-AA contrast for light terminal themes
+  - Commit: Merge pull request #102 from aryansk/fix/97-light-theme-terminal-contrast
+  - Also: `76107508` fix: give light terminal themes a WCAG-AA palette and contrast floor (#97)
+  - Files: `src/components/XTermView/xtermThemes.ts`, `src/components/XTermView/useXtermSession.ts`, `src/components/XTermView/index.tsx`
+  - Behavior: use the shared light-theme detection, including plugin overrides, to apply a 4.5 contrast floor on creation and theme changes; darken failing bright ANSI colors while preserving dark themes.
 
 - `skip` · `ui` · feat(plugins): expose API 3 host support for external voice conversations
   - Commit: feat(voice): render the voice HUD in the core and give plugins conversation APIs

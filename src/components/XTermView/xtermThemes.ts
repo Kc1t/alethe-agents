@@ -12,9 +12,7 @@ export type LinkActionState = {
   y: number
 }
 
-// xterm's built-in ANSI palette assumes a dark background: anything a TUI paints
-// as white or bright white disappears on a light one. These keep every hue so agent
-// branding survives, and only re-point the neutrals that would otherwise vanish.
+// Keep ANSI text readable on light backgrounds while preserving agent hues.
 const LIGHT_ANSI = {
   black: '#1f2328',
   red: '#c0392b',
@@ -24,10 +22,10 @@ const LIGHT_ANSI = {
   magenta: '#8250df',
   cyan: '#1b7c83',
   white: '#3d3d3d',
-  brightBlack: '#6e7781',
+  brightBlack: '#52525b',
   brightRed: '#cf222e',
   brightGreen: '#1a7f37',
-  brightYellow: '#bf8700',
+  brightYellow: '#b45309',
   brightBlue: '#0969da',
   brightMagenta: '#8250df',
   brightCyan: '#1b7c83',
@@ -147,7 +145,7 @@ const MIN_LIGHT_THEME = {
   black: '#212121',
   red: '#d32f2f',
   green: '#22863a',
-  yellow: '#ff9800',
+  yellow: '#b45309',
   blue: '#1976d2',
   magenta: '#6f42c1',
   cyan: '#2b5581',
@@ -155,7 +153,7 @@ const MIN_LIGHT_THEME = {
   brightBlack: '#757575',
   brightRed: '#d32f2f',
   brightGreen: '#22863a',
-  brightYellow: '#ff9800',
+  brightYellow: '#b45309',
   brightBlue: '#1976d2',
   brightMagenta: '#6f42c1',
   brightCyan: '#2b5581',
@@ -269,4 +267,11 @@ function contributedXtermTheme(theme: Theme) {
 
 export function getXtermTheme(theme: Theme) {
   return XTERM_THEMES[theme as BuiltinTheme] ?? contributedXtermTheme(theme) ?? DARK_THEME
+}
+
+const LIGHT_MINIMUM_CONTRAST_RATIO = 4.5
+
+// Cover 256-color and truecolor text using the same light-mode detection as plugin palettes.
+export function getMinimumContrastRatio(theme: Theme): number | undefined {
+  return isLightTheme(theme) ? LIGHT_MINIMUM_CONTRAST_RATIO : undefined
 }

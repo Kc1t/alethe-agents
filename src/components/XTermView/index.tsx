@@ -42,7 +42,7 @@ import {
 } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
 import { useXtermSession } from './useXtermSession'
-import { getXtermTheme, type LinkActionState } from './xtermThemes'
+import { getMinimumContrastRatio, getXtermTheme, type LinkActionState } from './xtermThemes'
 import styles from './XTermView.module.css'
 
 export type XTermViewProps = {
@@ -415,6 +415,7 @@ export function XTermView({
     const terminal = terminalRef.current
     if (!terminal) return
     terminal.options.theme = getXtermTheme(terminalTheme)
+    terminal.options.minimumContrastRatio = getMinimumContrastRatio(terminalTheme) ?? 1
     // Swapping the palette alone leaves already-painted rows on the previous colours.
     terminal.refresh(0, terminal.rows - 1)
   }, [terminalTheme])

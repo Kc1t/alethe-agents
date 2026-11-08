@@ -130,7 +130,7 @@ import {
   writePtyChunked,
   writePtyWithTimeout,
 } from './terminalWrite'
-import { getXtermTheme, type LinkActionState } from './xtermThemes'
+import { getMinimumContrastRatio, getXtermTheme, type LinkActionState } from './xtermThemes'
 
 // Early exits trigger a single fresh-session retry.
 const EARLY_EXIT_MS = 4000
@@ -423,6 +423,7 @@ export function useXtermSession(params: {
       fontFamily: resolveTerminalFontFamily(preferences.terminalFontFamily),
       fontSize: TERMINAL_FONT_SIZE,
       theme: getXtermTheme(terminalTheme),
+      minimumContrastRatio: getMinimumContrastRatio(terminalTheme),
     })
     const fitAddon = new FitAddon()
     const searchAddon = new SearchAddon()

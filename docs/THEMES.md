@@ -100,3 +100,16 @@ sync in both directions, so a half-finished built-in theme fails the test suite.
 
 > App icons are a separate, independent four-value `AppIconTheme` union
 > (`src/lib/themeIcons.ts`) — a new theme does not need one.
+
+## Terminal contrast
+
+Light terminal palettes inherit all 16 ANSI slots from the shared `LIGHT_ANSI` base,
+with readable neutral colors and bright colors that meet WCAG AA (4.5:1) against their
+background. `min-light` supplies its own complete palette with the same contrast target.
+When overriding terminal colors in a light theme, check their contrast against its background.
+
+`getMinimumContrastRatio()` in `src/components/XTermView/xtermThemes.ts` uses the shared
+`isLightTheme()` detection, including plugin swatches and explicit `light` overrides. It enables
+a 4.5 render-time contrast floor for light themes so 256-color and truecolor agent output also
+remains readable. Dark themes retain xterm’s default contrast ratio of 1. The floor is applied
+when a terminal is created and updated when its theme changes; existing rows are refreshed.
