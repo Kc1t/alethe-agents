@@ -10,6 +10,7 @@ import {
   playwrightMcpConfigPath,
 } from './tauri'
 import type { AgentType, Project } from './types'
+import { voiceConversationHooksEnabled } from './voice/conversationHooks'
 import { toWslGuestPath, wslTargetFor } from './wsl'
 
 /**
@@ -99,9 +100,12 @@ export async function claudeLaunchExtras({
 
   // Tags the pane's hooks with its pty, so SessionStart/UserPromptSubmit keep it on the right
   // conversation; with the orchestrator on, the same file carries the subagent and tool hooks.
-  const hooksSettingsPath = await agentHooksSettingsPath(ptyId, enabledFeatures.orchestrator).catch(
-    () => undefined,
-  )
+  const hooksSettingsPath = await agentHooksSettingsPath(
+    ptyId,
+    enabledFeatures.orchestrator,
+    undefined,
+    voiceConversationHooksEnabled(),
+  ).catch(() => undefined)
 
   if (wslTarget) {
     return {

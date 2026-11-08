@@ -36,6 +36,15 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `skip` · `ui` · feat(plugins): expose API 3 host support for external voice conversations
+  - Commit: feat(voice): render the voice HUD in the core and give plugins conversation APIs
+  - Files: `src/lib/plugins/terminals.ts`, `src/lib/plugins/agents.ts`, `src/lib/plugins/voice.ts`, `src/components/modals/PreferencesModal.tsx`
+  - Reason: the Swift Mac app hosts no web plugins. Additive host API and transient hook/shortcut state only; no persisted or synced data changes.
+- `pending` · `contract` · fix(voice): render the floating voice HUD in the core without hosting plugins
+  - Commit: feat(voice): render the voice HUD in the core and give plugins conversation APIs
+  - Files: `src/components/VoiceHud/index.tsx`, `src/lib/voice/hudState.ts`, `src/main.tsx`
+  - Contract: the shared HUD renders JSON state and relays JSON actions documented under `context.voice` in `docs/PLUGINS.md`; secondary-window hydration is read-only, with live language and appearance supplied by the publisher. No persisted schema changes.
+
 - `pending` · `contract` · feat(voice): move the Jev OpenRouter key into the keychain and drop the raw-key voice shims
   - Commit: feat(voice): move Jev onto the core voice API and list Jev 1.1
   - Files: `src/lib/plugins/legacyMigration.ts`, `src-tauri/src/jev.rs`, `src-tauri/src/speech.rs`, `plugins.json`

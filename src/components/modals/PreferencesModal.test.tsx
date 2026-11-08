@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
+import { settingsContributions } from '../../lib/plugins'
 import { useUiStore } from '../../stores/uiStore'
 import { PreferencesModal } from './PreferencesModal'
 
@@ -49,5 +50,46 @@ describe('PreferencesModal', () => {
 
     expect(screen.queryByRole('listbox', { name: 'Topbar style' })).not.toBeInTheDocument()
     expect(useUiStore.getState().openModal).toBe('preferences')
+  })
+})
+
+describe('contributed Voice preferences', () => {
+  it('renders Voice settings below core content, keeps default settings in Integrations, and searches the correct category', () => {
+    const voice = settingsContributions.add('test', {
+      id: 'test-conversation',
+      category: 'voice',
+      title: () => 'Conversation controls',
+      keywords: 'conversation controls',
+      component: () => <div>Voice plugin settings</div>,
+    })
+    const integrations = settingsContributions.add('test', {
+      id: 'test-integration',
+      title: () => 'Integration controls',
+      component: () => <div>Integration plugin settings</div>,
+    })
+    try {
+      useUiStore.getState().openModal_('preferences', { category: 'voice' })
+      render(<PreferencesModal />)
+      expect(screen.getByText('Voice plugin settings')).toBeInTheDocument()
+      expect(screen.queryByText('Integration plugin settings')).not.toBeInTheDocument()
+      expect(
+        screen
+          .getByTestId('voice-page')
+          .compareDocumentPosition(screen.getByText('Voice plugin settings')) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy()
+      fireEvent.click(screen.getByText('Integrations', { selector: 'strong' }))
+      expect(screen.getByText('Integration plugin settings')).toBeInTheDocument()
+      expect(screen.queryByText('Voice plugin settings')).not.toBeInTheDocument()
+      fireEvent.change(screen.getByPlaceholderText('Search settings'), {
+        target: { value: 'conversation controls' },
+      })
+      fireEvent.click(screen.getByRole('option', { name: /Conversation controls/ }))
+      expect(screen.getByTestId('voice-page')).toBeInTheDocument()
+      expect(screen.getByText('Voice plugin settings')).toBeInTheDocument()
+    } finally {
+      voice.dispose()
+      integrations.dispose()
+    }
   })
 })

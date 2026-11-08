@@ -10,7 +10,17 @@ import { useEffect, useRef } from 'react'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
-import { deliverCodexPrompt, deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
+import { registerAgentInput } from '../../lib/agentInputRegistry'
+import {
+  deliverCodexPrompt,
+  deliverOpenCodePrompt,
+  looksLikeChoicePrompt,
+  PaneHiddenError,
+  pasteAndSubmit,
+  readLiveScreen,
+  readRecentLines,
+  TerminalPromptOpenError,
+} from '../../lib/agentPromptDelivery'
 import { resolveAgentCliCommand, resolveCustomAgentArgs } from '../../lib/agentProviders'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import {
@@ -350,6 +360,36 @@ export function useXtermSession(params: {
     let lastRows = 0
     let forceNextResize = false
     let completionMonitor: AgentCompletionMonitor | null = null
+    let unregisterAgentInput: (() => void) | null = null
+    // Plugins submit through this, never raw writes: it knows the paste mode and arms the monitor.
+    const registerAgentInputFor = (id: string) => {
+      if (disposed) return
+      unregisterAgentInput?.()
+      unregisterAgentInput = registerAgentInput(id, {
+        submit: async (text) => {
+          const refuseOnChoiceMenu = () => {
+            if (!isPanelVisibleRef.current) throw new PaneHiddenError()
+            if (looksLikeChoicePrompt(readLiveScreen(terminal.buffer.active, terminal.rows))) {
+              throw new TerminalPromptOpenError()
+            }
+          }
+          refuseOnChoiceMenu()
+          useTerminalsStore.getState().recordIo(id)
+          await pasteAndSubmit(text, {
+            writeChunked: (value) => writePtyChunked(id, value, terminal.modes.bracketedPasteMode),
+            write: (data) => writePty(id, data),
+            sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+            beforeEnter: () => {
+              refuseOnChoiceMenu()
+              completionMonitor?.armForSubmit(text)
+              recordAgentActivityInput(id, text)
+            },
+          })
+        },
+        interrupt: () => writePty(id, ''),
+        readScreen: (lines) => readRecentLines(terminal.buffer.active, lines),
+      })
+    }
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
     let writeRecoveryPending = false
@@ -981,11 +1021,12 @@ export function useXtermSession(params: {
       if (attachedSessionId !== sessionId) emitSessionId?.(attachedSessionId)
       ptyIdRef.current = existingId
       useTerminalsStore.getState().registerPty(existingId)
+      registerAgentInputFor(existingId)
       onSpawnedRef.current?.(existingId)
 
       void setPtyVisible(existingId, isPanelVisibleRef.current).catch(() => {})
 
-      if (command === 'claude' || command === 'codex' || command === 'opencode') {
+      if (command && !isShellAgentType(command)) {
         completionMonitor = new AgentCompletionMonitor({
           ptyId: existingId,
           agent: command,
@@ -1466,6 +1507,7 @@ export function useXtermSession(params: {
         ptyIdRef.current = response.id
         if (command === 'codex') forgetCodexPaneInput(response.id)
         useTerminalsStore.getState().registerPty(response.id)
+        registerAgentInputFor(response.id)
         onSpawnedRef.current?.(response.id)
 
         // Apply visibility before the first output batch.
@@ -1479,7 +1521,7 @@ export function useXtermSession(params: {
           registerSessionClaim(command, cwd, attachedSessionId, response.id)
         }
 
-        if (command === 'claude' || command === 'codex' || command === 'opencode') {
+        if (command && !isShellAgentType(command)) {
           completionMonitor = new AgentCompletionMonitor({
             ptyId: response.id,
             agent: command,
@@ -1805,6 +1847,8 @@ export function useXtermSession(params: {
         })
       }
       disposed = true
+      unregisterAgentInput?.()
+      unregisterAgentInput = null
       spawnQueueAbort.abort()
       container.removeEventListener('wheel', onWheel, true)
       container.removeEventListener('pointerdown', focusTerminal, true)

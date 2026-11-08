@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 
 import { BUNDLED_PLUGINS } from '../../plugins'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { agentProviderContributions } from '../agentProviders'
 import {
@@ -10,6 +11,7 @@ import {
   translateDynamic,
   useTDynamic,
 } from '../i18n'
+import { suspendKeybindings } from '../keybindingSuspension'
 import {
   pluginInvoke,
   pluginListen,
@@ -18,12 +20,13 @@ import {
   pluginSetEnabled,
   pluginsList,
 } from '../tauri'
+import { createPluginAgents } from './agents'
 import { PLUGIN_API_VERSION } from './constants'
 import { pluginIcon } from './icons'
 import { loadLocalPlugin } from './localTransport'
 import { openContributedModal, revealContributedView } from './navigation'
 import { canInvoke, grants, isValidCapability } from './permissions'
-import { pluginAgents, pluginComponents } from './presentation'
+import { pluginComponents } from './presentation'
 import {
   commandContributions,
   modalContributions,
@@ -37,6 +40,7 @@ import { createPluginStorage } from './storage'
 import { createPluginTerminals } from './terminals'
 import type {
   Disposable,
+  PluginAppearance,
   PluginContext,
   PluginModule,
   PluginRuntimeEntry,
@@ -100,6 +104,18 @@ export function activationEvents(manifest: PluginManifest): string[] {
   return declared.length > 0 ? declared : [STARTUP_EVENT]
 }
 
+export function currentAppearance(): PluginAppearance {
+  const { uiTheme, visualStyle, motionPreference } = useProjectsStore.getState().preferences
+  return { theme: uiTheme, visualStyle, reducedMotion: motionPreference === 'reduced' }
+}
+
+function sameAppearance(a: PluginAppearance, b: PluginAppearance): boolean {
+  return (
+    a.theme === b.theme && a.visualStyle === b.visualStyle && a.reducedMotion === b.reducedMotion
+  )
+}
+
+// ADR-010 keeps conversation services behind host capabilities on API 3.
 function createContext(manifest: PluginManifest): PluginContext {
   const subscriptions: Disposable[] = []
   const prefix = `plugin.${manifest.id}.`
@@ -150,10 +166,21 @@ function createContext(manifest: PluginManifest): PluginContext {
     },
     workspace: createPluginWorkspace(require),
     terminals: createPluginTerminals(require, subscriptions),
-    voice: createPluginVoice(require, subscriptions),
-    agents: pluginAgents,
+    voice: createPluginVoice(require, subscriptions, manifest.id),
+    agents: createPluginAgents(require, subscriptions),
     components: pluginComponents,
     locale: getLocale,
+    appearance: currentAppearance,
+    onAppearanceChange: (handler) => {
+      let last = currentAppearance()
+      const stop = useProjectsStore.subscribe(() => {
+        const next = currentAppearance()
+        if (sameAppearance(next, last)) return
+        last = next
+        handler(next)
+      })
+      return track({ dispose: stop })
+    },
     registerView: (viewId, component) => {
       const declared = sidebarTabContributions.get(viewId)
       if (!declared || declared.pluginId !== manifest.id) {
@@ -196,6 +223,7 @@ function createContext(manifest: PluginManifest): PluginContext {
       toast: ({ title, body }) => {
         useUiStore.getState().pushToast({ title, body: body ?? '' })
       },
+      suspendKeybindings: () => track({ dispose: suspendKeybindings() }),
     },
     registerMessages: (locale: Locale, messages) => {
       const prefixed: Record<string, string> = {}

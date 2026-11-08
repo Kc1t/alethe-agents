@@ -12,6 +12,8 @@ expected.
 | [007](007-conflict-resolution.md) | Conflicts are resolved in an ephemeral merge environment | Accepted |
 | [008](008-plugin-voice-api.md) | Plugins use typed core voice services without owning provider keys | Accepted |
 | [009](009-voice-resource-preferences.md) | Voice keys, servers and models are managed in core Preferences | Accepted |
+| [010](010-plugin-voice-conversations.md) | External voice conversations use capability-gated host services on API 3 | Accepted |
+| [011](011-core-voice-hud-renderer.md) | The core renders the floating HUD while plugins control conversations | Accepted |
 
 New record: copy the shape of an existing one (Context, Decision, Consequences), take the next free
 number, and cite it from the code it governs.

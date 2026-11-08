@@ -12,6 +12,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Voice conversation plugin support.** Plugins can submit prompts safely, focus background agent
+  tabs, resume conversations on restart, observe agent activity and transcripts, and request permission
+  decisions through separate permissions. Voice plugins can enable Claude conversation hooks, track
+  speech progress, follow app appearance, and add settings below Preferences → Voice on plugin API 3.
+- **Core voice HUD renderer.** The floating voice window displays plugin-published conversation
+  state and sends controls back without loading plugins or writing workspace data.
+
 - **Typed plugin voice API.** Plugins can request microphone transcription, speech playback, and
   floating voice HUD access through separate permissions, inspect provider key availability, and
   open Preferences → Voice while the app manages provider credentials.

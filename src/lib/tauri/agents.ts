@@ -58,6 +58,7 @@ export async function agentHooksSettingsPath(
   plannerId: string,
   orchestrator = true,
   aiMemory?: { enabled: boolean; port: number } | null,
+  voice = false,
 ): Promise<string> {
   if (aiMemory === undefined) aiMemory = await liveAiMemoryPrefs()
   return invoke<string>('agent_hooks_settings_path', {
@@ -65,6 +66,7 @@ export async function agentHooksSettingsPath(
     orchestrator,
     aiMemoryEnabled: aiMemory?.enabled ?? false,
     aiMemoryPort: aiMemory?.port ?? null,
+    voice,
   })
 }
 

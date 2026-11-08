@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 import { APP_SHELL_ID } from '../lib/appShell'
 import { getLocale, translate } from '../lib/i18n'
+import { keybindingsSuspended } from '../lib/keybindingSuspension'
 import {
   MAX_RECENT_PROJECT_TABS,
   selectActiveContainer,
@@ -15,6 +16,7 @@ import { useUiStore } from '../stores/uiStore'
 export function useKeybindings() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (keybindingsSuspended()) return
       if (e.key === 'Escape') {
         const ui = useUiStore.getState()
         if (ui.openModal) {

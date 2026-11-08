@@ -48,4 +48,17 @@ describe('agentHooksSettingsPath', () => {
       expect.objectContaining({ aiMemoryEnabled: false }),
     )
   })
+
+  it('passes the voice flag through, off unless asked', async () => {
+    await agentHooksSettingsPath('p', false)
+    expect(invoke).toHaveBeenLastCalledWith(
+      'agent_hooks_settings_path',
+      expect.objectContaining({ voice: false }),
+    )
+    await agentHooksSettingsPath('p', false, undefined, true)
+    expect(invoke).toHaveBeenLastCalledWith(
+      'agent_hooks_settings_path',
+      expect.objectContaining({ voice: true }),
+    )
+  })
 })

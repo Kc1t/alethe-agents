@@ -31,6 +31,7 @@ import { ErrorBoundary } from '../ErrorBoundary'
 import { AboutPage } from './preferences/AboutPage'
 import { AccountPage } from './preferences/AccountPage'
 import { AppearancePage } from './preferences/AppearancePage'
+import { ContributedSettings } from './preferences/ContributedSettings'
 import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
@@ -405,7 +406,7 @@ export function PreferencesModal() {
         keywords: 'discord rich presence status integração',
       },
       ...contributedSettings.map((section): SearchItem => ({
-        category: 'integrations',
+        category: section.category ?? 'integrations',
         target: section.id,
         label: section.title(),
         description: section.description?.() ?? '',
@@ -674,7 +675,12 @@ export function PreferencesModal() {
                   {category === 'appearance' ? <AppearancePage /> : null}
                   {category === 'features' ? <FeaturesPage /> : null}
                   {category === 'plugins' ? <PluginsPage /> : null}
-                  {category === 'voice' ? <VoicePage /> : null}
+                  {category === 'voice' ? (
+                    <>
+                      <VoicePage />
+                      <ContributedSettings category="voice" />
+                    </>
+                  ) : null}
                   {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                   {category === 'integrations' ? <IntegrationsPage /> : null}
                   {category === 'multiagent' ? <MultiagentPage /> : null}

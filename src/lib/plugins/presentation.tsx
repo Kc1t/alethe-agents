@@ -21,7 +21,7 @@ function PluginDropdown({ value, options, onChange, ariaLabel, disabled }: Plugi
   )
 }
 
-export const pluginAgents: PluginAgents = {
+export const pluginAgents: Pick<PluginAgents, 'label' | 'accent'> = {
   label: (agent) => agentLabel(agent),
   accent: (agent) => agentAccentVar(agent),
 }

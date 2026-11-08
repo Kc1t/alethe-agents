@@ -1,7 +1,8 @@
+import { agentLabel as providerAgentLabel } from './agentProviders'
 import { getLocale, translate } from './i18n'
-import type { AgentType } from './types'
 import { notifyAgentDone } from './notifications'
 import { pathSegments } from './paths'
+import type { AgentType } from './types'
 
 const RESPONSE_IDLE_MS = 4500
 const MIN_RESPONSE_MS = 700
@@ -53,6 +54,12 @@ export class AgentCompletionMonitor {
         this.inputLine += ch
       }
     }
+  }
+
+  armForSubmit(prompt: string): void {
+    if (this.disposed) return
+    const trimmed = prompt.trim()
+    if (trimmed) this.arm(trimmed)
   }
 
   handleOutput(chunk: string): void {
@@ -133,7 +140,7 @@ function buildNotificationBody(options: AgentCompletionMonitorOptions): string {
 function agentLabel(agent: Exclude<AgentType, 'shell'>): string {
   if (agent === 'claude') return 'Claude'
   if (agent === 'codex') return 'Codex'
-  return 'OpenCode'
+  return providerAgentLabel(agent)
 }
 
 function shortPath(path: string): string {

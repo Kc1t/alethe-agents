@@ -221,3 +221,89 @@ export async function deliverCodexPrompt(
   }
   return true
 }
+
+export const SUBMIT_SETTLE_MS = 150
+
+export type PromptSubmitIo = {
+  writeChunked: (text: string) => Promise<void>
+  write: (data: string) => Promise<void>
+  sleep: (ms: number) => Promise<void>
+  // throwing leaves the pasted text unsent
+  beforeEnter?: () => void
+}
+
+export async function pasteAndSubmit(text: string, io: PromptSubmitIo): Promise<void> {
+  await io.writeChunked(text)
+  await io.sleep(SUBMIT_SETTLE_MS)
+  io.beforeEnter?.()
+  await io.write('\r')
+}
+
+const CHOICE_PROMPT_LINES = [
+  /^\s*[│┃]?\s*[❯›>●]?\s*1[.)]\s+(?:Yes|Allow)\b/,
+  /\bAllow once\b.*\b(?:Reject|Deny)\b/i,
+  /\b(?:press enter to continue|enter confirm)\b/i,
+]
+
+// an Enter on an agent's own approval menu would pick its highlighted option
+export function looksLikeChoicePrompt(screen: string): boolean {
+  if (
+    screen.split('\n').some((line) => CHOICE_PROMPT_LINES.some((pattern) => pattern.test(line)))
+  ) {
+    return true
+  }
+  return /^\s*[│┃]?\s*[❯›>●]\s*\d+[.)]\s+/m.test(screen) && /\benter to select\b/i.test(screen)
+}
+
+export type ScreenBuffer = {
+  baseY: number
+  cursorY: number
+  length: number
+  getLine: (
+    y: number,
+  ) => { translateToString: (trimRight?: boolean) => string; isWrapped?: boolean } | undefined
+}
+
+// Claude Code draws inline from the top, so its menu can sit far above the bottom row
+export function readLiveScreen(buffer: ScreenBuffer, rows: number): string {
+  const end = Math.min(
+    buffer.length,
+    Math.max(buffer.baseY + rows, buffer.baseY + buffer.cursorY + 1),
+  )
+  const lines: string[] = []
+  for (let y = Math.max(0, buffer.baseY); y < end; y++) {
+    const line = buffer.getLine(y)
+    if (line) lines.push(line.translateToString(true))
+  }
+  return lines.join('\n')
+}
+
+export function readRecentLines(
+  buffer: Pick<ScreenBuffer, 'length' | 'getLine'>,
+  count: number,
+): string {
+  const lines: string[] = []
+  for (let y = Math.max(0, buffer.length - count); y < buffer.length; y++) {
+    const line = buffer.getLine(y)
+    if (!line) continue
+    const text = line.translateToString(true)
+    if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += text
+    else lines.push(text)
+  }
+  return lines.join('\n')
+}
+
+export class TerminalPromptOpenError extends Error {
+  constructor() {
+    super('The terminal is showing a choice prompt')
+    this.name = 'TerminalPromptOpenError'
+  }
+}
+
+// a hidden pane gets no output, so its screen cannot be checked for a choice menu
+export class PaneHiddenError extends Error {
+  constructor() {
+    super('The terminal pane is not visible')
+    this.name = 'PaneHiddenError'
+  }
+}

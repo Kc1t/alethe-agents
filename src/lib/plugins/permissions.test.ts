@@ -89,6 +89,8 @@ describe('voice permissions', () => {
       'voice_provider_delete_key',
       'voice_servers_save',
       'voice_servers_delete',
+      'agent_permission_decide',
+      'voice_set_targets',
     ]) {
       expect(canInvoke(['invoke:*'], command)).toBe(false)
     }

@@ -40,11 +40,30 @@ vi.mock('../tauri', () => ({
   pluginListen: (event: string, handler: (payload: unknown) => void) => listenMock(event, handler),
 }))
 
+const appearanceListeners = new Set<() => void>()
+let preferences = { uiTheme: 'dark', visualStyle: 'normal', motionPreference: 'animated' }
+vi.mock('../../stores/projectsStore', () => ({
+  useProjectsStore: {
+    getState: () => ({ preferences }),
+    subscribe: (listener: () => void) => {
+      appearanceListeners.add(listener)
+      return () => appearanceListeners.delete(listener)
+    },
+  },
+}))
+const { keybindingsSuspended } = await import('../keybindingSuspension')
+
 const pushToastMock = vi.fn()
 vi.mock('../../stores/uiStore', () => ({
   useUiStore: { getState: () => ({ pushToast: pushToastMock }) },
 }))
 vi.mock('./terminals', () => ({
+  liveSessionIdOf: () => 'session-1',
+  locateSession: () => ({
+    ptyId: 'pty-1',
+    tab: { type: 'claude', sessionId: 'conversation', cwd: '/repo' },
+    terminal: { cwd: '/repo' },
+  }),
   createPluginTerminals: (require: (capability: string) => void) => ({
     sessions: () => {
       require('terminal.read')
@@ -130,6 +149,8 @@ function entryFor(id: string) {
 }
 
 beforeEach(() => {
+  preferences = { uiTheme: 'dark', visualStyle: 'normal', motionPreference: 'animated' }
+  appearanceListeners.clear()
   bundled.length = 0
   disabledIds.length = 0
   invokeMock.mockClear()
@@ -676,4 +697,119 @@ describe('setPluginEnabled', () => {
     expect(sidebarTabContributions.get('test.view')).toBeUndefined()
     expect(entryFor('test.plugin')).toMatchObject({ active: false, enabled: false })
   })
+})
+
+describe('additive plugin API 3 host facilities', () => {
+  async function activate(capabilities: string[] = []) {
+    let context!: PluginContext
+    bundled.push({
+      manifest: manifest({ apiVersion: 3, capabilities }),
+      load: async () => ({
+        activate: (ctx) => {
+          context = ctx
+        },
+      }),
+    })
+    await initPluginHost()
+    return context
+  }
+
+  it('reports appearance without a capability, emits actual changes, and disposes on disable', async () => {
+    const ctx = await activate()
+    expect(PLUGIN_API_VERSION).toBe(3)
+    expect(ctx.appearance()).toEqual({ theme: 'dark', visualStyle: 'normal', reducedMotion: false })
+    const handler = vi.fn()
+    const subscription = ctx.onAppearanceChange(handler)
+    expect(ctx.subscriptions).toContain(subscription)
+    appearanceListeners.forEach((listener) => listener())
+    expect(handler).not.toHaveBeenCalled()
+    preferences = { uiTheme: 'light', visualStyle: 'glass', motionPreference: 'reduced' }
+    appearanceListeners.forEach((listener) => listener())
+    expect(handler).toHaveBeenCalledExactlyOnceWith({
+      theme: 'light',
+      visualStyle: 'glass',
+      reducedMotion: true,
+    })
+    await setPluginEnabled('test.plugin', false)
+    expect(appearanceListeners.size).toBe(0)
+  })
+
+  it('holds keybindings until every Disposable is released, including on disable', async () => {
+    const ctx = await activate()
+    const first = ctx.ui.suspendKeybindings()
+    const second = ctx.ui.suspendKeybindings()
+    expect(ctx.subscriptions).toContain(first)
+    expect(keybindingsSuspended()).toBe(true)
+    first.dispose()
+    first.dispose()
+    expect(keybindingsSuspended()).toBe(true)
+    second.dispose()
+    expect(keybindingsSuspended()).toBe(false)
+    ctx.ui.suspendKeybindings()
+    await setPluginEnabled('test.plugin', false)
+    expect(keybindingsSuspended()).toBe(false)
+  })
+
+  it('releases appearance subscriptions and shortcut holds when activation fails', async () => {
+    bundled.push({
+      manifest: manifest({ apiVersion: 3 }),
+      load: async () => ({
+        activate: (ctx) => {
+          ctx.onAppearanceChange(() => {})
+          ctx.ui.suspendKeybindings()
+          throw new Error('activation failed')
+        },
+      }),
+    })
+    await initPluginHost()
+    expect(entryFor('test.plugin')?.error).toBe('activation failed')
+    expect(appearanceListeners.size).toBe(0)
+    expect(keybindingsSuspended()).toBe(false)
+  })
+
+  it('gates agent observation and approval independently and tracks their listeners', async () => {
+    const ctx = await activate(['agent.observe'])
+    const off = ctx.agents.onHook(() => {})
+    expect(ctx.subscriptions).toContain(off)
+    await expect(ctx.agents.decidePermission('request', 'allow')).rejects.toThrow(
+      'capability_denied:test.plugin:agent.approve',
+    )
+    expect(() => ctx.agents.onPermissionReleased(() => {})).toThrow(
+      'capability_denied:test.plugin:agent.approve',
+    )
+    await Promise.resolve()
+    await setPluginEnabled('test.plugin', false)
+    expect(unlistenMock).toHaveBeenCalledOnce()
+  })
+
+  it('registers settings under Voice and retains Integrations as the default category', async () => {
+    const ctx = await activate(['ui.settings'])
+    ctx.contributes.settings({
+      id: 'test.voice',
+      category: 'voice',
+      title: () => 'Conversation',
+      component: Dummy,
+    })
+    ctx.contributes.settings({ id: 'test.default', title: () => 'Default', component: Dummy })
+    expect(settingsContributions.get('test.voice')?.category).toBe('voice')
+    expect(settingsContributions.get('test.default')?.category).toBeUndefined()
+    await setPluginEnabled('test.plugin', false)
+    expect(settingsContributions.get('test.voice')).toBeUndefined()
+  })
+})
+
+it('releases conversation hook holds when plugin activation fails', async () => {
+  const { voiceConversationHooksEnabled } = await import('../voice/conversationHooks')
+  bundled.push({
+    manifest: manifest({ apiVersion: 3, capabilities: ['voice.converse'] }),
+    load: async () => ({
+      activate: (ctx) => {
+        ctx.voice.setConversationHooks(true)
+        expect(voiceConversationHooksEnabled()).toBe(true)
+        throw new Error('activation failed')
+      },
+    }),
+  })
+  await initPluginHost()
+  expect(voiceConversationHooksEnabled()).toBe(false)
 })

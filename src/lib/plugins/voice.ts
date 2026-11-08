@@ -1,41 +1,20 @@
 import { useUiStore } from '../../stores/uiStore'
 import { auditLogger } from '../auditLogger'
-import { pluginInvoke, pluginListen } from '../tauri'
+import { pluginInvoke } from '../tauri'
+import { holdVoiceConversationHooks } from '../voice/conversationHooks'
+import { trackedListen } from './listen'
+import { liveSessionIdOf, locateSession } from './terminals'
 import type { Disposable, PluginVoice, VoiceProviderCatalog } from './types'
 
 export function createPluginVoice(
   require: (capability: string) => void,
   subscriptions: Disposable[],
+  owner: string,
 ): PluginVoice {
-  const listenTo = <T>(event: string, handler: (payload: T) => void): Disposable => {
-    let target: ((payload: T) => void) | null = handler
-    let unlisten: (() => void) | null = null
-    const disposable: Disposable = {
-      dispose: () => {
-        target = null
-        const index = subscriptions.indexOf(disposable)
-        if (index !== -1) subscriptions.splice(index, 1)
-        unlisten?.()
-        unlisten = null
-      },
-    }
-    subscriptions.push(disposable)
-    void pluginListen<T>(event, (payload) => target?.(payload)).then(
-      (stop) => {
-        if (target) unlisten = stop
-        else stop()
-      },
-      () => {
-        disposable.dispose()
-        auditLogger.log({
-          level: 'error',
-          category: 'TAURI',
-          message: 'Plugin voice listener failed: ' + event,
-        })
-      },
-    )
-    return disposable
-  }
+  const listenTo = <T>(event: string, handler: (payload: T) => void): Disposable =>
+    trackedListen(subscriptions, event, handler)
+  let targeted = false
+  let hooksHeld = false
 
   return {
     inputDevices: () => {
@@ -123,6 +102,42 @@ export function createPluginVoice(
     onEnd: (handler) => {
       require('voice.speak')
       return listenTo('tts://end', handler)
+    },
+    onProgress: (handler) => {
+      require('voice.speak')
+      return listenTo('tts://progress', handler)
+    },
+    setTargets: async (sessionIds) => {
+      require('voice.converse')
+      require('agent.approve')
+      const ptyIds = sessionIds.map((sessionId) => locateSession(sessionId).ptyId)
+      if (!targeted && ptyIds.length > 0) {
+        targeted = true
+        // held permission prompts go back to the terminal once the plugin is gone
+        subscriptions.push({
+          dispose: () =>
+            void pluginInvoke('voice_set_targets', { ptyIds: [] }).catch((error) =>
+              auditLogger.log({
+                level: 'error',
+                category: 'TAURI',
+                message: 'Plugin voice targets not cleared: ' + String(error),
+              }),
+            ),
+        })
+      }
+      await pluginInvoke('voice_set_targets', { ptyIds })
+    },
+    hookedSessions: async () => {
+      require('voice.converse')
+      const ptyIds = await pluginInvoke<string[]>('agent_voice_hooked_ptys')
+      return ptyIds.flatMap((ptyId) => liveSessionIdOf(ptyId) ?? [])
+    },
+    setConversationHooks: (enabled) => {
+      require('voice.converse')
+      holdVoiceConversationHooks(owner, enabled)
+      if (!enabled || hooksHeld) return
+      hooksHeld = true
+      subscriptions.push({ dispose: () => holdVoiceConversationHooks(owner, false) })
     },
     hud: {
       show: (placement) => {

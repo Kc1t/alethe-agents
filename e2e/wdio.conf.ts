@@ -21,6 +21,7 @@ export const config: Options.Testrunner = {
     './specs/onboarding.spec.ts',
     './specs/git-pipeline.spec.ts',
     './specs/voice-preferences.spec.ts',
+    './specs/voice-hud.spec.ts',
   ],
   maxInstances: 1,
   logLevel: 'warn',

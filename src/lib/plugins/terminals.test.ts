@@ -10,6 +10,16 @@ const mocks = vi.hoisted(() => ({
   storeListeners: new Set<() => void>(),
   runtimes: {} as Record<string, { status: string; alive: boolean }>,
   projects: [] as unknown[],
+  groups: [] as unknown[],
+  ungroupedOrder: [] as string[],
+  visible: new Set<string>(),
+  restart: vi.fn(async () => {}),
+  setActiveProjectOnly: vi.fn(),
+  focusWorkspaceTerminal: vi.fn(),
+  setActiveTab: vi.fn(),
+  setActiveTerminal: vi.fn(),
+  setActiveView: vi.fn(),
+  requestPaneFocus: vi.fn(),
 }))
 
 vi.mock('../tauri', () => ({
@@ -31,21 +41,48 @@ vi.mock('../agentCompletionMonitor', () => ({ recordAgentInput: mocks.recordAgen
 vi.mock('../activityTracker', () => ({ recordAgentActivityInput: mocks.recordAgentActivityInput }))
 vi.mock('../agentProviders', () => ({ agentLabel: (agent: string) => `label:${agent}` }))
 
+vi.mock('../agentTabRestart', () => ({ restartAgentTab: mocks.restart }))
+vi.mock('../claudeMcpConfigs', () => ({ graphifyRepoOf: () => 'repo' }))
+vi.mock('../ptyVisibility', () => ({
+  computeVisibleFocusedPtyIds: () => ({ visible: mocks.visible }),
+}))
+
 const subscribe = (listener: () => void) => {
   mocks.storeListeners.add(listener)
   return () => mocks.storeListeners.delete(listener)
 }
 vi.mock('../../stores/projectsStore', () => ({
-  useProjectsStore: { getState: () => ({ projects: mocks.projects }), subscribe },
+  useProjectsStore: {
+    getState: () => ({
+      projects: mocks.projects,
+      groups: mocks.groups,
+      ungroupedOrder: mocks.ungroupedOrder,
+      setActiveProjectOnly: mocks.setActiveProjectOnly,
+      focusWorkspaceTerminal: mocks.focusWorkspaceTerminal,
+      setActiveTab: mocks.setActiveTab,
+    }),
+    subscribe,
+  },
   getProjectDefaultCwd: () => '',
   selectActiveProject: () => null,
 }))
 vi.mock('../../stores/terminalsStore', () => ({
   useTerminalsStore: { getState: () => ({ byPtyId: mocks.runtimes }), subscribe },
 }))
-vi.mock('../../stores/uiStore', () => ({ useUiStore: { getState: () => ({}) } }))
+vi.mock('../../stores/uiStore', () => ({
+  useUiStore: {
+    getState: () => ({
+      setActiveTerminal: mocks.setActiveTerminal,
+      requestPaneFocus: mocks.requestPaneFocus,
+      setActiveView: mocks.setActiveView,
+    }),
+    subscribe,
+  },
+}))
 
 const { createPluginTerminals } = await import('./terminals')
+import { registerAgentInput } from '../agentInputRegistry'
+import { PaneHiddenError, TerminalPromptOpenError } from '../agentPromptDelivery'
 import type { Disposable } from './types'
 
 function seed() {
@@ -58,9 +95,10 @@ function seed() {
         {
           id: 't1',
           name: 'Builder',
+          cwd: '/repo',
           activeTabId: 'a',
           tabs: [
-            { id: 'a', type: 'claude', ptyId: 'pty-1' },
+            { id: 'a', name: 'Main', type: 'claude', ptyId: 'pty-1', sessionId: 'conversation-1' },
             { id: 'b', type: 'shell', ptyId: 'pty-2' },
             { id: 'c', type: 'codex', ptyId: null },
           ],
@@ -103,6 +141,9 @@ describe('plugin terminals', () => {
     mocks.exitHandlers.clear()
     mocks.storeListeners.clear()
     subscriptions = []
+    mocks.groups = []
+    mocks.ungroupedOrder = []
+    mocks.visible = new Set(['pty-1'])
     seed()
   })
 
@@ -214,4 +255,182 @@ describe('plugin terminals', () => {
     output.dispose()
     expect(subscriptions).toEqual([change])
   })
+})
+
+describe('plugin terminal conversation operations', () => {
+  const inputs = () => ({
+    submit: vi.fn(async (_text: string) => {}),
+    interrupt: vi.fn(async () => {}),
+    readScreen: vi.fn(() => 'reply'),
+  })
+  beforeEach(() => {
+    vi.clearAllMocks()
+    seed()
+    mocks.groups = []
+    mocks.ungroupedOrder = []
+    mocks.visible = new Set(['pty-1'])
+  })
+
+  it('includes target metadata and sidebar position without process identifiers', () => {
+    const api = createPluginTerminals(allowAll, [])
+    expect(api.sessions()[0]).toMatchObject({
+      projectName: 'Portfolio',
+      tabName: 'Main',
+      cwd: '/repo',
+      tabActive: true,
+      visible: true,
+      agentSessionId: 'conversation-1',
+      disabled: false,
+      order: 0,
+    })
+    expect(api.sessions()[1]).toMatchObject({ tabActive: false, visible: false, order: 1 })
+    expect(JSON.stringify(api.sessions())).not.toContain('pty-')
+  })
+
+  it('notifies consumers when cwd or agent kind changes', () => {
+    const api = createPluginTerminals(allowAll, [])
+    const handler = vi.fn()
+    const stop = api.onChange(handler)
+    const project = mocks.projects[0] as { terminals: { cwd: string; tabs: { type: string }[] }[] }
+    project.terminals[0].cwd = '/other'
+    notify()
+    expect(handler).toHaveBeenCalledTimes(1)
+    project.terminals[0].tabs[0].type = 'codex'
+    notify()
+    expect(handler).toHaveBeenCalledTimes(2)
+    stop.dispose()
+  })
+
+  it('submits through the mounted input and maps prompt and visibility refusals to typed errors', async () => {
+    const api = createPluginTerminals(allowAll, [])
+    const session = api.sessions()[0].id
+    const input = inputs()
+    const off = registerAgentInput('pty-1', input)
+    try {
+      await api.submit(session, 'hello')
+      expect(input.submit).toHaveBeenCalledWith('hello')
+      input.submit.mockRejectedValueOnce(new TerminalPromptOpenError())
+      await expect(api.submit(session, 'hello')).rejects.toMatchObject({ code: 'prompt_open' })
+      input.submit.mockRejectedValueOnce(new PaneHiddenError())
+      await expect(api.submit(session, 'hello')).rejects.toMatchObject({ code: 'pane_hidden' })
+      input.submit.mockRejectedValueOnce(new Error('write failed'))
+      await expect(api.submit(session, 'hello')).rejects.toThrow('write failed')
+    } finally {
+      off()
+    }
+    await expect(api.submit(session, 'hello')).rejects.toMatchObject({ code: 'not_mounted' })
+    await expect(api.submit('unknown', 'hello')).rejects.toMatchObject({ code: 'unknown_session' })
+    mocks.runtimes['pty-1'].alive = false
+    await expect(api.submit(session, 'hello')).rejects.toMatchObject({ code: 'unknown_session' })
+  })
+
+  it('rejects shell submission and disabled restarts and propagates restart failures', async () => {
+    const api = createPluginTerminals(allowAll, [])
+    const [agent, shell] = api.sessions()
+    await expect(api.submit(shell.id, 'hello')).rejects.toMatchObject({ code: 'not_an_agent' })
+    const project = mocks.projects[0] as { terminals: { disabled: boolean }[] }
+    project.terminals[0].disabled = true
+    await expect(api.restart(agent.id)).rejects.toMatchObject({ code: 'terminal_disabled' })
+    project.terminals[0].disabled = false
+    mocks.restart.mockRejectedValueOnce(new Error('restart failed'))
+    await expect(api.restart(agent.id)).rejects.toThrow('restart failed')
+  })
+
+  it('interrupts with Escape and resumes through the same helper as the pane restart button', async () => {
+    const api = createPluginTerminals(allowAll, [])
+    const session = api.sessions()[0].id
+    await api.interrupt(session)
+    expect(mocks.writePty).toHaveBeenCalledWith('pty-1', '\x1b')
+    await api.restart(session)
+    expect(mocks.restart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'p1',
+        terminalId: 't1',
+        terminalCwd: '/repo',
+        tab: expect.objectContaining({ sessionId: 'conversation-1' }),
+        graphifyRepo: 'repo',
+      }),
+    )
+  })
+
+  it('reads only a bounded screen tail and rejects invalid line counts', () => {
+    const api = createPluginTerminals(allowAll, [])
+    const session = api.sessions()[0].id
+    expect(api.readScreen(session, 30)).toBeNull()
+    const input = inputs()
+    const off = registerAgentInput('pty-1', input)
+    try {
+      expect(api.readScreen(session, 40)).toBe('reply')
+      api.readScreen(session, 10000)
+      expect(input.readScreen).toHaveBeenLastCalledWith(2000)
+      for (const lines of [NaN, Infinity, -1, 0, 1.5])
+        expect(() => api.readScreen(session, lines)).toThrow('invalid_screen_lines')
+    } finally {
+      off()
+    }
+  })
+
+  it('focuses the chosen sub-tab and waits for its input to mount', async () => {
+    const api = createPluginTerminals(allowAll, [])
+    const session = api.sessions()[0].id
+    const off = registerAgentInput('pty-1', inputs())
+    try {
+      await api.focus(session)
+    } finally {
+      off()
+    }
+    expect(mocks.setActiveProjectOnly).toHaveBeenCalledWith('p1')
+    expect(mocks.setActiveTab).toHaveBeenCalledWith('p1', 't1', 'a')
+    expect(mocks.focusWorkspaceTerminal).toHaveBeenCalledWith('p1', 't1')
+    expect(mocks.setActiveView).toHaveBeenCalledWith('workspace')
+    expect(mocks.requestPaneFocus).toHaveBeenCalledWith('t1')
+  })
+
+  it('requires each capability before looking up a session or causing side effects', async () => {
+    const denied = vi.fn(() => {
+      throw new Error('denied')
+    })
+    const api = createPluginTerminals(denied, [])
+    for (const call of [
+      () => api.submit('unknown', 'hello'),
+      () => api.interrupt('unknown'),
+      () => api.focus('unknown'),
+    ]) {
+      await expect(call()).rejects.toThrow('denied')
+      expect(denied).toHaveBeenLastCalledWith('terminal.write')
+    }
+    expect(() => api.readScreen('unknown', 10)).toThrow('denied')
+    expect(denied).toHaveBeenLastCalledWith('terminal.read')
+    await expect(api.restart('unknown')).rejects.toThrow('denied')
+    expect(denied).toHaveBeenLastCalledWith('terminal.restart')
+  })
+})
+
+it('keeps sidebar project order followed by pane and tab order', () => {
+  seed()
+  mocks.groups = []
+  mocks.ungroupedOrder = ['p3', 'p1']
+  mocks.projects.push({
+    id: 'p3',
+    name: 'First',
+    terminals: [
+      {
+        id: 't3',
+        name: 'Worker',
+        cwd: '/repo',
+        activeTabId: 'third',
+        tabs: [{ id: 'third', name: 'Agent', type: 'codex', ptyId: 'pty-3' }],
+      },
+    ],
+  })
+  mocks.runtimes['pty-3'] = { status: 'waiting', alive: true }
+  const api = createPluginTerminals(allowAll, [])
+  expect(api.sessions().map((s) => [s.projectId, s.order])).toEqual([
+    ['p3', 0],
+    ['p1', 1],
+    ['p1', 2],
+  ])
+  const before = api.sessions().map((s) => s.id)
+  mocks.runtimes['pty-3'].status = 'working'
+  expect(api.sessions().map((s) => s.id)).toEqual(before)
 })

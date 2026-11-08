@@ -14,6 +14,18 @@ vi.mock('../../stores/uiStore', () => ({
   useUiStore: { getState: () => ({ openModal_: mocks.openModal }) },
 }))
 
+vi.mock('./terminals', () => ({
+  ptyOf: (id: string) => {
+    if (id !== 'session-1') throw new Error('unknown_session')
+    return 'pty-1'
+  },
+  locateSession: (id: string) => {
+    if (id !== 'session-1') throw new Error('unknown_session')
+    return { ptyId: 'pty-1' }
+  },
+  liveSessionIdOf: (id: string) => (id === 'pty-1' ? 'session-1' : null),
+}))
+const { voiceConversationHooksEnabled } = await import('../voice/conversationHooks')
 const { createPluginVoice } = await import('./voice')
 
 const gatedCalls: [string, (voice: PluginVoice) => unknown][] = [
@@ -37,6 +49,10 @@ const gatedCalls: [string, (voice: PluginVoice) => unknown][] = [
   ['voice.speak', (v) => v.voices()],
   ['voice.speak', (v) => v.onStart(() => {})],
   ['voice.speak', (v) => v.onEnd(() => {})],
+  ['voice.speak', (v) => v.onProgress(() => {})],
+  ['voice.converse', (v) => v.setTargets(['session-1'])],
+  ['voice.converse', (v) => v.hookedSessions()],
+  ['voice.converse', (v) => v.setConversationHooks(true)],
   ['voice.hud', (v) => v.hud.show({ kind: 'preset', preset: 'bottom-center' })],
   ['voice.hud', (v) => v.hud.hide()],
   ['voice.hud', (v) => v.hud.publish('{}')],
@@ -58,7 +74,7 @@ describe('plugin voice', () => {
     const require = vi.fn(() => {
       throw new Error('capability_denied')
     })
-    const voice = createPluginVoice(require, subscriptions)
+    const voice = createPluginVoice(require, subscriptions, 'test')
     await expect(Promise.resolve().then(() => call(voice))).rejects.toThrow('capability_denied')
     expect(require).toHaveBeenCalledExactlyOnceWith(capability)
     expect(mocks.invoke).not.toHaveBeenCalled()
@@ -67,7 +83,7 @@ describe('plugin voice', () => {
   })
 
   it('maps capture and transcription options to registered commands without accepting keys', async () => {
-    const voice = createPluginVoice(() => {}, subscriptions)
+    const voice = createPluginVoice(() => {}, subscriptions, 'test')
     const opts = { provider: 'openai' as const, modelId: 'whisper-1', locale: 'en-US' }
     const result = 'hello world'
     mocks.invoke.mockResolvedValue(result)
@@ -105,7 +121,7 @@ describe('plugin voice', () => {
   })
 
   it('maps speech options and playback controls without forwarding extra fields', async () => {
-    const voice = createPluginVoice(() => {}, subscriptions)
+    const voice = createPluginVoice(() => {}, subscriptions, 'test')
     mocks.invoke.mockResolvedValue(42)
     const opts = { provider: 'server' as const, model: 'model', voice: 'v', rate: 1, server: 's' }
     expect(await voice.speak('hello', opts)).toBe(42)
@@ -127,7 +143,7 @@ describe('plugin voice', () => {
   })
 
   it('relays HUD placement, serialized state and the shared shortcut', async () => {
-    const voice = createPluginVoice(() => {}, subscriptions)
+    const voice = createPluginVoice(() => {}, subscriptions, 'test')
     const placement = { kind: 'preset' as const, preset: 'bottom-center' as const }
     await voice.hud.show(placement)
     await voice.hud.hide()
@@ -145,7 +161,7 @@ describe('plugin voice', () => {
 
   it('propagates command failures to the caller', async () => {
     mocks.invoke.mockRejectedValue(new Error('microphone_unavailable'))
-    await expect(createPluginVoice(() => {}, subscriptions).startCapture()).rejects.toThrow(
+    await expect(createPluginVoice(() => {}, subscriptions, 'test').startCapture()).rejects.toThrow(
       'microphone_unavailable',
     )
   })
@@ -163,7 +179,7 @@ describe('plugin voice', () => {
       ])
       .mockResolvedValueOnce(true)
     const require = vi.fn()
-    const voice = createPluginVoice(require, subscriptions)
+    const voice = createPluginVoice(require, subscriptions, 'test')
     expect(await voice.providers()).toEqual([
       { provider: 'openai', keyUrl: 'https://example.com', models: [], voices: [], hasKey: true },
     ])
@@ -180,13 +196,13 @@ describe('plugin voice', () => {
     mocks.invoke
       .mockResolvedValueOnce([{ provider: 'openai', keyUrl: '', models: [], voices: [] }])
       .mockRejectedValueOnce(new Error('keychain_unavailable'))
-    await expect(createPluginVoice(() => {}, subscriptions).providers()).rejects.toThrow(
+    await expect(createPluginVoice(() => {}, subscriptions, 'test').providers()).rejects.toThrow(
       'keychain_unavailable',
     )
   })
 
   it('tracks all event listeners and suppresses callbacks after disposal', async () => {
-    const voice = createPluginVoice(() => {}, subscriptions)
+    const voice = createPluginVoice(() => {}, subscriptions, 'test')
     const handler = vi.fn()
     const unlisten = vi.fn()
     mocks.listen.mockResolvedValue(unlisten)
@@ -224,7 +240,7 @@ describe('plugin voice', () => {
         resolve = done
       }),
     )
-    createPluginVoice(() => {}, subscriptions).onStart(() => {})
+    createPluginVoice(() => {}, subscriptions, 'test').onStart(() => {})
     subscriptions[0].dispose()
     resolve(unlisten)
     await Promise.resolve()
@@ -233,11 +249,88 @@ describe('plugin voice', () => {
 
   it('reports a failed listener registration and removes its subscription', async () => {
     mocks.listen.mockRejectedValue(new Error('event_unavailable'))
-    createPluginVoice(() => {}, subscriptions).onStart(() => {})
+    createPluginVoice(() => {}, subscriptions, 'test').onStart(() => {})
     await Promise.resolve()
     expect(mocks.log).toHaveBeenCalledWith(
       expect.objectContaining({ level: 'error', category: 'TAURI' }),
     )
+    expect(subscriptions).toEqual([])
+  })
+})
+
+describe('plugin voice conversations', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mocks.listen.mockResolvedValue(vi.fn())
+  })
+
+  it('maps opaque targets and hooked processes and clears targets on disposal', async () => {
+    const subscriptions: Disposable[] = []
+    const require = vi.fn()
+    const voice = createPluginVoice(require, subscriptions, 'conversation-test')
+    await voice.setTargets(['session-1'])
+    expect(require.mock.calls).toEqual([['voice.converse'], ['agent.approve']])
+    expect(mocks.invoke).toHaveBeenCalledWith('voice_set_targets', { ptyIds: ['pty-1'] })
+    mocks.invoke.mockResolvedValueOnce(['pty-1', 'unrelated'])
+    expect(await voice.hookedSessions()).toEqual(['session-1'])
+    for (const disposable of subscriptions) disposable.dispose()
+    await Promise.resolve()
+    expect(mocks.invoke).toHaveBeenLastCalledWith('voice_set_targets', { ptyIds: [] })
+  })
+
+  it('requires permission approval before holding targets and refuses unknown sessions', async () => {
+    const voice = createPluginVoice(
+      (cap) => {
+        if (cap === 'agent.approve') throw new Error('denied')
+      },
+      [],
+      'test',
+    )
+    await expect(voice.setTargets(['session-1'])).rejects.toThrow('denied')
+    expect(mocks.invoke).not.toHaveBeenCalled()
+    const allowed = createPluginVoice(() => {}, [], 'test')
+    await expect(allowed.setTargets(['unknown'])).rejects.toThrow('unknown_session')
+    expect(mocks.invoke).not.toHaveBeenCalled()
+    mocks.invoke.mockRejectedValueOnce(new Error('targets failed'))
+    await expect(allowed.setTargets(['session-1'])).rejects.toThrow('targets failed')
+  })
+
+  it('keeps hooks on while any plugin requests them and releases its hold on disable', () => {
+    const firstSubscriptions: Disposable[] = []
+    const secondSubscriptions: Disposable[] = []
+    const first = createPluginVoice(() => {}, firstSubscriptions, 'first')
+    const second = createPluginVoice(() => {}, secondSubscriptions, 'second')
+    try {
+      first.setConversationHooks(true)
+      first.setConversationHooks(true)
+      second.setConversationHooks(true)
+      expect(voiceConversationHooksEnabled()).toBe(true)
+      first.setConversationHooks(false)
+      expect(voiceConversationHooksEnabled()).toBe(true)
+      secondSubscriptions[0].dispose()
+      expect(voiceConversationHooksEnabled()).toBe(false)
+      first.setConversationHooks(true)
+      expect(voiceConversationHooksEnabled()).toBe(true)
+    } finally {
+      firstSubscriptions.forEach((d) => d.dispose())
+      secondSubscriptions.forEach((d) => d.dispose())
+    }
+    expect(voiceConversationHooksEnabled()).toBe(false)
+  })
+
+  it('forwards progress offsets and suppresses events after disposal', async () => {
+    const subscriptions: Disposable[] = []
+    const voice = createPluginVoice(() => {}, subscriptions, 'test')
+    const handler = vi.fn()
+    const off = voice.onProgress(handler)
+    await Promise.resolve()
+    const [event, dispatch] = mocks.listen.mock.calls[0]
+    expect(event).toBe('tts://progress')
+    dispatch({ id: 12, charOffset: 40 })
+    expect(handler).toHaveBeenCalledExactlyOnceWith({ id: 12, charOffset: 40 })
+    off.dispose()
+    dispatch({ id: 12, charOffset: 50 })
+    expect(handler).toHaveBeenCalledTimes(1)
     expect(subscriptions).toEqual([])
   })
 })

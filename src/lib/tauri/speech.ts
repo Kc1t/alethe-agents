@@ -139,3 +139,7 @@ export async function onSpeechDownloadProgress(
     handler(event.payload)
   })
 }
+
+export async function speechCaptureLevel(): Promise<number> {
+  return invoke('speech_capture_level')
+}

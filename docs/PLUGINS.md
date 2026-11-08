@@ -201,7 +201,7 @@ rather than throwing, so a plugin still starts.
 | `contributes.modal` | code | `ui.modal` | a modal the shell mounts when `openModal` matches its id |
 | `contributes.agentProvider` | code | `agent.provider` | a new agent CLI: label, binary, unrestricted flag, accent, icon |
 | `contributes.overlay` | code | `ui.overlay` | a component mounted over the whole window while the plugin is active |
-| `contributes.settings` | code | `ui.settings` | a section on Preferences → Integrations, listed by the settings search |
+| `contributes.settings` | code | `ui.settings` | a section on Preferences → Integrations (default) or Voice, listed by settings search |
 
 Themes, panes, agent providers, overlays and settings stay imperative because none of them is
 revealed by a tab: a theme applies as soon as it exists, a pane only renders for a terminal that
@@ -231,6 +231,10 @@ context.contributes.settings({
 the heading and the fold toggle; the component renders the controls only. The settings search matches
 the title, the description and `keywords`, and jumps to the section by its `id`.
 
+Set `category: 'voice'` to render beneath the core Preferences → Voice content. Omit `category`
+(or use `'integrations'`) for the existing Integrations placement. The component mounts only on
+its selected page, and search opens that category.
+
 ### Workspace, terminals, toasts and events
 
 | API | Capability | Does |
@@ -244,6 +248,9 @@ the title, the description and `keywords`, and jumps to the section by its `id`.
 | `context.listen(event, handler)` | `listen:<event>` | subscribes to an app event; `listen:speech*` covers every `speech…` event |
 | `context.useT()` | none | the hook form of `context.t`, re-rendering when the language changes |
 | `context.locale()` | none | the language the app is shown in |
+| `context.appearance()` | none | `{ theme, visualStyle, reducedMotion }` from current app preferences |
+| `context.onAppearanceChange(handler)` | none | emits the appearance object only when one of those values changes; returns a tracked Disposable |
+| `context.ui.suspendKeybindings()` | none | returns a tracked Disposable; app shortcuts remain suspended until every hold is disposed |
 
 The snapshot never carries PTY ids, and the workspace calls only reach terminals of non-archived
 projects. Typing into a terminal is the same power as running a command there, which is why
@@ -258,16 +265,36 @@ tab is visible too.
 | API | Capability | Does |
 |---|---|---|
 | `sessions()` | `terminal.read` | running sessions of non-archived projects: terminal, project, name, agent, whether it is a shell, and its status (`working`, `waiting`, …) |
-| `onChange(handler)` | `terminal.read` | fires when a session starts, ends, is renamed or changes status, and not on every byte of output |
+| `onChange(handler)` | `terminal.read` | fires when session metadata, visibility, order, or status changes; not on every byte of output |
 | `onOutput(id, handler)` | `terminal.read` | the raw output of a session, escape sequences included |
 | `onExit(id, handler)` | `terminal.read` | the exit code and reason once the process ends |
 | `size(id)` | `terminal.read` | the columns and rows last sent to the process, which is what its output is drawn for |
 | `write(id, text)` | `terminal.write` | types into that session |
+| `submit(id, text)` | `terminal.write` | pastes into a mounted agent with its bracketed-paste mode, checks for choice prompts, arms completion detection, and sends one Enter |
+| `interrupt(id)` | `terminal.write` | sends Escape to a running agent, including a background tab |
+| `readScreen(id, lines)` | `terminal.read` | rendered scrollback/screen tail, soft-wrapped rows joined; `null` while unmounted; positive integer line count capped at 2,000 |
+| `focus(id)` | `terminal.write` | reveals the workspace pane and selected sub-tab, waits for mounting and screen replay, and focuses it |
+| `restart(id)` | `terminal.restart` | restarts an enabled agent pane through the same resume path as its restart button |
 
 A session id is opaque and is replaced when the tab's process is, so a plugin that keys its state by
 session id never mixes the output of two processes. PTY ids are never handed out. Reading output is
 reading whatever the terminal shows, secrets included, which is why `terminal.read` is its own
 capability and the trust dialog names it.
+
+Sessions additionally carry `projectName`, `tabName`, `cwd`, `tabActive` (front sub-tab), `visible`
+(output streaming in the workspace), `agentSessionId` (conversation id or `null`), and `order`
+(zero-based sidebar project order, then pane order, then sub-tab order). `disabled` lets pickers
+exclude disabled panes from restart offers. Hidden projects absent
+from the sidebar follow the listed projects so existing session enumeration still includes them.
+The `agent` field identifies the harness and `shell` distinguishes shells. Use the existing
+workspace snapshot for the focused terminal.
+
+Await `focus(id)` before submitting to a background tab. Submission refuses hidden panes and
+recognized approval/startup menus; a menu appearing during paste is checked again before Enter.
+Refusals expose `error.code`: `unknown_session`, `not_an_agent`, `not_mounted`, `pane_hidden`,
+`prompt_open`, or `terminal_disabled` (restart). Invalid screen counts throw
+`invalid_screen_lines`; PTY and restart failures propagate. The screen guard recognizes known
+CLI menu patterns; it is not a parser for every third-party TUI.
 
 Text typed through `write` or `workspace.writeToTerminal` counts as input the agent received, exactly
 like the keyboard: a prompt ending in Enter marks the agent as working and arms the same completion
@@ -296,6 +323,10 @@ plugin's install instructions. The API number alone does not detect this additio
 | `stop()`, `pause()`, `resume()`, `setMuted(boolean)` | `voice.speak` | controls shared playback |
 | `voices({ provider?, model?, server? }?)` | `voice.speak` | voices: `id`, `name`, `language` |
 | `onStart(handler)`, `onEnd(handler)` | `voice.speak` | `tts://start` / `tts://end`: `{ id: number }` |
+| `onProgress(handler)` | `voice.speak` | `tts://progress`: `{ id, charOffset }`; offset counts Unicode code points |
+| `setTargets(sessionIds)` | `voice.converse` + `agent.approve` | resolves opaque sessions and calls `voice_set_targets({ ptyIds })`; empty array releases held permission requests |
+| `hookedSessions()` | `voice.converse` | calls `agent_voice_hooked_ptys` and returns only known live opaque session ids |
+| `setConversationHooks(enabled)` | `voice.converse` | holds the host flag that adds Claude voice hooks on future launches, resumes, and restarts |
 | `hud.show(placement)`, `hud.hide()` | `voice.hud` | shows or hides the shared floating HUD |
 | `hud.publish(state)` | `voice.hud` | publishes the HUD's serialized state string unchanged |
 | `hud.onAction(handler)` | `voice.hud` | `voice-hud://action` string payload |
@@ -321,11 +352,143 @@ HUD placement is `{ kind: 'preset', preset }` with `bottom-center`, `bottom-left
 Custom `x` and `y` are screen fractions; bounds are `{ x, y, width, height }` in physical pixels.
 Capture, playback, HUD, and shortcut are shared app resources, so plugins must coordinate their use.
 
+#### HUD state and actions
+
+The core renders the `voice-hud` window; it does not mount the app shell, activate plugins, or
+write `projects.json`. A plugin owns the conversation controller and publishes a complete JSON
+string with `context.voice.hud.publish(JSON.stringify(state))`. The contract is defined by
+`src/lib/voice/hudState.ts` (`HudViewState`, `encodeHudState`, `decodeHudState`, and
+`decodeHudAction`). The Rust relay forwards strings unchanged and retains the latest snapshot.
+
+`HudViewState` has this shape:
+
+```ts
+type VoiceTarget = {
+  ptyId: string
+  projectId: string
+  terminalId: string
+  tabId: string
+  tabActive: boolean
+  agent?: string
+  label: string
+  cwd: string
+  sessionId: string | null
+}
+
+type HudViewState = {
+  state: {
+    capture: 'idle' | 'listening' | 'transcribing' | 'sending'
+    turn: 'idle' | 'working' | 'awaiting-permission'
+    target: VoiceTarget | null
+    pinnedPtyId: string | null
+    transcript: string
+    narration: string
+    narrationSpokenOffset: number | null
+    permission: { requestId: string; tool: string; subject: string; destructive: boolean } | null
+    notice: { text: string } | { key: string; params?: Record<string, string | number> } | null
+    muted: boolean
+    narrationPaused: boolean
+    narrationActive: boolean
+  }
+  targets: VoiceTarget[]
+  current?: VoiceTarget | null
+  restartable?: VoiceTarget[]
+  hint: string
+  approvalChannel: 'both' | 'voice' | 'hud'
+  destructiveNeedsHud: boolean
+  rate: number
+  language: 'en' | 'pt-BR' | 'zh-CN'
+  uiTheme: string
+  visualStyle: 'normal' | 'clean'
+  reducedMotion?: boolean
+}
+```
+
+`targets` lists selectable sessions, `current` labels the resolved session, and `restartable`
+lists sessions that need a restart to acquire voice hooks. The `ptyId` field is an opaque routing
+value supplied by the publisher, echoed in actions; this HUD contract does not grant access to
+backend PTYs or expose their ids through the terminal API. Map it to a plugin-owned session id.
+`state.target` is retained for compatibility. Capture takes precedence over turn in the phase label.
+`narrationSpokenOffset` counts Unicode code points, not UTF-16 units. Null disables highlighting.
+
+Supply already translated plugin notices as `{ text }`: the HUD does not register plugin messages.
+The `{ key, params }` form only accepts core i18n keys. `hint`, target labels, transcripts, narration,
+and permission subjects are also displayed as supplied. Publish language, theme id (including a
+registered plugin theme id), visual style, and reduced-motion preference whenever they change.
+The HUD reads the saved profile once for theme definitions; subsequent appearance updates come
+from the published state, without saving them back.
+
+Older states may omit `current`, `restartable`, and `reducedMotion`. Missing narration control
+booleans default to false; a missing or non-finite spoken offset becomes null. Malformed JSON or
+an invalid required envelope is ignored. The codec checks the envelope, not every nested field;
+publish the complete shape above. Before the first valid state the HUD shows Ready and Close.
+The speed buttons offer 1, 1.25, 1.5, and 2. HUD approval buttons appear for `both` and `hud`,
+and for destructive requests guarded by `destructiveNeedsHud` even in `voice` mode; deferring to
+the terminal is always available. The controller remains responsible for authorizing each action.
+
+`context.voice.hud.onAction(handler)` receives a JSON string. Parse it with error handling and
+validate it against the following `decodeHudAction` union before dispatching:
+
+```ts
+type HudAction =
+  | { kind: 'answer'; requestId: string; answer: { kind: 'allow' } | { kind: 'deny'; message?: string } | { kind: 'defer' } }
+  | { kind: 'pin'; ptyId: string | null }
+  | { kind: 'restart-session'; ptyId: string }
+  | { kind: 'rate'; rate: number }
+  | { kind: 'stop-speaking' }
+  | { kind: 'toggle-mute' }
+  | { kind: 'toggle-pause' }
+  | { kind: 'dismiss' }
+```
+
+Answer request ids and restart session ids must be non-empty strings; pinning null follows the
+active pane. The codec accepts rates from 0.5 through 2, rejects unknown kinds or invalid fields,
+and strips extra fields. The current UI emits allow, deny (without a message), or defer for the
+visible request id. Closing sends `dismiss`; the plugin must handle it and call `hud.hide()`.
+Actions never directly control capture, playback, terminals, or window visibility.
+`onMoved` receives an object, rather than a JSON string: `{ monitor: string, x: number, y: number,
+bounds: { x: number, y: number, width: number, height: number } }`. The fractions are relative to
+the monitor's work area; bounds use physical pixels. Save it as the `custom` placement if desired.
+
 The core owns provider keys and voice-server configuration. Send users to `openSettings()` to manage
 them; no typed method accepts or returns keys. Cloud transcription uses
 `stopAndTranscribe` with a cloud `provider`, and the core reads that provider's saved key.
 `agent_voice_set_key` remains available through its existing explicit invoke permission for the
 published Agent Voice plugin.
+
+### Agent observation and permission decisions
+
+| API | Capability | Contract |
+|---|---|---|
+| `context.agents.onHook(handler)` | `agent.observe` | tracked `agent-hook` listener; replaces the internal `plannerId` with opaque `sessionId`, drops events outside live tabs, and retains hook fields such as `hook_event_name`, `session_id`, `tool_name`, `tool_input`, `permissionRequestId` |
+| `context.agents.transcript(sessionId, cursor?)` | `agent.observe` | Claude/Codex `agent_transcript_snapshot` for the session's cwd and known conversation id; pass `revision` back as the numeric cursor |
+| `context.agents.decidePermission(requestId, behavior, message?)` | `agent.approve` | `agent_permission_decide`: `allow`, `deny`, or `defer`; optional denial explanation; backend rejects expired/already-decided requests |
+| `context.agents.onPermissionReleased(handler)` | `agent.approve` | tracked `agent-permission://released` listener: `{ requestId, reason }` |
+
+A transcript returns `{ conversationId, revision, unchanged, firstIndex, messages }`. An unchanged
+revision has no messages. Each message contains `role`, `text`, and optional tool/question fields;
+tool summaries contain `name` and optional `command`, `path`, `description`. Other harnesses throw
+`transcript_unsupported:<agent>`; use their terminal screen instead. The existing backend returns
+an empty snapshot when none is available and may select the latest conversation in that cwd when
+the requested conversation cannot be found.
+
+The trust dialog explicitly discloses seeing agent activity and approving agent actions. Merely
+observing hooks does not grant permission to decide. `setTargets` also requires `agent.approve`
+because it causes Rust to hold permission prompts for a plugin answer. Targets and hook holds are
+released on plugin deactivation or failed activation. Voice targets, like playback and the HUD,
+are shared app state; coordinate writers.
+
+`setConversationHooks(true)` does not retrofit an already-running Claude process: compare
+`hookedSessions()` with `terminals.sessions()` and offer an explicit `restart(id)` that resumes
+its conversation. The hook flag is transient and remains enabled while any active plugin holds it.
+New launches after the last hold is released use the default hooks again.
+
+These are additive API 3 methods; `PLUGIN_API_VERSION` stays 3. Feature-detect the methods when
+supporting older API 3 hosts. All new listeners and shortcut holds enter `context.subscriptions`
+and are released when activation fails or the plugin is disabled. No preference or plugin storage
+schema changes are introduced. This change supplies the host bridge for the external `alethe.voice`
+plugin; its conversation UI, narration, selection/read-aloud integration, and settings are not
+bundled into the host.
 
 ### Agents and shared components
 
@@ -594,7 +757,9 @@ there once Jev 1.1 or newer, which reads the keychain, is installed.
 | `src/lib/plugins/storage.ts` | `context.storage` — the per-plugin persisted record |
 | `src/lib/plugins/workspace.ts` | `context.workspace` — snapshot, terminal control and input |
 | `src/lib/plugins/terminals.ts` | `context.terminals` — sessions, their output, exit, size and input |
-| `src/lib/plugins/presentation.tsx` | `context.agents` and `context.components` |
+| `src/lib/plugins/agents.ts` | agent hook observation, transcript snapshots, and permission decisions |
+| `src/lib/plugins/presentation.tsx` | agent labels/accents and shared `context.components` |
+| `src/lib/plugins/voice.ts` | typed voice services, conversation targets, and hook holds |
 | `src/lib/plugins/legacyMigration.ts` | hands settings of features that became plugins to their storage |
 | `src/components/ContributedOverlays/` | mounts every contributed overlay behind its own error boundary |
 | `src/components/modals/preferences/ContributedSettings.tsx` | renders contributed settings sections |

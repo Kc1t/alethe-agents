@@ -52,9 +52,13 @@ export type OverlayContribution = {
   component: ComponentType
 }
 
-/** A section the Integrations page renders, with an entry in the settings search. */
+export type SettingsCategory = 'integrations' | 'voice'
+
+// A section on its Preferences page, also listed in settings search.
 export type SettingsContribution = {
   id: string
+  // Preferences page the section renders on; defaults to 'integrations'
+  category?: SettingsCategory
   /** Called on render, so a plugin's own `t` follows the current language. */
   title: () => string
   description?: () => string
@@ -124,12 +128,34 @@ export type TerminalSession = {
   id: string
   terminalId: string
   projectId: string
+  projectName: string
   name: string
+  tabName: string
   agent: string
   agentLabel: string
   shell: boolean
   status: TerminalSessionStatus
+  cwd: string
+  // the front sub-tab of its pane; only that one mounts a terminal
+  tabActive: boolean
+  // receives live output; kept-alive workspace panes also count
+  visible: boolean
+  // the agent's own conversation id, once known
+  agentSessionId: string | null
+  disabled: boolean
+  // position in sidebar order: project, then pane, then sub-tab
+  order: number
 }
+
+export type TerminalSubmitErrorCode =
+  | 'unknown_session'
+  | 'not_an_agent'
+  | 'not_mounted'
+  | 'pane_hidden'
+  | 'prompt_open'
+  | 'terminal_disabled'
+
+export type TerminalSubmitError = Error & { code: TerminalSubmitErrorCode }
 
 export type TerminalExit = {
   code: number | null
@@ -143,6 +169,13 @@ export type PluginTerminals = {
   onExit: (sessionId: string, handler: (exit: TerminalExit) => void) => Disposable
   size: (sessionId: string) => { cols: number; rows: number } | null
   write: (sessionId: string, text: string) => Promise<void>
+  submit: (sessionId: string, text: string) => Promise<void>
+  interrupt: (sessionId: string) => Promise<void>
+  // null while the session's terminal is not mounted
+  readScreen: (sessionId: string, lines: number) => string | null
+  // resolves once a hidden sub-tab has mounted its terminal
+  focus: (sessionId: string) => Promise<void>
+  restart: (sessionId: string) => Promise<void>
 }
 
 export type VoiceCloudProvider = 'openai' | 'elevenlabs' | 'gemini' | 'openrouter'
@@ -183,6 +216,7 @@ export type VoicePrefetchOptions = {
 export type VoiceSpeakOptions = VoicePrefetchOptions & { server?: string }
 export type VoiceTtsVoice = { id: string; name: string; language: string }
 export type VoiceUtteranceEvent = { id: number }
+export type VoiceProgressEvent = { id: number; charOffset: number }
 export type VoiceHudRect = { x: number; y: number; width: number; height: number }
 export type VoiceHudPosition = { monitor: string; x: number; y: number; bounds?: VoiceHudRect }
 export type VoiceHudPlacement =
@@ -222,6 +256,10 @@ export type PluginVoice = {
   voices: (options?: VoiceVoicesOptions) => Promise<VoiceTtsVoice[]>
   onStart: (handler: (event: VoiceUtteranceEvent) => void) => Disposable
   onEnd: (handler: (event: VoiceUtteranceEvent) => void) => Disposable
+  onProgress: (handler: (event: VoiceProgressEvent) => void) => Disposable
+  setTargets: (sessionIds: string[]) => Promise<void>
+  hookedSessions: () => Promise<string[]>
+  setConversationHooks: (enabled: boolean) => void
   hud: {
     show: (placement: VoiceHudPlacement) => Promise<void>
     hide: () => Promise<void>
@@ -235,10 +273,58 @@ export type PluginVoice = {
   openSettings: () => void
 }
 
+export type AgentHookEvent = {
+  sessionId: string
+  hook_event_name: string
+  // set on a PermissionRequest held for `decidePermission`
+  permissionRequestId?: string
+  [field: string]: unknown
+}
+
+export type AgentToolSummary = {
+  name: string
+  command?: string
+  path?: string
+  description?: string
+}
+
+export type AgentTranscriptMessage = {
+  role: string
+  text: string
+  tool?: AgentToolSummary
+  [field: string]: unknown
+}
+
+export type AgentTranscript = {
+  conversationId: string | null
+  // pass back as `cursor`; an unchanged transcript then returns no messages
+  revision: number
+  unchanged: boolean
+  firstIndex: number
+  messages: AgentTranscriptMessage[]
+}
+
+export type AgentPermissionBehavior = 'allow' | 'deny' | 'defer'
+export type AgentPermissionReleased = { requestId: string; reason: string }
+
 export type PluginAgents = {
   label: (agent: string) => string
   // a CSS color that follows the active theme
   accent: (agent: string) => string
+  onHook: (handler: (event: AgentHookEvent) => void) => Disposable
+  transcript: (sessionId: string, cursor?: number) => Promise<AgentTranscript>
+  decidePermission: (
+    requestId: string,
+    behavior: AgentPermissionBehavior,
+    message?: string,
+  ) => Promise<void>
+  onPermissionReleased: (handler: (event: AgentPermissionReleased) => void) => Disposable
+}
+
+export type PluginAppearance = {
+  theme: string
+  visualStyle: string
+  reducedMotion: boolean
 }
 
 export type PluginDropdownProps = {
@@ -338,6 +424,8 @@ export type PluginContext = {
     openModal: (modalId: string) => void
     /** Shows a notification and records it in the notification history. */
     toast: (toast: PluginToast) => void
+    // app shortcuts stay off until disposed, so a recorder can capture any key
+    suspendKeybindings: () => Disposable
   }
   readonly workspace: PluginWorkspace
   readonly voice: PluginVoice
@@ -345,6 +433,8 @@ export type PluginContext = {
   readonly agents: PluginAgents
   readonly components: PluginComponents
   locale: () => Locale
+  appearance: () => PluginAppearance
+  onAppearanceChange: (handler: (appearance: PluginAppearance) => void) => Disposable
   /** Registers messages under `plugin.<id>.` — the prefix is added for you. */
   registerMessages: (locale: Locale, messages: Record<string, string>) => Disposable
   /** Translates one of this plugin's own keys, without the prefix. */

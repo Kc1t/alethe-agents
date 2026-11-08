@@ -56,6 +56,9 @@ const FORBIDDEN_COMMANDS = new Set([
   'voice_provider_delete_key',
   'voice_servers_save',
   'voice_servers_delete',
+  // Reachable only through context.agents and context.voice, behind agent.approve.
+  'agent_permission_decide',
+  'voice_set_targets',
   'remote_control_open_pairing',
 ])
 
