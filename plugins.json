@@ -122,6 +122,21 @@
         "url": "https://github.com/Kc1t/alethe-voice/releases/download/v0.1.0/alethe-voice-0.1.0.zip",
         "sha256": "11a7bd6c0e58195844ac731667ede15f76976f5acff4900850b46d196f92d6d3"
       }
+    },
+    {
+      "id": "mega.pure-red",
+      "name": "Pure Red",
+      "description": "True black with a red accent (#E0303A), built on the Elite Pure Black palette.",
+      "author": "NiltonBraga",
+      "repo": "NiltonBraga/alethe-pure-red",
+      "downloadUrl": "https://github.com/NiltonBraga/alethe-pure-red/releases/latest",
+      "version": "1.0.0",
+      "minApiVersion": 1,
+      "capabilities": ["ui.theme"],
+      "package": {
+        "url": "https://github.com/NiltonBraga/alethe-pure-red/releases/download/v1.0.0/alethe-pure-red-1.0.0.zip",
+        "sha256": "42d49efe12598b498df7780cff444d58f704883b3dda71c47b1209f312a5db28"
+      }
     }
   ],
   "builtIn": [
