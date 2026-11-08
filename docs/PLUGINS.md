@@ -136,6 +136,7 @@ export default plugin
 | Hello | `docs/examples/hello-plugin/` | the smallest local plugin, no build step |
 | Scratch Notes | `docs/examples/notes-plugin/` | plain JavaScript, a sidebar tab, translated strings and a command |
 | Agent Voice | [`Kc1t/alethe-agent-voice`](https://github.com/Kc1t/alethe-agent-voice) | an **external** plugin on API 3: it reads agent output through `context.terminals`, types spoken replies back, streams audio from a host command through a function argument, and draws the app's own agent icons and dropdowns from `context.components`; the Fish Audio key stays behind narrow `agent_voice_*` commands in the core |
+| Voice | [`Kc1t/alethe-voice`](https://github.com/Kc1t/alethe-voice) | an **external** plugin on API 3, ported from #336: voice conversation with agent tabs through `context.terminals`, `context.agents` and `context.voice`, narration, permission prompts, and the floating HUD the core renders from the state it publishes; its settings sit under Preferences → Voice |
 | Jev | [`Kc1t/alethe-jev`](https://github.com/Kc1t/alethe-jev) | an **external** plugin with a real toolchain: its own repository, TypeScript, React and CSS Modules built by Vite into one IIFE, overlays, settings sections, a sidebar view, the workspace API, `context.voice` for capture and transcription, and a reproducible release zip listed in the catalogue |
 
 Start from Jev's `vite.config.ts` and `scripts/package.mjs` when a plugin outgrows a single

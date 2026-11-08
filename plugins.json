@@ -87,6 +87,41 @@
         "url": "https://github.com/Kc1t/alethe-agent-voice/releases/download/v1.0.0/alethe-agent-voice-1.0.0.zip",
         "sha256": "536ab730644b39a9b86f4c0b67000ae1d9d433362b216df655a09f5d968f48eb"
       }
+    },
+    {
+      "id": "alethe.voice",
+      "name": "Voice",
+      "description": "Talk to your agents and hear them answer: voice conversation, narration and a floating HUD.",
+      "author": "SrAmaral",
+      "repo": "Kc1t/alethe-voice",
+      "downloadUrl": "https://github.com/Kc1t/alethe-voice/releases/latest",
+      "version": "0.1.0",
+      "minApiVersion": 3,
+      "capabilities": [
+        "ui.overlay",
+        "ui.settings",
+        "workspace.read",
+        "terminal.read",
+        "terminal.write",
+        "terminal.restart",
+        "agent.observe",
+        "agent.approve",
+        "voice.listen",
+        "voice.speak",
+        "voice.hud",
+        "voice.converse",
+        "invoke:speech_list_models",
+        "invoke:speech_download_model",
+        "invoke:voice_servers_list",
+        "invoke:read_clipboard_text",
+        "listen:speech*",
+        "listen:voice*",
+        "invoke:voice_openrouter_models"
+      ],
+      "package": {
+        "url": "https://github.com/Kc1t/alethe-voice/releases/download/v0.1.0/alethe-voice-0.1.0.zip",
+        "sha256": "11a7bd6c0e58195844ac731667ede15f76976f5acff4900850b46d196f92d6d3"
+      }
     }
   ],
   "builtIn": [

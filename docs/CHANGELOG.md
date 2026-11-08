@@ -12,6 +12,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Voice plugin.** A new plugin in the catalogue, [Voice](https://github.com/Kc1t/alethe-voice),
+  brings the voice conversation from #336 by @SrAmaral: talk to an agent tab, hear its progress and
+  replies, answer permission prompts by voice, and follow along in the floating HUD. Its settings sit
+  under Preferences → Voice.
 - **Voice conversation plugin support.** Plugins can submit prompts safely, focus background agent
   tabs, resume conversations on restart, observe agent activity and transcripts, and request permission
   decisions through separate permissions. Voice plugins can enable Claude conversation hooks, track
