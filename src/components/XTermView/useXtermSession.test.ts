@@ -1,11 +1,12 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
+import type { Mock } from 'vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { plannerLabelFor } from '../../lib/claudeMcpConfigs'
 import {
   resetCodexSessionTrackingForTests,
   trackCodexRollout,
 } from '../../lib/codexSessionTracking'
-import { plannerLabelFor } from '../../lib/claudeMcpConfigs'
 import { resetSessionClaimsForTests } from '../../lib/sessionDiscovery'
 import { peekSession, saveSession } from '../../lib/sessionResume'
 import * as tauri from '../../lib/tauri'
@@ -33,12 +34,41 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('@tauri-apps/api/webview', () => ({
   getCurrentWebview: () => ({ onDragDropEvent: async () => () => {} }),
 }))
+const exits = vi.hoisted(() => new Map<string, (payload: tauri.PtyExitPayload) => void>())
+const terminals = vi.hoisted(
+  () => [] as Array<{ writes: string[]; modes: Record<string, unknown> }>,
+)
 vi.mock('@xterm/xterm', () => ({
   Terminal: class {
     cols = 80
     rows = 24
     unicode = { activeVersion: '11' }
     options = { fontSize: 14 }
+    buffer = {
+      active: {
+        type: 'normal' as 'normal' | 'alternate',
+        baseY: 0,
+        viewportY: 0,
+        getLine: () => undefined,
+      },
+    }
+    modes = {
+      mouseTrackingMode: 'none',
+      bracketedPasteMode: false,
+      sendFocusMode: false,
+    }
+    writes: string[] = []
+    scrollLines = vi.fn()
+    scrollToLine = vi.fn()
+    scrollToBottom() {}
+    constructor() {
+      terminals.push(this)
+    }
+    write(data: string, callback?: () => void) {
+      this.writes.push(data)
+      pane.written.push(data)
+      if (callback) queueMicrotask(callback)
+    }
     loadAddon() {}
     open() {}
     focus() {}
@@ -52,13 +82,12 @@ vi.mock('@xterm/xterm', () => ({
     onData() {}
     dispose() {}
     writeln() {}
-    write(data: string, done?: () => void) {
-      pane.written.push(data)
-      done?.()
+    // A full reset (RIS) leaves the alternate screen and turns the modes off.
+    reset() {
+      this.buffer.active.type = 'normal'
+      this.modes = { mouseTrackingMode: 'none', bracketedPasteMode: false, sendFocusMode: false }
     }
-    reset() {}
     refresh() {}
-    scrollToBottom() {}
   },
 }))
 vi.mock('@xterm/addon-fit', () => ({
@@ -72,17 +101,20 @@ vi.mock('../../lib/ptyVisibility', () => ({ usePtyPanelVisible: () => pane.visib
 vi.mock('../../lib/tauri', async (importOriginal) => ({
   ...(await importOriginal<typeof tauri>()),
   ptyExists: vi.fn(async () => false),
+  attachPty: vi.fn(async () => ''),
   setPtyVisible: vi.fn(async () => true),
   listenPtyData: vi.fn(async (_id: string, handler: (chunk: string) => void) => {
     pane.onData = handler
     return () => {}
   }),
   resumePtyOutput: vi.fn(async () => null),
-  attachPty: vi.fn(async () => ''),
   listenPtyActivity: vi.fn(async () => () => {}),
-  listenPtyExit: vi.fn(async (_id: string, handler: (payload: tauri.PtyExitPayload) => void) => {
+  listenPtyExit: vi.fn(async (id: string, handler: (payload: tauri.PtyExitPayload) => void) => {
     pane.onExit = handler
-    return () => {}
+    exits.set(id, handler)
+    return () => {
+      exits.delete(id)
+    }
   }),
   findCliLauncher: vi.fn(async () => 'claude'),
   claudeSessionExists: vi.fn(async () => true),
@@ -140,12 +172,26 @@ function params(): Parameters<typeof useXtermSession>[0] {
   }
 }
 
+type MockTerminal = {
+  writes: string[]
+  buffer: { active: { type: 'normal' | 'alternate' } }
+  modes: { mouseTrackingMode: string; bracketedPasteMode: boolean; sendFocusMode: boolean }
+  scrollLines: Mock
+}
+
+/** The terminal the hook built, with the pieces these tests read and drive. */
+function paneTerminal(input: Parameters<typeof useXtermSession>[0]): MockTerminal {
+  return input.terminalRef.current as unknown as MockTerminal
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   pane.visible = false
   pane.written = []
   pane.onData = null
   pane.onExit = null
+  exits.clear()
+  terminals.length = 0
   hooks.clear()
   localStorage.clear()
   resetSessionClaimsForTests()
@@ -355,11 +401,188 @@ describe('pane visibility', () => {
     expect(tauri.attachPty).not.toHaveBeenCalled()
   })
 
+  it('restores the reading position after replay and live output have both been parsed', async () => {
+    useTerminalsStore.getState().registerPty('pty-0')
+    const input = params()
+    const view = renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+    const terminal = input.terminalRef.current!
+    Object.assign(terminal.buffer.active, { baseY: 100, viewportY: 50 })
+    const scroll = vi.spyOn(terminal, 'scrollToLine')
+    const outputAtRestore: string[] = []
+    scroll.mockImplementation(() => {
+      outputAtRestore.push(pane.written.join(''))
+    })
+    vi.mocked(tauri.attachPty).mockImplementationOnce(async () => {
+      pane.onData?.('live after replay')
+      return 'replayed history '
+    })
+
+    pane.visible = true
+    view.rerender()
+
+    await waitFor(() => expect(scroll).toHaveBeenCalledWith(50))
+    expect(outputAtRestore.at(-1)).toContain('replayed history live after replay')
+  })
+
+  it('keeps the current screen and live output when fetching a replay fails', async () => {
+    useTerminalsStore.getState().registerPty('pty-0')
+    const input = params()
+    const view = renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+    const reset = vi.spyOn(input.terminalRef.current!, 'reset')
+    act(() => pane.onData?.('current screen '))
+    await waitFor(() => expect(pane.written.join('')).toContain('current screen '))
+    vi.mocked(tauri.attachPty).mockImplementationOnce(async () => {
+      pane.onData?.('live despite failed replay')
+      throw new Error('replay unavailable')
+    })
+
+    pane.visible = true
+    view.rerender()
+
+    await waitFor(() =>
+      expect(pane.written.join('')).toContain('current screen live despite failed replay'),
+    )
+    expect(reset).not.toHaveBeenCalled()
+  })
+
   it('falls back to a full replay when the backlog is incomplete', async () => {
     const view = await hiddenLivePane()
     vi.mocked(tauri.resumePtyOutput).mockResolvedValueOnce(null)
     pane.visible = true
     view.rerender()
     await waitFor(() => expect(tauri.attachPty).toHaveBeenCalledWith('pty-0'))
+  })
+})
+
+describe('fullscreen terminal lifecycle', () => {
+  it('frees a pane when a fullscreen session exits without undoing its modes', async () => {
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(exits.has('pty-0')).toBe(true))
+
+    // What Claude Code in fullscreen rendering leaves on the pane when it is killed.
+    const terminal = paneTerminal(input)
+    terminal.modes.mouseTrackingMode = 'vt200'
+    // Past the early-exit window, so this is a real exit and not the start-up retry.
+    input.spawnedAtRef.current = Date.now() - 30_000
+
+    act(() => exits.get('pty-0')?.({ code: 0, reason: 'exited' }))
+
+    await waitFor(() => expect(terminal.writes.join('')).toContain('\x1b[?1049l\x1b[?1000l'))
+  })
+
+  it('frees a pane whose fullscreen modes were still queued when the session exited', async () => {
+    const data = new Map<string, (chunk: string) => void>()
+    vi.mocked(tauri.listenPtyData).mockImplementation(async (id, handler) => {
+      data.set(id, handler as (chunk: string) => void)
+      return () => {}
+    })
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(exits.has('pty-0') && data.has('pty-0')).toBe(true))
+    const terminal = paneTerminal(input) as MockTerminal & {
+      write: (chunk: string, callback?: () => void) => void
+    }
+    // The mock parses only what this needs: entering the alternate screen with the mouse on.
+    const write = terminal.write.bind(terminal)
+    terminal.write = (chunk, callback) => {
+      if (chunk.includes('\x1b[?1049h')) {
+        terminal.buffer.active.type = 'alternate'
+        terminal.modes.mouseTrackingMode = 'vt200'
+      }
+      write(chunk, callback)
+    }
+    input.spawnedAtRef.current = Date.now() - 30_000
+
+    // The renderer's last output is still in the pane's write queue when the exit arrives.
+    act(() => {
+      data.get('pty-0')?.('\x1b[?1049h\x1b[?1000h')
+      exits.get('pty-0')?.({ code: 0, reason: 'exited' })
+    })
+
+    await waitFor(() => expect(terminal.writes.join('')).toContain('\x1b[?1049l\x1b[?1000l'))
+  })
+
+  it.each(['replay', 'backlog'])(
+    'frees a dead pane again when %s restores the fullscreen it died in',
+    async (source) => {
+      const input = params()
+      const view = renderHook(() => useXtermSession(input))
+      await waitFor(() => expect(exits.has('pty-0')).toBe(true))
+      const terminal = paneTerminal(input) as MockTerminal & {
+        write: (chunk: string, callback?: () => void) => void
+      }
+      const write = terminal.write.bind(terminal)
+      terminal.write = (chunk, callback) => {
+        if (chunk.includes('\x1b[?1049h')) {
+          terminal.buffer.active.type = 'alternate'
+          terminal.modes.mouseTrackingMode = 'vt200'
+        }
+        write(chunk, callback)
+      }
+      input.spawnedAtRef.current = Date.now() - 30_000
+
+      // Killed in fullscreen while the pane was hidden: its output never reached the screen.
+      act(() => {
+        useTerminalsStore.getState().recordIo('pty-0')
+        exits.get('pty-0')?.({ code: 0, reason: 'exited' })
+      })
+      const fullscreen = '\x1b[?1049h\x1b[?1000hthe fullscreen UI'
+      vi.mocked(tauri.attachPty).mockResolvedValue(fullscreen)
+      if (source === 'backlog') vi.mocked(tauri.resumePtyOutput).mockResolvedValueOnce(fullscreen)
+      terminal.writes.length = 0
+
+      // Shown again, the pane rebuilds itself from the scrollback, fullscreen bytes included.
+      pane.visible = true
+      view.rerender()
+
+      await waitFor(() => expect(terminal.writes.join('')).toContain('the fullscreen UI'))
+      await waitFor(() => expect(terminal.writes.join('')).toContain('\x1b[?1049l\x1b[?1000l'))
+    },
+  )
+
+  it('gives a dead pane its scrollback back on the wheel', async () => {
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(exits.has('pty-0')).toBe(true))
+    input.spawnedAtRef.current = Date.now() - 30_000
+    act(() => exits.get('pty-0')?.({ code: 0, reason: 'exited' }))
+
+    const terminal = paneTerminal(input)
+    terminal.buffer.active.type = 'alternate'
+    terminal.modes.mouseTrackingMode = 'vt200'
+    terminal.writes.length = 0
+
+    act(() => {
+      input.containerRef.current.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 40, bubbles: true, cancelable: true }),
+      )
+    })
+
+    // The pane is stuck on a screen nobody owns: the modes come off, then the scroll happens.
+    expect(terminal.writes.join('')).toContain('\x1b[?1049l')
+    await waitFor(() => expect(terminal.scrollLines).toHaveBeenCalled())
+  })
+
+  it('leaves the wheel to a live fullscreen session', async () => {
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+
+    const terminal = paneTerminal(input)
+    terminal.buffer.active.type = 'alternate'
+    terminal.modes.mouseTrackingMode = 'vt200'
+    terminal.writes.length = 0
+
+    act(() => {
+      input.containerRef.current.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 40, bubbles: true, cancelable: true }),
+      )
+    })
+
+    expect(terminal.scrollLines).not.toHaveBeenCalled()
+    expect(terminal.writes.join('')).not.toContain('\x1b[?1049l')
   })
 })

@@ -114,7 +114,7 @@ import {
   getTerminalScrollbackRows,
   getWheelScrollLines,
   normalizePastedText,
-  shouldScrollHostScrollback,
+  resolveWheelTarget,
 } from './terminalInput'
 import {
   type DetectedTerminalLink,
@@ -122,7 +122,14 @@ import {
   getLogicalTerminalLine,
   makeXtermLink,
 } from './terminalLinks'
+import { resetTerminalModes } from './terminalModes'
 import { captureTerminalPaste } from './terminalPaste'
+import {
+  captureViewportAnchor,
+  restoreViewport,
+  restoreViewportAnchor,
+  viewportDistanceFromBottom,
+} from './terminalViewport'
 import {
   TERMINAL_WRITE_FALLBACK_MS,
   TERMINAL_WRITE_FRAME_BUDGET,
@@ -531,6 +538,20 @@ export function useXtermSession(params: {
       scheduleFlush()
     }
 
+    // Wait until queued output is parsed before checking the modes it left behind.
+    const afterQueuedWrites = (then: () => void) => {
+      const parsed = () => {
+        if (disposed) return
+        try {
+          terminal.write('', then)
+        } catch {
+          /* The terminal may have been disposed meanwhile. */
+        }
+      }
+      if (pendingWriteLength === 0) parsed()
+      else pendingWriteDrainResolvers.push(parsed)
+    }
+
     const queueTerminalWriteAndWait = (chunk: string): Promise<void> => {
       if (!chunk) return Promise.resolve()
       return new Promise((resolve) => {
@@ -539,16 +560,14 @@ export function useXtermSession(params: {
       })
     }
 
-    // Scrollback replays go straight to xterm instead of through the frame
-    // budget: a few MB of history split into 16 KB slices costs one rendered
-    // frame each, which is what made switching panes crawl from the top of the
-    // buffer down to the prompt.
-    const writeReplayAtOnce = (replay: string): Promise<void> =>
+    // Replay history in one write; an optional callback restores the reader instead of the bottom.
+    const writeReplayAtOnce = (replay: string, afterReplay?: () => void): Promise<void> =>
       new Promise((resolve) => {
         try {
           terminal.write(replay, () => {
             try {
-              terminal.scrollToBottom()
+              if (afterReplay) afterReplay()
+              else terminal.scrollToBottom()
             } catch {
               /* The terminal may have been disposed before scrolling. */
             }
@@ -565,18 +584,30 @@ export function useXtermSession(params: {
     }
 
     const onWheel = (event: WheelEvent) => {
-      // Let alternate-screen TUIs handle their own mouse tracking and scrolling.
+      const id = ptyIdRef.current
+      const runtime = id ? useTerminalsStore.getState().byPtyId[id] : undefined
+      // Nobody has marked the session dead yet, so keep the wheel with the app.
+      const target = resolveWheelTarget({
+        bufferType: terminal.buffer.active.type,
+        shiftKey: event.shiftKey,
+        sessionAlive: runtime?.alive !== false,
+      })
+      if (target === 'app') return
 
-      if (!shouldScrollHostScrollback(terminal.buffer.active.type, event.shiftKey)) return
       const lines = getWheelScrollLines(event, getTerminalLineHeight())
       if (lines === 0) return
       event.preventDefault()
       event.stopPropagation()
-      try {
-        terminal.scrollLines(lines)
-      } catch {
-        /* Ignore scrolling after the terminal has been disposed. */
+      const scroll = () => {
+        try {
+          terminal.scrollLines(lines)
+        } catch {
+          /* Ignore scrolling after the terminal has been disposed. */
+        }
       }
+      // Restore the history buffer before scrolling a pane whose fullscreen owner died.
+      if (target === 'recover') resetTerminalModes(terminal, scroll)
+      else scroll()
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
@@ -865,8 +896,7 @@ export function useXtermSession(params: {
 
       const rect = container.getBoundingClientRect()
       if (rect.width < 50 || rect.height < 30) return
-      const activeBuffer = terminal.buffer.active
-      const distanceFromBottom = Math.max(0, activeBuffer.baseY - activeBuffer.viewportY)
+      const distanceFromBottom = viewportDistanceFromBottom(terminal)
       try {
         fitAddon.fit()
       } catch (error) {
@@ -874,9 +904,7 @@ export function useXtermSession(params: {
 
         return
       }
-      const resizedBuffer = terminal.buffer.active
-      if (distanceFromBottom === 0) terminal.scrollToBottom()
-      else terminal.scrollToLine(Math.max(0, resizedBuffer.baseY - distanceFromBottom))
+      restoreViewport(terminal, distanceFromBottom)
       try {
         terminal.refresh(0, Math.max(0, terminal.rows - 1))
       } catch (error) {
@@ -948,20 +976,33 @@ export function useXtermSession(params: {
     const doResync = async () => {
       const id = ptyIdRef.current
       if (!id || disposed) return
+      const arrivedDuringReplay: string[] = []
       try {
-        const arrivedDuringFetch: string[] = []
-        resyncCaptureRef = arrivedDuringFetch
+        const anchor = captureViewportAnchor(terminal)
+        resyncCaptureRef = arrivedDuringReplay
         const replay = await attachPty(id)
-        resyncCaptureRef = null
         if (disposed) return
         terminal.reset()
         pendingWrites = []
         pendingWriteLength = 0
         cancelScheduledFlush()
-        if (replay) void writeReplayAtOnce(replay)
-        for (const chunk of arrivedDuringFetch) queueTerminalWrite(chunk)
+        // ADR-014: hold live output until replay parsing finishes, then restore after both drain.
+        if (replay) await writeReplayAtOnce(replay, () => {})
+        resyncCaptureRef = null
+        if (disposed) return
+        for (const chunk of arrivedDuringReplay) queueTerminalWrite(chunk)
+        afterQueuedWrites(() => {
+          const restore = () => restoreViewportAnchor(terminal, anchor)
+          if (useTerminalsStore.getState().byPtyId[id]?.alive === false) {
+            resetTerminalModes(terminal, restore)
+            return
+          }
+          restore()
+        })
       } catch {
         resyncCaptureRef = null
+        if (disposed) return
+        for (const chunk of arrivedDuringReplay) queueTerminalWrite(chunk)
       }
     }
     const catchUpHiddenOutput = async (): Promise<boolean> => {
@@ -974,6 +1015,11 @@ export function useXtermSession(params: {
       if (disposed) return true
       if (missed) queueTerminalWrite(missed)
       for (const chunk of held) queueTerminalWrite(chunk)
+      afterQueuedWrites(() => {
+        if (useTerminalsStore.getState().byPtyId[id]?.alive === false) {
+          resetTerminalModes(terminal)
+        }
+      })
       return missed !== null
     }
     const panelSync = { catchUp: catchUpHiddenOutput, resync: doResync }
@@ -988,7 +1034,7 @@ export function useXtermSession(params: {
       const dataUnlisten = await listenPtyData(id, (chunk) => {
         useTerminalsStore.getState().recordIo(id)
         if (resyncCaptureRef) resyncCaptureRef.push(chunk)
-        if (heldLiveOutput) heldLiveOutput.push(chunk)
+        else if (heldLiveOutput) heldLiveOutput.push(chunk)
         else queueTerminalWrite(chunk)
         completionMonitor?.handleOutput(chunk)
         inspectChunk?.(chunk)
@@ -1065,6 +1111,12 @@ export function useXtermSession(params: {
           return
         }
         useTerminalsStore.getState().markExited(existingId)
+        afterQueuedWrites(() => {
+          // Checked once the output is in: a restart may have revived the pane meanwhile.
+          if (useTerminalsStore.getState().byPtyId[existingId]?.alive === false) {
+            resetTerminalModes(terminal)
+          }
+        })
         completionMonitor?.dispose()
         completionMonitor = null
         removeSession(sessionPersistenceKey)
@@ -1320,6 +1372,9 @@ export function useXtermSession(params: {
               runtimeProfile,
               [...customDefaultArgs, ...(extraArgs ?? [])],
               env,
+              {
+                claudeFullscreen: useProjectsStore.getState().preferences.claudeFullscreen,
+              },
             )
           : { args: extraArgs ?? [], env }
 
@@ -1691,6 +1746,12 @@ export function useXtermSession(params: {
             )
           }
           useTerminalsStore.getState().markExited(response.id)
+          afterQueuedWrites(() => {
+            // Checked once the output is in: a restart may have revived the pane meanwhile.
+            if (useTerminalsStore.getState().byPtyId[response.id]?.alive === false) {
+              resetTerminalModes(terminal)
+            }
+          })
           completionMonitor?.dispose()
           completionMonitor = null
 

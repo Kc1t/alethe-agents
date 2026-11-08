@@ -10,8 +10,8 @@ import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLas
 import {
   AGENT_TYPE_LABELS,
   agentCliCommand,
-  ALL_AGENT_TYPES,
   type AgentType,
+  ALL_AGENT_TYPES,
   DEFAULT_TERMINAL_FONT_FAMILY,
   isShellAgentType,
 } from '../../../lib/types'
@@ -250,6 +250,21 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
             />
           </label>
         </div>
+      </SettingsSection>
+
+      <SettingsSection
+        id="claude-fullscreen"
+        title={t('prefs.claudeFullscreen')}
+        description={t('prefs.claudeFullscreenDesc')}
+      >
+        <label className={styles.checkboxCard}>
+          <input
+            type="checkbox"
+            checked={preferences.claudeFullscreen ?? false}
+            onChange={(e) => setPreferences({ claudeFullscreen: e.target.checked })}
+          />
+          <span>{t('prefs.claudeFullscreenEnable')}</span>
+        </label>
       </SettingsSection>
 
       <SettingsSection

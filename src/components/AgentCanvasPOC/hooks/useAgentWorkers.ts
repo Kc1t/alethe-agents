@@ -3,10 +3,11 @@ import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 
 
 import { MAX_LIVE_WORKERS } from '../../../lib/agentCanvasConfig'
 import { type CodexWorker, tailSummary } from '../../../lib/agentCanvasUtils'
+import { resolveAgentCliCommand } from '../../../lib/agentProviders'
+import { paneLaunchEnv } from '../../../lib/agentRuntimeAdapter'
 import { interactivePermissionArgs, oneShotArgs } from '../../../lib/experimentalAgentPolicy'
 import { useT } from '../../../lib/i18n'
 import { attachPty, killPty, listenPtyExit, spawnPty } from '../../../lib/tauri'
-import { resolveAgentCliCommand } from '../../../lib/agentProviders'
 import type { AgentType } from '../../../lib/types'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { useUiStore } from '../../../stores/uiStore'
@@ -68,6 +69,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
         command: resolveAgentCliCommand(agent),
         cwd: folder,
         extraArgs: args,
+        env: paneLaunchEnv(agent, useProjectsStore.getState().preferences.claudeFullscreen),
       })
         .then(() => {
           let unlistenExit: (() => void) | null = null

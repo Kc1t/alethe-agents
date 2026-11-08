@@ -3,11 +3,33 @@ import { describe, expect, it } from 'vitest'
 import { AGENT_RUNTIME_ADAPTERS, preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
 
 describe('preparePtyRuntimeLaunch', () => {
-  it('full runtime profile preserves arguments and environment', () => {
+  it('full runtime profile preserves arguments and keeps the renderer decision', () => {
     expect(preparePtyRuntimeLaunch('claude', 'full', ['--verbose'], { EXAMPLE: '1' })).toEqual({
       args: ['--verbose'],
-      env: { EXAMPLE: '1' },
+      env: { EXAMPLE: '1', CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN: '1' },
     })
+  })
+
+  it('starts Claude in the classic renderer so the pane keeps the wheel', () => {
+    expect(
+      preparePtyRuntimeLaunch('claude', 'full').env?.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN,
+    ).toBe('1')
+    expect(
+      preparePtyRuntimeLaunch('claude', 'lean').env?.CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN,
+    ).toBe('1')
+  })
+
+  it('leaves the renderer to Claude when the profile wants fullscreen', () => {
+    const launch = preparePtyRuntimeLaunch('claude', 'full', [], undefined, {
+      claudeFullscreen: true,
+    })
+
+    expect(launch.env).toBeUndefined()
+  })
+
+  it('does not touch the environment of other agents', () => {
+    expect(preparePtyRuntimeLaunch('codex', 'full').env).toBeUndefined()
+    expect(preparePtyRuntimeLaunch('opencode', 'full').env).toBeUndefined()
   })
 
   it('lean Claude profile limits startup fan-out without disabling configured tools', () => {

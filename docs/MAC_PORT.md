@@ -36,6 +36,12 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `contract` · feat(terminal): preserve pane scroll and make Claude Code fullscreen rendering optional
+  - Commit: Merge pull request #322 from MarkHiarley/fix/terminal-scroll-ownership
+  - Also: `9135adde` fix(terminal): keep a pane's scroll with the reader; `8657a542` feat(terminal): make Claude Code's fullscreen renderer a preference; `0d1f31da` fix(terminal): close the gaps found porting #322
+  - Files: `src/components/XTermView/useXtermSession.ts`, `src/lib/agentRuntimeAdapter.ts`, `src/stores/projectsStore.migrations.ts`
+  - Contract: additive `preferences.claudeFullscreen` boolean in `projects.json`, default and migration fallback `false`; launches and restarts set `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` unless fullscreen is enabled. Preserve text-anchored scroll after fallback replay and reset terminal modes left by dead TUIs.
+
 - `pending` · `ui` · feat(settings): add a dedicated AI Memory page to Preferences
   - Commit: Merge pull request #353 from Tavaressan/feat/318-preferences-ai-memory-tab
   - Files: `src/components/modals/PreferencesModal.tsx`, `src/components/modals/preferences/AiMemoryPage.tsx`

@@ -1,12 +1,12 @@
 import { nanoid } from 'nanoid'
 
 import { sanitizeCustomAgents } from '../lib/customAgents'
+import { normalizeExperimentalAgentPermissionMode } from '../lib/experimentalAgentPolicy'
 import {
   legacyGitFeatureFlag,
   legacyTodosFeatureFlag,
   normalizeEnabledFeatures,
 } from '../lib/features'
-import { normalizeExperimentalAgentPermissionMode } from '../lib/experimentalAgentPolicy'
 import { normalizeOrchestrationSettings } from '../lib/orchestrationSettings'
 import {
   LEGACY_VOICE_PREFERENCE_KEYS,
@@ -262,6 +262,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     shellPath: normalizeNonEmptyString(raw?.shellPath),
     terminalFontFamily:
       normalizeNonEmptyString(raw?.terminalFontFamily) ?? DEFAULT_TERMINAL_FONT_FAMILY,
+    claudeFullscreen: Boolean(raw?.claudeFullscreen),
   }
 }
 

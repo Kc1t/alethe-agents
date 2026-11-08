@@ -906,6 +906,8 @@ export type Preferences = {
   shellPath: string | null
   /** Font stack for the terminal. A Nerd Font is required for prompts such as oh-my-posh. */
   terminalFontFamily: string
+  // Default false keeps scrolling and searching with the pane in the classic renderer.
+  claudeFullscreen?: boolean
   /**
    * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
@@ -1103,6 +1105,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   workerRuleSets: null,
   shellPath: null,
   terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
+  claudeFullscreen: false,
   pomodoroWorkMinutes: 25,
   pomodoroShortBreakMinutes: 5,
   pomodoroLongBreakMinutes: 15,

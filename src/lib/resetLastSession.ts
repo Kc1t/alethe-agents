@@ -1,6 +1,9 @@
+import { useProjectsStore } from '../stores/projectsStore'
+import { useTerminalsStore } from '../stores/terminalsStore'
+import { paneLaunchEnv } from './agentRuntimeAdapter'
 import { claudeLaunchExtras, graphifyRepoOf, recordClaudeLaunch } from './claudeMcpConfigs'
-import { claudeLaunchFlags } from './sessionLaunch'
 import { isSessionClaimed } from './sessionDiscovery'
+import { claudeLaunchFlags } from './sessionLaunch'
 import { conversationFields, getActiveSessions, saveSession } from './sessionResume'
 import { acquireSpawnSlot, releaseSpawnSlot } from './spawnQueue'
 import {
@@ -12,8 +15,6 @@ import {
   snapshotOpenCodeSessions,
 } from './tauri'
 import type { AgentType } from './types'
-import { useProjectsStore } from '../stores/projectsStore'
-import { useTerminalsStore } from '../stores/terminalsStore'
 
 const RESUMABLE: AgentType[] = ['claude', 'codex', 'cursor', 'opencode', 'antigravity']
 
@@ -23,7 +24,7 @@ function stripFlagWithValue(args: string[], flag: string): string[] {
   const out: string[] = []
   for (let i = 0; i < args.length; i++) {
     if (args[i] === flag) {
-      i++ // pula o valor associado
+      i++ // Skip the associated value.
       continue
     }
     out.push(args[i])
@@ -82,7 +83,7 @@ async function latestSessionId(
 
 function buildResumeArgs(agent: AgentType, baseArgs: string[], sessionId: string | null): string[] {
   if (agent === 'claude') {
-    // Tira qualquer --resume <id> / --continue antigos e reinjeta o novo.
+    // Replace old --resume <id> / --continue flags with the selected conversation.
     const clean = stripFlagWithValue(baseArgs, '--resume').filter((a) => a !== '--continue')
     return sessionId ? ['--resume', sessionId, ...clean] : ['--continue', ...clean]
   }
@@ -205,7 +206,9 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
         command: target.agent,
         cwd: cwd || undefined,
         extraArgs,
-        env: { ALETHE_PLANNER: target.ptyId },
+        env: paneLaunchEnv(target.agent, useProjectsStore.getState().preferences.claudeFullscreen, {
+          ALETHE_PLANNER: target.ptyId,
+        }),
       })
       if (claudeExtras) recordClaudeLaunch(target.ptyId, claudeExtras.orchestrator)
       window.dispatchEvent(
