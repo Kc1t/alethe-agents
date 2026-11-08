@@ -36,6 +36,9 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `ui` · feat(notifications): keep in-app notifications reachable after the toast fades
+  - Commit: Merge pull request #347 from Tavaressan/feat/311-notification-history
+  - Files: `src/components/TitleBar/NotificationHistory.tsx`, `src/components/TitleBar/index.tsx`
 - `skip` · `ui` · feat(plugins): expose API 3 host support for external voice conversations
   - Commit: feat(voice): render the voice HUD in the core and give plugins conversation APIs
   - Files: `src/lib/plugins/terminals.ts`, `src/lib/plugins/agents.ts`, `src/lib/plugins/voice.ts`, `src/components/modals/PreferencesModal.tsx`
