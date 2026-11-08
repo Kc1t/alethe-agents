@@ -8,7 +8,7 @@
 //! The newer one manages the service itself — which release to fetch for this machine, and the
 //! `serve` child — shaped after `router9.rs`, which does the same job for 9router.
 
-pub const AI_MEMORY_VERSION: &str = "2.4.0";
+pub const AI_MEMORY_VERSION: &str = "3.1.1";
 const RELEASES: &str = "https://github.com/akitaonrails/ai-memory/releases/download";
 
 /// Sized for what ai-memory actually is: a ~46 MB binary plus hook scripts, with room to grow.
@@ -81,14 +81,21 @@ pub fn managed_binary(app: &AppHandle) -> Option<String> {
     path.is_file().then(|| path.to_string_lossy().to_string())
 }
 
-/// Which binary to run: what the caller asked for, else the managed copy by full path, else the
-/// bare name for `PATH` to resolve.
-///
-/// The managed copy lives in the profile folder, so it has to travel as a path — the bare name
-/// would not resolve for the agents the config writers hand it to.
-pub fn pick_command(managed: Option<String>, explicit: Option<String>) -> String {
+// The shared resolver finds manual installs outside a desktop app PATH.
+fn installed_binary() -> Option<String> {
+    crate::cli_resolver::find_windows_cli_launcher(DEFAULT_COMMAND)
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+// Prefer explicit, managed, and resolved binaries before the bare command.
+pub fn pick_command(
+    managed: Option<String>,
+    explicit: Option<String>,
+    installed: Option<String>,
+) -> String {
     explicit
         .or(managed)
+        .or(installed)
         .unwrap_or_else(|| DEFAULT_COMMAND.to_string())
 }
 
@@ -127,32 +134,190 @@ fn mcp_url(port: u16) -> String {
     format!("http://127.0.0.1:{port}/mcp")
 }
 
-/// Claude's MCP registration for ai-memory: the loopback HTTP endpoint `serve` binds, not a `mcp`
-/// subcommand — there isn't one. Upstream's CLI (`crates/ai-memory-cli/src/cli.rs`) offers `serve`,
-/// `install-mcp` and `mcp-bridge`; the only other `Mcp` token is a value of `uninstall --only`. This
-/// mirrors what `install-mcp` itself recommends, and only answers once `ai-memory serve` is actually
-/// running — before that, an agent reaching for it sees a connection refused, the same as any other
-/// MCP server pointed at a port nothing is listening on yet.
-fn mcp_server_spec(port: u16) -> Value {
-    serde_json::json!({
-        "type": "http",
-        "url": mcp_url(port),
-    })
+// The bridge reads the 3.x server token without exposing it to agent configuration.
+#[derive(Debug, Clone, PartialEq)]
+enum McpTransport {
+    Http,
+    Bridge {
+        command: String,
+        // Managed bridges use the same store as their server.
+        data_dir: Option<String>,
+    },
 }
 
-/// OpenCode's shape for the same HTTP registration: a "remote" server entry, not a spawned command.
-fn opencode_mcp_entry(port: u16) -> Value {
-    serde_json::json!({
-        "type": "remote",
-        "url": mcp_url(port),
-        "enabled": true,
-    })
+// Read the major version from ai-memory version output.
+fn parse_major(version_output: &str) -> Option<u32> {
+    let version = version_output.split_whitespace().find(|word| {
+        word.trim_start_matches('v')
+            .starts_with(|c: char| c.is_ascii_digit())
+    })?;
+    version
+        .trim_start_matches('v')
+        .split('.')
+        .next()?
+        .parse()
+        .ok()
 }
 
-/// Codex's `[mcp_servers.<name>]` block for the same HTTP registration: a bare `url`, no `command`
-/// or `args` to spawn.
-fn codex_mcp_block(port: u16) -> String {
-    format!("[mcp_servers.{MCP_KEY}]\nurl = \"{}\"\n", mcp_url(port))
+// Cache versions per binary; detection refreshes them and installation clears them.
+fn version_cache() -> &'static Mutex<HashMap<String, Option<u32>>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Option<u32>>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+// ADR-012: version detection must not leave terminal launches waiting indefinitely.
+const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+const VERSION_PROBE_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const MAX_VERSION_OUTPUT_BYTES: u64 = 4 * 1024;
+
+fn probe_version(cmd: &str) -> Option<String> {
+    let mut probe = Command::new(cmd);
+    probe.arg("--version");
+    hide_console(&mut probe);
+    probe_version_with_timeout(probe, VERSION_PROBE_TIMEOUT)
+}
+
+fn probe_version_with_timeout(probe: Command, timeout: Duration) -> Option<String> {
+    let started = std::time::Instant::now();
+    let mut command = probe;
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let stdout = child.stdout.take().expect("piped version stdout");
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let result = stdout.take(MAX_VERSION_OUTPUT_BYTES).read_to_end(&mut bytes);
+        let _ = tx.send(result.map(|_| bytes));
+    });
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if started.elapsed() < timeout => {
+                std::thread::sleep(VERSION_PROBE_POLL_INTERVAL);
+            }
+            _ => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    };
+    if !status.success() {
+        return None;
+    }
+    let bytes = rx
+        .recv_timeout(timeout.saturating_sub(started.elapsed()))
+        .ok()?
+        .ok()?;
+    let version = String::from_utf8_lossy(&bytes).trim().to_string();
+    Some(version)
+}
+
+fn remember_major(cmd: &str, version: Option<&str>) -> Option<u32> {
+    let major = version.and_then(parse_major);
+    if let Ok(mut cache) = version_cache().lock() {
+        cache.insert(cmd.to_string(), major);
+    }
+    major
+}
+
+fn major_version(cmd: &str) -> Option<u32> {
+    if let Some(cached) = version_cache()
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(cmd).copied())
+    {
+        return cached;
+    }
+    remember_major(cmd, probe_version(cmd).as_deref())
+}
+
+// Use the token-aware bridge from 3.x, retaining HTTP for older or unknown versions.
+fn transport_for(major: Option<u32>, command: String, data_dir: Option<String>) -> McpTransport {
+    match major {
+        Some(major) if major >= 3 => McpTransport::Bridge { command, data_dir },
+        _ => McpTransport::Http,
+    }
+}
+
+fn mcp_transport(app: &AppHandle) -> McpTransport {
+    let (cmd, data_dir) = command_for(app, None);
+    transport_for(major_version(&cmd), cmd, data_dir)
+}
+
+// The global data directory flag precedes the bridge subcommand.
+fn bridge_args(data_dir: Option<&str>, port: u16, extra: &[&str]) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(dir) = data_dir {
+        args.push("--data-dir".to_string());
+        args.push(dir.to_string());
+    }
+    args.push("mcp-bridge".to_string());
+    args.extend(extra.iter().map(|arg| arg.to_string()));
+    args.push("--server-url".to_string());
+    args.push(mcp_url(port));
+    args
+}
+
+// Claude uses HTTP on 2.x and the token-aware stdio bridge on 3.x.
+fn mcp_server_spec(port: u16, transport: &McpTransport) -> Value {
+    match transport {
+        McpTransport::Http => serde_json::json!({
+            "type": "http",
+            "url": mcp_url(port),
+        }),
+        McpTransport::Bridge { command, data_dir } => serde_json::json!({
+            "type": "stdio",
+            "command": command,
+            "args": bridge_args(data_dir.as_deref(), port, &[]),
+        }),
+    }
+}
+
+// OpenCode uses a local bridge with session IDs disabled on 3.x.
+fn opencode_mcp_entry(port: u16, transport: &McpTransport) -> Value {
+    match transport {
+        McpTransport::Http => serde_json::json!({
+            "type": "remote",
+            "url": mcp_url(port),
+            "enabled": true,
+        }),
+        McpTransport::Bridge { command, data_dir } => {
+            let mut argv = vec![command.clone()];
+            argv.extend(bridge_args(data_dir.as_deref(), port, &["--no-session-id"]));
+            serde_json::json!({
+                "type": "local",
+                "command": argv,
+                "enabled": true,
+            })
+        }
+    }
+}
+
+fn toml_string(value: &str) -> String {
+    toml_edit::Value::from(value).to_string()
+}
+
+// Keep the token in ai-memory by registering its bridge as a command on 3.x.
+fn codex_mcp_block(port: u16, transport: &McpTransport) -> String {
+    match transport {
+        McpTransport::Http => format!("[mcp_servers.{MCP_KEY}]\nurl = \"{}\"\n", mcp_url(port)),
+        McpTransport::Bridge { command, data_dir } => {
+            let args = bridge_args(data_dir.as_deref(), port, &[])
+                .iter()
+                .map(|arg| toml_string(arg))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "[mcp_servers.{MCP_KEY}]\ncommand = {}\nargs = [{args}]\n",
+                toml_string(command)
+            )
+        }
+    }
 }
 
 /// Detects whether ai-memory is installed and reachable, and what kind of copy it is.
@@ -167,18 +332,13 @@ pub fn ai_memory_detect(
     command: Option<String>,
 ) -> Result<AiMemoryStatus, String> {
     let managed = managed_binary(&app);
-    let cmd = pick_command(managed.clone(), command);
+    let cmd = pick_command(managed.clone(), command, installed_binary());
 
-    let mut probe = Command::new(&cmd);
-    probe.arg("--version");
-    hide_console(&mut probe);
-    let (installed, version) = match probe.output() {
-        Ok(output) if output.status.success() => {
-            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            (true, (!version.is_empty()).then_some(version))
-        }
-        _ => (false, None),
-    };
+    let detected = probe_version(&cmd);
+    let installed = detected.is_some();
+    let version = detected.filter(|version| !version.is_empty());
+    // A copy upgraded outside Alethe is picked up the next time Preferences looks.
+    remember_major(&cmd, version.as_deref());
 
     let running = endpoint_alive(DEFAULT_ENDPOINT);
     // Same aliveness check `ai_memory_start` uses to decide a tracked child is still running. A
@@ -209,10 +369,10 @@ fn endpoint_alive(endpoint: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn ai_memory_mcp_config_path(repo: String) -> Result<String, String> {
+pub fn ai_memory_mcp_config_path(app: AppHandle, repo: String) -> Result<String, String> {
     let root = repository_root(&repo)?;
     let config = serde_json::json!({
-        "mcpServers": { (MCP_KEY): mcp_server_spec(DEFAULT_PORT) }
+        "mcpServers": { (MCP_KEY): mcp_server_spec(DEFAULT_PORT, &mcp_transport(&app)) }
     });
     let file_name = format!(
         "alethe-ai-memory-mcp-{}.json",
@@ -225,7 +385,7 @@ pub fn ai_memory_mcp_config_path(repo: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn ai_memory_opencode_config_write(repo: String) -> Result<(), String> {
+pub fn ai_memory_opencode_config_write(app: AppHandle, repo: String) -> Result<(), String> {
     let _guard = crate::provider_common::opencode_json_lock()
         .lock()
         .map_err(|_| "opencode.json lock poisoned".to_string())?;
@@ -252,7 +412,10 @@ pub fn ai_memory_opencode_config_write(repo: String) -> Result<(), String> {
         .entry("mcp".to_string())
         .or_insert_with(|| Value::Object(serde_json::Map::new()));
     if let Value::Object(mcp_map) = mcp {
-        mcp_map.insert(MCP_KEY.to_string(), opencode_mcp_entry(DEFAULT_PORT));
+        mcp_map.insert(
+            MCP_KEY.to_string(),
+            opencode_mcp_entry(DEFAULT_PORT, &mcp_transport(&app)),
+        );
     }
 
     let body = serde_json::to_string_pretty(&Value::Object(config)).map_err(|e| e.to_string())?;
@@ -260,7 +423,7 @@ pub fn ai_memory_opencode_config_write(repo: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn ai_memory_codex_config_write(repo: String) -> Result<(), String> {
+pub fn ai_memory_codex_config_write(app: AppHandle, repo: String) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let codex_dir = root.join(".codex");
     std::fs::create_dir_all(&codex_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
@@ -299,7 +462,7 @@ pub fn ai_memory_codex_config_write(repo: String) -> Result<(), String> {
     }
 
     body.push('\n');
-    body.push_str(&codex_mcp_block(DEFAULT_PORT));
+    body.push_str(&codex_mcp_block(DEFAULT_PORT, &mcp_transport(&app)));
 
     std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
 }
@@ -315,6 +478,13 @@ use crate::plugin_package::safe_entry_path;
 /// internet does not choose where its files land.
 pub fn extract_tar_gz(bytes: &[u8], destination: &Path) -> Result<(), String> {
     extract_tar_gz_bounded(bytes, destination, MAX_ENTRIES, MAX_UNPACKED_BYTES)
+}
+
+// Recognize only archive root entries.
+fn is_archive_root(name: &str) -> bool {
+    name.replace('\\', "/")
+        .split('/')
+        .all(|part| part.is_empty() || part == ".")
 }
 
 /// Bounded variant of extract_tar_gz, with configurable limits for different callers.
@@ -338,7 +508,12 @@ pub fn extract_tar_gz_bounded(
         }
         let mut entry = entry.map_err(|e| format!("tar_read_failed:{e}"))?;
         let name = entry.path().map_err(|e| format!("tar_read_failed:{e}"))?;
-        let target = destination.join(safe_entry_path(&name.to_string_lossy())?);
+        let name = name.to_string_lossy();
+        // `tar -C dir .` stores the folder itself as `./`, which is `destination` already.
+        if entry.header().entry_type().is_dir() && is_archive_root(&name) {
+            continue;
+        }
+        let target = destination.join(safe_entry_path(&name)?);
         if entry.header().entry_type().is_dir() {
             std::fs::create_dir_all(&target).map_err(|e| format!("mkdir_failed:{e}"))?;
             continue;
@@ -425,7 +600,7 @@ fn managed_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// The command to run and, only for a copy Alethe installed, the data directory to give it.
 pub(crate) fn command_for(app: &AppHandle, explicit: Option<String>) -> (String, Option<String>) {
     let managed = managed_binary(app);
-    let cmd = pick_command(managed.clone(), explicit);
+    let cmd = pick_command(managed.clone(), explicit, installed_binary());
     let data_dir = if managed.as_deref() == Some(cmd.as_str()) {
         managed_data_dir(app).ok().map(|d| d.to_string_lossy().to_string())
     } else {
@@ -469,6 +644,10 @@ fn hook_config_cache() -> &'static Mutex<HashMap<HookConfigKey, Value>> {
 /// stale regardless of which key it was stored under.
 pub(crate) fn invalidate_hook_config_cache() {
     if let Ok(mut cache) = hook_config_cache().lock() {
+        cache.clear();
+    }
+    // The same install may swap a 2.x copy for a 3.x one, which registers MCP differently.
+    if let Ok(mut cache) = version_cache().lock() {
         cache.clear();
     }
 }
@@ -531,6 +710,16 @@ pub fn hook_config(app: &AppHandle, port: u16) -> Result<Value, String> {
     Ok(hooks)
 }
 
+// Read user Claude settings to avoid adding duplicate capture events.
+fn user_claude_settings() -> Option<Value> {
+    let dir = std::env::var_os("CLAUDE_CONFIG_DIR")
+        .filter(|dir| !dir.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| crate::provider_common::provider_home_dir(&[".claude"]))?;
+    let body = std::fs::read_to_string(dir.join("settings.json")).ok()?;
+    serde_json::from_str(&body).ok()
+}
+
 /// The hooks to merge, or `None` when consent is off or the binary is not there.
 ///
 /// A failure here is not worth failing a terminal launch over: no hooks means no capture, and the
@@ -539,7 +728,11 @@ pub(crate) fn claude_hooks(app: &AppHandle, enabled: bool, port: u16) -> Option<
     if !enabled {
         return None;
     }
-    hook_config(app, port).ok()
+    let ours = hook_config(app, port).ok()?;
+    let captured = user_claude_settings()
+        .map(|settings| crate::ai_memory_hooks::events_already_captured(&settings))
+        .unwrap_or_default();
+    Some(crate::ai_memory_hooks::without_events(&ours, &captured))
 }
 
 /// Runs after extraction, so a failure partway through — a cap tripped, a corrupt archive — leaves
@@ -676,6 +869,76 @@ pub fn ai_memory_stop(state: tauri::State<'_, AiMemoryProcess>) -> Result<(), St
 mod tests {
     use super::*;
 
+    fn version_probe_command(script: &str) -> Command {
+        #[cfg(windows)]
+        let mut command = Command::new("powershell.exe");
+        #[cfg(windows)]
+        command.args(["-NoProfile", "-NonInteractive", "-Command", script]);
+        #[cfg(not(windows))]
+        let mut command = Command::new("sh");
+        #[cfg(not(windows))]
+        command.args(["-c", script]);
+        hide_console(&mut command);
+        command
+    }
+
+    #[test]
+    fn version_probe_returns_successful_version_output() {
+        #[cfg(windows)]
+        let script = "[Console]::Out.Write('ai-memory 3.1.1')";
+        #[cfg(not(windows))]
+        let script = "printf 'ai-memory 3.1.1'";
+        assert_eq!(
+            probe_version_with_timeout(version_probe_command(script), VERSION_PROBE_TIMEOUT),
+            Some("ai-memory 3.1.1".to_string())
+        );
+    }
+
+    #[test]
+    fn version_probe_rejects_unsuccessful_commands() {
+        assert_eq!(
+            probe_version_with_timeout(version_probe_command("exit 1"), VERSION_PROBE_TIMEOUT),
+            None
+        );
+    }
+
+    #[test]
+    fn hung_version_probe_returns_within_its_budget() {
+        #[cfg(windows)]
+        let script = "[Console]::Out.Write('ai-memory 3.1.1'); Start-Sleep -Seconds 60";
+        #[cfg(not(windows))]
+        let script = "printf 'ai-memory 3.1.1'; exec sleep 60";
+        let started = std::time::Instant::now();
+        assert_eq!(
+            probe_version_with_timeout(version_probe_command(script), Duration::from_millis(200)),
+            None
+        );
+        assert!(started.elapsed() < VERSION_PROBE_TIMEOUT);
+    }
+
+    #[test]
+    fn version_probe_preserves_success_with_empty_output() {
+        assert_eq!(
+            probe_version_with_timeout(version_probe_command("exit 0"), VERSION_PROBE_TIMEOUT),
+            Some(String::new())
+        );
+    }
+
+    #[test]
+    fn closing_stdout_does_not_let_a_hung_probe_block() {
+        #[cfg(windows)]
+        let script = "[Console]::Out.Close(); Start-Sleep -Seconds 60";
+        #[cfg(not(windows))]
+        let script = "exec 1>&-; exec sleep 60";
+        let started = std::time::Instant::now();
+        assert_eq!(
+            probe_version_with_timeout(version_probe_command(script), Duration::from_millis(200)),
+            None
+        );
+        assert!(started.elapsed() < VERSION_PROBE_TIMEOUT);
+    }
+
+
     // `hook_config` itself needs a real `AppHandle` (no mock-app pattern exists in this codebase),
     // so the process-spawning and timeout parts of it are verified by reading, not by a test here.
     // The cache it consults, however, is reachable on its own. All its properties are asserted in one
@@ -735,7 +998,7 @@ mod tests {
 
     #[test]
     fn claude_gets_the_http_endpoint_not_a_nonexistent_mcp_subcommand() {
-        let spec = mcp_server_spec(49374);
+        let spec = mcp_server_spec(49374, &McpTransport::Http);
         assert_eq!(spec["type"], "http");
         assert_eq!(spec["url"], "http://127.0.0.1:49374/mcp");
         assert!(
@@ -747,7 +1010,7 @@ mod tests {
 
     #[test]
     fn opencode_gets_a_remote_url_entry_not_a_command_array() {
-        let entry = opencode_mcp_entry(49374);
+        let entry = opencode_mcp_entry(49374, &McpTransport::Http);
         assert_eq!(entry["type"], "remote");
         assert_eq!(entry["url"], "http://127.0.0.1:49374/mcp");
         assert_eq!(entry["enabled"], true);
@@ -756,11 +1019,159 @@ mod tests {
 
     #[test]
     fn codex_gets_a_bare_url_under_its_own_unquoted_table_header() {
-        let block = codex_mcp_block(49374);
+        let block = codex_mcp_block(49374, &McpTransport::Http);
         assert!(block.contains("[mcp_servers.ai-memory]"), "{block}");
         assert!(block.contains("url = \"http://127.0.0.1:49374/mcp\""), "{block}");
         assert!(!block.contains("command"), "{block}");
         assert!(!block.contains("args"), "{block}");
+    }
+
+    fn bridge(data_dir: Option<&str>) -> McpTransport {
+        McpTransport::Bridge {
+            command: "/opt/bin/ai-memory".into(),
+            data_dir: data_dir.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn the_major_version_comes_from_the_version_line() {
+        assert_eq!(parse_major("ai-memory 3.1.1"), Some(3));
+        assert_eq!(parse_major("ai-memory 2.4.0\n"), Some(2));
+        assert_eq!(parse_major("ai-memory v10.0.0-rc1"), Some(10));
+        assert_eq!(parse_major("ai-memory"), None);
+        assert_eq!(parse_major(""), None);
+    }
+
+    #[test]
+    fn releases_from_3_use_the_bridge_and_older_or_unknown_ones_the_url() {
+        let cmd = || "ai-memory".to_string();
+        assert_eq!(transport_for(Some(2), cmd(), None), McpTransport::Http);
+        assert_eq!(transport_for(None, cmd(), None), McpTransport::Http);
+        assert_eq!(
+            transport_for(Some(3), cmd(), Some("/data".into())),
+            McpTransport::Bridge {
+                command: cmd(),
+                data_dir: Some("/data".into())
+            }
+        );
+    }
+
+    // The 3.x bridge reads the bearer token required by the HTTP endpoint.
+    #[test]
+    fn claude_gets_the_stdio_bridge_on_3x() {
+        let spec = mcp_server_spec(49374, &bridge(None));
+        assert_eq!(spec["type"], "stdio");
+        assert_eq!(spec["command"], "/opt/bin/ai-memory");
+        assert_eq!(
+            spec["args"],
+            serde_json::json!(["mcp-bridge", "--server-url", "http://127.0.0.1:49374/mcp"])
+        );
+        assert!(spec.get("url").is_none(), "{spec}");
+    }
+
+    #[test]
+    fn a_managed_copy_points_the_bridge_at_its_own_store() {
+        let spec = mcp_server_spec(49374, &bridge(Some("/profile/ai-memory-data")));
+        assert_eq!(
+            spec["args"],
+            serde_json::json!([
+                "--data-dir",
+                "/profile/ai-memory-data",
+                "mcp-bridge",
+                "--server-url",
+                "http://127.0.0.1:49374/mcp"
+            ])
+        );
+    }
+
+    #[test]
+    fn opencode_gets_a_local_bridge_command_on_3x() {
+        let entry = opencode_mcp_entry(49374, &bridge(None));
+        assert_eq!(entry["type"], "local");
+        assert_eq!(entry["enabled"], true);
+        assert_eq!(
+            entry["command"],
+            serde_json::json!([
+                "/opt/bin/ai-memory",
+                "mcp-bridge",
+                "--no-session-id",
+                "--server-url",
+                "http://127.0.0.1:49374/mcp"
+            ])
+        );
+        assert!(entry.get("url").is_none(), "{entry}");
+    }
+
+    #[test]
+    fn codex_gets_the_bridge_as_command_and_args_on_3x() {
+        let block = codex_mcp_block(49374, &bridge(None));
+        let parsed: toml_edit::DocumentMut = block.parse().expect("valid TOML");
+        let server = &parsed["mcp_servers"]["ai-memory"];
+        assert_eq!(server["command"].as_str(), Some("/opt/bin/ai-memory"));
+        let args: Vec<&str> = server["args"]
+            .as_array()
+            .expect("args array")
+            .iter()
+            .filter_map(|arg| arg.as_str())
+            .collect();
+        assert_eq!(
+            args,
+            ["mcp-bridge", "--server-url", "http://127.0.0.1:49374/mcp"]
+        );
+        assert!(!block.contains("url = "), "{block}");
+    }
+
+    #[test]
+    fn codex_escapes_a_windows_bridge_path() {
+        let transport = McpTransport::Bridge {
+            command: r"C:\Users\me\ai-memory.exe".into(),
+            data_dir: None,
+        };
+        let parsed: toml_edit::DocumentMut = codex_mcp_block(49374, &transport)
+            .parse()
+            .expect("valid TOML");
+        assert_eq!(
+            parsed["mcp_servers"]["ai-memory"]["command"].as_str(),
+            Some(r"C:\Users\me\ai-memory.exe")
+        );
+    }
+
+    // Release archives start with a root directory entry.
+    #[test]
+    fn an_archive_that_starts_with_its_own_root_unpacks() {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::default(),
+        ));
+        let mut dir = tar::Header::new_gnu();
+        dir.set_entry_type(tar::EntryType::Directory);
+        dir.set_mode(0o755);
+        dir.set_size(0);
+        builder
+            .append_data(&mut dir, "./", std::io::empty())
+            .unwrap();
+        let body = b"#!/bin/sh\n";
+        let mut file = tar::Header::new_gnu();
+        file.set_mode(0o755);
+        file.set_size(body.len() as u64);
+        builder
+            .append_data(&mut file, "./ai-memory", &body[..])
+            .unwrap();
+        let bytes = builder.into_inner().unwrap().finish().unwrap();
+
+        let destination =
+            std::env::temp_dir().join(format!("alethe-ai-memory-{}", nanoid::nanoid!(8)));
+        extract_tar_gz(&bytes, &destination).expect("the root entry is skipped, not refused");
+        assert_eq!(std::fs::read(destination.join("ai-memory")).unwrap(), body);
+        let _ = std::fs::remove_dir_all(&destination);
+    }
+
+    #[test]
+    fn only_root_names_count_as_the_archive_root() {
+        assert!(is_archive_root("./"));
+        assert!(is_archive_root("."));
+        assert!(!is_archive_root("./hooks/"));
+        assert!(!is_archive_root("ai-memory"));
     }
 
     #[test]
@@ -792,23 +1203,46 @@ mod tests {
     fn an_explicit_command_always_wins() {
         // The caller named a binary; nothing may second-guess that.
         assert_eq!(
-            pick_command(Some("/profile/ai-memory".into()), Some("/usr/bin/ai-memory".into())),
+            pick_command(
+                Some("/profile/ai-memory".into()),
+                Some("/usr/bin/ai-memory".into()),
+                Some("/opt/homebrew/bin/ai-memory".into()),
+            ),
             "/usr/bin/ai-memory"
         );
-        assert_eq!(pick_command(None, Some("/usr/bin/ai-memory".into())), "/usr/bin/ai-memory");
+        assert_eq!(
+            pick_command(None, Some("/usr/bin/ai-memory".into()), None),
+            "/usr/bin/ai-memory"
+        );
     }
 
     #[test]
     fn the_copy_alethe_installed_travels_as_a_full_path() {
         // It lives in the profile folder, which is not on PATH: handing the agent the bare name
         // would give it a command it cannot resolve, and memory would silently never work.
-        assert_eq!(pick_command(Some("/profile/ai-memory".into()), None), "/profile/ai-memory");
+        assert_eq!(
+            pick_command(
+                Some("/profile/ai-memory".into()),
+                None,
+                Some("/opt/homebrew/bin/ai-memory".into()),
+            ),
+            "/profile/ai-memory"
+        );
+    }
+
+    #[test]
+    fn a_copy_the_person_installed_travels_as_a_full_path() {
+        // Run the resolved path even when the app PATH cannot find it.
+        assert_eq!(
+            pick_command(None, None, Some("/opt/homebrew/bin/ai-memory".into())),
+            "/opt/homebrew/bin/ai-memory"
+        );
     }
 
     #[test]
     fn with_nothing_installed_the_bare_name_is_tried() {
-        // PATH may still hold one the person installed themselves.
-        assert_eq!(pick_command(None, None), DEFAULT_COMMAND);
+        // PATH may still hold one the resolver does not search.
+        assert_eq!(pick_command(None, None, None), DEFAULT_COMMAND);
     }
 
     #[test]

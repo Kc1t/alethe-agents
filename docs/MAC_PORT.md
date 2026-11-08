@@ -42,6 +42,15 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 - `pending` · `ui` · feat(notifications): keep in-app notifications reachable after the toast fades
   - Commit: Merge pull request #347 from Tavaressan/feat/311-notification-history
   - Files: `src/components/TitleBar/NotificationHistory.tsx`, `src/components/TitleBar/index.tsx`
+- `pending` · `contract` · feat(ai-memory): support ai-memory 3.x and install 3.1.1
+  - Commit: Merge pull request #338 from SrAmaral/feat/ai-memory-3
+  - Also: `315207ab` fix(ai-memory): find a copy installed outside the app's PATH; `c91f7292` fix(ai-memory): don't capture Claude Code events twice
+  - Files: `src-tauri/src/ai_memory.rs`, `src-tauri/src/ai_memory_hooks.rs`
+  - Contract: ai-memory 2.x retains HTTP MCP registration; 3.x writes stdio `mcp-bridge` commands
+    with the managed data directory and server URL (OpenCode adds `--no-session-id`). Version
+    probes stop after three seconds. Discover manually installed binaries, accept Unix archive root
+    entries, and omit Claude capture events already supplied by user settings.
+
 - `skip` · `ui` · feat(plugins): expose API 3 host support for external voice conversations
   - Commit: feat(voice): render the voice HUD in the core and give plugins conversation APIs
   - Files: `src/lib/plugins/terminals.ts`, `src/lib/plugins/agents.ts`, `src/lib/plugins/voice.ts`, `src/components/modals/PreferencesModal.tsx`

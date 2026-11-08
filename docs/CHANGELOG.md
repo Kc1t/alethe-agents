@@ -459,6 +459,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **ai-memory 3.x.** Preferences installs ai-memory 3.1.1. Agents use its token-aware stdio bridge
+  on 3.x and retain HTTP on 2.x. Version detection times out after three seconds.
+
 - **Jev uses the app's OpenRouter key.** The OpenRouter key Jev kept in its own settings moves to
   the system keychain at startup, where Preferences → Voice manages it. Jev 1.1 reads it from there
   and leaves local model downloads to Preferences → Voice; Jev 1.0 needs that update for cloud
@@ -591,6 +594,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   context file is created owner-only and never overwrites an existing one.
 
 ### Fixed
+
+- ai-memory installs accept Unix archives with a root directory entry, find manually installed
+  binaries outside the app PATH, and avoid duplicating Claude Code capture hooks already configured.
 
 - **Voice server keys follow their URL.** Changing the address of a saved voice server now clears
   its key unless a new one is entered with it, so a stored key is never sent to a host it was not

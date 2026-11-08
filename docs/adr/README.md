@@ -14,6 +14,7 @@ expected.
 | [009](009-voice-resource-preferences.md) | Voice keys, servers and models are managed in core Preferences | Accepted |
 | [010](010-plugin-voice-conversations.md) | External voice conversations use capability-gated host services on API 3 | Accepted |
 | [011](011-core-voice-hud-renderer.md) | The core renders the floating HUD while plugins control conversations | Accepted |
+| [012](012-bounded-ai-memory-version-probes.md) | Bound ai-memory version probes before agent launch and detection | Accepted |
 
 New record: copy the shape of an existing one (Context, Decision, Consequences), take the next free
 number, and cite it from the code it governs.
