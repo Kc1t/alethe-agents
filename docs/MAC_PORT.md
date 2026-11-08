@@ -36,6 +36,9 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `ui` · feat(settings): add a dedicated AI Memory page to Preferences
+  - Commit: Merge pull request #353 from Tavaressan/feat/318-preferences-ai-memory-tab
+  - Files: `src/components/modals/PreferencesModal.tsx`, `src/components/modals/preferences/AiMemoryPage.tsx`
 - `pending` · `ui` · feat(notifications): keep in-app notifications reachable after the toast fades
   - Commit: Merge pull request #347 from Tavaressan/feat/311-notification-history
   - Files: `src/components/TitleBar/NotificationHistory.tsx`, `src/components/TitleBar/index.tsx`

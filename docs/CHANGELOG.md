@@ -193,6 +193,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   the planner, a role, a fallback role, or the CLI default.
 - **Notifications stay within reach after their toasts disappear.** Open the title-bar bell to
   browse recent notifications and clear the history from any view.
+- **AI Memory has its own Preferences page.** Check the service status and control it directly, even
+  while the feature is disabled.
+
 - **Turning on AI Memory now takes you to a working install, and recall actually works.** The switch
   in Preferences → Features grew a panel beneath it: whether ai-memory is there, a button to install
   it — the download checked against the hash the project publishes — and whether it is running, with

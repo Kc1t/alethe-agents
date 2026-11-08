@@ -10,7 +10,13 @@ export function FeaturesPage() {
 
   return (
     <div id="optional-features">
-      <FeaturesStep expandSecondaryByDefault showPlaywrightAdvanced showAiMemoryPanel />
+      <FeaturesStep
+        expandSecondaryByDefault
+        showPlaywrightAdvanced
+        onAiMemorySettings={() =>
+          useUiStore.getState().openModal_('preferences', { category: 'aiMemory' })
+        }
+      />
       {preferences.enabledFeatures.mcp ? (
         <button
           type="button"
