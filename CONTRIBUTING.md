@@ -84,7 +84,7 @@ sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patc
 
 *Fedora / RHEL / CentOS Stream:*
 ```sh
-sudo dnf install -y webkit2gtk4.1-devel openssl-devel libappindicator-gtk3-devel librsvg2-devel patchelf
+sudo dnf install -y gcc gcc-c++ clang clang-devel webkit2gtk4.1-devel openssl-devel libappindicator-gtk3-devel librsvg2-devel patchelf alsa-lib-devel speech-dispatcher-devel
 ```
 
 **macOS** — install Xcode Command Line Tools: `xcode-select --install`.
