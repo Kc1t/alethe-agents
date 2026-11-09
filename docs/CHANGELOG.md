@@ -466,6 +466,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **Linux WebKitGTK DMA-BUF override.** `WEBKIT_DISABLE_DMABUF_RENDERER` defaults to disabling DMA-BUF for safety on older graphics stacks, but now respects user environment overrides (e.g. `WEBKIT_DISABLE_DMABUF_RENDERER=0`), enabling hardware-accelerated composition on modern Linux desktop environments such as Fedora / Wayland with Mesa.
+- **Direct Unix signal delivery for process cleanup.** Orphan process cleanup on Unix now uses direct `libc::kill` with `SIGKILL` instead of invoking the external `kill` CLI through an external sub-process and timeout loop.
+- **Typed Linux platform detection.** `isLinux()` is added to frontend platform utilities to properly identify Linux desktop environments.
 - **ai-memory 3.x.** Preferences installs ai-memory 3.1.1. Agents use its token-aware stdio bridge
   on 3.x and retain HTTP on 2.x. Version detection times out after three seconds.
 
