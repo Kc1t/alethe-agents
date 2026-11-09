@@ -36,6 +36,11 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `skip` · `platform` · `fc8310ef` feat(linux): allow configurable WebKitGTK DMA-BUF renderer for GPU acceleration
+  - Files: `src-tauri/src/lib.rs`
+- `pending` · `backend` · `5258154b` fix(process): use direct libc::kill for process cleanup on Unix
+  - Files: `src-tauri/src/process_tree.rs`
+
 - `pending` · `contract` · feat(terminal): preserve pane scroll and make Claude Code fullscreen rendering optional
   - Commit: Merge pull request #322 from MarkHiarley/fix/terminal-scroll-ownership
   - Also: `9135adde` fix(terminal): keep a pane's scroll with the reader; `8657a542` feat(terminal): make Claude Code's fullscreen renderer a preference; `0d1f31da` fix(terminal): close the gaps found porting #322
