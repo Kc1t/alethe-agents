@@ -156,8 +156,11 @@ pub fn run() {
 
     // Work around known Wayland/DMABUF WebKitGTK rendering bugs ("Error 71") on Linux:
     // https://v2.tauri.app/develop/debug/linux-graphics/
+    // Default to disabling DMABUF for safety, but respect any explicit user override (e.g. 0).
     #[cfg(target_os = "linux")]
-    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
 
     let _ = dotenvy::dotenv();
     // `npm run app` injects EDITOR=vi and GIT_EDITOR=true into the environment; strip those

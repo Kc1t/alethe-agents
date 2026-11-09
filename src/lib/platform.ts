@@ -10,6 +10,13 @@ export function isWindows(): boolean {
   return /Windows/i.test(navigator.userAgent)
 }
 
+export function isLinux(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+
+  return /Linux/i.test(ua) && !/Android/i.test(ua)
+}
+
 export function shouldUseNativeBackend(
   nativeTerminalMacos: boolean | undefined,
   macOverride: boolean = isMacOS(),
