@@ -11,6 +11,8 @@ export default tseslint.config(
     ignores: [
       'dist',
       'node_modules',
+      '.venv',
+      'gatekeeper',
       'src-tauri',
       'graphify-out',
       'scripts',
