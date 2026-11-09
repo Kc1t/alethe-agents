@@ -342,6 +342,7 @@ pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
     })
 }
 
+#[cfg(windows)]
 fn run_with_timeout(mut command: std::process::Command, timeout: Duration) {
     let Ok(mut child) = command.spawn() else {
         return;
