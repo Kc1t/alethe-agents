@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
-/// Mapeia ptyId → PID raiz do PTY (pwsh.exe / bash).
+/// Maps ptyId -> root PTY PID (e.g. bash / zsh / pwsh).
 static PTY_ROOTS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
 
 static TREE_CACHE: OnceLock<Mutex<Option<(Instant, HashMap<u32, Vec<u32>>)>>> = OnceLock::new();
@@ -22,7 +22,7 @@ fn build_parent_map(sys: &mut System) -> HashMap<u32, Vec<u32>> {
     sys.refresh_processes(ProcessesToUpdate::All);
     let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
     for (pid, process) in sys.processes() {
-        // contagem/kill de PTY tree e deixando spawn/kill bem mais lentos.
+        // Skip thread entries which inflate PTY tree counting/killing and slow down spawn/kill.
         if process.thread_kind().is_some() {
             continue;
         }
@@ -238,8 +238,7 @@ fn still_running(sys: &System, recorded: &PersistedRoot) -> bool {
         .unwrap_or(false)
 }
 
-/// Job Object (`pty::install_kill_on_close_guard`) tenha falhado silenciosamente
-
+/// Persists active PTY roots so that an unclean shutdown can be swept at next boot.
 fn persist_roots() {
     let Some(path) = roots_file_path() else {
         return;
@@ -271,10 +270,7 @@ fn persist_roots() {
     }
 }
 
-/// inteira de qualquer PID raiz ainda vivo cujo nome+start_time batam com o
-
-/// falhar silenciosamente, ou qualquer processo que tenha escapado dele).
-
+/// Sweeps any live root PID recorded by a previous dead session, killing its entire tree.
 pub fn sweep_orphans_from_previous_session() -> usize {
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All);
@@ -366,8 +362,7 @@ fn run_with_timeout(mut command: std::process::Command, timeout: Duration) {
     }
 }
 
-/// Mata um PID (Windows via taskkill /F, Unix via SIGKILL). Descarta
-
+/// Kills a single process by PID (Windows via taskkill /F, Unix via direct SIGKILL).
 fn kill_pid(pid: u32) {
     #[cfg(windows)]
     {
@@ -380,11 +375,11 @@ fn kill_pid(pid: u32) {
     }
     #[cfg(not(windows))]
     {
-        let mut command = std::process::Command::new("kill");
-        command.args(["-9", &pid.to_string()]);
-        command.stdout(std::process::Stdio::null());
-        command.stderr(std::process::Stdio::null());
-        run_with_timeout(command, Duration::from_secs(3));
+        if let Ok(target) = i32::try_from(pid) {
+            if target > 1 {
+                unsafe { libc::kill(target, libc::SIGKILL) };
+            }
+        }
     }
 }
 
