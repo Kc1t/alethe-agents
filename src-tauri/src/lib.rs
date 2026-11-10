@@ -154,12 +154,24 @@ pub fn run() {
         std::process::exit(exit.code);
     }
 
-    // Work around known Wayland/DMABUF WebKitGTK rendering bugs ("Error 71") on Linux:
+    // Configure WebKitGTK DMABUF renderer on Linux:
     // https://v2.tauri.app/develop/debug/linux-graphics/
-    // Default to disabling DMABUF for safety, but respect any explicit user override (e.g. 0).
+    // On modern Wayland compositors (e.g. GNOME / Mutter with Mesa), enable hardware DMA-BUF
+    // rendering by default for smooth compositing. On X11 or when requested via
+    // ALETHE_DISABLE_GPU=1 or explicit WEBKIT_DISABLE_DMABUF_RENDERER=1, fall back to safe software mode.
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        let disable_gpu = std::env::var("ALETHE_DISABLE_GPU").map(|v| v == "1").unwrap_or(false);
+        let is_wayland = std::env::var_os("WAYLAND_DISPLAY").is_some()
+            || std::env::var("XDG_SESSION_TYPE").map(|v| v.eq_ignore_ascii_case("wayland")).unwrap_or(false);
+
+        if is_wayland && !disable_gpu {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "0");
+            eprintln!("[graphics] WebKitGTK DMABUF renderer: 0 (Wayland GPU acceleration enabled)");
+        } else {
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+            eprintln!("[graphics] WebKitGTK DMABUF renderer: 1 (software fallback)");
+        }
     }
 
     let _ = dotenvy::dotenv();

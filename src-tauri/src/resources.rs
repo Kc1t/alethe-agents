@@ -2,14 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Duration;
-use sysinfo::{Pid, System};
+use sysinfo::{Pid, ProcessRefreshKind, System};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::provider_common::now_ms;
 use crate::pty::{self, PtySessions};
 use crate::stats::MemoryStats;
 
-const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 const META_STALE_MS: u64 = 30_000;
 const RESOURCE_LOG_INTERVAL_MS: u64 = 60_000;
 
@@ -195,10 +194,10 @@ pub(crate) fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
     }
     #[cfg(target_os = "linux")]
     {
-        // do RSS bruto do sysinfo.
+        // On Linux, smaps_rollup provides accurate private RSS without full smaps traversal.
         if let Ok(content) = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) {
             let mut private_kb = 0_u64;
-            let mut found = false;
+            let mut found_count = 0_u8;
             for line in content.lines() {
                 let value = line
                     .strip_prefix("Private_Clean:")
@@ -211,11 +210,14 @@ pub(crate) fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
                         .and_then(|v| v.parse::<u64>().ok())
                     {
                         private_kb += kb;
-                        found = true;
+                        found_count += 1;
+                        if found_count >= 2 {
+                            return private_kb * 1024;
+                        }
                     }
                 }
             }
-            if found {
+            if found_count > 0 {
                 return private_kb * 1024;
             }
         }
@@ -254,7 +256,7 @@ impl ResourceSupervisor {
                                 .child
                                 .try_lock()
                                 .ok()
-                                .and_then(|mut child| child.process_id()),
+                                .and_then(|child| child.process_id()),
                             session.command.clone(),
                             session.cwd.clone(),
                         )
@@ -264,12 +266,16 @@ impl ResourceSupervisor {
             .unwrap_or_default();
 
         let mut system = self.system.lock().unwrap_or_else(|p| p.into_inner());
-        system.refresh_processes(sysinfo::ProcessesToUpdate::All);
+        // Lightweight tree discovery: only query process hierarchy across the OS.
+        system.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::All,
+            ProcessRefreshKind::new(),
+        );
         system.refresh_memory();
 
         let mut children = HashMap::<u32, Vec<u32>>::new();
         for (pid, process) in system.processes() {
-            // ex. roda ~30 threads).
+            // Skip thread records so only real OS processes are tracked.
             if process.thread_kind().is_some() {
                 continue;
             }
@@ -283,6 +289,28 @@ impl ResourceSupervisor {
 
         let app_pid = std::process::id();
         let app_tree = descendants(app_pid, &children);
+
+        // Gather relevant PTY trees so child processes of running agents are included.
+        let mut relevant_pids = app_tree.clone();
+        for (_, root_pid, _, _) in &roots {
+            if let Some(root) = root_pid {
+                relevant_pids.extend(descendants(*root, &children));
+            }
+        }
+
+        let specific_pids: Vec<Pid> = relevant_pids.iter().map(|pid| Pid::from_u32(*pid)).collect();
+        system.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::Some(&specific_pids),
+            ProcessRefreshKind::new().with_memory().with_cpu(),
+        );
+
+        let mut private_cache = HashMap::<u32, u64>::new();
+        let mut get_private = |pid: u32, working: u64| -> u64 {
+            *private_cache
+                .entry(pid)
+                .or_insert_with(|| process_private_commit_bytes(pid, working))
+        };
+
         let mut app_bytes = 0_u64;
         let mut webview_bytes = 0_u64;
         let mut pty_bytes = 0_u64;
@@ -293,8 +321,8 @@ impl ResourceSupervisor {
             };
             let working = process.memory();
 
-            // processos.
-            let private = process_private_commit_bytes(*pid, working);
+            // Track private memory allocation per process category.
+            let private = get_private(*pid, working);
             private_total += private;
             let name = process.name().to_string_lossy().to_ascii_lowercase();
             if *pid == app_pid || name.contains("alethe") {
@@ -333,7 +361,7 @@ impl ResourceSupervisor {
                     .filter_map(|pid| {
                         let process = system.process(Pid::from_u32(*pid))?;
                         let process_working = process.memory();
-                        let process_private = process_private_commit_bytes(*pid, process_working);
+                        let process_private = get_private(*pid, process_working);
                         working += process_working;
                         private += process_private;
                         Some(RuntimeProcess {
@@ -461,7 +489,7 @@ fn pressure_level(memory: &MemoryStats, previous: &'static str) -> &'static str 
     }
 }
 
-fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSupervisor) {
+fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSupervisor) -> &'static str {
     let mut snapshot = supervisor.collect(sessions);
     let now = snapshot.sampled_at_ms;
     let (policy, metas, previous_level, last_log_at_ms) = {
@@ -539,6 +567,8 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
             },
         );
     }
+
+    level
 }
 
 pub fn start(
@@ -547,8 +577,15 @@ pub fn start(
     supervisor: std::sync::Arc<ResourceSupervisor>,
 ) {
     std::thread::spawn(move || loop {
-        run_cycle(&app, &sessions, &supervisor);
-        std::thread::sleep(SAMPLE_INTERVAL);
+        let level = run_cycle(&app, &sessions, &supervisor);
+        // Adaptive sampling: relax loop while memory pressure is normal to avoid
+        // periodic /proc scan spikes; tighten during warning/critical pressure.
+        let interval = match level {
+            "critical" => Duration::from_secs(2),
+            "warning" => Duration::from_secs(5),
+            _ => Duration::from_secs(10),
+        };
+        std::thread::sleep(interval);
     });
 }
 
