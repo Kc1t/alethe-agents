@@ -1845,6 +1845,8 @@ export const zhCN: Record<MessageKey, string> = {
   'ui.titlebar.removeNameFromTopbar': '从顶部栏移除 {name}',
   'ui.titlebar.pinTab': '固定标签',
   'ui.titlebar.unpinTab': '取消固定标签',
+  'ui.titlebar.moveTabLeft': '左移',
+  'ui.titlebar.moveTabRight': '右移',
   'ui.titlebar.pinnedTab': '已固定',
   'ui.titlebar.closeAgentPlanning': '关闭代理规划',
   'ui.titlebar.openMemoryAnalytics': '打开内存分析',

@@ -169,6 +169,19 @@
   color: var(--fg);
   transform: translateY(-1px);
 }
+.groupTab.groupTabDragging,
+.groupTab.groupTabDragging:hover {
+  background: var(--bg-elevated);
+  color: var(--fg);
+  box-shadow: var(--shadow-md);
+  cursor: grabbing;
+  position: relative;
+}
+@media (prefers-reduced-motion: reduce) {
+  .groupTab {
+    transition: none;
+  }
+}
 .groupTabActive {
   background: var(--bg-sunken);
   color: var(--fg);

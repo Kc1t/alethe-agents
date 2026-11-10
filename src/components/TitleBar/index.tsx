@@ -45,6 +45,7 @@ import { AntigravityIcon, ClaudeIcon, CodexIcon, KimiIcon } from '../icons/Agent
 import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
 import { NotificationHistory } from './NotificationHistory'
 import styles from './TitleBar.module.css'
+import { useTabReorder } from './useTabReorder'
 
 const CLAUDE_POLL_INTERVAL_MS = 5 * 60_000
 const REMOTE_CONTROL_POLL_INTERVAL_MS = 2_000
@@ -298,6 +299,8 @@ export function TitleBar() {
   const rightPanelEnabled = preferences.enabledFeatures.mcp || rightSidebarTabs.length > 0
   const toggleWorkspaceTabPinned = useProjectsStore((s) => s.toggleWorkspaceTabPinned)
   const closeSavedWorkspaceTab = useProjectsStore((s) => s.closeSavedWorkspaceTab)
+  const moveWorkspaceTab = useProjectsStore((s) => s.moveWorkspaceTab)
+  const tabReorder = useTabReorder(workspaceTabs, moveWorkspaceTab)
   const addWorkspaceTabToCurrent = useProjectsStore((s) => s.addWorkspaceTabToCurrent)
   const activateWorkspaceTab = useProjectsStore((s) => s.activateWorkspaceTab)
   const navigateWorkspaceHistory = useProjectsStore((s) => s.navigateWorkspaceHistory)
@@ -567,7 +570,7 @@ export function TitleBar() {
               <ArrowRight size={13} />
             </button>
           </div>
-          {workspaceTabs.map((tab) => {
+          {workspaceTabs.map((tab, index) => {
             const active = activeWorkspaceTabId === tab.id
             const count = tab.snapshot.containers.reduce(
               (total, container) => total + container.paneIds.length,
@@ -576,7 +579,10 @@ export function TitleBar() {
             return (
               <div
                 key={tab.id}
-                className={`${styles.groupTab} ${active ? styles.groupTabActive : ''} ${tab.pinned ? styles.groupTabPinned : ''}`}
+                ref={tabReorder.register(tab.id)}
+                className={`${styles.groupTab} ${active ? styles.groupTabActive : ''} ${tab.pinned ? styles.groupTabPinned : ''} ${tabReorder.draggingId === tab.id ? styles.groupTabDragging : ''}`}
+                style={tabReorder.styleFor(tab.id, index)}
+                {...tabReorder.handlers(tab.id)}
                 onAuxClick={(event) => {
                   // Middle-click closes the tab, matching browser tab-strip convention.
                   if (event.button === 1) closeSavedWorkspaceTab(tab.id)
@@ -602,6 +608,17 @@ export function TitleBar() {
                           addWorkspaceTabToCurrent(tab.id)
                           setActiveView('workspace')
                         },
+                      },
+                      { kind: 'separator' },
+                      {
+                        kind: 'item',
+                        label: t('ui.titlebar.moveTabLeft'),
+                        onClick: () => moveWorkspaceTab(tab.id, index - 1),
+                      },
+                      {
+                        kind: 'item',
+                        label: t('ui.titlebar.moveTabRight'),
+                        onClick: () => moveWorkspaceTab(tab.id, index + 1),
                       },
                       { kind: 'separator' },
                       {
@@ -648,6 +665,7 @@ export function TitleBar() {
                 <button
                   type="button"
                   className={styles.groupTabClose}
+                  data-tab-no-drag
                   onClick={(event) => {
                     event.stopPropagation()
                     closeSavedWorkspaceTab(tab.id)

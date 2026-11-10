@@ -54,6 +54,7 @@ import {
   replaceCurrentHistorySnapshot,
   sanitizeWorkspaceSnapshot,
 } from '../lib/workspaceNavigation'
+import { placeOpenedTab } from '../lib/workspaceTabOrder'
 import { migrate } from './projectsStore.migrations'
 import { createGroupsSlice, createProjectsSlice } from './projectsStore.projectSlices'
 import { createPreferencesSlice, createSubTabsSlice } from './projectsStore.slices'
@@ -187,6 +188,7 @@ export type ProjectsState = ProjectsFile & {
   focusWorkspaceTerminal: (projectId: string, terminalId: string) => void
   activateWorkspaceTab: (tabId: string) => void
   toggleWorkspaceTabPinned: (tabId: string) => void
+  moveWorkspaceTab: (tabId: string, toIndex: number) => void
   closeSavedWorkspaceTab: (tabId: string) => void
   reopenClosedWorkspaceTab: () => void
   navigateWorkspaceHistory: (direction: -1 | 1) => void
@@ -623,9 +625,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     options?: { addTab?: boolean; pushHistory?: boolean },
   ): Partial<ProjectsState> => {
     const snapshot = sanitizeWorkspaceSnapshot(tab.snapshot, state.projects)
-    let tabs = options?.addTab
-      ? [...state.workspace.tabs.filter((item) => item.id !== tab.id), tab]
-      : state.workspace.tabs
+    let tabs = options?.addTab ? placeOpenedTab(state.workspace.tabs, tab) : state.workspace.tabs
     let history = state.workspace.history
     let historyIndex = state.workspace.historyIndex
     if (tabs.length > MAX_WORKSPACE_TABS) {

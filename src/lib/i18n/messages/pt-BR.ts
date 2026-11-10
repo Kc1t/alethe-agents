@@ -2149,6 +2149,8 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.titlebar.removeNameFromTopbar': 'Remover {name} da topbar',
   'ui.titlebar.pinTab': 'Fixar tab',
   'ui.titlebar.unpinTab': 'Desafixar tab',
+  'ui.titlebar.moveTabLeft': 'Mover para a esquerda',
+  'ui.titlebar.moveTabRight': 'Mover para a direita',
   'ui.titlebar.pinnedTab': 'Fixada',
   'ui.titlebar.closeAgentPlanning': 'Fechar Agent Planning',
   'ui.titlebar.openMemoryAnalytics': 'Abrir analytics de memória',
