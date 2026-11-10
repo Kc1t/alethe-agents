@@ -52,6 +52,7 @@ import {
   replaceCurrentHistorySnapshot,
   sanitizeWorkspaceSnapshot,
 } from '../lib/workspaceNavigation'
+import { moveWorkspaceTab as reorderWorkspaceTabs } from '../lib/workspaceTabOrder'
 import type { ProjectsState } from './projectsStore'
 import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { SliceCtx } from './projectsStore.slices'
@@ -101,6 +102,7 @@ type WorkspaceSlice = Pick<
   | 'focusWorkspaceTerminal'
   | 'activateWorkspaceTab'
   | 'toggleWorkspaceTabPinned'
+  | 'moveWorkspaceTab'
   | 'closeSavedWorkspaceTab'
   | 'reopenClosedWorkspaceTab'
   | 'navigateWorkspaceHistory'
@@ -673,6 +675,13 @@ export function createWorkspaceSlice({
 
         const ordered = [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)]
         return { workspace: { ...state.workspace, tabs: ordered } }
+      }),
+
+    moveWorkspaceTab: (tabId, toIndex) =>
+      navigationUpdate((state) => {
+        const tabs = reorderWorkspaceTabs(state.workspace.tabs, tabId, toIndex)
+        if (tabs === state.workspace.tabs) return
+        return { workspace: { ...state.workspace, tabs } }
       }),
 
     closeSavedWorkspaceTab: (tabId) =>

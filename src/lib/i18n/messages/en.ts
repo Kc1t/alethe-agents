@@ -2114,6 +2114,8 @@ export const en = {
   'ui.titlebar.removeNameFromTopbar': 'Remove {name} from topbar',
   'ui.titlebar.pinTab': 'Pin tab',
   'ui.titlebar.unpinTab': 'Unpin tab',
+  'ui.titlebar.moveTabLeft': 'Move left',
+  'ui.titlebar.moveTabRight': 'Move right',
   'ui.titlebar.pinnedTab': 'Pinned',
   'ui.titlebar.closeAgentPlanning': 'Close Agent Planning',
   'ui.titlebar.openMemoryAnalytics': 'Open memory analytics',

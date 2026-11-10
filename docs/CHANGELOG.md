@@ -12,6 +12,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Reorder top bar tabs.** Drag a tab in the top bar to a new place, like browser tabs: the
+  others slide aside and the tab settles where it is dropped. Ctrl+Shift+Left/Right and the tab's
+  context menu (Move left / Move right) do the same from the keyboard. Pinned tabs stay before the
+  others. Opening a project that is already in the bar keeps its place instead of moving it last.
 - **Voice plugin.** A new plugin in the catalogue, [Voice](https://github.com/Kc1t/alethe-voice),
   brings the voice conversation from #336 by @SrAmaral: talk to an agent tab, hear its progress and
   replies, answer permission prompts by voice, and follow along in the floating HUD. Its settings sit
