@@ -40,6 +40,10 @@ Mac synced through: `v1.7.0` (`80e44a3`)
   - Files: `src-tauri/src/lib.rs`
 - `pending` · `backend` · `5258154b` fix(process): use direct libc::kill for process cleanup on Unix
   - Files: `src-tauri/src/process_tree.rs`
+- `skip` · `ui` · `49458cab` perf(terminal): render terminal glyphs with gpu canvas addon
+  - Files: `src/components/XTermView/useXtermSession.ts`, `package.json`
+- `skip` · `platform` · `1ad2ce78` perf(linux): auto-enable dmabuf renderer on wayland and optimize resource collector
+  - Files: `src-tauri/src/lib.rs`, `src-tauri/src/resources.rs`
 
 - `pending` · `contract` · feat(terminal): preserve pane scroll and make Claude Code fullscreen rendering optional
   - Commit: Merge pull request #322 from MarkHiarley/fix/terminal-scroll-ownership
