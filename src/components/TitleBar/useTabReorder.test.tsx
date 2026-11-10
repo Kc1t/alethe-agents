@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useTabReorder } from './useTabReorder'
@@ -73,6 +73,19 @@ describe('useTabReorder', () => {
     fireEvent.click(screen.getByText('a'))
     expect(onMove).toHaveBeenCalledWith('a', 1)
     expect(onOpen).not.toHaveBeenCalled()
+  })
+
+  it('lands the new order without animating the tabs back from their drag offsets', async () => {
+    render(<Strip onMove={vi.fn()} onOpen={vi.fn()} />)
+    const tab = screen.getByTestId('a')
+    fireEvent.pointerDown(tab, { button: 0, clientX: 10, pointerId: 1 })
+    fireEvent.pointerMove(tab, { clientX: 130, pointerId: 1 })
+    fireEvent.pointerUp(tab, { clientX: 130, pointerId: 1 })
+    for (const id of ['a', 'b', 'c']) {
+      expect(screen.getByTestId(id).style.transform).toBe('')
+      expect(screen.getByTestId(id).style.transition).toBe('none')
+    }
+    await waitFor(() => expect(screen.getByTestId('b').style.transition).toBe(''))
   })
 
   it('treats a press without movement as a click', () => {

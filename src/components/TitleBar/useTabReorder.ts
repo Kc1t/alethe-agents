@@ -23,6 +23,7 @@ type Drag = {
   step: number
   slots: Slot[]
   settling: boolean
+  dropped?: boolean
 }
 
 function prefersReducedMotion(): boolean {
@@ -70,9 +71,11 @@ export function useTabReorder(
 
   const finish = (current: Drag) => {
     suppressClick.current = true
+    // The reorder and the transform reset land together with transitions off, so nothing slides back.
     const commit = () => {
-      setDrag(null)
+      setDrag({ ...current, dropped: true })
       if (current.to !== current.from) onMove(current.id, current.to)
+      requestAnimationFrame(() => requestAnimationFrame(() => setDrag(null)))
     }
     if (prefersReducedMotion()) {
       commit()
@@ -128,6 +131,7 @@ export function useTabReorder(
 
   const styleFor = (id: string, index: number): CSSProperties | undefined => {
     if (!drag) return undefined
+    if (drag.dropped) return { transition: 'none' }
     if (id === drag.id) {
       return {
         transform: `translateX(${drag.deltaX}px)`,
@@ -139,5 +143,5 @@ export function useTabReorder(
     return shift ? { transform: `translateX(${shift}px)` } : undefined
   }
 
-  return { draggingId: drag?.id ?? null, register, handlers, styleFor }
+  return { draggingId: drag && !drag.dropped ? drag.id : null, register, handlers, styleFor }
 }
