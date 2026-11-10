@@ -12,6 +12,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Terminal chat history.** Each agent tab remembers the chats it held before the current one.
+  Recent chats lists this terminal's current chat first, then its earlier ones, each tagged, and
+  shows the full date and time on hover.
+
 - **Voice plugin.** A new plugin in the catalogue, [Voice](https://github.com/Kc1t/alethe-voice),
   brings the voice conversation from #336 by @SrAmaral: talk to an agent tab, hear its progress and
   replies, answer permission prompts by voice, and follow along in the floating HUD. Its settings sit
@@ -607,6 +611,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **A tab no longer loses its chat when another tab holds the same one.** Opening a chat from
+  another tab with `/resume` left both tabs on it; on the next start one of them opened an empty chat.
+  That tab now reopens the chat it had before.
 - ai-memory installs accept Unix archives with a root directory entry, find manually installed
   binaries outside the app PATH, and avoid duplicating Claude Code capture hooks already configured.
 - **Light terminal contrast.** Light themes, including plugin themes, enforce a WCAG-AA contrast

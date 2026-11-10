@@ -5,8 +5,9 @@ import type { StoreApi } from 'zustand'
 
 import { customAgentIconComponent } from '../components/icons/customAgentIcons'
 import { syncCustomAgentProviders } from '../lib/agentProviders'
-import { sanitizeCustomAgents } from '../lib/customAgents'
 import { removeCustomAgentIconAsset } from '../lib/customAgentIconAssets'
+import { sanitizeCustomAgents } from '../lib/customAgents'
+import { withSessionLineage } from '../lib/sessionLineage'
 import { resolveTerminalCwd, touchTerminalUsage } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
 import type {
@@ -133,9 +134,7 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
       })),
 
     setSubTabSessionId: (projectId, terminalId, tabId, sessionId) =>
-      updateSubTab(projectId, terminalId, tabId, (s) =>
-        s.sessionId === sessionId ? s : { ...s, sessionId },
-      ),
+      updateSubTab(projectId, terminalId, tabId, (s) => withSessionLineage(s, sessionId)),
 
     setSubTabName: (projectId, terminalId, tabId, name) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({

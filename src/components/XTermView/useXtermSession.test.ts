@@ -7,7 +7,7 @@ import {
   resetCodexSessionTrackingForTests,
   trackCodexRollout,
 } from '../../lib/codexSessionTracking'
-import { resetSessionClaimsForTests } from '../../lib/sessionDiscovery'
+import { registerSessionClaim, resetSessionClaimsForTests } from '../../lib/sessionDiscovery'
 import { peekSession, saveSession } from '../../lib/sessionResume'
 import * as tauri from '../../lib/tauri'
 import { EMPTY_PROJECTS_FILE } from '../../lib/types'
@@ -155,6 +155,7 @@ function params(): Parameters<typeof useXtermSession>[0] {
     usedResumeRef: ref(false),
     earlyExitRetriedRef: ref(false),
     forceFreshRef: ref(false),
+    previousSessionIdsRef: ref<string[] | undefined>(undefined),
     onSpawnedRef: ref(vi.fn()),
     onSessionIdRef: ref(vi.fn()),
     onInitialInputSentRef: ref(vi.fn()),
@@ -296,6 +297,29 @@ describe('Claude terminal session lifecycle', () => {
     expect(original).toHaveBeenLastCalledWith('new-chat')
     expect(input.onSessionIdRef.current).not.toHaveBeenCalled()
     expect(peekSession('tab-0')?.claudeSessionId).toBe('new-chat')
+  })
+
+  it('reopens the earlier chat of the tab when another pane already holds the saved one', async () => {
+    registerSessionClaim('claude', 'D:/repo', 'bananas', 'tab-other')
+    registerSessionClaim('claude', 'D:/repo', 'held-too', 'tab-third')
+    const input = params()
+    input.previousSessionIdsRef.current = ['held-too', 'earlier-chat']
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+    const args = vi.mocked(tauri.spawnPty).mock.calls[0][0].extraArgs ?? []
+    expect(args).toEqual(expect.arrayContaining(['--resume', 'earlier-chat']))
+    expect(input.onSessionIdRef.current).toHaveBeenCalledWith('earlier-chat')
+    expect(peekSession('tab-0')?.claudeSessionId).toBe('earlier-chat')
+  })
+
+  it('starts a fresh chat when another pane holds the saved one and the tab has no other', async () => {
+    registerSessionClaim('claude', 'D:/repo', 'bananas', 'tab-other')
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+    const args = vi.mocked(tauri.spawnPty).mock.calls[0][0].extraArgs ?? []
+    expect(args).not.toContain('--resume')
+    expect(input.onSessionIdRef.current).toHaveBeenCalledWith(undefined)
   })
 
   it('starts a fresh conversation only when the saved transcript no longer exists', async () => {

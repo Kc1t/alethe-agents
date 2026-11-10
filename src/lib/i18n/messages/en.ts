@@ -2100,6 +2100,8 @@ export const en = {
   'mod.noSessionsMatchFilter': 'No session matches this filter.',
   'mod.sessionFallback': 'Session {id}',
   'mod.msgsCount': '{count} msgs',
+  'mod.tabSessionCurrent': 'This terminal',
+  'mod.tabSessionPrevious': 'Earlier in this terminal',
   'mod.resumeHereTooltip': 'Kills the current PTY and respawns this session in this pane',
   'mod.resumeHere': 'Resume here',
   'ui.titlebar.menu': 'Menu',

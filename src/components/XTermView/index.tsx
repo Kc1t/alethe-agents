@@ -68,6 +68,7 @@ export type XTermViewProps = {
   gsdWatcherEnabled?: boolean
 
   trustSessionId?: boolean
+  previousSessionIds?: string[]
 
   readOnly?: boolean
   runtimeProfile?: AgentRuntimeProfile
@@ -100,6 +101,7 @@ export function XTermView({
   graphifyRepo,
   gsdWatcherEnabled,
   trustSessionId,
+  previousSessionIds,
   readOnly,
 
   runtimeProfile = 'lean',
@@ -129,6 +131,7 @@ export function XTermView({
 
   const onSpawnedRef = useRef(onSpawned)
   const onSessionIdRef = useRef(onSessionId)
+  const previousSessionIdsRef = useRef(previousSessionIds)
   const onInitialInputSentRef = useRef(onInitialInputSent)
   const onExitRef = useRef(onExit)
   const onLaunchErrorRef = useRef(onLaunchError)
@@ -136,6 +139,7 @@ export function XTermView({
   useEffect(() => {
     onSpawnedRef.current = onSpawned
     onSessionIdRef.current = onSessionId
+    previousSessionIdsRef.current = previousSessionIds
     onInitialInputSentRef.current = onInitialInputSent
     onExitRef.current = onExit
     onLaunchErrorRef.current = onLaunchError
@@ -394,6 +398,7 @@ export function XTermView({
     usedResumeRef,
     earlyExitRetriedRef,
     forceFreshRef,
+    previousSessionIdsRef,
     onSpawnedRef,
     onSessionIdRef,
     onInitialInputSentRef,

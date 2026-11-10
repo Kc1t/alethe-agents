@@ -227,6 +227,8 @@ export type SubTab = {
   completionUnread?: boolean
 
   sessionId?: string
+  /** Conversations this tab held before `sessionId`, newest first. */
+  previousSessionIds?: string[]
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
   /** Start a plain Windows shell with administrator privileges. */

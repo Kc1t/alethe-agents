@@ -1831,6 +1831,8 @@ export const zhCN: Record<MessageKey, string> = {
   'mod.noSessionsMatchFilter': '没有会话符合此筛选条件。',
   'mod.sessionFallback': '会话 {id}',
   'mod.msgsCount': '{count} 条消息',
+  'mod.tabSessionCurrent': '当前终端',
+  'mod.tabSessionPrevious': '此终端之前的会话',
   'mod.resumeHereTooltip': '终止当前 PTY 并在此窗格中重新生成此会话',
   'mod.resumeHere': '在此恢复',
   'ui.titlebar.menu': '菜单',

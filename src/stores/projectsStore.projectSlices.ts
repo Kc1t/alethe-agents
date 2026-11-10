@@ -633,7 +633,12 @@ export function createProjectsSlice({
               ...t,
               cwd: info.path,
               worktreeAgentId: agentId,
-              tabs: t.tabs.map((tab) => ({ ...tab, cwd: info.path, sessionId: undefined })),
+              tabs: t.tabs.map((tab) => ({
+                ...tab,
+                cwd: info.path,
+                sessionId: undefined,
+                previousSessionIds: undefined,
+              })),
             }
           }),
         }))
@@ -757,6 +762,7 @@ export function createProjectsSlice({
                     ...tab,
                     cwd: info.path,
                     sessionId: undefined,
+                    previousSessionIds: undefined,
                   })),
                 }
               }),

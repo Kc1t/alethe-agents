@@ -2135,6 +2135,8 @@ export const ptBR: Record<MessageKey, string> = {
   'mod.noSessionsMatchFilter': 'Nenhuma sessão bate com esse filtro.',
   'mod.sessionFallback': 'Sessão {id}',
   'mod.msgsCount': '{count} msgs',
+  'mod.tabSessionCurrent': 'Este terminal',
+  'mod.tabSessionPrevious': 'Antes neste terminal',
   'mod.resumeHereTooltip': 'Mata o PTY atual e respawna esta sessão neste pane',
   'mod.resumeHere': 'Continuar aqui',
   'ui.titlebar.menu': 'Menu',
