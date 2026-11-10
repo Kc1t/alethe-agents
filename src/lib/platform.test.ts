@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { formatShortcut, isLinux, isMacOS, isWindows, normalizeCwd, shouldUseNativeBackend } from './platform'
+import {
+  formatShortcut,
+  isLinux,
+  isMacOS,
+  isWindows,
+  normalizeCwd,
+  shouldUseNativeBackend,
+} from './platform'
 
 function setUserAgent(ua: string) {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua)
