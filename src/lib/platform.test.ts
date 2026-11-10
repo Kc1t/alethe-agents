@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { formatShortcut, isMacOS, normalizeCwd, shouldUseNativeBackend } from './platform'
+import {
+  formatShortcut,
+  isLinux,
+  isMacOS,
+  isWindows,
+  normalizeCwd,
+  shouldUseNativeBackend,
+} from './platform'
 
 function setUserAgent(ua: string) {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua)
@@ -9,19 +16,62 @@ function setUserAgent(ua: string) {
 describe('isMacOS', () => {
   afterEach(() => vi.restoreAllMocks())
 
-  it('detecta macOS pelo user-agent da WKWebView', () => {
+  it('detects macOS from WKWebView user-agent', () => {
     setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15')
     expect(isMacOS()).toBe(true)
   })
 
-  it('é false no Windows', () => {
+  it('is false on Windows', () => {
     setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
     expect(isMacOS()).toBe(false)
   })
 
-  it('é false no Linux', () => {
+  it('is false on Linux', () => {
     setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
     expect(isMacOS()).toBe(false)
+  })
+})
+
+describe('isWindows', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('detects Windows from user-agent', () => {
+    setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    expect(isWindows()).toBe(true)
+  })
+
+  it('is false on Linux', () => {
+    setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
+    expect(isWindows()).toBe(false)
+  })
+
+  it('is false on macOS', () => {
+    setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15')
+    expect(isWindows()).toBe(false)
+  })
+})
+
+describe('isLinux', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('detects Linux from WebKitGTK user-agent', () => {
+    setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko)')
+    expect(isLinux()).toBe(true)
+  })
+
+  it('is false on macOS', () => {
+    setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15')
+    expect(isLinux()).toBe(false)
+  })
+
+  it('is false on Windows', () => {
+    setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    expect(isLinux()).toBe(false)
+  })
+
+  it('is false on Android', () => {
+    setUserAgent('Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36')
+    expect(isLinux()).toBe(false)
   })
 })
 

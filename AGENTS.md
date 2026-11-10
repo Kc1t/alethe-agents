@@ -40,6 +40,20 @@ When returning the path of a generated installer, always report the **full absol
 (for example, `D:\project\src-tauri\target\release\bundle\nsis\Alethe_setup.exe`), never just the
 path relative to the repository.
 
+**Linux execution & resource safeguards:**
+On Linux workstations with high core counts (e.g. 16 threads), unconstrained Cargo jobs can
+exhaust RAM and freeze the graphical session. Always limit build concurrency and prefer GPU
+acceleration on modern Wayland:
+
+```sh
+# Run with GPU acceleration and 4-thread compilation cap:
+CARGO_BUILD_JOBS=4 WEBKIT_DISABLE_DMABUF_RENDERER=0 npm run app
+
+# Rust tests or checks with safe resource bounds:
+CARGO_BUILD_JOBS=4 cargo check --manifest-path src-tauri/Cargo.toml
+CARGO_BUILD_JOBS=4 npm run test:rust
+```
+
 
 
 ## 3. Non-negotiable rules
@@ -67,6 +81,10 @@ path relative to the repository.
    changes behavior gets an entry in [`docs/MAC_PORT.md`](docs/MAC_PORT.md) under **Unreleased**,
    in the same task, and its commit carries a `Mac-Port: required | skip (<reason>) | n/a` trailer.
    Changes to synced or persisted data are kind `contract`. `npm run mac-port -- --check` must pass.
+7. **Resource safety on Linux:** Never run unconstrained `cargo build`, `cargo test`, or `cargo check`
+   without limiting job parallelism (`CARGO_BUILD_JOBS=4` or `-j 4`). Heavy proc-macros and Tauri
+   crates spawn multiple gigabytes per thread, which can cause OOM crashes or desktop lockups on
+   multi-core workstations.
 
 ## 4. Architecture at a glance
 

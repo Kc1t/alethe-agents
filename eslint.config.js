@@ -11,6 +11,9 @@ export default tseslint.config(
     ignores: [
       'dist',
       'node_modules',
+      '.venv',
+      'gatekeeper',
+      '.alethe',
       'src-tauri',
       'graphify-out',
       'scripts',
@@ -33,7 +36,7 @@ export default tseslint.config(
       ecmaVersion: 2022,
       sourceType: 'module',
       globals: { ...globals.browser },
-      parserOptions: { ecmaFeatures: { jsx: true } },
+      parserOptions: { ecmaFeatures: { jsx: true }, tsconfigRootDir: import.meta.dirname },
     },
     plugins: {
       'react-hooks': reactHooks,

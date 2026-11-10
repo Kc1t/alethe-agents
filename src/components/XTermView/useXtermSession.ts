@@ -1,5 +1,6 @@
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
+import { CanvasAddon } from '@xterm/addon-canvas'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
@@ -440,6 +441,16 @@ export function useXtermSession(params: {
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
     terminal.open(container)
+
+    // Accelerate terminal glyph rendering using HTML Canvas and GPU rasterization when available.
+    try {
+      const canvasAddon = new CanvasAddon()
+      terminal.loadAddon(canvasAddon)
+      console.info('[xterm-canvas] CanvasAddon activated successfully on terminal')
+    } catch (err) {
+      console.warn('[xterm-canvas] Failed to activate CanvasAddon, fallback to DOM:', err)
+    }
+
     const releaseTextareaClean = terminal.textarea
       ? keepTerminalTextareaClean(terminal.textarea)
       : () => {}
@@ -487,10 +498,13 @@ export function useXtermSession(params: {
       if (disposed) return
       if (pendingWriteLength === 0) return
 
-      let budget = TERMINAL_WRITE_FRAME_BUDGET
+      const isWindowHidden =
+        typeof document !== 'undefined' && document.visibilityState === 'hidden'
+      const isWindowFocused = typeof document === 'undefined' || document.hasFocus()
+      let budget = isWindowHidden || !isWindowFocused ? 64 * 1024 : TERMINAL_WRITE_FRAME_BUDGET
       let output = ''
       while (budget > 0 && pendingWrites.length > 0) {
-        if (output && isBrowserInputPending()) break
+        if (!isWindowHidden && isWindowFocused && output && isBrowserInputPending()) break
         const head = pendingWrites[0]
         const take = Math.min(budget, head.length)
         output += head.slice(0, take)
@@ -524,6 +538,17 @@ export function useXtermSession(params: {
     }
 
     const scheduleFlush = () => {
+      const isWindowHidden =
+        typeof document !== 'undefined' && document.visibilityState === 'hidden'
+      const isWindowFocused = typeof document === 'undefined' || document.hasFocus()
+      if (isWindowHidden || !isWindowFocused) {
+        // While the application window is minimized or unfocused, avoid thrashing
+        // requestAnimationFrame and drain queued output in calm, larger batches.
+        if (writeFallback === null) {
+          writeFallback = window.setTimeout(flushPendingWrite, TERMINAL_WRITE_FALLBACK_MS)
+        }
+        return
+      }
       if (writeFrame === null) writeFrame = window.requestAnimationFrame(flushPendingWrite)
       if (writeFallback === null) {
         writeFallback = window.setTimeout(flushPendingWrite, TERMINAL_WRITE_FALLBACK_MS)
@@ -818,17 +843,36 @@ export function useXtermSession(params: {
         shouldRestoreTerminalFocus = false
       }
     }
-    const restoreLastTerminalFocus = () => {
-      if (document.visibilityState === 'hidden' || !shouldRestoreTerminalFocus) return
-      terminal.focus()
+    const onWindowVisibility = () => {
+      if (disposed) return
+      const isVisible = document.visibilityState === 'visible'
+      const hasFocus = typeof document === 'undefined' || document.hasFocus()
+      if (!readOnly) {
+        terminal.options.cursorBlink = isVisible && isPanelVisible && hasFocus
+      }
+      if (isVisible) {
+        if (hasFocus && shouldRestoreTerminalFocus) terminal.focus()
+        flushPendingWrite()
+        terminal.refresh(0, terminal.rows - 1)
+      }
+    }
+    const onWindowFocus = () => {
+      onWindowVisibility()
+    }
+    const onWindowBlur = () => {
+      if (disposed || readOnly) return
+      // When the application window loses focus, pause cursor blinking
+      // to eliminate unnecessary timer wakeups and repaints.
+      terminal.options.cursorBlink = false
     }
     container.addEventListener('pointerdown', focusTerminal, true)
     container.addEventListener('click', focusTerminal)
     container.addEventListener('focusin', rememberTerminalFocus)
     container.addEventListener('focusout', forgetTerminalFocus)
     document.addEventListener('pointerdown', rememberPointerFocusIntent, true)
-    window.addEventListener('focus', restoreLastTerminalFocus)
-    document.addEventListener('visibilitychange', restoreLastTerminalFocus)
+    window.addEventListener('focus', onWindowFocus)
+    window.addEventListener('blur', onWindowBlur)
+    document.addEventListener('visibilitychange', onWindowVisibility)
 
     const onPaste = (event: ClipboardEvent) => {
       if (disposed || readOnly) return
@@ -1920,8 +1964,9 @@ export function useXtermSession(params: {
       container.removeEventListener('focusin', rememberTerminalFocus)
       container.removeEventListener('focusout', forgetTerminalFocus)
       document.removeEventListener('pointerdown', rememberPointerFocusIntent, true)
-      window.removeEventListener('focus', restoreLastTerminalFocus)
-      document.removeEventListener('visibilitychange', restoreLastTerminalFocus)
+      window.removeEventListener('focus', onWindowFocus)
+      window.removeEventListener('blur', onWindowBlur)
+      document.removeEventListener('visibilitychange', onWindowVisibility)
       container.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-font-changed', onFontChanged)
@@ -1962,6 +2007,15 @@ export function useXtermSession(params: {
     if (isFirstVisibilityRunRef.current) {
       isFirstVisibilityRunRef.current = false
       return
+    }
+
+    const isDocVisible = typeof document === 'undefined' || document.visibilityState === 'visible'
+    const hasFocus = typeof document === 'undefined' || document.hasFocus()
+    if (terminalRef.current && !readOnly) {
+      terminalRef.current.options.cursorBlink = isPanelVisible && isDocVisible && hasFocus
+      if (isPanelVisible && isDocVisible && !wasVisible) {
+        terminalRef.current.refresh(0, terminalRef.current.rows - 1)
+      }
     }
 
     let cancelled = false

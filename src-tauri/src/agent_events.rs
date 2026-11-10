@@ -1124,8 +1124,8 @@ pub fn start_listener(app: AppHandle) {
 
         let Some((server, port)) = bound else {
             eprintln!(
-                "[agent_events] falha ao subir listener em {HOST}:{DEFAULT_PORT}-{MAX_PORT}: {}",
-                last_error.unwrap_or_else(|| "sem erro detalhado".to_string())
+                "[agent_events] failed to bind listener on {HOST}:{DEFAULT_PORT}-{MAX_PORT}: {}",
+                last_error.unwrap_or_else(|| "no detailed error".to_string())
             );
             return;
         };
@@ -1151,7 +1151,7 @@ pub fn start_listener(app: AppHandle) {
                 .take(BODY_LIMIT)
                 .read_to_string(&mut body)
             {
-                eprintln!("[agent_events] erro lendo corpo: {e}");
+                eprintln!("[agent_events] error reading body: {e}");
                 let _ = request.respond(tiny_http::Response::empty(400));
                 continue;
             }

@@ -466,6 +466,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **Canvas-accelerated terminal rendering.** Terminal panes now use `@xterm/addon-canvas` to rasterize glyphs directly into a GPU-accelerated canvas texture, drastically reducing CPU usage during heavy terminal streams with automatic fallback to DOM rendering.
+- **Automatic Wayland GPU composition.** On Linux, Alethe automatically detects modern Wayland desktop sessions and enables hardware DMA-BUF composition by default, while supporting opt-out via `ALETHE_DISABLE_GPU=1` or `WEBKIT_DISABLE_DMABUF_RENDERER=1`.
+- **Adaptive resource supervisor sampling.** The background resource collector adapts its scan interval dynamically (10s under normal pressure, tightening to 5s under warning and 2s under critical), cutting periodic Linux `/proc` sampling overhead by 50% while accelerating emergency mitigation.
+- **Hidden pane and window minimization throttling.** Terminal cursor blinking and canvas repaints pause when panes or the OS window are minimized or hidden, batching writes in calm blocks and synchronizing crisp updates upon restore.
+- **Linux WebKitGTK DMA-BUF override.** `WEBKIT_DISABLE_DMABUF_RENDERER` defaults to disabling DMA-BUF for safety on older graphics stacks, but now respects user environment overrides (e.g. `WEBKIT_DISABLE_DMABUF_RENDERER=0`), enabling hardware-accelerated composition on modern Linux desktop environments such as Fedora / Wayland with Mesa.
+- **Direct Unix signal delivery for process cleanup.** Orphan process cleanup on Unix now uses direct `libc::kill` with `SIGKILL` instead of invoking the external `kill` CLI through an external sub-process and timeout loop.
+- **Typed Linux platform detection.** `isLinux()` is added to frontend platform utilities to properly identify Linux desktop environments.
 - **ai-memory 3.x.** Preferences installs ai-memory 3.1.1. Agents use its token-aware stdio bridge
   on 3.x and retain HTTP on 2.x. Version detection times out after three seconds.
 

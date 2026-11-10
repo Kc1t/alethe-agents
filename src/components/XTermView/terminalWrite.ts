@@ -9,9 +9,9 @@ export const PASTE_YIELD_EVERY_CHUNKS = 4
 export const MAX_TRACKED_PROMPT_LENGTH = 4 * 1024
 export const PTY_WRITE_TIMEOUT_MS = 5_000
 
-// muita cor/movimento) custam bem mais tempo de parse+render por byte do que
-
-// terminar > qualquer frame individual travando por muito tempo.
+// Heavy ANSI output (e.g. dense colors/animations) costs significantly more
+// parse and render time per byte than plain text. Keeping the chunk bounded
+// ensures UI responsiveness over processing oversized individual frames.
 export const TERMINAL_WRITE_FRAME_BUDGET = 16 * 1024
 
 /**
