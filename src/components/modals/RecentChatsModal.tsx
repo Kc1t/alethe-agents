@@ -245,92 +245,94 @@ export function RecentChatsModal() {
             {entries.length === 0 ? t('mod.noSessionsForCwd') : t('mod.noSessionsMatchFilter')}
           </div>
         ) : (
-          orderByTabLineage(
-            visible ?? [],
-            targetTab?.sessionId,
-            targetTab?.previousSessionIds,
-          ).map(({ session: entry, mark }) => {
-            const titleText =
-              entry.title || entry.prompt || t('mod.sessionFallback', { id: entry.id.slice(0, 8) })
-            return (
-              <div key={entry.id} className={styles.item}>
-                <div className={styles.itemMain}>
-                  <div className={styles.itemTitleRow}>
-                    <div className={styles.itemTitle} title={titleText}>
-                      {titleText}
+          orderByTabLineage(visible ?? [], targetTab?.sessionId, targetTab?.previousSessionIds).map(
+            ({ session: entry, mark }) => {
+              const titleText =
+                entry.title ||
+                entry.prompt ||
+                t('mod.sessionFallback', { id: entry.id.slice(0, 8) })
+              return (
+                <div key={entry.id} className={styles.item}>
+                  <div className={styles.itemMain}>
+                    <div className={styles.itemTitleRow}>
+                      <div className={styles.itemTitle} title={titleText}>
+                        {titleText}
+                      </div>
+                      {mark ? (
+                        <span className={styles.lineageMark}>
+                          {mark === 'current'
+                            ? t('mod.tabSessionCurrent')
+                            : t('mod.tabSessionPrevious')}
+                        </span>
+                      ) : null}
                     </div>
-                    {mark ? (
-                      <span className={styles.lineageMark}>
-                        {mark === 'current'
-                          ? t('mod.tabSessionCurrent')
-                          : t('mod.tabSessionPrevious')}
+                    {entry.prompt && entry.title ? (
+                      <div className={styles.itemPrompt} title={entry.prompt}>
+                        {entry.prompt}
+                      </div>
+                    ) : null}
+                    <div className={styles.itemMeta}>
+                      <span
+                        title={new Date(entry.modifiedAtMs).toLocaleString(intlLocale(language))}
+                      >
+                        {formatRelative(entry.modifiedAtMs, t, language)}
                       </span>
-                    ) : null}
-                  </div>
-                  {entry.prompt && entry.title ? (
-                    <div className={styles.itemPrompt} title={entry.prompt}>
-                      {entry.prompt}
+                      {entry.messageCount !== null ? (
+                        <>
+                          <span>·</span>
+                          <span>{t('mod.msgsCount', { count: entry.messageCount })}</span>
+                        </>
+                      ) : null}
+                      <span>·</span>
+                      <span>{formatSize(entry.sizeBytes)}</span>
                     </div>
-                  ) : null}
-                  <div className={styles.itemMeta}>
-                    <span title={new Date(entry.modifiedAtMs).toLocaleString(intlLocale(language))}>
-                      {formatRelative(entry.modifiedAtMs, t, language)}
-                    </span>
-                    {entry.messageCount !== null ? (
-                      <>
-                        <span>·</span>
-                        <span>{t('mod.msgsCount', { count: entry.messageCount })}</span>
-                      </>
-                    ) : null}
-                    <span>·</span>
-                    <span>{formatSize(entry.sizeBytes)}</span>
+                  </div>
+                  <div className={styles.itemActions}>
+                    <button
+                      type="button"
+                      className={styles.actionBtn}
+                      disabled={busyId !== null || !project || !targetTerminal}
+                      onClick={() =>
+                        openModal('handoff', {
+                          projectId: project?.id,
+                          terminalId: targetTerminal?.id,
+                          agent,
+                          sourceSessionId: entry.id,
+                        })
+                      }
+                      title={t('recentChats.handoffTooltip')}
+                    >
+                      {t('recentChats.handoff', {
+                        agent: agent === 'claude' ? 'Codex' : 'Claude Code',
+                      })}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.actionBtn}
+                      disabled={busyId !== null || !project}
+                      onClick={() => openInNewPane(entry)}
+                      title={t('recentChats.openInNewPaneTooltip')}
+                    >
+                      {t('recentChats.openInNewPane')}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.actionBtn}
+                      disabled={busyId !== null || !targetTerminal}
+                      onClick={() => void openHere(entry)}
+                      title={
+                        targetTerminal
+                          ? t('recentChats.openHereTooltip')
+                          : t('recentChats.openHereDisabled')
+                      }
+                    >
+                      {busyId === entry.id ? '…' : t('recentChats.openHere')}
+                    </button>
                   </div>
                 </div>
-                <div className={styles.itemActions}>
-                  <button
-                    type="button"
-                    className={styles.actionBtn}
-                    disabled={busyId !== null || !project || !targetTerminal}
-                    onClick={() =>
-                      openModal('handoff', {
-                        projectId: project?.id,
-                        terminalId: targetTerminal?.id,
-                        agent,
-                        sourceSessionId: entry.id,
-                      })
-                    }
-                    title={t('recentChats.handoffTooltip')}
-                  >
-                    {t('recentChats.handoff', {
-                      agent: agent === 'claude' ? 'Codex' : 'Claude Code',
-                    })}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.actionBtn}
-                    disabled={busyId !== null || !project}
-                    onClick={() => openInNewPane(entry)}
-                    title={t('recentChats.openInNewPaneTooltip')}
-                  >
-                    {t('recentChats.openInNewPane')}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.actionBtn}
-                    disabled={busyId !== null || !targetTerminal}
-                    onClick={() => void openHere(entry)}
-                    title={
-                      targetTerminal
-                        ? t('recentChats.openHereTooltip')
-                        : t('recentChats.openHereDisabled')
-                    }
-                  >
-                    {busyId === entry.id ? '…' : t('recentChats.openHere')}
-                  </button>
-                </div>
-              </div>
-            )
-          })
+              )
+            },
+          )
         )}
       </div>
     </Modal>
