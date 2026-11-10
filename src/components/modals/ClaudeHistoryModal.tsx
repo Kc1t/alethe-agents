@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
 import { resumeSessionInPane } from '../../lib/paneResume'
+import { orderByTabLineage } from '../../lib/sessionLineage'
 import { type ClaudeSessionMeta, listClaudeSessions } from '../../lib/tauri'
 import { type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -53,6 +54,12 @@ export function ClaudeHistoryModal({
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [filter, setFilter] = useState('')
+  const tab = useProjectsStore((s) =>
+    s.projects
+      .find((project) => project.id === projectId)
+      ?.terminals.find((terminal) => terminal.id === terminalId)
+      ?.tabs.find((item) => item.id === tabId),
+  )
 
   useEffect(() => {
     if (!open || !cwd) return
@@ -129,44 +136,61 @@ export function ClaudeHistoryModal({
             {sessions.length === 0 ? t('mod.noSessionsForCwd') : t('mod.noSessionsMatchFilter')}
           </div>
         ) : (
-          filtered?.map((session) => {
-            const titleText =
-              session.title ||
-              session.first_user_prompt ||
-              t('mod.sessionFallback', { id: session.id.slice(0, 8) })
-            return (
-              <div key={session.id} className={styles.item}>
-                <div className={styles.itemMain}>
-                  <div className={styles.itemTitle} title={titleText}>
-                    {titleText}
-                  </div>
-                  {session.first_user_prompt && session.title ? (
-                    <div className={styles.itemPrompt} title={session.first_user_prompt}>
-                      {session.first_user_prompt}
+          orderByTabLineage(filtered ?? [], tab?.sessionId, tab?.previousSessionIds).map(
+            ({ session, mark }) => {
+              const titleText =
+                session.title ||
+                session.first_user_prompt ||
+                t('mod.sessionFallback', { id: session.id.slice(0, 8) })
+              return (
+                <div key={session.id} className={styles.item}>
+                  <div className={styles.itemMain}>
+                    <div className={styles.itemTitleRow}>
+                      <div className={styles.itemTitle} title={titleText}>
+                        {titleText}
+                      </div>
+                      {mark ? (
+                        <span className={styles.lineageMark}>
+                          {mark === 'current'
+                            ? t('mod.tabSessionCurrent')
+                            : t('mod.tabSessionPrevious')}
+                        </span>
+                      ) : null}
                     </div>
-                  ) : null}
-                  <div className={styles.itemMeta}>
-                    <span>{formatRelative(session.modified_at_ms, t, language)}</span>
-                    <span>·</span>
-                    <span>{t('mod.msgsCount', { count: session.message_count })}</span>
-                    <span>·</span>
-                    <span>{formatSize(session.size_bytes)}</span>
+                    {session.first_user_prompt && session.title ? (
+                      <div className={styles.itemPrompt} title={session.first_user_prompt}>
+                        {session.first_user_prompt}
+                      </div>
+                    ) : null}
+                    <div className={styles.itemMeta}>
+                      <span
+                        title={new Date(session.modified_at_ms).toLocaleString(
+                          intlLocale(language),
+                        )}
+                      >
+                        {formatRelative(session.modified_at_ms, t, language)}
+                      </span>
+                      <span>·</span>
+                      <span>{t('mod.msgsCount', { count: session.message_count })}</span>
+                      <span>·</span>
+                      <span>{formatSize(session.size_bytes)}</span>
+                    </div>
+                  </div>
+                  <div className={styles.itemActions}>
+                    <button
+                      type="button"
+                      className={styles.actionBtn}
+                      disabled={busyId !== null}
+                      onClick={() => void resumeHere(session.id)}
+                      title={t('mod.resumeHereTooltip')}
+                    >
+                      {busyId === session.id ? '…' : t('mod.resumeHere')}
+                    </button>
                   </div>
                 </div>
-                <div className={styles.itemActions}>
-                  <button
-                    type="button"
-                    className={styles.actionBtn}
-                    disabled={busyId !== null}
-                    onClick={() => void resumeHere(session.id)}
-                    title={t('mod.resumeHereTooltip')}
-                  >
-                    {busyId === session.id ? '…' : t('mod.resumeHere')}
-                  </button>
-                </div>
-              </div>
-            )
-          })
+              )
+            },
+          )
         )}
       </div>
     </Modal>

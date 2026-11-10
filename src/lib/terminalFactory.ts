@@ -238,6 +238,7 @@ export function resetTerminalRuntime(terminal: Terminal): Terminal {
       ...tab,
       ptyId: null,
       sessionId: undefined,
+      previousSessionIds: undefined,
       completionUnread: false,
     })),
   }

@@ -708,6 +708,7 @@ export const TerminalPane = memo(function TerminalPane({
                   graphifyRepo={graphifyRepo}
                   gsdWatcherEnabled={gsdWatcherEnabled}
                   trustSessionId={terminal.gsdSyncViewer}
+                  previousSessionIds={activeTab.previousSessionIds}
                   readOnly={terminal.gsdSyncViewer}
                   terminalTheme={terminalTheme}
                   onSpawned={(id) => {

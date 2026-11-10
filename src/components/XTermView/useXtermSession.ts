@@ -49,6 +49,7 @@ import {
   releaseSessionClaim,
 } from '../../lib/sessionDiscovery'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
+import { firstUnclaimedSession } from '../../lib/sessionLineage'
 import {
   peekSession,
   removeSession,
@@ -198,6 +199,7 @@ export function useXtermSession(params: {
   usedResumeRef: MutableRefObject<boolean>
   earlyExitRetriedRef: MutableRefObject<boolean>
   forceFreshRef: MutableRefObject<boolean>
+  previousSessionIdsRef: MutableRefObject<string[] | undefined>
   onSpawnedRef: MutableRefObject<((id: string) => void) | undefined>
   onSessionIdRef: MutableRefObject<((id: string | undefined) => void) | undefined>
   onInitialInputSentRef: MutableRefObject<(() => void) | undefined>
@@ -244,6 +246,7 @@ export function useXtermSession(params: {
     usedResumeRef,
     earlyExitRetriedRef,
     forceFreshRef,
+    previousSessionIdsRef,
     onSpawnedRef,
     onSessionIdRef,
     onInitialInputSentRef,
@@ -1293,13 +1296,26 @@ export function useXtermSession(params: {
           command &&
           isSessionClaimed(command, cwd, resumeId, sessionPersistenceKey)
         ) {
-          console.warn(
-            `[pty-launch] ${command} session ${resumeId} is already claimed; starting a fresh writer`,
-          )
           recordSessionDrop('claimed', resumeId)
-          resumeId = undefined
-          removeSession(sessionPersistenceKey)
-          emitSessionId?.(undefined)
+          // Another pane holds this chat (e.g. after /resume): reopen this tab's own previous chat.
+          const claimedCwd = cwd
+          const claimedCommand = command
+          const fallbackId = firstUnclaimedSession(previousSessionIdsRef.current, (id) =>
+            isSessionClaimed(claimedCommand, claimedCwd, id, sessionPersistenceKey),
+          )
+          console.warn(
+            `[pty-launch] ${command} session ${resumeId} is already claimed; ${fallbackId ? `resuming previous ${fallbackId}` : 'starting a fresh writer'}`,
+          )
+          if (fallbackId) {
+            void recordAppEvent(
+              'session.fallback',
+              `agent=${command} from=${shortSessionId(resumeId)} to=${shortSessionId(fallbackId)}`,
+            )
+          } else {
+            removeSession(sessionPersistenceKey)
+          }
+          resumeId = fallbackId
+          emitSessionId?.(fallbackId)
         }
         // Reserve the resume ID before creating the PTY. Without this early
         // claim, two panes can pass the check above at the same time and both
