@@ -37,8 +37,8 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 ## Unreleased
 
 - `pending` · `contract` · fix: keep a tab's earlier chats and reopen them on a claim conflict
-  - Files: `src/lib/sessionLineage.ts`, `src/stores/projectsStore.slices.ts`, `src/components/XTermView/useXtermSession.ts`, `src/components/modals/ClaudeHistoryModal.tsx`
-  - Contract: additive optional `previousSessionIds` (string[], newest first, at most 10) on each sub-tab in `projects.json`; absent means none, no migration. Changing a tab's conversation id puts the old one at the front and drops the new one from the list; moving the tab to a worktree or resetting its runtime clears it. When the saved conversation is already claimed by another pane at launch, resume the first entry not claimed (the orphan check still applies) instead of starting fresh. Session history orders this tab's current chat first, then `previousSessionIds`, then the rest.
+  - Files: `src/lib/sessionLineage.ts`, `src/stores/projectsStore.slices.ts`, `src/components/XTermView/useXtermSession.ts`, `src/components/modals/RecentChatsModal.tsx`
+  - Contract: additive optional `previousSessionIds` (string[], newest first, at most 10) on each sub-tab in `projects.json`; absent means none, no migration. Changing a tab's conversation id puts the old one at the front and drops the new one from the list; moving the tab to a worktree or resetting its runtime clears it. When the saved conversation is already claimed by another pane at launch, resume the first entry not claimed (the orphan check still applies) instead of starting fresh. Recent chats orders this tab's current chat first, then `previousSessionIds`, then the rest.
 
 - `pending` · `contract` · feat(terminal): preserve pane scroll and make Claude Code fullscreen rendering optional
   - Commit: Merge pull request #322 from MarkHiarley/fix/terminal-scroll-ownership

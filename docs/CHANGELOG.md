@@ -13,7 +13,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ### Added
 
 - **Terminal chat history.** Each agent tab remembers the chats it held before the current one.
-  Session history lists this terminal's current chat first, then its earlier ones, each tagged, and
+  Recent chats lists this terminal's current chat first, then its earlier ones, each tagged, and
   shows the full date and time on hover.
 
 - **Voice plugin.** A new plugin in the catalogue, [Voice](https://github.com/Kc1t/alethe-voice),

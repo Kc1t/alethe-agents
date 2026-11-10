@@ -60,23 +60,6 @@
   min-width: 0;
 }
 
-.itemTitleRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.lineageMark {
-  flex-shrink: 0;
-  font-size: 10px;
-  color: var(--accent);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0 5px;
-  line-height: 16px;
-}
-
 .itemTitle {
   font-size: 13px;
   font-weight: 500;
@@ -127,8 +110,4 @@
 .actionBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.itemTitleRow .itemTitle {
-  min-width: 0;
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
 import { resumeSessionInPane } from '../../lib/paneResume'
+import { orderByTabLineage } from '../../lib/sessionLineage'
 import { type ClaudeSessionMeta, listClaudeSessions, snapshotCodexSessions } from '../../lib/tauri'
 import { UNRESTRICTED_FLAG } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -244,14 +245,27 @@ export function RecentChatsModal() {
             {entries.length === 0 ? t('mod.noSessionsForCwd') : t('mod.noSessionsMatchFilter')}
           </div>
         ) : (
-          visible?.map((entry) => {
+          orderByTabLineage(
+            visible ?? [],
+            targetTab?.sessionId,
+            targetTab?.previousSessionIds,
+          ).map(({ session: entry, mark }) => {
             const titleText =
               entry.title || entry.prompt || t('mod.sessionFallback', { id: entry.id.slice(0, 8) })
             return (
               <div key={entry.id} className={styles.item}>
                 <div className={styles.itemMain}>
-                  <div className={styles.itemTitle} title={titleText}>
-                    {titleText}
+                  <div className={styles.itemTitleRow}>
+                    <div className={styles.itemTitle} title={titleText}>
+                      {titleText}
+                    </div>
+                    {mark ? (
+                      <span className={styles.lineageMark}>
+                        {mark === 'current'
+                          ? t('mod.tabSessionCurrent')
+                          : t('mod.tabSessionPrevious')}
+                      </span>
+                    ) : null}
                   </div>
                   {entry.prompt && entry.title ? (
                     <div className={styles.itemPrompt} title={entry.prompt}>
@@ -259,7 +273,9 @@ export function RecentChatsModal() {
                     </div>
                   ) : null}
                   <div className={styles.itemMeta}>
-                    <span>{formatRelative(entry.modifiedAtMs, t, language)}</span>
+                    <span title={new Date(entry.modifiedAtMs).toLocaleString(intlLocale(language))}>
+                      {formatRelative(entry.modifiedAtMs, t, language)}
+                    </span>
                     {entry.messageCount !== null ? (
                       <>
                         <span>·</span>
