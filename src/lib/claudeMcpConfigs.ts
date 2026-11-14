@@ -105,6 +105,7 @@ export async function claudeLaunchExtras({
     enabledFeatures.orchestrator,
     undefined,
     voiceConversationHooksEnabled(),
+    Boolean(wslTarget),
   ).catch(() => undefined)
 
   if (wslTarget) {

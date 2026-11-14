@@ -532,6 +532,7 @@ pub fn agent_hooks_settings_path(
     ai_memory_enabled: Option<bool>,
     ai_memory_port: Option<u16>,
     voice: Option<bool>,
+    wsl: Option<bool>,
 ) -> Result<String, String> {
     let orchestrator = orchestrator.unwrap_or(true);
     let port = wait_for_listener_port()
@@ -566,6 +567,11 @@ pub fn agent_hooks_settings_path(
             }
         }
     }
+    // A Claude running in WSL executes hook commands itself, so a `C:\...\ai-memory.exe` command
+    // has to name the same file through its `/mnt/c` mount (interop still runs the `.exe`).
+    if wsl.unwrap_or(false) {
+        convert_hook_commands_to_wsl(&mut settings);
+    }
     let body = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     hook_settings_files()
         .lock()
@@ -577,6 +583,33 @@ pub fn agent_hooks_settings_path(
         path.display()
     );
     Ok(path.to_string_lossy().to_string())
+}
+
+/// Rewrites the Windows paths in every hook `command` (and its `args`) to WSL mounts. HTTP hook
+/// URLs are left alone.
+fn convert_hook_commands_to_wsl(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map.iter_mut() {
+                match (key.as_str(), child) {
+                    ("command", Value::String(command)) => {
+                        *command = crate::wsl::windows_paths_to_mnt(command);
+                    }
+                    ("args", Value::Array(args)) => {
+                        for arg in args.iter_mut() {
+                            if let Value::String(arg) = arg {
+                                *arg = crate::wsl::windows_paths_to_mnt(arg);
+                            }
+                        }
+                    }
+                    (_, child) => convert_hook_commands_to_wsl(child),
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(convert_hook_commands_to_wsl),
+        _ => {}
+    }
 }
 
 /// Where the Claude hook settings go. They carry the listener token, so on Unix they live in the
@@ -1372,11 +1405,34 @@ pub fn start_listener(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_hooks, claude_hooks_settings, hook_log_line, strip_legacy_codex_hooks, toml_string,
-        PERMISSION_HOOK_TIMEOUT_SECS,
+        build_hooks, claude_hooks_settings, convert_hook_commands_to_wsl, hook_log_line,
+        strip_legacy_codex_hooks, toml_string, PERMISSION_HOOK_TIMEOUT_SECS,
     };
 
     const ENDPOINT: &str = "http://127.0.0.1:9123";
+
+    #[test]
+    fn wsl_hook_commands_get_mount_paths_and_http_hooks_are_untouched() {
+        let mut settings = serde_json::json!({
+            "hooks": { "Stop": [{ "hooks": [
+                { "type": "command", "command": r"C:\Users\PC\tools\ai-memory.exe --data-dir C:\Users\PC\data hook --event stop --server-url http://127.0.0.1:49374" },
+                { "type": "command", "command": r"C:\bin\x.exe", "args": [r"D:\cfg\a.json", "--flag"] },
+                { "type": "http", "url": "http://127.0.0.1:9123/hook" }
+            ] }] }
+        });
+        convert_hook_commands_to_wsl(&mut settings);
+        let hooks = &settings["hooks"]["Stop"][0]["hooks"];
+        assert_eq!(
+            hooks[0]["command"],
+            "/mnt/c/Users/PC/tools/ai-memory.exe --data-dir /mnt/c/Users/PC/data hook --event stop --server-url http://127.0.0.1:49374"
+        );
+        assert_eq!(hooks[1]["command"], "/mnt/c/bin/x.exe");
+        assert_eq!(
+            hooks[1]["args"],
+            serde_json::json!(["/mnt/d/cfg/a.json", "--flag"])
+        );
+        assert_eq!(hooks[2]["url"], "http://127.0.0.1:9123/hook");
+    }
 
     const ROUTES: [(&str, super::HookRoute); 5] = [
         ("/mcp", super::HookRoute::Mcp),

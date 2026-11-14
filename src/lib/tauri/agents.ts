@@ -53,12 +53,14 @@ async function liveAiMemoryPrefs(): Promise<{ enabled: boolean; port: number }> 
  * this same file rather than into the person's own settings. It defaults to the live preference, so
  * a call site that forgets the argument still gets the person's actual choice; pass `null` explicitly
  * to opt a caller out of capture regardless of the preference (e.g. a demo sandbox).
+ * `wsl` is for a Claude that runs inside WSL: Windows paths in the hook commands become `/mnt/...`.
  */
 export async function agentHooksSettingsPath(
   plannerId: string,
   orchestrator = true,
   aiMemory?: { enabled: boolean; port: number } | null,
   voice = false,
+  wsl = false,
 ): Promise<string> {
   if (aiMemory === undefined) aiMemory = await liveAiMemoryPrefs()
   return invoke<string>('agent_hooks_settings_path', {
@@ -67,6 +69,7 @@ export async function agentHooksSettingsPath(
     aiMemoryEnabled: aiMemory?.enabled ?? false,
     aiMemoryPort: aiMemory?.port ?? null,
     voice,
+    wsl,
   })
 }
 

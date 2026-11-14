@@ -16,13 +16,13 @@ afterEach(() => {
 describe('Claude voice hook launch settings', () => {
   it('passes the host conversation flag on initial launch and restart preparation', async () => {
     await claudeLaunchExtras({ ptyId: 'pty-1' })
-    expect(mocks.hooks).toHaveBeenLastCalledWith('pty-1', undefined, undefined, false)
+    expect(mocks.hooks).toHaveBeenLastCalledWith('pty-1', undefined, undefined, false, false)
     holdVoiceConversationHooks('launch-test', true)
     await claudeLaunchExtras({ ptyId: 'pty-1' })
-    expect(mocks.hooks).toHaveBeenLastCalledWith('pty-1', undefined, undefined, true)
+    expect(mocks.hooks).toHaveBeenLastCalledWith('pty-1', undefined, undefined, true, false)
     holdVoiceConversationHooks('launch-test', false)
     await claudeLaunchExtras({ ptyId: 'pty-1' })
-    expect(mocks.hooks).toHaveBeenLastCalledWith('pty-1', undefined, undefined, false)
+    expect(mocks.hooks).toHaveBeenLastCalledWith('pty-1', undefined, undefined, false, false)
   })
 
   it('retains the existing launch behavior when hook settings generation fails', async () => {

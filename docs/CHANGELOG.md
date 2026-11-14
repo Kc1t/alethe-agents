@@ -607,6 +607,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Claude in WSL runs the capture hooks.** The hooks Alethe writes for a Claude running in WSL
+  (ai-memory capture) named Windows paths such as `C:\Users\...\ai-memory.exe`, which the distro
+  could not run. They now use the `/mnt/c/...` path.
+
 - ai-memory installs accept Unix archives with a root directory entry, find manually installed
   binaries outside the app PATH, and avoid duplicating Claude Code capture hooks already configured.
 - **Light terminal contrast.** Light themes, including plugin themes, enforce a WCAG-AA contrast
