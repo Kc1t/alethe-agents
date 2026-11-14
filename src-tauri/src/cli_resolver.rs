@@ -269,9 +269,10 @@ fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
         dirs.extend(split_windows_path_expanded(&rebuilt_path()));
         dirs.extend(agent_search_dirs());
 
+        let file_names = launcher_file_names(command);
         for dir in &dirs {
-            for extension in ["cmd", "exe", "bat", "ps1"] {
-                let candidate = dir.join(format!("{command}.{extension}"));
+            for name in &file_names {
+                let candidate = dir.join(name);
                 if candidate.is_file() {
                     return Some(candidate);
                 }
@@ -279,6 +280,19 @@ fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
         }
         None
     }
+}
+
+/// File names tried for `command` in each search directory. A command that already carries an
+/// extension (`wsl.exe`, the launcher behind the WSL tab) is tried as written first: appending
+/// `.exe` to it only ever produced `wsl.exe.exe`, so the WSL tab reported "not installed".
+#[cfg_attr(not(windows), allow(dead_code))]
+fn launcher_file_names(command: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    if std::path::Path::new(command).extension().is_some() {
+        names.push(command.to_string());
+    }
+    names.extend(["cmd", "exe", "bat", "ps1"].map(|extension| format!("{command}.{extension}")));
+    names
 }
 
 #[derive(serde::Serialize, Debug, Clone, Default)]
@@ -1140,6 +1154,24 @@ pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOptio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_command_with_an_extension_is_tried_as_written_before_the_script_extensions() {
+        assert_eq!(
+            launcher_file_names("wsl.exe"),
+            [
+                "wsl.exe",
+                "wsl.exe.cmd",
+                "wsl.exe.exe",
+                "wsl.exe.bat",
+                "wsl.exe.ps1"
+            ]
+        );
+        assert_eq!(
+            launcher_file_names("claude"),
+            ["claude.cmd", "claude.exe", "claude.bat", "claude.ps1"]
+        );
+    }
 
     #[test]
     fn administrator_mode_rejects_agent_commands() {

@@ -607,6 +607,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **WSL tab no longer asks to install WSL.** Opening a WSL session reported "not installed" even
+  with WSL present, because the launcher lookup searched for `wsl.exe.exe`. It now finds `wsl.exe`
+  as written.
+
 - ai-memory installs accept Unix archives with a root directory entry, find manually installed
   binaries outside the app PATH, and avoid duplicating Claude Code capture hooks already configured.
 - **Light terminal contrast.** Light themes, including plugin themes, enforce a WCAG-AA contrast
