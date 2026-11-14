@@ -94,6 +94,54 @@ pub fn wsl_target(cwd: &str) -> Option<WslPath> {
     parse_wsl_unc(cwd)
 }
 
+/// Rewrites every Windows drive path inside `text` to its WSL mount, so a command line built for
+/// Windows (`C:\Users\dev\tool.exe --data-dir C:\Users\dev\data`) can run in the distro, where
+/// `.exe` files stay executable through interop. A quoted path may contain spaces; an unquoted one
+/// ends at whitespace. The letter of a URL scheme (`http://`) is not a drive.
+pub fn windows_paths_to_mnt(text: &str) -> String {
+    use regex::{Captures, Regex};
+    use std::sync::OnceLock;
+
+    static PATTERNS: OnceLock<[Regex; 3]> = OnceLock::new();
+    let [double, single, bare] = PATTERNS.get_or_init(|| {
+        [
+            Regex::new(r#""([A-Za-z]:[\\/][^"]*)""#).expect("valid regex"),
+            Regex::new(r"'([A-Za-z]:[\\/][^']*)'").expect("valid regex"),
+            Regex::new(r#"(^|[^A-Za-z0-9])([A-Za-z]:[\\/][^\s'"]*)"#).expect("valid regex"),
+        ]
+    });
+    let convert = |path: &str| windows_drive_to_mnt(path).unwrap_or_else(|| path.to_string());
+
+    let text = double.replace_all(text, |caps: &Captures| format!("\"{}\"", convert(&caps[1])));
+    let text = single.replace_all(&text, |caps: &Captures| format!("'{}'", convert(&caps[1])));
+    bare.replace_all(&text, |caps: &Captures| {
+        format!("{}{}", &caps[1], convert(&caps[2]))
+    })
+    .into_owned()
+}
+
+/// `C:\Users\dev\app` → `/mnt/c/Users/dev/app`. Anything that is not a drive path (a UNC share,
+/// a relative path) has no mount and yields `None`.
+pub fn windows_drive_to_mnt(path: &str) -> Option<String> {
+    let normalized = path.trim().replace('\\', "/");
+    let mut chars = normalized.chars();
+    let drive = chars.next().filter(char::is_ascii_alphabetic)?;
+    let rest = normalized[1..].strip_prefix(':')?;
+    if !rest.is_empty() && !rest.starts_with('/') {
+        return None;
+    }
+    let tail: Vec<&str> = rest
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    let drive = drive.to_ascii_lowercase();
+    Some(if tail.is_empty() {
+        format!("/mnt/{drive}")
+    } else {
+        format!("/mnt/{drive}/{}", tail.join("/"))
+    })
+}
+
 pub fn parse_wsl_unc(path: &str) -> Option<WslPath> {
     let normalized = path.trim().replace('\\', "/");
     let rest = normalized.strip_prefix("//")?;
@@ -1324,6 +1372,40 @@ mod tests {
             probe_caches_are_empty(),
             "turning it back on must not serve what was cached while it was off"
         );
+    }
+
+    #[test]
+    fn rewrites_windows_paths_inside_a_command_line() {
+        assert_eq!(
+            windows_paths_to_mnt(
+                r"C:\Users\PC\AppData\Local\app\ai-memory.exe --data-dir C:\Users\PC\data hook --event stop --server-url http://127.0.0.1:49374"
+            ),
+            "/mnt/c/Users/PC/AppData/Local/app/ai-memory.exe --data-dir /mnt/c/Users/PC/data hook --event stop --server-url http://127.0.0.1:49374"
+        );
+        assert_eq!(
+            windows_paths_to_mnt(r#""C:\Program Files\x\tool.exe" --cfg 'D:\My Data\c.json'"#),
+            r#""/mnt/c/Program Files/x/tool.exe" --cfg '/mnt/d/My Data/c.json'"#
+        );
+        // Nothing to rewrite: a URL, a Linux path and plain words stay as they are.
+        assert_eq!(
+            windows_paths_to_mnt("curl http://127.0.0.1:9123/hook /home/dev/x a:b"),
+            "curl http://127.0.0.1:9123/hook /home/dev/x a:b"
+        );
+    }
+
+    #[test]
+    fn maps_windows_drive_paths_to_their_wsl_mount() {
+        assert_eq!(
+            windows_drive_to_mnt(r"C:\Users\dev\app"),
+            Some("/mnt/c/Users/dev/app".into())
+        );
+        assert_eq!(windows_drive_to_mnt("d:/work/"), Some("/mnt/d/work".into()));
+        assert_eq!(windows_drive_to_mnt(r"E:\"), Some("/mnt/e".into()));
+        assert_eq!(windows_drive_to_mnt("C:"), Some("/mnt/c".into()));
+        assert_eq!(windows_drive_to_mnt(r"\\server\share\x"), None);
+        assert_eq!(windows_drive_to_mnt("relative/path"), None);
+        assert_eq!(windows_drive_to_mnt("C:relative"), None);
+        assert_eq!(windows_drive_to_mnt(""), None);
     }
 
     #[test]
