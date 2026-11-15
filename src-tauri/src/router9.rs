@@ -5,6 +5,7 @@
 //! on its own: the app never installs, updates, or launches 9router without a click.
 
 use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -45,6 +46,9 @@ pub struct Router9Status {
     external: Router9Install,
     /// The child this app started is still alive.
     running: bool,
+    /// A 9router this app did not start answers on the port (a terminal, tray or login item
+    /// launched it). Alethe can route through it but cannot stop it.
+    external_running: bool,
     /// Something answers on the port. With `running` false this means another process owns it.
     port_in_use: bool,
     port: u16,
@@ -111,6 +115,35 @@ fn port_in_use(port: u16) -> bool {
     TcpStream::connect_timeout(&addr, Duration::from_millis(PORT_PROBE_TIMEOUT_MS)).is_ok()
 }
 
+/// Asks the process on `port` for 9router's `/api/version`, so a port held by some other program
+/// is not mistaken for a running 9router.
+fn external_router9_answers(port: u16) -> bool {
+    let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
+    let timeout = Duration::from_millis(PORT_PROBE_TIMEOUT_MS);
+    let Ok(mut stream) = TcpStream::connect_timeout(&addr, timeout) else {
+        return false;
+    };
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
+    let request = format!(
+        "GET /api/version HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+    let mut raw = Vec::new();
+    let _ = stream.take(8192).read_to_end(&mut raw);
+    is_router9_version_response(&String::from_utf8_lossy(&raw))
+}
+
+fn is_router9_version_response(raw: &str) -> bool {
+    let ok = raw
+        .lines()
+        .next()
+        .is_some_and(|line| line.split_whitespace().nth(1) == Some("200"));
+    ok && raw.contains("\"currentVersion\"")
+}
+
 fn quote(path: &Path) -> String {
     format!("\"{}\"", path.to_string_lossy())
 }
@@ -165,6 +198,7 @@ pub fn router9_status(
         .lock()
         .map(|mut slot| child_alive(&mut slot))
         .unwrap_or(false);
+    let port_in_use = port_in_use(port);
 
     Ok(Router9Status {
         managed: Router9Install {
@@ -174,7 +208,8 @@ pub fn router9_status(
         },
         external: external_install(),
         running,
-        port_in_use: port_in_use(port),
+        external_running: !running && port_in_use && external_router9_answers(port),
+        port_in_use,
         port,
         install_dir: dir.to_string_lossy().into_owned(),
         data_dir: data_dir(&app)?.to_string_lossy().into_owned(),
@@ -284,4 +319,25 @@ pub fn router9_start(
 pub fn router9_stop(state: tauri::State<'_, Router9Process>) -> Result<(), String> {
     stop_managed(state.inner());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_router9_version_response;
+
+    #[test]
+    fn recognises_a_9router_version_reply() {
+        let reply = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n\
+                     {\"currentVersion\":\"0.5.119\",\"latestVersion\":\"0.5.119\",\"hasUpdate\":false}";
+        assert!(is_router9_version_response(reply));
+    }
+
+    #[test]
+    fn rejects_other_programs_and_errors_on_the_port() {
+        assert!(!is_router9_version_response("HTTP/1.1 200 OK\r\n\r\n{\"ok\":true}"));
+        assert!(!is_router9_version_response(
+            "HTTP/1.1 404 Not Found\r\n\r\n{\"currentVersion\":\"x\"}"
+        ));
+        assert!(!is_router9_version_response(""));
+    }
 }

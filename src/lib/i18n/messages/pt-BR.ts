@@ -3811,6 +3811,8 @@ export const ptBR: Record<MessageKey, string> = {
     'O roteamento está ligado mas não há chave configurada — nada é roteado ainda.',
   'router9.portInUse':
     'A porta {port} já está ocupada por outro processo. Pare ele ou escolha outra porta.',
+  'router9.runningExternally':
+    'O 9router está rodando fora do Alethe. O Alethe roteia por ele, mas não consegue pará-lo.',
   'router9.pinnedMismatch':
     'A versão instalada é diferente da que o Alethe fixa. Use Atualizar para ir pra versão fixada.',
   'router9.runningTerminalsHint':

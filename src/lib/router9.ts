@@ -167,6 +167,11 @@ export function router9ArgsFor(agent: AgentType, config: Router9Preferences | un
   return overrides.flatMap((override) => ['-c', override])
 }
 
+/** True when a 9router answers on the port, whether Alethe started it or something else did. */
+export function router9IsUp(status: Router9Status | null): boolean {
+  return Boolean(status && (status.running || status.externalRunning))
+}
+
 /** True when any 9router is available to route through, whichever install it is. */
 export function router9HasInstall(status: Router9Status | null): boolean {
   return Boolean(status && (status.managed.installed || status.external.installed))
