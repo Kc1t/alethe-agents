@@ -8,6 +8,7 @@ import {
   normalizeRemoteUrl,
   ROUTER9_ADVISORIES_URL,
   router9BaseUrl,
+  router9IsUp,
   router9RoutingReady,
 } from '../../lib/router9'
 import { openInBrowser } from '../../lib/tauri'
@@ -58,7 +59,9 @@ export function Router9Settings() {
 
   const managed = status?.managed
   const external = status?.external
-  const running = Boolean(status?.running)
+  const running = router9IsUp(status)
+  // Alethe can only stop the copy it started; one launched elsewhere is shown, not controlled.
+  const runningElsewhere = Boolean(status?.externalRunning)
   const npmReady = toolchain?.npm === true
   /** Alethe pins one version, so an install that already matches it has nothing to update to. */
   const managedUpToDate = Boolean(
@@ -107,6 +110,9 @@ export function Router9Settings() {
     if (config.enabled && !config.apiKey.trim()) {
       notices.push({ key: 'key', text: t('router9.missingKey'), tone: 'warn' })
     }
+    if (runningElsewhere) {
+      notices.push({ key: 'external', text: t('router9.runningExternally'), tone: 'info' })
+    }
     if (status && status.portInUse && !running) {
       notices.push({
         key: 'port',
@@ -139,15 +145,17 @@ export function Router9Settings() {
           </span>
           {!remote && hasInstall && config.enabled ? (
             <div className={styles.statusActions}>
-              <button
-                type="button"
-                className={styles.quietBtn}
-                disabled={busy}
-                onClick={() => void act(() => (running ? stop() : start()))}
-              >
-                {running ? <Square size={12} /> : <Play size={12} />}
-                {running ? t('router9.stop') : t('router9.start')}
-              </button>
+              {runningElsewhere ? null : (
+                <button
+                  type="button"
+                  className={styles.quietBtn}
+                  disabled={busy}
+                  onClick={() => void act(() => (running ? stop() : start()))}
+                >
+                  {running ? <Square size={12} /> : <Play size={12} />}
+                  {running ? t('router9.stop') : t('router9.start')}
+                </button>
+              )}
               <button
                 type="button"
                 className={styles.quietBtn}

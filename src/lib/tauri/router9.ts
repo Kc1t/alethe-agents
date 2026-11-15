@@ -12,6 +12,8 @@ export type Router9Status = {
   managed: Router9Install
   external: Router9Install
   running: boolean
+  /** A 9router Alethe did not start answers on the port; Alethe routes through it but cannot stop it. */
+  externalRunning: boolean
   portInUse: boolean
   port: number
   installDir: string

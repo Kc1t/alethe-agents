@@ -3365,6 +3365,8 @@ export const zhCN: Record<MessageKey, string> = {
     '在9router仪表板中生成。像其他本地集成凭证一样，以明文形式存储在配置文件文件夹中。',
   'router9.missingKey': '路由已打开，但未设置端点密钥，因此尚未进行任何路由。',
   'router9.portInUse': '端口 {port} 已被另一个进程占用。请停止该进程或选择其他端口。',
+  'router9.runningExternally':
+    '9router 正在 Alethe 之外运行。Alethe 可以通过它路由，但无法停止它。',
   'router9.pinnedMismatch': '已安装的版本与 Alethe 固定的版本不同。使用更新以切换到固定版本。',
   'router9.runningTerminalsHint':
     '关闭路由只会影响之后打开的终端。已经运行的代理会保留它们启动时的地址——重新启动它们以更改路由。',

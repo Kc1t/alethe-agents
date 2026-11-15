@@ -607,6 +607,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **9router started outside Alethe.** A 9router launched from a terminal, the tray or a login item
+  now shows as running in the title bar, Preferences and New Terminal, instead of off with a
+  port-in-use warning. Alethe routes through it but leaves stopping it to whatever started it.
 - ai-memory installs accept Unix archives with a root directory entry, find manually installed
   binaries outside the app PATH, and avoid duplicating Claude Code capture hooks already configured.
 - **Light terminal contrast.** Light themes, including plugin themes, enforce a WCAG-AA contrast

@@ -3767,6 +3767,8 @@ export const en = {
   'router9.missingKey': 'Routing is on but no endpoint key is set, so nothing is routed yet.',
   'router9.portInUse':
     'Port {port} is already taken by another process. Stop it or pick a different port.',
+  'router9.runningExternally':
+    '9router is running outside Alethe. Alethe routes through it but cannot stop it.',
   'router9.pinnedMismatch':
     'The installed version differs from the one Alethe pins. Use Update to move to the pinned version.',
   'router9.runningTerminalsHint':

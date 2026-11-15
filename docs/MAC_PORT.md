@@ -36,6 +36,12 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `backend` · fix(router9): show a 9router started outside Alethe as running
+  - Files: `src-tauri/src/router9.rs`, `src/lib/router9.ts`, `src/components/Router9/Router9Settings.tsx`
+  - Contract: `router9_status` adds `externalRunning`, true when the app's own child is not running
+    but the port answers `GET /api/version` with HTTP 200 and a `currentVersion` field. Treat that
+    as running, hide start/stop for it, and drop the port-in-use warning.
+
 - `pending` · `contract` · feat(terminal): preserve pane scroll and make Claude Code fullscreen rendering optional
   - Commit: Merge pull request #322 from MarkHiarley/fix/terminal-scroll-ownership
   - Also: `9135adde` fix(terminal): keep a pane's scroll with the reader; `8657a542` feat(terminal): make Claude Code's fullscreen renderer a preference; `0d1f31da` fix(terminal): close the gaps found porting #322

@@ -37,6 +37,7 @@ import { useSidebarViews } from '../../lib/viewPlacement'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { formatUsd, openRouterAlertLevel } from '../../lib/openrouterAlerts'
 import { formatShortcut, isMacOS } from '../../lib/platform'
+import { router9IsUp } from '../../lib/router9'
 import { codexHeadlineWindow, hasCodexWindow, killPty, remoteControlInfo } from '../../lib/tauri'
 import { usePomodoroStore } from '../../stores/pomodoroStore'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -117,15 +118,24 @@ function Router9PillButton() {
   const { config, status, hasInstall, busy, start, stop } = useRouter9Runtime()
   // Start/stop only applies to the local process; a remote gateway is always up.
   if (!config.enabled || config.mode === 'remote' || !hasInstall) return null
+  const up = router9IsUp(status)
+  // Alethe can only stop the copy it started; one launched elsewhere is shown, not controlled.
+  const external = Boolean(status?.externalRunning)
   return (
     <button
       type="button"
-      className={`${styles.ramPill} ${status?.running ? '' : styles.ramPressureMedium}`}
-      title={status?.running ? t('router9.pillStop') : t('router9.pillStart')}
-      disabled={busy}
-      onClick={() => void (status?.running ? stop() : start()).catch(() => undefined)}
+      className={`${styles.ramPill} ${up ? '' : styles.ramPressureMedium}`}
+      title={
+        external
+          ? t('router9.runningExternally')
+          : up
+            ? t('router9.pillStop')
+            : t('router9.pillStart')
+      }
+      disabled={busy || external}
+      onClick={() => void (up ? stop() : start()).catch(() => undefined)}
     >
-      9router {status?.running ? t('router9.pillOn') : t('router9.pillOff')}
+      9router {up ? t('router9.pillOn') : t('router9.pillOff')}
     </button>
   )
 }

@@ -23,7 +23,7 @@ import { useT } from '../../lib/i18n'
 import { basename, pathSegments } from '../../lib/paths'
 import { formatShortcut, isWindows } from '../../lib/platform'
 import { DEFAULT_GRID_ID } from '../../lib/projectGrids'
-import { router9RoutingReady } from '../../lib/router9'
+import { router9IsUp, router9RoutingReady } from '../../lib/router9'
 import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { wslTargetFor } from '../../lib/wsl'
 import { enableOrchestratorFeature } from '../../lib/orchestratorUsageAccess'
@@ -553,7 +553,7 @@ export function NewTerminalModal() {
                   </span>
                 </button>
 
-                {useRouter9 && !routingRemote && !router9.status?.running ? (
+                {useRouter9 && !routingRemote && !router9IsUp(router9.status) ? (
                   <button
                     type="button"
                     className={styles.router9Start}

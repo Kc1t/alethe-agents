@@ -8,6 +8,7 @@ import {
   router9BaseUrl,
   router9EnvFor,
   router9HasInstall,
+  router9IsUp,
   router9KeyEnvFor,
   router9RemoteChecks,
   router9RemoteUrlAllowed,
@@ -257,6 +258,7 @@ function statusWith(managed: boolean, external: boolean) {
       ? { installed: true, version: '0.5.40', path: 'C:/bin/9router' }
       : emptyInstall,
     running: false,
+    externalRunning: false,
     portInUse: false,
     port: 20128,
     installDir: '',
@@ -281,6 +283,19 @@ describe('router9ResolveSource', () => {
   it('returns null when nothing is installed', () => {
     expect(router9ResolveSource(statusWith(false, false), 'managed')).toBeNull()
     expect(router9ResolveSource(null, 'managed')).toBeNull()
+  })
+})
+
+describe('router9IsUp', () => {
+  it('counts a 9router started outside Alethe as up', () => {
+    expect(router9IsUp({ ...statusWith(false, true), externalRunning: true })).toBe(true)
+    expect(router9IsUp({ ...statusWith(true, false), running: true })).toBe(true)
+  })
+
+  it('stays down when nothing answers or the port belongs to another program', () => {
+    expect(router9IsUp(statusWith(true, true))).toBe(false)
+    expect(router9IsUp({ ...statusWith(true, true), portInUse: true })).toBe(false)
+    expect(router9IsUp(null)).toBe(false)
   })
 })
 
