@@ -244,6 +244,9 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 - `pending` · `backend` · alethe-orchestrate skill v12, vendored from `Kc1t/alethe-orchestrate`: setup onboarding that builds base, savings and aggressive profiles, `report`, `budget`, `mark`, `status`, `dry-run --write` with warnings, an SVG architecture preview, strategy playbooks with conditions and spare-quota rules, `references/briefs.md`
   - Files: `src-tauri/assets/skills/alethe-orchestrate/`, `src-tauri/assets/skills/sources.json`, `scripts/sync-skill.mjs`, `src-tauri/src/skills.rs`
   - Contract: the skill folder is platform-neutral; the Mac app ships the commit recorded in `sources.json` at version 12, the `metadata.version` in `SKILL.md`, and the user copy lives next to the policy as `alethe-playbooks.yaml` with `providers`, `adapters`, `routes`, `profiles` and `profile`. An orchestration folder may hold a `budget.json` (`version` 1, `limits` with `maxCalls`, `maxReportedCostUsd`, `maxReportedTokens`) and each worker folder a `mark.json` (`mark` of `used`, `partial` or `discarded`); the Windows-only `.cmd` shim handling has no Mac counterpart
+- `pending` · `ui` · fix(graphify): show an existing empty graph instead of a false generation timeout
+  - Files: `src/stores/graphifyStore.ts`
+  - Behavior: when `graphify_ensure_graph` reports the graph file already exists, read it once and display it even with zero nodes; only `generating`/`started` poll until nodes appear ([#180](https://github.com/Kc1t/alethe-agents/issues/180)).
 
 ## Since 1.7.0
 

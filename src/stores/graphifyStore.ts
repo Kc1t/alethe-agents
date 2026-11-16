@@ -70,6 +70,11 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
         return
       }
 
+      if (result === 'exists') {
+        await get().refreshGraph()
+        return
+      }
+
       const deadline = Date.now() + 60_000
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 500))
