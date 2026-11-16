@@ -638,6 +638,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Antigravity panes find a new conversation right away.** Alethe also reads Antigravity's
   `last_conversations.json`, so a chat started in a pane is saved and reopened even before
   `conversation_metadata.json` lists it, including in folders whose path has a space.
+- **An existing empty graph no longer reports a false timeout.** Generating the Graphify
+  knowledge graph for a repository whose graph file already exists but has zero nodes now shows
+  that graph immediately, instead of polling for a minute and failing with a generation timeout
+  ([#180](https://github.com/Kc1t/alethe-agents/issues/180)).
 - **Long Claude Code replies no longer get their earlier lines written over the newer ones on
   Windows** ([#303](https://github.com/Kc1t/alethe-agents/issues/303)). Panes force a terminal
   resize on many events (switching tabs, the inspector, resuming), and ConPTY repaints the whole
