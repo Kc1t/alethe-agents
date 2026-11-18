@@ -431,6 +431,17 @@ export function useXtermSession(params: {
       fontSize: TERMINAL_FONT_SIZE,
       theme: getXtermTheme(terminalTheme),
       minimumContrastRatio: getMinimumContrastRatio(terminalTheme),
+      // OSC 8 links bypass the link provider; xterm's default confirm()/window.open is a no-op in the webview.
+      linkHandler: {
+        activate: (event, uri) =>
+          showLinkActionsMenu(event, {
+            text: uri,
+            target: uri,
+            index: 0,
+            displayLength: uri.length,
+            kind: 'url',
+          }),
+      },
     })
     const fitAddon = new FitAddon()
     const searchAddon = new SearchAddon()
