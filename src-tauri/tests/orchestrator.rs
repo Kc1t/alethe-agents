@@ -1277,7 +1277,7 @@ fn a_claude_worker_reports_its_result_and_tokens() {
         "alethe_delegate",
         json!({ "tasks": ["do something"], "cwd": dir.to_string_lossy(), "agent": "claude" }),
     );
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    wait_for_job(&core, 20, |job| job["status"] == "done");
 
     let snapshot = core.snapshot();
     let job = &snapshot["jobs"][0];
@@ -1291,12 +1291,19 @@ fn a_claude_worker_reports_its_result_and_tokens() {
     assert_eq!(job["tokens"]["last"]["outputTokens"], 5);
     assert_eq!(job["costUsd"], 0.0123);
 
-    let restored = Core::default();
-    restored.set_store(store);
-    restored.restore();
-    let restored_snapshot = restored.snapshot();
-    let restored_job = &restored_snapshot["jobs"][0];
-    assert_eq!(restored_job["tokens"]["total"]["totalTokens"], 15);
+    // The store is written just after the job turns done.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let restored_job = loop {
+        let restored = Core::default();
+        restored.set_store(store.clone());
+        restored.restore();
+        let job = restored.snapshot()["jobs"][0].clone();
+        if job["tokens"]["total"]["totalTokens"] == 15 || std::time::Instant::now() > deadline {
+            break job;
+        }
+        thread::sleep(Duration::from_millis(100));
+    };
+    assert_eq!(restored_job["tokens"]["total"]["totalTokens"], 15, "{restored_job}");
     assert_eq!(restored_job["costUsd"], 0.0123);
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -1342,12 +1349,10 @@ fn a_claude_worker_picks_up_its_own_uncommitted_changes_as_a_diff() {
         "alethe_delegate",
         json!({ "tasks": ["edit file.txt"], "cwd": dir.to_string_lossy(), "agent": "claude" }),
     );
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    let snapshot = core.snapshot();
-    let job = &snapshot["jobs"][0];
-    assert_eq!(job["status"], "done");
-    assert_eq!(job["hasDiff"], true, "{snapshot}");
+    // The diff runs git more than once now (tracked, then untracked files): no fixed wait is enough.
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["hasDiff"], true, "{job}");
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1882,7 +1887,7 @@ fn steering_a_settled_claude_worker_queues_the_next_turn() {
         "alethe_delegate",
         json!({ "tasks": ["finish quickly"], "cwd": dir.to_string_lossy(), "agent": "claude" }),
     );
-    std::thread::sleep(std::time::Duration::from_millis(500));
+    wait_for_job(&core, 20, |job| job["status"] == "done");
 
     let job_id = core.snapshot()["jobs"][0]["id"]
         .as_str()
@@ -3135,4 +3140,1626 @@ fn the_codex_model_list_is_reused_instead_of_asked_again() {
     assert_eq!(first[0]["model"], "m1", "{first}");
     let runs = std::fs::read_to_string(dir.join("runs")).unwrap_or_default();
     assert_eq!(runs.lines().count(), 1, "codex was started {runs:?}");
+}
+
+// ------------------------------------------------------------------ Antigravity (agy) workers (#218)
+
+/// A fake `agy` that keeps reading stdin like the real one. It records its argv, its working folder
+/// and then the launch itself, and every stdin line, in `fake`, starts its `--log-file` over as agy does, answers
+/// `init` once, and for turn N plays `turnN.jsonl` (else `turn.jsonl`): first it waits `holdN`
+/// seconds when that file exists and appends `denyN.log` to its log, then `partialN.log` as it is,
+/// with no line break added; after the turn it appends `lateN.log` there 30 ms later. It appends the way agy does, leaving the log readable meanwhile. Its files live apart from the worker's folder, so they never show
+/// up in the worker's diff. Launched while `linger` exists, it leaves behind a process that holds
+/// its output open until `eof` appears (30 s at most), then writes `stale.jsonl` there, as a
+/// worker's own child can.
+fn scripted_agy_launcher(fake: &std::path::Path) -> Launcher {
+    #[cfg(windows)]
+    let (program, args): (&str, Vec<String>) = {
+        std::fs::write(
+            fake.join("linger.ps1"),
+            r#"$until = (Get-Date).AddSeconds(30)
+while (-not (Test-Path (Join-Path $PSScriptRoot 'eof')) -and (Get-Date) -lt $until) { Start-Sleep -Milliseconds 50 }
+$stale = Join-Path $PSScriptRoot 'stale.jsonl'
+if (Test-Path $stale) { foreach ($event in Get-Content $stale) { [Console]::Out.WriteLine($event) }; [Console]::Out.Flush() }
+"#,
+        )
+        .expect("write lingering child");
+        let script = fake.join("fake-agy.ps1");
+        std::fs::write(
+            &script,
+            r#"$dir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Content -Path (Join-Path $dir 'args.txt') -Value ($args -join "`n")
+Add-Content -Path (Join-Path $dir 'cwd.txt') -Value (Get-Location).Path
+Add-Content -Path (Join-Path $dir 'launches.txt') -Value 'launch'
+if (Test-Path (Join-Path $dir 'linger')) { Start-Process -NoNewWindow -FilePath powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File',"`"$(Join-Path $dir 'linger.ps1')`"" }
+$log = $null
+for ($i = 0; $i -lt $args.Count - 1; $i++) { if ($args[$i] -eq '--log-file') { $log = $args[$i + 1] } }
+function Write-Log($text) { try { [IO.File]::AppendAllText($log, "$text`n") } catch {} }
+if ($log) { try { [IO.File]::WriteAllText($log, "I0000 fake agy started`n") } catch {} }
+[Console]::Out.WriteLine('{"event":"init","conversation_id":"agy-conv","init":{}}')
+[Console]::Out.Flush()
+$turn = 0
+while ($null -ne ($line = [Console]::In.ReadLine())) {
+  $turn++
+  Add-Content -Path (Join-Path $dir 'stdin.txt') -Value $line
+  $hold = Join-Path $dir "hold$turn"
+  if (Test-Path $hold) { Start-Sleep -Seconds ([int](Get-Content $hold)) }
+  $deny = Join-Path $dir "deny$turn.log"
+  if ($log -and (Test-Path $deny)) { Write-Log ((Get-Content $deny) -join "`n") }
+  $part = Join-Path $dir "partial$turn.log"
+  if ($log -and (Test-Path $part)) { try { [IO.File]::AppendAllText($log, (Get-Content -Raw $part)) } catch {} }
+  $out = Join-Path $dir "turn$turn.jsonl"
+  if (-not (Test-Path $out)) { $out = Join-Path $dir 'turn.jsonl' }
+  foreach ($event in Get-Content $out) { [Console]::Out.WriteLine($event) }
+  [Console]::Out.Flush()
+  $late = Join-Path $dir "late$turn.log"
+  if ($log -and (Test-Path $late)) { Start-Sleep -Milliseconds 30; Write-Log ((Get-Content $late) -join "`n") }
+}
+"#,
+        )
+        .expect("write fake agy");
+        (
+            "powershell",
+            vec![
+                "-NoProfile".into(),
+                "-ExecutionPolicy".into(),
+                "Bypass".into(),
+                "-File".into(),
+                script.to_string_lossy().into_owned(),
+            ],
+        )
+    };
+    #[cfg(not(windows))]
+    let (program, args): (&str, Vec<String>) = {
+        let script = fake.join("fake-agy.sh");
+        std::fs::write(
+            &script,
+            r#"dir=$(dirname "$0")
+printf '%s\n' "$@" > "$dir/args.txt"
+pwd >> "$dir/cwd.txt"
+echo launch >> "$dir/launches.txt"
+if [ -f "$dir/linger" ]; then
+  (i=0; while [ ! -f "$dir/eof" ] && [ $i -lt 600 ]; do sleep 0.05; i=$((i + 1)); done
+   [ -f "$dir/stale.jsonl" ] && cat "$dir/stale.jsonl") &
+fi
+log=; prev=
+for arg in "$@"; do [ "$prev" = "--log-file" ] && log=$arg; prev=$arg; done
+if [ -n "$log" ]; then echo 'I0000 fake agy started' > "$log"; fi
+echo '{"event":"init","conversation_id":"agy-conv","init":{}}'
+turn=0
+while IFS= read -r line; do
+  turn=$((turn + 1))
+  printf '%s\n' "$line" >> "$dir/stdin.txt"
+  if [ -f "$dir/hold$turn" ]; then sleep "$(cat "$dir/hold$turn")"; fi
+  if [ -n "$log" ] && [ -f "$dir/deny$turn.log" ]; then { cat "$dir/deny$turn.log"; echo; } >> "$log"; fi
+  if [ -n "$log" ] && [ -f "$dir/partial$turn.log" ]; then cat "$dir/partial$turn.log" >> "$log"; fi
+  out="$dir/turn$turn.jsonl"; [ -f "$out" ] || out="$dir/turn.jsonl"
+  cat "$out"
+  if [ -n "$log" ] && [ -f "$dir/late$turn.log" ]; then sleep 0.03; { cat "$dir/late$turn.log"; echo; } >> "$log"; fi
+done
+"#,
+        )
+        .expect("write fake agy");
+        ("sh", vec![script.to_string_lossy().into_owned()])
+    };
+    Launcher {
+        kind: "antigravity".into(),
+        program: PathBuf::from(program),
+        args,
+        env: Vec::new(),
+    }
+}
+
+/// One `result` line of agy 1.3.3; its usage is cumulative over the conversation.
+fn agy_result(response: &str, input: u64, output: u64, total: u64) -> String {
+    json!({
+        "event": "result",
+        "result": {
+            "conversation_id": "agy-conv",
+            "status": "SUCCESS",
+            "response": response,
+            "num_turns": 1,
+            "usage": {
+                "input_tokens": input,
+                "output_tokens": output,
+                "thinking_tokens": 0,
+                "cache_read_tokens": 0,
+                "total_tokens": total
+            }
+        }
+    })
+    .to_string()
+}
+
+fn agy_delta(text: &str) -> String {
+    json!({
+        "event": "step_update",
+        "step_update": {
+            "conversation_id": "agy-conv",
+            "step_index": 3,
+            "state": "ACTIVE",
+            "step_type": "agent_response",
+            "text_delta": text
+        }
+    })
+    .to_string()
+}
+
+/// Polls job-01 until `done` holds or `secs` pass, and returns its last snapshot.
+fn wait_for_job(core: &Core, secs: u64, done: impl Fn(&Value) -> bool) -> Value {
+    let deadline = std::time::Instant::now() + Duration::from_secs(secs);
+    loop {
+        let job = core.snapshot()["jobs"][0].clone();
+        if done(&job) || std::time::Instant::now() > deadline {
+            return job;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+/// What the fake wrote; Windows PowerShell writes it in the ANSI code page, not UTF-8.
+fn read_lossy(path: &std::path::Path) -> String {
+    String::from_utf8_lossy(&std::fs::read(path).unwrap_or_default()).into_owned()
+}
+
+/// The lines of `path` once it has at least `count` of them, or what it has after `secs`.
+fn wait_for_lines(path: &std::path::Path, count: usize, secs: u64) -> Vec<String> {
+    let deadline = std::time::Instant::now() + Duration::from_secs(secs);
+    loop {
+        let lines: Vec<String> = read_lossy(path).lines().map(ToOwned::to_owned).collect();
+        if lines.len() >= count || std::time::Instant::now() > deadline {
+            return lines;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn git_repo(dir: &std::path::Path) {
+    for args in [
+        vec!["init", "-q"],
+        vec!["config", "user.email", "lab@example.com"],
+        vec!["config", "user.name", "lab"],
+    ] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(dir)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+    std::fs::write(dir.join("seed.txt"), "seed\n").expect("seed");
+    for args in [vec!["add", "-A"], vec!["commit", "-qm", "seed"]] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(dir)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+}
+
+#[test]
+fn the_antigravity_launcher_streams_turns_in_accept_edits_and_never_bypasses() {
+    let launcher = Launcher::antigravity_headless(PathBuf::from("agy"));
+    assert_eq!(launcher.kind, "antigravity");
+    // `-p` takes the prompt as its value in agy, so stdin streaming runs without it.
+    assert_eq!(
+        launcher.args,
+        [
+            "--input-format",
+            "stream-json",
+            "--output-format",
+            "stream-json",
+            "--project",
+            "alethe-worker",
+            "--mode",
+            "accept-edits",
+            "--sandbox"
+        ]
+    );
+    assert!(!launcher
+        .args
+        .iter()
+        .any(|arg| arg == "--dangerously-skip-permissions"));
+}
+
+// agy 1.3.3 refuses a variant id next to --effort at start-up (exit 1), so the core never builds it.
+#[test]
+fn an_antigravity_worker_runs_a_variant_or_a_family_with_effort_but_never_both() {
+    let args = |resume, model, effort| {
+        orchestrator_core::agy_worker_args(r"C:\wt", r"C:\jobs\agy-cli.log", resume, model, effort)
+    };
+    assert_eq!(
+        args(None, Some("claude-sonnet-5-5-medium"), None).expect("a variant alone"),
+        [
+            "--add-dir",
+            r"C:\wt",
+            "--model",
+            "claude-sonnet-5-5-medium",
+            "--log-file",
+            r"C:\jobs\agy-cli.log"
+        ]
+    );
+    assert_eq!(
+        args(Some("conv-9"), Some("claude-sonnet-5-5"), Some("high")).expect("a family"),
+        [
+            "--add-dir",
+            r"C:\wt",
+            "--model",
+            "claude-sonnet-5-5",
+            "--effort",
+            "high",
+            "--log-file",
+            r"C:\jobs\agy-cli.log",
+            "--conversation",
+            "conv-9"
+        ]
+    );
+    assert_eq!(
+        args(None, None, None).expect("the CLI default"),
+        ["--add-dir", r"C:\wt", "--log-file", r"C:\jobs\agy-cli.log"]
+    );
+    assert!(args(None, Some("claude-sonnet-5-5-medium"), Some("high")).is_err());
+    assert!(args(None, Some("gemini-3.8-flash-low"), Some("low")).is_err());
+    // Effort alone would ride on whatever variant agy defaults to.
+    assert!(args(None, None, Some("high")).is_err());
+}
+
+#[test]
+fn antigravity_refuses_what_it_cannot_enforce_before_creating_anything() {
+    let dir = workspace("agy-refused");
+    let core = Core::default();
+    // `isolate` outside a repository would fail later, so a refusal naming the flag came first.
+    for (arguments, named) in [
+        (json!({ "readOnly": true }), "readOnly"),
+        (json!({ "askForApproval": true }), "askForApproval"),
+        (
+            json!({ "model": "claude-sonnet-5-5-medium", "effort": "high" }),
+            "effort",
+        ),
+        (json!({ "effort": "high" }), "effort"),
+    ] {
+        let mut call_arguments = json!({
+            "tasks": ["review"],
+            "cwd": dir.to_string_lossy(),
+            "agent": "antigravity",
+            "isolate": true
+        });
+        for (key, value) in arguments.as_object().expect("arguments") {
+            call_arguments[key] = value.clone();
+        }
+        let refused = call(&core, "alethe_delegate", call_arguments);
+        let error = refused["error"].as_str().unwrap_or_default().to_string();
+        assert!(error.contains(named), "{arguments}: {refused}");
+    }
+    assert_eq!(core.snapshot()["jobs"], json!([]));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_antigravity_worker_takes_its_follow_up_on_the_same_process() {
+    let dir = workspace("agy-turns");
+    let fake = workspace("agy-turns-fake");
+    std::fs::write(
+        fake.join("turn1.jsonl"),
+        format!(
+            "{}\n{}\n",
+            agy_delta("FIRST"),
+            agy_result("FIRST", 100, 10, 110)
+        ),
+    )
+    .expect("turn 1");
+    // agy's own total leaves reasoning out (measured with agy 1.3.3); the board counts it as output.
+    let mut second: Value =
+        serde_json::from_str(&agy_result("SECOND", 250, 25, 275)).expect("result");
+    second["result"]["usage"]["thinking_tokens"] = json!(5);
+    std::fs::write(fake.join("turn2.jsonl"), format!("{second}\n")).expect("turn 2");
+    let core = Core::default();
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({
+            "tasks": ["first task"],
+            "cwd": dir.to_string_lossy(),
+            "agent": "antigravity",
+            "model": "claude-sonnet-5-5",
+            "effort": "high"
+        }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert_eq!(job["agent"], "antigravity", "{job}");
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["outcome"], "succeeded", "{job}");
+    assert_eq!(job["threadId"], "agy-conv", "{job}");
+    assert_eq!(job["summary"], "FIRST", "{job}");
+    assert_eq!(job["tokens"]["last"]["inputTokens"], 100, "{job}");
+    assert_eq!(job["tokens"]["total"]["totalTokens"], 110, "{job}");
+    // Outside a repository there is no diff to report, and no failure to report either.
+    assert_eq!(job["hasDiff"], false, "{job}");
+
+    let sent = call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "second task" }),
+    );
+    assert_eq!(sent["sent"], json!("job-01"), "{sent}");
+    let job = wait_for_job(&core, 20, |job| job["summary"] == "SECOND");
+    assert_eq!(job["status"], "done", "{job}");
+    // agy reports usage for the whole conversation, so a turn's own is the difference.
+    assert_eq!(job["tokens"]["last"]["inputTokens"], 150, "{job}");
+    assert_eq!(job["tokens"]["last"]["outputTokens"], 20, "{job}");
+    assert_eq!(job["tokens"]["last"]["totalTokens"], 170, "{job}");
+    assert_eq!(job["tokens"]["total"]["totalTokens"], 280, "{job}");
+
+    let launches = wait_for_lines(&fake.join("launches.txt"), 1, 5);
+    assert_eq!(launches.len(), 1, "a follow-up started another agy");
+    let stdin = wait_for_lines(&fake.join("stdin.txt"), 2, 5);
+    assert_eq!(stdin.len(), 2, "{stdin:?}");
+    let first: Value = serde_json::from_str(&stdin[0]).expect("a json line");
+    assert_eq!(first["event"], "user", "{first}");
+    assert!(first.get("type").is_none(), "{first}");
+    assert!(stdin[1].contains("second task"), "{stdin:?}");
+
+    let args = wait_for_lines(&fake.join("args.txt"), 1, 5);
+    let after = |flag: &str| {
+        args.iter()
+            .position(|arg| arg == flag)
+            .and_then(|at| args.get(at + 1))
+            .cloned()
+            .unwrap_or_default()
+    };
+    // Resolved: on macOS the temp folder is behind a link, on Windows CI behind a short name.
+    assert_eq!(
+        std::fs::canonicalize(after("--add-dir")).ok(),
+        std::fs::canonicalize(&dir).ok(),
+        "{args:?}"
+    );
+    assert_eq!(after("--model"), "claude-sonnet-5-5", "{args:?}");
+    assert_eq!(after("--effort"), "high", "{args:?}");
+    assert!(after("--log-file").ends_with("agy-cli.log"), "{args:?}");
+    assert!(!args.iter().any(|arg| arg == "--conversation"), "{args:?}");
+
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+}
+
+#[test]
+fn a_revived_antigravity_worker_resumes_its_conversation() {
+    let dir = workspace("agy-resume");
+    let fake = workspace("agy-resume-fake");
+    std::fs::write(
+        fake.join("turn.jsonl"),
+        format!("{}\n", agy_result("DONE", 10, 1, 11)),
+    )
+    .expect("turn");
+    let core = Core::default();
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["task"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert_eq!(job["threadId"], "agy-conv", "{job}");
+    // Its process goes; its conversation stays with agy.
+    call(&core, "alethe_release", json!({ "jobIds": ["job-01"] }));
+
+    let sent = call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "carry on" }),
+    );
+    assert_eq!(sent["revived"], json!("job-01"), "{sent}");
+    let launches = wait_for_lines(&fake.join("launches.txt"), 2, 20);
+    assert_eq!(launches.len(), 2, "the worker was not started again");
+    let args = wait_for_lines(&fake.join("args.txt"), 1, 5);
+    let at = args
+        .iter()
+        .position(|arg| arg == "--conversation")
+        .unwrap_or_else(|| panic!("no --conversation: {args:?}"));
+    assert_eq!(args[at + 1], "agy-conv", "{args:?}");
+    assert!(args.iter().any(|arg| arg == "--add-dir"), "{args:?}");
+
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+}
+
+#[test]
+fn antigravity_steers_wait_for_the_turn_and_go_first_in_the_order_sent() {
+    let dir = workspace("agy-steer");
+    let fake = workspace("agy-steer-fake");
+    std::fs::write(fake.join("hold1"), "4").expect("hold");
+    std::fs::write(
+        fake.join("turn.jsonl"),
+        format!("{}\n", agy_result("OK", 1, 1, 2)),
+    )
+    .expect("turn");
+    let core = Core::default();
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["first task"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["threadId"] == "agy-conv");
+    assert_eq!(job["status"], "running", "{job}");
+
+    let sent = call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "follow-up" }),
+    );
+    assert_eq!(sent["queued"], json!("job-01"), "{sent}");
+    // agy has no interrupt: a steer waits for the turn, then runs ahead of queued work.
+    let steered = call(
+        &core,
+        "alethe_steer",
+        json!({ "jobId": "job-01", "message": "turn A" }),
+    );
+    assert_eq!(steered["queued"], json!("job-01"), "{steered}");
+    assert!(steered["note"].as_str().is_some(), "{steered}");
+    call(
+        &core,
+        "alethe_steer",
+        json!({ "jobId": "job-01", "message": "turn B" }),
+    );
+    assert_eq!(core.snapshot()["jobs"][0]["status"], "running");
+
+    let stdin = wait_for_lines(&fake.join("stdin.txt"), 4, 30);
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    assert_eq!(stdin.len(), 4, "{stdin:?}");
+    assert!(stdin[1].contains("turn A"), "{stdin:?}");
+    assert!(stdin[2].contains("turn B"), "{stdin:?}");
+    assert!(stdin[3].contains("follow-up"), "{stdin:?}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+}
+
+#[test]
+fn cancelling_an_antigravity_worker_tears_it_down_without_a_codex_rpc() {
+    let dir = workspace("agy-cancel");
+    let fake = workspace("agy-cancel-fake");
+    std::fs::write(fake.join("hold1"), "60").expect("hold");
+    std::fs::write(fake.join("turn.jsonl"), "").expect("turn");
+    let core = Core::default();
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["hold"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let stdin = wait_for_lines(&fake.join("stdin.txt"), 1, 20);
+    assert_eq!(stdin.len(), 1, "the first turn never arrived");
+
+    assert_eq!(core.cancel_jobs(&["job-01".to_string()]), ["job-01"]);
+    let job = core.snapshot()["jobs"][0].clone();
+    assert_eq!(job["status"], "cancelled", "{job}");
+    assert_eq!(core.counts().0, 0, "the slot was not freed");
+    thread::sleep(Duration::from_millis(500));
+    assert_only_the_first_turn_was_written(&fake);
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+}
+
+/// agy takes no JSON-RPC: the one line it got is its first turn, and no interrupt followed it.
+fn assert_only_the_first_turn_was_written(fake: &std::path::Path) {
+    let stdin = read_lossy(&fake.join("stdin.txt"));
+    assert_eq!(stdin.lines().count(), 1, "{stdin}");
+    let first: Value = serde_json::from_str(stdin.trim()).expect("a json line");
+    assert_eq!(first["event"], "user", "{first}");
+}
+
+#[test]
+fn an_antigravity_worker_past_its_budget_is_stopped() {
+    let dir = workspace("agy-timeout");
+    let fake = workspace("agy-timeout-fake");
+    std::fs::write(fake.join("hold1"), "60").expect("hold");
+    std::fs::write(fake.join("turn.jsonl"), "").expect("turn");
+    let core = Core::default();
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({
+            "tasks": ["hang"],
+            "cwd": dir.to_string_lossy(),
+            "agent": "antigravity",
+            "timeoutSeconds": 3
+        }),
+    );
+    let checked = call(
+        &core,
+        "alethe_check",
+        json!({ "wait": true, "timeoutMs": 30000 }),
+    );
+    let deliveries = checked["deliveries"].as_array().expect("deliveries");
+    assert_eq!(deliveries.len(), 1, "{checked}");
+    assert_eq!(deliveries[0]["outcome"], json!("timeout"), "{checked}");
+    assert_eq!(checked["workersStillBusy"], json!(0), "{checked}");
+    assert_only_the_first_turn_was_written(&fake);
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+}
+
+// The cut of a long reply used to land inside a multi-byte character and abort the app (#256).
+#[test]
+fn a_long_unicode_reply_from_antigravity_is_kept_whole_at_its_end() {
+    let dir = workspace("agy-unicode");
+    let core = Core::default();
+    let transcript = format!(
+        "{}\n{}\n{}\n{}\n",
+        r#"{"event":"init","conversation_id":"agy-utf8","init":{}}"#,
+        agy_delta(&"ã".repeat(16_000)),
+        agy_delta("a"),
+        agy_result("revisão concluída ✓", 1, 1, 2),
+    );
+    let mut launcher = fake_claude_launcher(&dir, &transcript);
+    launcher.kind = "antigravity".into();
+    core.set_launcher(launcher);
+    // This fake only replays its output, so the log agy would have started is made here.
+    let store = workspace("agy-unicode-store");
+    core.set_store(store.join("orchestrator.json"));
+    let log = agy_log_of_first_job(&store);
+    std::fs::create_dir_all(log.parent().expect("job dir")).expect("job dir");
+    std::fs::write(&log, "I0000 started\n").expect("log");
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["write"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["summary"], "revisão concluída ✓", "{job}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+/// Where the core puts job-01's agy log for a core whose store is in `store`.
+fn agy_log_of_first_job(store: &std::path::Path) -> PathBuf {
+    store.join("jobs").join("job-01").join("agy-cli.log")
+}
+
+fn agy_tool_step(index: u64, state: &str) -> String {
+    json!({
+        "event": "step_update",
+        "step_update": {
+            "conversation_id": "agy-conv",
+            "step_index": index,
+            "state": state,
+            "step_type": "tool",
+            "tool_name": "run_command",
+            "tool_info": { "name": "run_command", "parameters": { "CommandLine": "whoami" } }
+        }
+    })
+    .to_string()
+}
+
+// The log is the only exact record of a denial: a turn it cannot be checked against is not done.
+#[test]
+fn an_antigravity_turn_whose_log_is_missing_is_not_done() {
+    let dir = workspace("agy-log-missing");
+    let store = workspace("agy-log-missing-store");
+    let core = Core::default();
+    core.set_store(store.join("orchestrator.json"));
+    let transcript = format!(
+        "{}\n{}\n{}\n",
+        r#"{"event":"init","conversation_id":"agy-nolog","init":{}}"#,
+        agy_tool_step(4, "ERROR"),
+        agy_result("all done", 1, 1, 2),
+    );
+    let mut launcher = fake_claude_launcher(&dir, &transcript);
+    launcher.kind = "antigravity".into();
+    core.set_launcher(launcher);
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+    assert_eq!(job["status"], "failed", "{job}");
+    let summary = job["summary"].as_str().unwrap_or_default();
+    assert!(summary.contains("agy's log"), "{job}");
+    assert!(summary.contains("all done"), "the reply was dropped: {job}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn an_antigravity_turn_whose_log_cannot_be_read_is_not_done() {
+    let dir = workspace("agy-log-unreadable");
+    let fake = workspace("agy-log-unreadable-fake");
+    let store = workspace("agy-log-unreadable-store");
+    // A folder where the log file should be: it exists, but no read of it succeeds.
+    std::fs::create_dir_all(agy_log_of_first_job(&store)).expect("a folder in the log's place");
+    std::fs::write(
+        fake.join("turn.jsonl"),
+        format!("{}\n", agy_result("all done", 1, 1, 2)),
+    )
+    .expect("turn");
+    let core = Core::default();
+    core.set_store(store.join("orchestrator.json"));
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    assert_eq!(job["status"], "failed", "{job}");
+    let summary = job["summary"].as_str().unwrap_or_default();
+    assert!(summary.contains("agy's log"), "{job}");
+    assert!(summary.contains("all done"), "the reply was dropped: {job}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+// agy logged the denial about 40 ms before `result` in the one run measured; a line that lands just
+// after it still belongs to the turn whose step it names.
+#[test]
+fn a_denial_logged_just_after_the_result_still_blocks_its_turn() {
+    let dir = workspace("agy-late-denial");
+    let fake = workspace("agy-late-denial-fake");
+    let store = workspace("agy-late-denial-store");
+    std::fs::write(
+        fake.join("turn1.jsonl"),
+        format!(
+            "{}\n{}\n",
+            agy_tool_step(9, "ERROR"),
+            agy_result("looks fine", 1, 1, 2)
+        ),
+    )
+    .expect("turn 1");
+    std::fs::write(
+        fake.join("late1.log"),
+        "I1010 04:11:11 soft-denying tool confirmation \"RunCommand\" at step 9",
+    )
+    .expect("late 1");
+    // The contract: a soft-denied command step can also end DONE, with no error at all.
+    std::fs::write(
+        fake.join("turn2.jsonl"),
+        format!(
+            "{}\n{}\n",
+            agy_tool_step(12, "DONE"),
+            agy_result("still fine", 2, 2, 4)
+        ),
+    )
+    .expect("turn 2");
+    std::fs::write(
+        fake.join("late2.log"),
+        "I1010 04:11:14 soft-denying tool confirmation \"RunCommand\" at step 12",
+    )
+    .expect("late 2");
+    let core = Core::default();
+    core.set_store(store.join("orchestrator.json"));
+    core.set_launcher(scripted_agy_launcher(&fake));
+    // The fake writes each late line 30 ms after `result`; on a loaded machine that write could
+    // land after the production wait (ACH-0022), so this core waits long enough for it anyway.
+    core.set_agy_log_grace(Duration::from_secs(2));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+    assert_eq!(job["outcome"], "blocked", "{job}");
+    assert!(
+        job["summary"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("at step 9"),
+        "{job}"
+    );
+
+    call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "again" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running"
+            && !job["summary"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("at step 9")
+    });
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    assert_eq!(job["outcome"], "blocked", "{job}");
+    assert!(
+        job["summary"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("at step 12"),
+        "{job}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn a_denial_line_for_an_earlier_turns_step_does_not_block_the_next_turn() {
+    let dir = workspace("agy-stale-denial");
+    let fake = workspace("agy-stale-denial-fake");
+    let store = workspace("agy-stale-denial-store");
+    std::fs::write(
+        fake.join("turn1.jsonl"),
+        format!(
+            "{}\n{}\n",
+            agy_tool_step(4, "DONE"),
+            agy_result("first", 1, 1, 2)
+        ),
+    )
+    .expect("turn 1");
+    // Step 4 was turn 1's; its line reaches the log only while turn 2 runs.
+    std::fs::write(
+        fake.join("deny2.log"),
+        "I1010 04:11:12 soft-denying tool confirmation \"RunCommand\" at step 4",
+    )
+    .expect("deny 2");
+    std::fs::write(
+        fake.join("turn2.jsonl"),
+        format!(
+            "{}\n{}\n",
+            agy_tool_step(8, "DONE"),
+            agy_result("second", 2, 2, 4)
+        ),
+    )
+    .expect("turn 2");
+    let core = Core::default();
+    core.set_store(store.join("orchestrator.json"));
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    wait_for_job(&core, 20, |job| job["summary"] == "first");
+    call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "next" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["summary"] != "first"
+    });
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["summary"], "second", "{job}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+// agy 1.3.3 starts its `--log-file` over on every launch (measured), so a resumed worker's log can
+// outgrow the last run's with its denial inside what the last run had already read.
+#[test]
+fn a_resumed_antigravity_worker_sees_a_denial_early_in_its_restarted_log() {
+    let dir = workspace("agy-restarted-log");
+    let fake = workspace("agy-restarted-log-fake");
+    let store = workspace("agy-restarted-log-store");
+    let chatter = "I1010 04:11:10 plain agy chatter\n".repeat(40);
+    std::fs::write(fake.join("deny1.log"), chatter.trim_end()).expect("deny 1");
+    std::fs::write(
+        fake.join("turn1.jsonl"),
+        format!("{}\n", agy_result("first", 1, 1, 2)),
+    )
+    .expect("turn 1");
+    let core = Core::default();
+    core.set_store(store.join("orchestrator.json"));
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert_eq!(job["summary"], "first", "{job}");
+    call(&core, "alethe_release", json!({ "jobIds": ["job-01"] }));
+
+    // The revived process plays turn 1 again: its denial first, then more than the old log held.
+    std::fs::write(
+        fake.join("deny1.log"),
+        format!(
+            "I1010 04:12:00 soft-denying tool confirmation \"RunCommand\" at step 20\n{}",
+            chatter.repeat(2).trim_end()
+        ),
+    )
+    .expect("deny 1 again");
+    std::fs::write(
+        fake.join("turn1.jsonl"),
+        format!(
+            "{}\n{}\n",
+            agy_tool_step(20, "DONE"),
+            agy_result("second", 2, 2, 4)
+        ),
+    )
+    .expect("turn 1 again");
+    let sent = call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "carry on" }),
+    );
+    assert_eq!(sent["revived"], json!("job-01"), "{sent}");
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued" && job["summary"] != "first"
+    });
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    assert_eq!(job["outcome"], "blocked", "{job}");
+    assert!(
+        job["summary"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("at step 20"),
+        "{job}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+/// Plays a turn on a `kind` worker the scripted fake stands in for and releases it while a process
+/// it left behind still holds its output open. Only once the worker is revived does that output say
+/// `stale` (when asked) and close, while the revived turn is still in flight. `turn` is the input
+/// line, counted from each launch, that `reply` answers; `opening` are the fake's other files.
+fn revive_while_the_released_output_is_open(
+    kind: &str,
+    turn: usize,
+    opening: &[(&str, String)],
+    reply: impl Fn(&str) -> String,
+    stale: bool,
+) -> Value {
+    let dir = workspace(&format!("late-eof-{kind}"));
+    git_repo(&dir);
+    let fake = workspace(&format!("late-eof-{kind}-fake"));
+    for (name, text) in opening {
+        std::fs::write(fake.join(name), text).expect("opening");
+    }
+    let played = fake.join(format!("turn{turn}.jsonl"));
+    std::fs::write(&played, reply("first")).expect("first turn");
+    std::fs::write(fake.join("linger"), "").expect("linger");
+    let core = Core::default();
+    let mut launcher = scripted_agy_launcher(&fake);
+    launcher.kind = kind.into();
+    core.set_launcher(launcher);
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": kind }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert_eq!(job["summary"], "first", "{job}");
+    call(&core, "alethe_release", json!({ "jobIds": ["job-01"] }));
+
+    std::fs::remove_file(fake.join("linger")).expect("linger gone");
+    std::fs::write(fake.join(format!("hold{turn}")), "3").expect("hold");
+    std::fs::write(&played, reply("second")).expect("second turn");
+    if stale {
+        std::fs::write(fake.join("stale.jsonl"), reply("stale")).expect("stale");
+    }
+    let sent = call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "carry on" }),
+    );
+    assert_eq!(sent["revived"], json!("job-01"), "{sent}");
+    let launches = wait_for_lines(&fake.join("launches.txt"), 2, 20);
+    assert_eq!(launches.len(), 2, "the worker was not started again");
+    // The released process's output closes only now, inside the revived turn's hold.
+    std::fs::write(fake.join("eof"), "").expect("eof");
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    job
+}
+
+// ACH-0023: a released worker's process said nothing more, but its output closing after the revive
+// failed the revived run with "worker connection closed".
+#[test]
+fn a_released_antigravity_process_closing_late_does_not_end_its_revived_run() {
+    let job = revive_while_the_released_output_is_open(
+        "antigravity",
+        1,
+        &[],
+        |text| format!("{}\n", agy_result(text, 1, 1, 2)),
+        false,
+    );
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["summary"], "second", "{job}");
+}
+
+#[test]
+fn a_released_claude_process_speaking_late_does_not_reach_its_revived_run() {
+    let job = revive_while_the_released_output_is_open(
+        "claude",
+        1,
+        &[],
+        |text| {
+            format!(
+                "{}\n{}\n",
+                r#"{"type":"system","subtype":"init","session_id":"late-session"}"#,
+                json!({ "type": "result", "is_error": false, "result": text })
+            )
+        },
+        true,
+    );
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["summary"], "second", "{job}");
+}
+
+#[test]
+fn a_released_codex_process_speaking_late_does_not_reach_its_revived_run() {
+    // Input lines 1-3 are initialize, initialized and the thread's opening; line 4 is the turn.
+    let thread = json!({ "id": 2, "result": { "thread": { "id": "late-thread" } } });
+    let job = revive_while_the_released_output_is_open(
+        "codex",
+        4,
+        &[("turn3.jsonl", format!("{thread}\n"))],
+        |text| {
+            format!(
+                "{}\n{}\n",
+                json!({ "method": "item/completed", "params": { "item": { "type": "agentMessage", "text": text } } }),
+                json!({ "method": "turn/completed", "params": {} })
+            )
+        },
+        true,
+    );
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["summary"], "second", "{job}");
+}
+
+// The released process's reader may already have found an event current when the release lands; the
+// revive must still not start its run under that event.
+#[test]
+fn an_event_found_current_before_a_release_never_lands_in_the_revived_run() {
+    let dir = workspace("held-event");
+    git_repo(&dir);
+    let fake = workspace("held-event-fake");
+    let thread_reply = json!({ "id": 2, "result": { "thread": { "id": "held-thread" } } });
+    std::fs::write(fake.join("turn3.jsonl"), format!("{thread_reply}\n")).expect("thread");
+    let said = |text: &str| {
+        let item = json!({ "type": "agentMessage", "text": text });
+        json!({ "method": "item/completed", "params": { "item": item } })
+    };
+    let completed = json!({ "method": "turn/completed", "params": {} });
+    // Its last line comes after the turn ended, so the reader takes it while the job is done.
+    let late = json!({ "method": "turn/completed", "params": { "late": true } });
+    std::fs::write(
+        fake.join("turn4.jsonl"),
+        format!("{}\n{completed}\n{late}\n", said("first")),
+    )
+    .expect("turn 4");
+    let core = Core::default();
+    let mut launcher = scripted_agy_launcher(&fake);
+    launcher.kind = "codex".into();
+    core.set_launcher(launcher);
+    let (reached, held) = std::sync::mpsc::channel();
+    let (resume, go) = std::sync::mpsc::channel::<()>();
+    let go = Mutex::new(go);
+    core.set_reader_hook(Arc::new(move |message: &Value| {
+        if message["params"]["late"] == true {
+            let _ = reached.send(());
+            let _ = go.lock().expect("go").recv();
+        }
+    }));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "codex" }),
+    );
+    held.recv_timeout(Duration::from_secs(20))
+        .expect("the reader took the late line");
+    let job = core.snapshot()["jobs"][0].clone();
+    assert_eq!(job["summary"], "first", "{job}");
+
+    call(&core, "alethe_release", json!({ "jobIds": ["job-01"] }));
+    std::fs::write(fake.join("hold4"), "3").expect("hold");
+    std::fs::write(
+        fake.join("turn4.jsonl"),
+        format!("{}\n{completed}\n", said("second")),
+    )
+    .expect("turn 4 again");
+    let reviver = core.clone();
+    let (answered, answer) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let sent = call(
+            &reviver,
+            "alethe_send",
+            json!({ "jobId": "job-01", "message": "carry on" }),
+        );
+        let _ = answered.send(sent);
+    });
+    // A revive that does not wait for the held event gets this long to start its run first.
+    let early = answer.recv_timeout(Duration::from_secs(2));
+    resume.send(()).expect("the reader goes on");
+    let sent = early
+        .or_else(|_| answer.recv_timeout(Duration::from_secs(20)))
+        .expect("the revive answered");
+    assert_eq!(sent["revived"], json!("job-01"), "{sent}");
+    let job = wait_for_job(&core, 20, |job| {
+        !["running", "queued", "released"].contains(&job["status"].as_str().unwrap_or_default())
+    });
+
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["summary"], "second", "{job}");
+}
+
+/// A Codex worker the scripted fake plays says "first", is released, and is revived into a turn
+/// that streams "second" as deltas only, with no `item/completed` of its own. With `late`, the
+/// first process also says "stale" after its turn ended, held by its reader until the release has
+/// landed. Returns the revived run's job.
+fn revive_into_a_turn_without_its_own_report(late: bool) -> Value {
+    let tag = if late { "late-report" } else { "kept-report" };
+    let dir = workspace(tag);
+    let fake = workspace(&format!("{tag}-fake"));
+    let thread_reply = json!({ "id": 2, "result": { "thread": { "id": "report-thread" } } });
+    std::fs::write(fake.join("turn3.jsonl"), format!("{thread_reply}\n")).expect("thread");
+    let said = |text: &str, late: bool| {
+        let item = json!({ "type": "agentMessage", "text": text });
+        json!({ "method": "item/completed", "params": { "item": item, "late": late } })
+    };
+    let completed = json!({ "method": "turn/completed", "params": {} });
+    let mut first = format!("{}\n{completed}\n", said("first", false));
+    if late {
+        first.push_str(&format!("{}\n", said("stale", true)));
+    }
+    std::fs::write(fake.join("turn4.jsonl"), first).expect("turn 4");
+    let core = Core::default();
+    let mut launcher = scripted_agy_launcher(&fake);
+    launcher.kind = "codex".into();
+    core.set_launcher(launcher);
+    let (reached, held) = std::sync::mpsc::channel();
+    let (resume, go) = std::sync::mpsc::channel::<()>();
+    let go = Mutex::new(go);
+    core.set_reader_hook(Arc::new(move |message: &Value| {
+        if message["params"]["late"] == true {
+            let _ = reached.send(());
+            let _ = go.lock().expect("go").recv();
+        }
+    }));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "codex" }),
+    );
+    if late {
+        held.recv_timeout(Duration::from_secs(20))
+            .expect("the reader took the late line");
+    }
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert_eq!(job["summary"], "first", "{job}");
+    call(&core, "alethe_release", json!({ "jobIds": ["job-01"] }));
+    if late {
+        resume.send(()).expect("the reader goes on");
+        let job = wait_for_job(&core, 20, |job| job["summary"] == "stale");
+        assert_eq!(job["summary"], "stale", "the late line never landed: {job}");
+    }
+
+    let delta = json!({ "method": "item/agentMessage/delta", "params": { "delta": "second" } });
+    std::fs::write(fake.join("turn4.jsonl"), format!("{delta}\n{completed}\n")).expect("turn 4");
+    let sent = call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "carry on" }),
+    );
+    assert_eq!(sent["revived"], json!("job-01"), "{sent}");
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    job
+}
+
+#[test]
+fn a_report_written_after_the_release_is_not_delivered_by_the_revived_run() {
+    let job = revive_into_a_turn_without_its_own_report(true);
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["summary"], "second", "{job}");
+}
+
+#[test]
+fn a_revived_turn_without_its_own_report_does_not_deliver_the_last_one() {
+    let job = revive_into_a_turn_without_its_own_report(false);
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["summary"], "second", "{job}");
+}
+
+// agy wrote whole lines in every run measured, but a line caught mid-write may be this turn's denial.
+#[test]
+fn a_denial_line_still_being_written_never_reads_as_no_denial() {
+    let dir = workspace("agy-partial-denial");
+    let fake = workspace("agy-partial-denial-fake");
+    let store = workspace("agy-partial-denial-store");
+    let denial = |step: u64| {
+        format!("I1010 04:11:11 soft-denying tool confirmation \"RunCommand\" at step {step}")
+    };
+    // Turn 1: the line ends 30 ms after `result`, inside the wait.
+    std::fs::write(fake.join("partial1.log"), denial(9)).expect("partial 1");
+    std::fs::write(fake.join("late1.log"), "").expect("late 1");
+    std::fs::write(
+        fake.join("turn1.jsonl"),
+        format!(
+            "{}\n{}\n",
+            agy_tool_step(9, "DONE"),
+            agy_result("looks fine", 1, 1, 2)
+        ),
+    )
+    .expect("turn 1");
+    // Turn 2: the line never ends.
+    std::fs::write(fake.join("partial2.log"), denial(12)).expect("partial 2");
+    std::fs::write(
+        fake.join("turn2.jsonl"),
+        format!(
+            "{}\n{}\n",
+            agy_tool_step(12, "DONE"),
+            agy_result("still fine", 2, 2, 4)
+        ),
+    )
+    .expect("turn 2");
+    let core = Core::default();
+    core.set_store(store.join("orchestrator.json"));
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+    assert_eq!(job["outcome"], "blocked", "{job}");
+
+    call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "again" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["outcome"] != "blocked"
+    });
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    assert_eq!(job["status"], "failed", "{job}");
+    let summary = job["summary"].as_str().unwrap_or_default();
+    assert!(summary.contains("[unverified]"), "{job}");
+    assert!(summary.contains("still fine"), "the reply was dropped: {job}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+// A relative folder would be read twice, by the process start and again by `--add-dir` from inside
+// it: `..` would reach the grandparent.
+#[test]
+fn an_antigravity_worker_given_a_relative_folder_stays_in_it_when_resumed() {
+    let name = format!("agy-relative-{}", std::process::id());
+    let base = std::env::current_dir().expect("cwd").join("target");
+    let absolute = base.join(&name);
+    let _ = std::fs::remove_dir_all(&absolute);
+    std::fs::create_dir_all(absolute.join("inner")).expect("folder");
+    git_repo(&absolute);
+    let fake = workspace("agy-relative-fake");
+    std::fs::write(
+        fake.join("turn.jsonl"),
+        format!("{}\n", agy_result("OK", 1, 1, 2)),
+    )
+    .expect("turn");
+    let core = Core::default();
+    core.set_launcher(scripted_agy_launcher(&fake));
+    let same = |path: &str| {
+        std::path::Path::new(path).is_absolute()
+            && std::fs::canonicalize(path).ok() == std::fs::canonicalize(&absolute).ok()
+    };
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({
+            "tasks": ["x"],
+            "cwd": format!("target/{name}/inner/.."),
+            "agent": "antigravity"
+        }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert!(same(job["cwd"].as_str().unwrap_or_default()), "{job}");
+    call(&core, "alethe_release", json!({ "jobIds": ["job-01"] }));
+    call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "again" }),
+    );
+    let launches = wait_for_lines(&fake.join("launches.txt"), 2, 20);
+    let started_in = wait_for_lines(&fake.join("cwd.txt"), 2, 5);
+    let args = wait_for_lines(&fake.join("args.txt"), 1, 5);
+    // A finished worker stays parked in the folder until released, which keeps it from deletion.
+    wait_for_job(&core, 20, |job| job["status"] != "running");
+    let _ = call(&core, "alethe_release", json!({ "jobIds": ["job-01"] }));
+    assert_eq!(launches.len(), 2, "the worker was not resumed");
+    assert!(args.iter().any(|arg| arg == "--conversation"), "{args:?}");
+    let add_dir = args
+        .iter()
+        .position(|arg| arg == "--add-dir")
+        .and_then(|at| args.get(at + 1))
+        .cloned()
+        .unwrap_or_default();
+    assert!(same(&add_dir), "--add-dir {add_dir} is not the folder");
+    for folder in &started_in {
+        assert!(same(folder.trim()), "started in {folder}: {started_in:?}");
+    }
+
+    let _ = std::fs::remove_dir_all(&absolute);
+    // Only when this run created it and nothing else is in it.
+    let _ = std::fs::remove_dir(&base);
+    let _ = std::fs::remove_dir_all(&fake);
+}
+
+// `git ls-files -z` separates names with NUL; trimming its output cut the space a name starts with.
+#[test]
+fn a_new_file_whose_name_starts_with_a_space_is_in_the_diff() {
+    let dir = workspace("diff-leading-space");
+    git_repo(&dir);
+    std::fs::write(dir.join(" novo.txt"), "conteudo\n").expect("new file");
+    let core = Core::default();
+    let transcript = concat!(
+        r#"{"type":"system","subtype":"init","session_id":"space"}"#,
+        "\n",
+        r#"{"type":"result","is_error":false,"result":"ADDED","usage":{"input_tokens":1,"output_tokens":1}}"#,
+        "\n",
+    );
+    core.set_launcher(fake_claude_launcher(&dir.join(".git"), transcript));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["add"], "cwd": dir.to_string_lossy(), "agent": "claude" }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert_eq!(job["hasDiff"], true, "{job}");
+    let diff = call(&core, "alethe_diff", json!({ "jobId": "job-01" }));
+    assert!(
+        diff["diff"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("+conteudo"),
+        "{diff}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// Measured: git lists a file whose name ends in a dot, but Windows strips that dot when git opens it,
+// so `git diff --no-index` exits 1, as for a real difference, with no output and "Could not access".
+#[cfg(windows)]
+#[test]
+fn a_new_file_git_cannot_read_makes_the_diff_say_so_instead_of_no_changes() {
+    let dir = workspace("diff-unreadable");
+    git_repo(&dir);
+    // The `\\?\` form keeps the trailing dot that Windows would otherwise drop.
+    let ghost = PathBuf::from(format!(r"\\?\{}\ghost.", dir.to_string_lossy()));
+    std::fs::write(&ghost, "boo\n").expect("a file named with a trailing dot");
+    let core = Core::default();
+    let transcript = concat!(
+        r#"{"type":"system","subtype":"init","session_id":"ghost"}"#,
+        "\n",
+        r#"{"type":"result","is_error":false,"result":"ADDED","usage":{"input_tokens":1,"output_tokens":1}}"#,
+        "\n",
+    );
+    core.set_launcher(fake_claude_launcher(&dir.join(".git"), transcript));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["add"], "cwd": dir.to_string_lossy(), "agent": "claude" }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    let _ = std::fs::remove_file(&ghost);
+    assert_eq!(job["hasDiff"], true, "the diff claims no changes: {job}");
+    // The reply is not empty, so the summary is the worker's own text: the planner reads it.
+    assert!(
+        job["summary"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("[diff unavailable]"),
+        "the planner is not told: {job}"
+    );
+    let diff = call(&core, "alethe_diff", json!({ "jobId": "job-01" }));
+    let text = diff["diff"].as_str().unwrap_or_default();
+    assert!(text.contains("[diff unavailable]"), "{diff}");
+    assert!(text.contains("ghost."), "{diff}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_antigravity_start_up_error_fails_the_worker_with_its_reason() {
+    let dir = workspace("agy-startup");
+    let core = Core::default();
+    let transcript = concat!(
+        r#"{"event":"result","result":{"conversation_id":"","status":"ERROR","response":"","error":"invalid model selection: --model x conflicts with --effort=high","num_turns":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0}}}"#,
+        "\n",
+    );
+    let mut launcher = fake_claude_launcher(&dir, transcript);
+    launcher.kind = "antigravity".into();
+    core.set_launcher(launcher);
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["x"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "failed");
+    assert_eq!(job["status"], "failed", "{job}");
+    assert_eq!(job["outcome"], "failed", "{job}");
+    assert!(
+        job["summary"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("invalid model selection"),
+        "{job}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+// agy 1.3.3 ends a turn whose command it denied with status SUCCESS and an empty reply; its
+// `--log-file` is the only exact record of the denial (soft-denying ... at step N).
+#[test]
+fn a_denied_antigravity_turn_is_blocked_not_done() {
+    let dir = workspace("agy-denied");
+    let fake = workspace("agy-denied-fake");
+    let store = workspace("agy-denied-store");
+    let denied_step = json!({
+        "event": "step_update",
+        "step_update": {
+            "conversation_id": "agy-conv",
+            "step_index": 4,
+            "state": "ERROR",
+            "step_type": "tool",
+            "tool_name": "run_command",
+            "tool_info": {
+                "name": "run_command",
+                "parameters": { "CommandLine": "git status --short" },
+                "error": { "type": "TOOL_ERROR", "message": "permission check failed for command" }
+            }
+        }
+    });
+    let sticky = |response: &str| {
+        let mut line: Value =
+            serde_json::from_str(&agy_result(response, 10, 1, 11)).expect("result");
+        line["result"]["denied_actions"] =
+            json!([{ "action": "command", "display_name": "RunCommand" }]);
+        line.to_string()
+    };
+    // Turn 1: denied, empty reply. Turn 2: denied, with a reply. Turn 3: the denial list agy keeps
+    // repeating, but nothing was denied in this turn.
+    std::fs::write(
+        fake.join("turn1.jsonl"),
+        format!("{denied_step}\n{}\n", sticky("")),
+    )
+    .expect("turn 1");
+    std::fs::write(
+        fake.join("deny1.log"),
+        "I1010 03:00:00 soft-denying tool confirmation \"RunCommand\" at step 4",
+    )
+    .expect("deny 1");
+    // A soft-denied step can still end DONE; its index ties the log line to this turn.
+    std::fs::write(
+        fake.join("turn2.jsonl"),
+        format!("{}\n{}\n", agy_tool_step(7, "DONE"), sticky("partly done")),
+    )
+    .expect("turn 2");
+    std::fs::write(
+        fake.join("deny2.log"),
+        "I1010 03:00:09 soft-denying tool confirmation \"RunCommand\" at step 7",
+    )
+    .expect("deny 2");
+    std::fs::write(
+        fake.join("turn3.jsonl"),
+        format!("{}\n", sticky("all fine")),
+    )
+    .expect("turn 3");
+    let core = Core::default();
+    core.set_store(store.join("orchestrator.json"));
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["run git status"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+    assert_eq!(job["status"], "failed", "{job}");
+    assert_eq!(job["outcome"], "blocked", "{job}");
+    let summary = job["summary"].as_str().unwrap_or_default();
+    assert!(summary.contains("[blocked]"), "{job}");
+    assert!(summary.contains("at step 4"), "{job}");
+
+    call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "again" }),
+    );
+    // The live reply names the step before the turn settles.
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] != "running"
+            && job["summary"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("at step 7")
+    });
+    assert_eq!(job["outcome"], "blocked", "{job}");
+    assert!(
+        !job["summary"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("at step 4"),
+        "{job}"
+    );
+
+    call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "once more" }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["summary"] == "all fine");
+    assert_eq!(job["status"], "done", "{job}");
+    assert_eq!(job["outcome"], "succeeded", "{job}");
+
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+    let _ = std::fs::remove_dir_all(&store);
+}
+
+#[test]
+fn an_antigravity_diff_shows_a_new_file_and_clears_after_a_revert() {
+    let dir = workspace("agy-diff");
+    let fake = workspace("agy-diff-fake");
+    git_repo(&dir);
+    std::fs::write(
+        fake.join("turn.jsonl"),
+        format!("{}\n", agy_result("EDITED", 1, 1, 2)),
+    )
+    .expect("turn");
+    // What the worker would write: a file git does not track yet.
+    std::fs::write(dir.join("new.txt"), "fresh line\n").expect("new file");
+    let core = Core::default();
+    core.set_launcher(scripted_agy_launcher(&fake));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["add new.txt"], "cwd": dir.to_string_lossy(), "agent": "antigravity" }),
+    );
+    let job = wait_for_job(&core, 20, |job| job["status"] == "done");
+    assert_eq!(job["hasDiff"], true, "{job}");
+    let diff = call(&core, "alethe_diff", json!({ "jobId": "job-01" }));
+    let text = diff["diff"].as_str().unwrap_or_default();
+    assert!(text.contains("new.txt"), "{diff}");
+    assert!(text.contains("+fresh line"), "{diff}");
+
+    std::fs::remove_file(dir.join("new.txt")).expect("revert");
+    call(
+        &core,
+        "alethe_send",
+        json!({ "jobId": "job-01", "message": "undo it" }),
+    );
+    wait_for_lines(&fake.join("stdin.txt"), 2, 20);
+    let job = wait_for_job(&core, 20, |job| {
+        job["status"] == "done" && job["hasDiff"] == false
+    });
+    assert_eq!(
+        job["hasDiff"], false,
+        "a reverted change kept its diff: {job}"
+    );
+    let diff = call(&core, "alethe_diff", json!({ "jobId": "job-01" }));
+    assert_eq!(diff["diff"], "", "{diff}");
+
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&fake);
+}
+
+/// Runs the real `agy` for one tiny edit (costs a little Antigravity quota). Needs the owner's
+/// `alethe-worker` agy project. `cargo test --test orchestrator -- --ignored real_antigravity`
+#[test]
+#[ignore]
+fn a_real_antigravity_worker_edits_inside_its_own_workspace() {
+    let finder = if cfg!(windows) { "where" } else { "which" };
+    let output = Command::new(finder).arg("agy").output().expect("where agy");
+    let program = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .find(|line| !cfg!(windows) || line.to_ascii_lowercase().ends_with(".exe"))
+        .map(ToOwned::to_owned)
+        .expect("agy on PATH");
+    let dir = workspace("agy-real");
+    let store = workspace("agy-real-store");
+    git_repo(&dir);
+    let core = Core::default();
+    core.set_store(store.join("orchestrator.json"));
+    core.set_launcher(Launcher::antigravity_headless(PathBuf::from(program)));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({
+            "tasks": ["Create a file named hello.txt in the current directory containing the word hi. Do nothing else and do not run any command."],
+            "cwd": dir.to_string_lossy(),
+            "agent": "antigravity",
+            "model": "gemini-3.8-flash",
+            "effort": "medium",
+            "timeoutSeconds": 240
+        }),
+    );
+    let job = wait_for_job(&core, 260, |job| {
+        job["status"] != "running" && job["status"] != "queued"
+    });
+    let _ = call(&core, "alethe_cancel", json!({ "jobIds": ["job-01"] }));
+    eprintln!("real agy job: {job}");
+    assert_eq!(job["status"], "done", "{job}");
+    assert!(job["threadId"].as_str().is_some(), "{job}");
+    assert!(
+        job["tokens"]["last"]["totalTokens"]
+            .as_u64()
+            .unwrap_or_default()
+            > 0,
+        "{job}"
+    );
+    assert_eq!(job["hasDiff"], true, "{job}");
+    let written =
+        std::fs::read_to_string(dir.join("hello.txt")).expect("hello.txt in the workspace");
+    assert_eq!(written.trim(), "hi");
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&store);
 }

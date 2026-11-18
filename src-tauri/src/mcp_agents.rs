@@ -176,12 +176,19 @@ impl McpAdapter for CursorAdapter {
 }
 
 impl McpAdapter for AntigravityAdapter {
-    fn config_sources(&self, scope: McpScope, _repo: Option<&Path>) -> Vec<McpSource> {
+    fn config_sources(&self, scope: McpScope, repo: Option<&Path>) -> Vec<McpSource> {
         match scope {
             McpScope::Global => mcp_home(&[".gemini", "config", "mcp_config.json"])
                 .map(|path| vec![McpSource::file(path, McpSourceKind::User)])
                 .unwrap_or_default(),
-            McpScope::Project => Vec::new(),
+            McpScope::Project => repo
+                .map(|root| {
+                    vec![McpSource::file(
+                        root.join(".agents").join("mcp_config.json"),
+                        McpSourceKind::Project,
+                    )]
+                })
+                .unwrap_or_default(),
         }
     }
 
@@ -1150,7 +1157,7 @@ args = ["-y", "@quadslab.io/discord-mcp"]
 
 [mcp_servers.discord.env]
 DISCORD_GUILD_ID = "123"
-DISCORD_TOKEN = "a-live-secret-token-value"
+DISCORD_TOKEN = "test-placeholder"
 
 [mcp_servers.figma]
 url = "https://mcp.figma.com/mcp"
@@ -1192,7 +1199,7 @@ name = "gate"
                 .env
                 .get("DISCORD_TOKEN")
                 .and_then(|e| e.literal.as_deref()),
-            Some("a-live-secret-token-value")
+            Some("test-placeholder")
         );
 
         let figma = by_name(&servers, "figma");
@@ -1343,11 +1350,13 @@ name = "gate"
     }
 
     #[test]
-    fn antigravity_has_no_project_scope() {
+    fn antigravity_reads_project_scope_from_agents_dir() {
         let repo = PathBuf::from("D:/repo");
-        assert!(AntigravityAdapter
-            .config_sources(McpScope::Project, Some(&repo))
-            .is_empty());
+        let sources = AntigravityAdapter.config_sources(McpScope::Project, Some(&repo));
+        assert_eq!(sources.len(), 1);
+        assert!(sources[0]
+            .path
+            .ends_with(PathBuf::from(".agents").join("mcp_config.json")));
     }
 
     #[test]
@@ -1432,7 +1441,7 @@ name = "gate"
         let next = codex_remove(CODEX_FIXTURE, "discord").expect("removes");
         assert!(!next.contains("[mcp_servers.discord]"));
         assert!(!next.contains("[mcp_servers.discord.env]"));
-        assert!(!next.contains("a-live-secret-token-value"));
+        assert!(!next.contains("test-placeholder"));
         assert!(next.contains("[mcp_servers.figma]"));
         assert!(next.contains("[[hooks.PreToolUse]]"));
         assert!(next.contains("[projects.\"D:\\\\repo\\\\one\"]"));
@@ -1504,7 +1513,7 @@ name = "gate"
 
         let next = codex_upsert(CODEX_FIXTURE, &server).expect("writes");
         assert!(next.contains("[mcp_servers.discord.env]"));
-        assert!(!next.contains("a-live-secret-token-value"));
+        assert!(!next.contains("test-placeholder"));
     }
 
     #[test]

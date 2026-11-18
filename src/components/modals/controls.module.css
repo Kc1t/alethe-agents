@@ -284,8 +284,12 @@ select.input {
     border-color 100ms,
     background 100ms;
 }
-.pill:hover {
+.pill:hover:not(:disabled) {
   border-color: var(--border-strong);
+}
+.pill:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .pillActive {
   border-color: var(--accent);

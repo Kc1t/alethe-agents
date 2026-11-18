@@ -177,4 +177,36 @@ describe('end of turn reconciliation', () => {
     expect(backgroundNode('b979hdyeo')?.status).toBe('running')
     expect(node('a24fd0f1f6c372afb')?.status).toBe('running')
   })
+
+  it('tracks Antigravity native subagents with direct prompts and closes them on Stop', () => {
+    ingest({
+      hook_event_name: 'SubagentStart',
+      plannerId: 'pty-agy',
+      sourceAgent: 'antigravity',
+      agent_id: 'call-sub-1',
+      agent_type: 'Codebase Researcher',
+      prompt: 'Inspect hooks configuration',
+    })
+
+    expect(node('call-sub-1')).toMatchObject({
+      plannerId: 'pty-agy',
+      sourceAgent: 'antigravity',
+      agentType: 'Codebase Researcher',
+      prompt: 'Inspect hooks configuration',
+      status: 'running',
+    })
+
+    ingest({
+      hook_event_name: 'SubagentStop',
+      plannerId: 'pty-agy',
+      sourceAgent: 'antigravity',
+      agent_id: 'call-sub-1',
+      last_assistant_message: 'Hooks use .agents/hooks.json',
+    })
+
+    expect(node('call-sub-1')).toMatchObject({
+      status: 'done',
+      result: 'Hooks use .agents/hooks.json',
+    })
+  })
 })

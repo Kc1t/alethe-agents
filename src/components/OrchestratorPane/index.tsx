@@ -31,6 +31,7 @@ import { useOrchestratorQuotaWarnings } from '../../hooks/useOrchestratorQuotaWa
 import { COST_POLL_MS } from '../../lib/agentCanvasConfig'
 import { startAgentCanvasMirror } from '../../lib/agentCanvasMirror'
 import { formatReset } from '../../lib/agentCanvasUtils'
+import { quotaWindowLabel } from '../../lib/agentFitness'
 import { fmtUsd } from '../../lib/costFormat'
 import { type MessageKey, type TFunction, useT } from '../../lib/i18n'
 import {
@@ -175,13 +176,6 @@ function canStop(job: OrchestratorJob): boolean {
   return (
     !job.native && (job.status === 'queued' || job.status === 'running' || job.status === 'blocked')
   )
-}
-
-function quotaWindowLabel(window: string, t: TFunction): string {
-  if (window === '5h') return t('orchestrator.quotaWindowSession')
-  if (window === 'week') return t('orchestrator.quotaWindowWeekly')
-  if (window === 'opus') return t('orchestrator.quotaWindowOpus')
-  return t('orchestrator.quotaWindowModel', { model: window })
 }
 
 function laneTitle(lane: RunLane, t: TFunction): string | undefined {
@@ -857,7 +851,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const addPlanner = useCallback(() => {
     openModal('newTerminal', {
       projectId,
-      only: ['claude'],
+      only: ['claude', 'codex', 'antigravity'],
       titleKey: 'term.newPlannerTitle',
     })
   }, [openModal, projectId])
@@ -1430,13 +1424,13 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                 title={t('orchestrator.quotaWarningTitle', {
                   agent: warning.agent,
                   pct: warning.pct,
-                  window: quotaWindowLabel(warning.window, t),
+                  window: quotaWindowLabel(warning.window, t, warning.agent),
                 })}
               >
                 {t('orchestrator.quotaWarning', {
                   agent: warning.agent,
                   pct: warning.pct,
-                  window: quotaWindowLabel(warning.window, t),
+                  window: quotaWindowLabel(warning.window, t, warning.agent),
                   resets: warning.resetsAt
                     ? formatReset(warning.resetsAt, t('orchestrator.quotaResetsNow'))
                     : '—',

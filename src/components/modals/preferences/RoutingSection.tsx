@@ -21,7 +21,7 @@ import type {
   RoutingSettings,
 } from '../../../lib/types'
 import { useProjectsStore } from '../../../stores/projectsStore'
-import { ClaudeIcon, CodexIcon } from '../../icons/AgentIcons'
+import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../../icons/AgentIcons'
 import { Dropdown } from '../../ui/Dropdown'
 import controls from '../controls.module.css'
 import { SettingsSection } from './primitives'
@@ -69,7 +69,9 @@ const BOTH_CRITICAL_DESC: Record<RoutingSettings['onBothCritical'], MessageKey> 
 type RoutingAgent = OrchestrationRole['agent']
 
 function RoutingAgentIcon({ agent }: { agent: RoutingAgent }) {
-  return agent === 'claude' ? <ClaudeIcon size={14} /> : <CodexIcon size={14} />
+  if (agent === 'claude') return <ClaudeIcon size={14} />
+  if (agent === 'antigravity') return <AntigravityIcon size={14} />
+  return <CodexIcon size={14} />
 }
 
 function agentOption(agent: RoutingAgent, label = agentLabel(agent)) {
@@ -366,10 +368,12 @@ export function RoutingSection() {
                       <Dropdown
                         value={gate.agent}
                         ariaLabel={t('prefs.routingRuleGateAgent')}
-                        options={(['claude', 'codex'] as QuotaGate['agent'][]).map((agent) => ({
-                          value: agent,
-                          label: agentOption(agent),
-                        }))}
+                        options={(['claude', 'codex', 'antigravity'] as QuotaGate['agent'][]).map(
+                          (agent) => ({
+                            value: agent,
+                            label: agentOption(agent),
+                          }),
+                        )}
                         onChange={(value) =>
                           patchRule(rule.id, {
                             gates: rule.gates.map((other, i) =>

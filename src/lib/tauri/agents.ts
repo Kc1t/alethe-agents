@@ -99,6 +99,21 @@ export async function codexMcpConfigWrite(
   await invoke('codex_mcp_config_write', { repo, plannerId, plannerLabel, plannerAgent })
 }
 
+/** Writes `<repo>/.agents/hooks.json` so Antigravity reports lifecycle hooks back to Alethe. */
+export async function antigravityHooksConfigWrite(repo: string, plannerId: string): Promise<void> {
+  await invoke('antigravity_hooks_config_write', { repo, plannerId })
+}
+
+/** Registers this Antigravity terminal as an orchestrator planner via <repo>/.agents/mcp_config.json. */
+export async function antigravityMcpConfigWrite(
+  repo: string,
+  plannerId: string,
+  plannerLabel: string,
+  plannerAgent: string,
+): Promise<void> {
+  await invoke('antigravity_mcp_config_write', { repo, plannerId, plannerLabel, plannerAgent })
+}
+
 export type InstalledAgent = { name: string; from_alethe: boolean }
 
 export async function listInstalledAgents(folder: string): Promise<InstalledAgent[]> {

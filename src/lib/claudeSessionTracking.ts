@@ -1,15 +1,21 @@
 import type { AgentHookPayload } from '../stores/agentCanvasStore'
 import { useProjectsStore } from '../stores/projectsStore'
 import { registerSessionClaim, releaseSessionClaim } from './sessionDiscovery'
-import { saveSession } from './sessionResume'
+import { conversationFields, saveSession } from './sessionResume'
 import { recordAppEvent } from './tauri/misc'
+
+export type HookTrackedAgent = 'claude' | 'antigravity'
 
 export function shortSessionId(sessionId: string | undefined): string {
   return sessionId ? sessionId.slice(0, 8) : 'none'
 }
 
-export function claudeSessionFromHook(payload: AgentHookPayload): string | undefined {
-  if (payload.sourceAgent && payload.sourceAgent !== 'claude') return undefined
+export function hookSessionForAgent(
+  payload: AgentHookPayload,
+  expectedAgent: HookTrackedAgent = 'claude',
+): string | undefined {
+  const source = payload.sourceAgent ?? 'claude'
+  if (source !== expectedAgent) return undefined
   if (payload.agent_id) return undefined
   if (
     payload.hook_event_name !== 'SessionStart' &&
@@ -22,9 +28,15 @@ export function claudeSessionFromHook(payload: AgentHookPayload): string | undef
     : undefined
 }
 
+export function claudeSessionFromHook(payload: AgentHookPayload): string | undefined {
+  return hookSessionForAgent(payload, 'claude')
+}
+
 /** Track inactive tabs too: their PTYs keep running after their terminal views unmount. */
 export function trackClaudeSessionHook(payload: AgentHookPayload): void {
-  const sessionId = claudeSessionFromHook(payload)
+  const agent = payload.sourceAgent ?? 'claude'
+  if (agent !== 'claude' && agent !== 'antigravity') return
+  const sessionId = hookSessionForAgent(payload, agent)
   if (!sessionId || !payload.plannerId) return
   const state = useProjectsStore.getState()
   for (const project of state.projects) {
@@ -32,17 +44,17 @@ export function trackClaudeSessionHook(payload: AgentHookPayload): void {
       if (terminal.gsdSyncViewer) continue
       for (const tab of terminal.tabs) {
         const ptyId = tab.ptyId ?? tab.id
-        if (tab.type !== 'claude' || ptyId !== payload.plannerId) continue
+        if (tab.type !== agent || ptyId !== payload.plannerId) continue
         const cwd = tab.cwd ?? terminal.cwd ?? ''
         releaseSessionClaim(tab.id)
         releaseSessionClaim(ptyId)
-        registerSessionClaim('claude', cwd, sessionId, tab.id)
-        registerSessionClaim('claude', cwd, sessionId, ptyId)
+        registerSessionClaim(agent, cwd, sessionId, tab.id)
+        registerSessionClaim(agent, cwd, sessionId, ptyId)
         // Save immediately as well as updating the debounced projects file.
         saveSession(tab.id, {
           sessionId: ptyId,
-          claudeSessionId: sessionId,
-          agent: 'claude',
+          ...conversationFields(agent, sessionId),
+          agent,
           cwd,
           timestamp: Date.now(),
         })
@@ -50,7 +62,7 @@ export function trackClaudeSessionHook(payload: AgentHookPayload): void {
           state.setSubTabSessionId(project.id, terminal.id, tab.id, sessionId)
           void recordAppEvent(
             'session.adopt',
-            `agent=claude via=${payload.hook_event_name} from=${shortSessionId(tab.sessionId)} to=${shortSessionId(sessionId)}`,
+            `agent=${agent} via=${payload.hook_event_name} from=${shortSessionId(tab.sessionId)} to=${shortSessionId(sessionId)}`,
           )
         }
         return

@@ -2727,6 +2727,7 @@ export const ptBR: Record<MessageKey, string> = {
   'orchestrator.quotaWindowWeekly': 'semanal',
   'orchestrator.quotaWindowOpus': 'Opus semanal',
   'orchestrator.quotaWindowModel': '{model} semanal',
+  'orchestrator.quotaWindowBucket': 'cota de {bucket}',
   'orchestrator.quotaResetsNow': 'agora',
   'orchestrator.runEyebrow': 'execução',
   'orchestrator.runDone': '{done}/{total} prontos',

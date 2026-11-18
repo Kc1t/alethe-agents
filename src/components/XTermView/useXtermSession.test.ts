@@ -118,7 +118,10 @@ vi.mock('../../lib/tauri', async (importOriginal) => ({
   }),
   findCliLauncher: vi.fn(async () => 'claude'),
   claudeSessionExists: vi.fn(async () => true),
+  snapshotAntigravitySessions: vi.fn(async () => []),
   snapshotCodexSessions: vi.fn(async () => []),
+  antigravityHooksConfigWrite: vi.fn(async () => undefined),
+  antigravityMcpConfigWrite: vi.fn(async () => undefined),
   agentHooksSettingsPath: vi.fn(async () => 'hooks.json'),
   spawnPty: vi.fn(async () => ({ id: 'pty-0' })),
 }))
@@ -376,6 +379,50 @@ describe('Codex terminal session lifecycle', () => {
 
     act(() => trackCodexRollout({ ...rollout('exec-run'), source: 'exec' }))
     expect(peekSession(tabId)?.codexSessionId).toBe('first-chat')
+  })
+})
+
+describe('Antigravity planner provisioning', () => {
+  it('writes workspace MCP config when launched with orchestration enabled', async () => {
+    const { preferences, setPreferences } = useProjectsStore.getState()
+    setPreferences({
+      enabledFeatures: { ...preferences.enabledFeatures, orchestrator: true },
+    })
+    useProjectsStore.setState({
+      projects: [
+        { terminals: [{ name: 'Agy planner', tabs: [{ id: 'tab-agy', ptyId: 'pty-0' }] }] },
+      ],
+    } as never)
+
+    const input = params()
+    input.command = 'antigravity'
+    input.sessionId = undefined
+    input.sessionPersistenceKey = 'tab-agy'
+    input.cwd = 'D:/repo'
+    renderHook(() => useXtermSession(input))
+
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+    expect(tauri.antigravityHooksConfigWrite).toHaveBeenCalledWith('D:/repo', 'pty-0')
+    expect(tauri.antigravityMcpConfigWrite).toHaveBeenCalledWith(
+      'D:/repo',
+      'pty-0',
+      'Agy planner',
+      'antigravity',
+    )
+
+    act(() => {
+      for (const handler of hooks) {
+        handler({
+          payload: {
+            hook_event_name: 'SessionStart',
+            sourceAgent: 'antigravity',
+            session_id: 'agy-conv-99',
+            plannerId: 'pty-0',
+          },
+        })
+      }
+    })
+    expect(input.onSessionIdRef.current).toHaveBeenLastCalledWith('agy-conv-99')
   })
 })
 

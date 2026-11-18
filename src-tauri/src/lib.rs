@@ -352,6 +352,8 @@ pub fn run() {
             agent_events::agent_hooks_settings_path,
             agent_events::codex_hooks_config_write,
             agent_events::codex_mcp_config_write,
+            agent_events::antigravity_hooks_config_write,
+            agent_events::antigravity_mcp_config_write,
             agent_events::agent_hooks_endpoint,
             agent_events::agent_hooks_token,
             agent_events::set_agent_canvas_mirror,

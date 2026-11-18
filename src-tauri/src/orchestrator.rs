@@ -58,16 +58,24 @@ fn prepare(app: &AppHandle, state: &OrchestratorState) {
     }));
 
     if let Some(program) = cli_resolver::find_windows_cli_launcher("codex") {
-        let mut launcher = Launcher::codex_app_server(PathBuf::from(program));
         #[cfg(windows)]
-        launcher.env.push((
-            "Path".to_string(),
-            crate::orchestrator_core::path_without_store_aliases(&cli_resolver::rebuilt_path()),
-        ));
+        let launcher = {
+            let mut launcher = Launcher::codex_app_server(PathBuf::from(program));
+            launcher.env.push((
+                "Path".to_string(),
+                crate::orchestrator_core::path_without_store_aliases(&cli_resolver::rebuilt_path()),
+            ));
+            launcher
+        };
+        #[cfg(not(windows))]
+        let launcher = Launcher::codex_app_server(PathBuf::from(program));
         core.set_launcher(launcher);
     }
     if let Some(program) = cli_resolver::find_windows_cli_launcher("claude") {
         core.set_launcher(Launcher::claude_headless(PathBuf::from(program)));
+    }
+    if let Some(program) = cli_resolver::find_windows_cli_launcher("agy") {
+        core.set_launcher(Launcher::antigravity_headless(PathBuf::from(program)));
     }
     core.set_shell_host(Arc::new(crate::orchestrator_shell_host::PtyShellHost::new(
         app.clone(),

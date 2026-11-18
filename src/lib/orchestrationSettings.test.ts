@@ -22,6 +22,13 @@ describe('normalizeRoutingSettings', () => {
     const result = normalizeRoutingSettings({ preset: 'economy', rules: [validRule] })
     expect(result.preset).toBe('economy')
     expect(result.rules).toEqual([validRule])
+
+    const antigravityRule = {
+      ...validRule,
+      id: 'r-agy',
+      gates: [{ agent: 'antigravity', window: 'opus', below: 60 }],
+    }
+    expect(normalizeRoutingSettings({ rules: [antigravityRule] }).rules).toEqual([antigravityRule])
   })
 
   it('keeps a rule whose role does not exist yet', () => {

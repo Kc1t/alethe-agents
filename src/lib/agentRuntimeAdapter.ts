@@ -71,6 +71,10 @@ function addArg(args: string[], value: string): void {
   if (!args.includes(value)) args.push(value)
 }
 
+export function supportsRuntimeProfile(agent: AgentType): boolean {
+  return agent === 'claude' || agent === 'codex'
+}
+
 export function preparePtyRuntimeLaunch(
   agent: AgentType,
   profile: AgentRuntimeProfile = 'full',

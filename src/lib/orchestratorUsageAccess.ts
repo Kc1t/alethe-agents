@@ -3,15 +3,17 @@ import { useUiStore } from '../stores/uiStore'
 import { getLocale, translate } from './i18n'
 import { USAGE_PROVIDERS } from './usageProviders'
 
-/** The orchestrator warns and picks roles from the quota of these two. */
+/** The orchestrator warns and picks roles from the quota of these providers. */
 const ORCHESTRATOR_PROVIDERS = USAGE_PROVIDERS.filter(
-  (provider) => provider.id === 'claude' || provider.id === 'codex',
+  (provider) =>
+    provider.id === 'claude' || provider.id === 'codex' || provider.id === 'antigravity',
 )
 
 /**
- * Turns the orchestrator feature on. It reads Claude and Codex quota, so their usage reading is
- * turned on with it and the user is told. This only happens on the switch from off to on: a user
- * who turns the reading off again afterwards keeps it off, and the orchestrator runs without quota.
+ * Turns the orchestrator feature on. It reads Claude Code, Codex, and Antigravity quota, so
+ * their usage reading is turned on with it and the user is told. This only happens on the switch
+ * from off to on: a user who turns the reading off again afterwards keeps it off, and the
+ * orchestrator runs without quota.
  */
 export function enableOrchestratorFeature(): void {
   const { preferences, setPreferences } = useProjectsStore.getState()

@@ -2690,6 +2690,7 @@ export const en = {
   'orchestrator.quotaWindowWeekly': 'weekly',
   'orchestrator.quotaWindowOpus': 'weekly Opus',
   'orchestrator.quotaWindowModel': 'weekly {model}',
+  'orchestrator.quotaWindowBucket': '{bucket} quota',
   'orchestrator.quotaResetsNow': 'now',
   'orchestrator.runEyebrow': 'run',
   'orchestrator.runDone': '{done}/{total} done',

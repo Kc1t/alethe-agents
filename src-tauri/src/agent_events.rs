@@ -779,6 +779,10 @@ fn ps_escape(value: &str) -> String {
     value.replace('\'', "''")
 }
 
+fn sh_escape(value: &str) -> String {
+    value.replace('\'', "'\\''")
+}
+
 fn toml_string(value: &str) -> String {
     toml_edit::Value::from(value).to_string()
 }
@@ -811,6 +815,7 @@ const CODEX_MCP_MARK_END: &str = "# alethe-managed-mcp-end";
 
 /// Codex's MCP client only declares servers via `command`/`args` (stdio), unlike Claude Code's
 /// remote `http` support — this script bridges stdin/stdout JSON-RPC to Alethe's `/mcp` endpoint.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn write_codex_mcp_bridge(port: u16) -> Result<PathBuf, String> {
     let endpoint = listener_endpoint(port);
     let token = init_token();
@@ -836,12 +841,73 @@ fn write_codex_mcp_bridge(port: u16) -> Result<PathBuf, String> {
     Ok(path)
 }
 
+fn unix_mcp_bridge_script(endpoint: &str, token: &str) -> String {
+    // Curl timeout (-m 120) must exceed MAX_WAIT_MS (45s) so blocking alethe_check calls complete.
+    format!(
+        "#!/bin/sh\n\
+         while IFS= read -r line || [ -n \"$line\" ]; do\n\
+         \x20\x20trimmed=${{line#\"${{line%%[! \\t\\r]*}}\"}}\n\
+         \x20\x20[ -z \"$trimmed\" ] && continue\n\
+         \x20\x20if resp=$(printf '%s' \"$line\" | curl -sS -m 120 --noproxy '*' -H 'Content-Type: application/json' -H 'Expect:' -H 'X-Alethe-Token: {token}' -H \"X-Alethe-Planner: $ALETHE_PLANNER\" --data-binary @- '{endpoint}/mcp'); then\n\
+         \x20\x20\x20\x20if [ -n \"$resp\" ]; then\n\
+         \x20\x20\x20\x20\x20\x20printf '%s\\n' \"$resp\"\n\
+         \x20\x20\x20\x20fi\n\
+         \x20\x20else\n\
+         \x20\x20\x20\x20printf '%s\\n' '[alethe-mcp] request failed' >&2\n\
+         \x20\x20fi\n\
+         done\n",
+        endpoint = sh_escape(endpoint),
+        token = sh_escape(token),
+    )
+}
+
+fn write_unix_mcp_bridge(port: u16) -> Result<PathBuf, String> {
+    let endpoint = listener_endpoint(port);
+    let token = init_token();
+    let script = unix_mcp_bridge_script(&endpoint, token);
+    let path = hook_settings_dir()?.join(format!("alethe-mcp-bridge-{}.sh", install_tag()));
+    write_private_file(&path, script.as_bytes())?;
+    Ok(path)
+}
+
+/// Returns the platform-appropriate stdio-to-HTTP MCP bridge `(command, args)` so callers on
+/// Windows, Linux, and macOS share the same `ALETHE_PLANNER` header isolation.
+fn mcp_bridge_command(port: u16) -> Result<(String, Vec<String>), String> {
+    #[cfg(windows)]
+    {
+        let script_path = write_codex_mcp_bridge(port)?;
+        Ok((
+            "powershell.exe".to_string(),
+            vec![
+                "-NoProfile".to_string(),
+                "-ExecutionPolicy".to_string(),
+                "Bypass".to_string(),
+                "-File".to_string(),
+                script_path.to_string_lossy().into_owned(),
+            ],
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let script_path = write_unix_mcp_bridge(port)?;
+        Ok((
+            "/bin/sh".to_string(),
+            vec![script_path.to_string_lossy().into_owned()],
+        ))
+    }
+}
+
 fn codex_mcp_config_write_inner(repo: String, _planner_id: String) -> Result<(), String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "the agent listener is not available yet".to_string())?;
-    let script_path = write_codex_mcp_bridge(port)?;
+    let (bridge_cmd, bridge_args) = mcp_bridge_command(port)?;
 
-    let root = crate::git_control::repository_root(&repo)?;
+    let trimmed = repo.trim();
+    if trimmed.is_empty() {
+        return Err("codex_mcp_config_write: empty workspace path".to_string());
+    }
+    let root = crate::git_control::repository_root(&repo)
+        .unwrap_or_else(|_| PathBuf::from(trimmed));
     let codex_dir = root.join(".codex");
     std::fs::create_dir_all(&codex_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
     let path = codex_dir.join("config.toml");
@@ -873,12 +939,324 @@ fn codex_mcp_config_write_inner(repo: String, _planner_id: String) -> Result<(),
         body.push('\n');
     }
 
-    let script_toml = toml_string(&script_path.to_string_lossy());
+    let cmd_toml = toml_string(&bridge_cmd);
+    let args_toml = bridge_args
+        .iter()
+        .map(|arg| toml_string(arg))
+        .collect::<Vec<_>>()
+        .join(", ");
     body.push_str(&format!(
-        "\n{CODEX_MCP_MARK_START}\n[mcp_servers.alethe]\ncommand = \"powershell.exe\"\nargs = [\"-NoProfile\", \"-ExecutionPolicy\", \"Bypass\", \"-File\", {script_toml}]\n{CODEX_MCP_MARK_END}\n",
+        "\n{CODEX_MCP_MARK_START}\n[mcp_servers.alethe]\ncommand = {cmd_toml}\nargs = [{args_toml}]\n{CODEX_MCP_MARK_END}\n",
     ));
 
     std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
+}
+
+fn upsert_antigravity_mcp_config(
+    existing: &str,
+    command: &str,
+    args: &[String],
+) -> Result<String, String> {
+    let mut root: serde_json::Value = if existing.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(existing).map_err(|e| format!("parse_failed:{e}"))?
+    };
+    let object = root
+        .as_object_mut()
+        .ok_or_else(|| "parse_failed:root_not_object".to_string())?;
+    if !object
+        .get("mcpServers")
+        .is_some_and(serde_json::Value::is_object)
+    {
+        object.insert(
+            "mcpServers".to_string(),
+            serde_json::Value::Object(serde_json::Map::new()),
+        );
+    }
+    let servers = object
+        .get_mut("mcpServers")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| "parse_failed:mcpServers_not_object".to_string())?;
+    servers.insert(
+        "alethe".to_string(),
+        serde_json::json!({
+            "command": command,
+            "args": args,
+        }),
+    );
+    let mut rendered =
+        serde_json::to_string_pretty(&root).map_err(|e| format!("serialize_failed:{e}"))?;
+    rendered.push('\n');
+    Ok(rendered)
+}
+
+fn write_antigravity_workspace_file(
+    repo: &str,
+    empty_error: &str,
+    mut write_dir: impl FnMut(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let trimmed = repo.trim();
+    if trimmed.is_empty() {
+        return Err(empty_error.to_string());
+    }
+    let cwd_path = PathBuf::from(trimmed);
+    let root = crate::git_control::repository_root(repo).unwrap_or_else(|_| cwd_path.clone());
+    write_dir(&root)?;
+
+    // If launched from a subfolder inside a repository, write `.agents/*` there too because
+    // Antigravity resolves workspace config relative to the opened directory.
+    let canonical_cwd = std::fs::canonicalize(&cwd_path).unwrap_or_else(|_| cwd_path.clone());
+    if canonical_cwd != root && cwd_path.is_dir() {
+        write_dir(&cwd_path)?;
+    }
+    Ok(())
+}
+
+fn write_antigravity_mcp_file(dir: &Path, command: &str, args: &[String]) -> Result<(), String> {
+    let agents_dir = dir.join(".agents");
+    std::fs::create_dir_all(&agents_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
+    let path = agents_dir.join("mcp_config.json");
+    let existing = if path.is_file() {
+        std::fs::read_to_string(&path).map_err(|e| format!("read_failed:{e}"))?
+    } else {
+        String::new()
+    };
+    let next = upsert_antigravity_mcp_config(&existing, command, args)?;
+    std::fs::write(&path, next).map_err(|e| format!("write_failed:{e}"))
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn write_windows_antigravity_hook_forwarder(port: u16) -> Result<PathBuf, String> {
+    let endpoint = listener_endpoint(port);
+    let token = init_token();
+    let script = format!(
+        "$body = [Console]::In.ReadToEnd()\r\n\
+         $planner = $env:ALETHE_PLANNER\r\n\
+         $reply = '{{}}'\r\n\
+         try {{\r\n\
+         \x20\x20$parsed = $body | ConvertFrom-Json -ErrorAction Stop\r\n\
+         \x20\x20if ($parsed.hookEventName -eq 'PreToolUse' -or $parsed.hookEventName -eq 'Stop') {{\r\n\
+         \x20\x20\x20\x20$reply = '{{\"decision\":\"allow\"}}'\r\n\
+         \x20\x20}}\r\n\
+         }} catch {{}}\r\n\
+         [Console]::Out.WriteLine($reply)\r\n\
+         [Console]::Out.Flush()\r\n\
+         try {{\r\n\
+         \x20\x20Invoke-RestMethod -Uri '{endpoint}/hook' -Method Post -Body $body -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = $planner; 'X-Alethe-Agent' = 'antigravity' }} | Out-Null\r\n\
+         }} catch {{}}\r\n",
+        endpoint = endpoint,
+        token = ps_escape(token),
+    );
+    let path = std::env::temp_dir().join(format!(
+        "alethe-antigravity-hook-forward-{}.ps1",
+        install_tag()
+    ));
+    std::fs::write(&path, script).map_err(|e| format!("write_failed:{e}"))?;
+    Ok(path)
+}
+
+#[cfg_attr(windows, allow(dead_code))]
+fn unix_antigravity_hook_forwarder_script(endpoint: &str, token: &str) -> String {
+    format!(
+        "#!/bin/sh\n\
+         body=$(cat)\n\
+         reply='{{}}'\n\
+         if command -v python3 >/dev/null 2>&1; then\n\
+         \x20\x20reply=$(printf '%s' \"$body\" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(\"{{\\\"decision\\\":\\\"allow\\\"}}\" if d.get(\"hookEventName\") in (\"PreToolUse\",\"Stop\") else \"{{}}\")' 2>/dev/null) || reply='{{}}'\n\
+         else\n\
+         \x20\x20case \"$body\" in\n\
+         \x20\x20\x20\x20*'\"hookEventName\":\"PreToolUse\"'*|*'\"hookEventName\": \"PreToolUse\"'*|*'\"hookEventName\":\"Stop\"'*|*'\"hookEventName\": \"Stop\"'*)\n\
+         \x20\x20\x20\x20\x20\x20reply='{{\"decision\":\"allow\"}}'\n\
+         \x20\x20\x20\x20\x20\x20;;\n\
+         \x20\x20esac\n\
+         fi\n\
+         [ -n \"$reply\" ] || reply='{{}}'\n\
+         printf '%s\\n' \"$reply\"\n\
+         printf '%s' \"$body\" | curl -s -m 4 --noproxy '*' -o /dev/null \\\n\
+         \x20\x20-H 'Content-Type: application/json' \\\n\
+         \x20\x20-H 'Expect:' \\\n\
+         \x20\x20-H 'X-Alethe-Token: {token}' \\\n\
+         \x20\x20-H \"X-Alethe-Planner: $ALETHE_PLANNER\" \\\n\
+         \x20\x20-H 'X-Alethe-Agent: antigravity' \\\n\
+         \x20\x20--data-binary @- \\\n\
+         \x20\x20'{endpoint}/hook' >/dev/null 2>&1 || true\n",
+        endpoint = sh_escape(endpoint),
+        token = sh_escape(token),
+    )
+}
+
+#[cfg_attr(windows, allow(dead_code))]
+fn write_unix_antigravity_hook_forwarder(port: u16) -> Result<PathBuf, String> {
+    let endpoint = listener_endpoint(port);
+    let token = init_token();
+    let script = unix_antigravity_hook_forwarder_script(&endpoint, token);
+    let path = hook_settings_dir()?.join(format!(
+        "alethe-antigravity-hook-forward-{}.sh",
+        install_tag()
+    ));
+    write_private_file(&path, script.as_bytes())?;
+    Ok(path)
+}
+
+fn antigravity_hook_forward_command(port: u16) -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        let script_path = write_windows_antigravity_hook_forwarder(port)?;
+        Ok(format!(
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{}\"",
+            script_path.to_string_lossy()
+        ))
+    }
+    #[cfg(not(windows))]
+    {
+        let script_path = write_unix_antigravity_hook_forwarder(port)?;
+        Ok(format!(
+            "/bin/sh '{}'",
+            sh_escape(&script_path.to_string_lossy())
+        ))
+    }
+}
+
+fn upsert_antigravity_hooks_config(existing: &str, command: &str) -> Result<String, String> {
+    let mut root: serde_json::Value = if existing.trim().is_empty() {
+        serde_json::json!({})
+    } else {
+        serde_json::from_str(existing).map_err(|e| format!("parse_failed:{e}"))?
+    };
+    let object = root
+        .as_object_mut()
+        .ok_or_else(|| "parse_failed:root_not_object".to_string())?;
+    let handler = || {
+        serde_json::json!({
+            "type": "command",
+            "command": command,
+            "timeout": HOOK_TIMEOUT_SECS,
+        })
+    };
+    let matcher_group = || {
+        serde_json::json!([{
+            "matcher": "*",
+            "hooks": [handler()],
+        }])
+    };
+    object.insert(
+        "alethe".to_string(),
+        serde_json::json!({
+            "enabled": true,
+            "SessionStart": [handler()],
+            "PreInvocation": [handler()],
+            "PreToolUse": matcher_group(),
+            "PostToolUse": matcher_group(),
+            "Stop": [handler()],
+        }),
+    );
+    let mut rendered =
+        serde_json::to_string_pretty(&root).map_err(|e| format!("serialize_failed:{e}"))?;
+    rendered.push('\n');
+    Ok(rendered)
+}
+
+fn write_antigravity_hooks_file(dir: &Path, command: &str) -> Result<(), String> {
+    let agents_dir = dir.join(".agents");
+    std::fs::create_dir_all(&agents_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
+    let path = agents_dir.join("hooks.json");
+    let existing = if path.is_file() {
+        std::fs::read_to_string(&path).map_err(|e| format!("read_failed:{e}"))?
+    } else {
+        String::new()
+    };
+    let next = upsert_antigravity_hooks_config(&existing, command)?;
+    std::fs::write(&path, next).map_err(|e| format!("write_failed:{e}"))
+}
+
+const ANTIGRAVITY_PLANNER_RULE: &str = "\
+---
+trigger: always_on
+---
+# Alethe Orchestrator Planner Rules (MANDATORY)
+
+When the `alethe` MCP server is listed under `<mcp_servers>`, this session is an **Alethe Orchestration Planner**:
+1. **MANDATORY DELEGATION FOR 2+ FRONTS**: Whenever the user request contains **2 or more independent units, numbered items, or parallel research/codebase fronts** (even if the user calls it a \"quick search\" or \"diagnóstico rápido\"), you **MUST NOT** call `search_web`, `invoke_subagent`, `run_workflow`, or `swarm` yourself. You **MUST** delegate every unit on Turn 1 using `call_mcp_tool` with `ServerName: \"alethe\"` and `ToolName: \"alethe_delegate\"`.
+2. **NO SCHEMA READ NEEDED — CALL DIRECTLY ON TURN 1**:
+   - **Step 1 — Delegate all units in ONE call**:
+     `call_mcp_tool` with `ServerName: \"alethe\"`, `ToolName: \"alethe_delegate\"`, and `Arguments`:
+     `{\"tasks\": [\"Front 1...\", \"Front 2...\"], \"kind\": \"research\" | \"implementation\" | \"review\" | \"test-writing\", \"effortClass\": \"light\" | \"standard\" | \"deep\", \"webSearch\": true, \"label\": \"Short batch title\"}` (add `\"isolate\": true` when parallel workers edit files in the same git repo).
+   - **Step 2 — Wait for results**:
+     `call_mcp_tool` with `ServerName: \"alethe\"`, `ToolName: \"alethe_check\"`, `Arguments: {\"wait\": true}` (pass `\"ack\"` on subsequent checks while workers are running).
+   - **Step 3 — Release finished workers**:
+     `call_mcp_tool` with `ServerName: \"alethe\"`, `ToolName: \"alethe_release\"`, `Arguments: {\"jobId\": \"<id>\"}` for each finished worker before presenting the final synthesis.
+";
+
+fn write_antigravity_planner_rule_file(dir: &Path) -> Result<(), String> {
+    let rules_dir = dir.join(".agents").join("rules");
+    std::fs::create_dir_all(&rules_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
+    let path = rules_dir.join("alethe-orchestrator.md");
+    std::fs::write(&path, ANTIGRAVITY_PLANNER_RULE).map_err(|e| format!("write_failed:{e}"))
+}
+
+fn antigravity_hooks_config_write_inner(repo: String, _planner_id: String) -> Result<(), String> {
+    let port = wait_for_listener_port()
+        .ok_or_else(|| "the agent listener is not available yet".to_string())?;
+    let command = antigravity_hook_forward_command(port)?;
+    write_antigravity_workspace_file(
+        &repo,
+        "antigravity_hooks_config_write: empty workspace path",
+        |dir| write_antigravity_hooks_file(dir, &command),
+    )
+}
+
+fn antigravity_mcp_config_write_inner(repo: String, _planner_id: String) -> Result<(), String> {
+    let port = wait_for_listener_port()
+        .ok_or_else(|| "the agent listener is not available yet".to_string())?;
+    let (bridge_cmd, bridge_args) = mcp_bridge_command(port)?;
+    let hook_cmd = antigravity_hook_forward_command(port)?;
+
+    write_antigravity_workspace_file(
+        &repo,
+        "antigravity_mcp_config_write: empty workspace path",
+        |dir| {
+            write_antigravity_mcp_file(dir, &bridge_cmd, &bridge_args)?;
+            write_antigravity_hooks_file(dir, &hook_cmd)?;
+            write_antigravity_planner_rule_file(dir)
+        },
+    )
+}
+
+/// Provisions `<workspace>/.agents/hooks.json` with an Antigravity command forwarder that reports
+/// lifecycle events (`SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `Stop`) back
+/// to Alethe tagged with `ALETHE_PLANNER`.
+#[tauri::command]
+pub async fn antigravity_hooks_config_write(
+    repo: String,
+    planner_id: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || antigravity_hooks_config_write_inner(repo, planner_id))
+        .await
+        .map_err(|error| format!("antigravity_hooks_config_write: blocking task failed: {error}"))?
+}
+
+/// Registers an Antigravity terminal as an orchestrator planner and provisions its workspace
+/// `.agents/mcp_config.json` with a stdio bridge that tags requests using `ALETHE_PLANNER`.
+#[tauri::command]
+pub async fn antigravity_mcp_config_write(
+    app: tauri::AppHandle,
+    repo: String,
+    planner_id: String,
+    planner_label: String,
+    planner_agent: String,
+) -> Result<(), String> {
+    let state = app.state::<crate::orchestrator::OrchestratorState>();
+    state
+        .core()
+        .register_planner(crate::orchestrator_core::Planner {
+            id: planner_id.clone(),
+            label: planner_label,
+            agent: planner_agent,
+        });
+    tokio::task::spawn_blocking(move || antigravity_mcp_config_write_inner(repo, planner_id))
+        .await
+        .map_err(|error| format!("antigravity_mcp_config_write: blocking task failed: {error}"))?
 }
 
 /// Writes (idempotently, replacing its own prior block) the `[mcp_servers.alethe]` section that
@@ -1006,7 +1384,12 @@ fn codex_hooks_config_write_inner(repo: String, _planner_id: String) -> Result<(
         .ok_or_else(|| "the agent listener is not available yet".to_string())?;
     let script_path = write_codex_hook_forwarder(port)?;
 
-    let root = crate::git_control::repository_root(&repo)?;
+    let trimmed = repo.trim();
+    if trimmed.is_empty() {
+        return Err("codex_mcp_config_write: empty workspace path".to_string());
+    }
+    let root = crate::git_control::repository_root(&repo)
+        .unwrap_or_else(|_| PathBuf::from(trimmed));
     let codex_dir = root.join(".codex");
     std::fs::create_dir_all(&codex_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
     let path = codex_dir.join("config.toml");
@@ -1063,6 +1446,214 @@ pub async fn codex_hooks_config_write(repo: String, planner_id: String) -> Resul
     tokio::task::spawn_blocking(move || codex_hooks_config_write_inner(repo, planner_id))
         .await
         .map_err(|error| format!("codex_hooks_config_write: falha na task bloqueante: {error}"))?
+}
+
+fn non_empty_str<'a>(
+    object: Option<&'a serde_json::Map<String, serde_json::Value>>,
+    keys: &[&str],
+) -> Option<&'a str> {
+    let map = object?;
+    keys.iter()
+        .find_map(|key| map.get(*key).and_then(|value| value.as_str()))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+/// Normalizes Antigravity's camelCase protojson hook payload (`docs/hooks.md`) into Alethe's
+/// shared `AgentHookPayload` snake_case contract so the canvas, session tracker, and plugins
+/// consume Claude Code, Codex, and Antigravity hooks uniformly.
+fn normalize_antigravity_hook_payload(payload: &mut serde_json::Value) {
+    let Some(object) = payload.as_object_mut() else {
+        return;
+    };
+
+    if non_empty_str(Some(object), &["session_id"]).is_none() {
+        if let Some(conversation_id) =
+            non_empty_str(Some(object), &["conversationId"]).map(str::to_owned)
+        {
+            object.insert(
+                "session_id".to_string(),
+                serde_json::Value::String(conversation_id),
+            );
+        }
+    }
+
+    let Some(event_name) = object
+        .get("hookEventName")
+        .and_then(|value| value.as_str())
+        .map(str::to_owned)
+    else {
+        return;
+    };
+
+    let tool_call = object.get("toolCall").and_then(|v| v.as_object()).cloned();
+    let tool_name = non_empty_str(tool_call.as_ref(), &["name"]).map(str::to_owned);
+    let tool_id = non_empty_str(tool_call.as_ref(), &["id"]).map(str::to_owned);
+    let tool_args = tool_call
+        .as_ref()
+        .and_then(|call| call.get("args"))
+        .cloned();
+    let tool_args_obj = tool_args.as_ref().and_then(|v| v.as_object());
+    let tool_response = object.get("toolResponse").cloned();
+    let error_text = non_empty_str(Some(object), &["error"]).map(str::to_owned);
+
+    match event_name.as_str() {
+        "SessionStart" => {
+            object.insert(
+                "hook_event_name".to_string(),
+                serde_json::Value::String("SessionStart".to_string()),
+            );
+        }
+        "PreInvocation" => {
+            object.insert(
+                "hook_event_name".to_string(),
+                serde_json::Value::String("UserPromptSubmit".to_string()),
+            );
+            if non_empty_str(Some(object), &["prompt"]).is_none() {
+                if let Some(prompt) =
+                    non_empty_str(Some(object), &["lastUserInput"]).map(str::to_owned)
+                {
+                    object.insert("prompt".to_string(), serde_json::Value::String(prompt));
+                }
+            }
+        }
+        "PreToolUse" => {
+            if tool_name.as_deref() == Some("invoke_subagent") {
+                object.insert(
+                    "hook_event_name".to_string(),
+                    serde_json::Value::String("SubagentStart".to_string()),
+                );
+                if let Some(id) = tool_id {
+                    object.insert("agent_id".to_string(), serde_json::Value::String(id));
+                }
+                let agent_type = non_empty_str(
+                    tool_args_obj,
+                    &["Role", "role", "TypeName", "typeName"],
+                )
+                .unwrap_or("subagent")
+                .to_string();
+                object.insert(
+                    "agent_type".to_string(),
+                    serde_json::Value::String(agent_type),
+                );
+                if let Some(prompt) = non_empty_str(tool_args_obj, &["Prompt", "prompt"]) {
+                    object.insert(
+                        "prompt".to_string(),
+                        serde_json::Value::String(prompt.to_string()),
+                    );
+                }
+            } else {
+                object.insert(
+                    "hook_event_name".to_string(),
+                    serde_json::Value::String("PreToolUse".to_string()),
+                );
+                if let Some(name) = tool_name {
+                    object.insert("tool_name".to_string(), serde_json::Value::String(name));
+                }
+                if let Some(id) = tool_id {
+                    object.insert("tool_use_id".to_string(), serde_json::Value::String(id));
+                }
+                if let Some(args) = tool_args {
+                    if args.is_object() {
+                        object.insert("tool_input".to_string(), args);
+                    }
+                }
+            }
+        }
+        "PostToolUse" => {
+            if tool_name.as_deref() == Some("invoke_subagent") {
+                object.insert(
+                    "hook_event_name".to_string(),
+                    serde_json::Value::String("SubagentStop".to_string()),
+                );
+                if let Some(id) = tool_id {
+                    object.insert("agent_id".to_string(), serde_json::Value::String(id));
+                }
+                let result_msg = non_empty_str(
+                    tool_response.as_ref().and_then(|v| v.as_object()),
+                    &["output", "result", "summary", "message"],
+                )
+                .map(str::to_owned)
+                .or_else(|| {
+                    tool_response
+                        .as_ref()
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_owned)
+                })
+                .or(error_text);
+                if let Some(message) = result_msg {
+                    object.insert(
+                        "last_assistant_message".to_string(),
+                        serde_json::Value::String(message),
+                    );
+                }
+            } else {
+                object.insert(
+                    "hook_event_name".to_string(),
+                    serde_json::Value::String("PostToolUse".to_string()),
+                );
+                if let Some(name) = tool_name {
+                    object.insert("tool_name".to_string(), serde_json::Value::String(name));
+                }
+                if let Some(id) = tool_id {
+                    object.insert("tool_use_id".to_string(), serde_json::Value::String(id));
+                }
+                if let Some(args) = tool_args {
+                    if args.is_object() {
+                        object.insert("tool_input".to_string(), args);
+                    }
+                }
+                if let Some(response) = tool_response {
+                    object.insert("tool_response".to_string(), response);
+                } else if let Some(error) = error_text {
+                    object.insert(
+                        "tool_response".to_string(),
+                        serde_json::json!({ "error": error }),
+                    );
+                }
+            }
+        }
+        "Stop" => {
+            object.insert(
+                "hook_event_name".to_string(),
+                serde_json::Value::String("Stop".to_string()),
+            );
+            if let Some(stop_active) = object
+                .get("stopHookActive")
+                .and_then(|value| value.as_bool())
+            {
+                object.insert(
+                    "stop_hook_active".to_string(),
+                    serde_json::Value::Bool(stop_active),
+                );
+            }
+            if non_empty_str(Some(object), &["last_assistant_message"]).is_none() {
+                if let Some(message) =
+                    non_empty_str(Some(object), &["lastAgentPrefix", "error"]).map(str::to_owned)
+                {
+                    object.insert(
+                        "last_assistant_message".to_string(),
+                        serde_json::Value::String(message),
+                    );
+                }
+            }
+            if object.get("fullyIdle").and_then(|v| v.as_bool()) == Some(true)
+                && !object.contains_key("background_tasks")
+            {
+                object.insert("background_tasks".to_string(), serde_json::json!([]));
+            }
+        }
+        other => {
+            if !object.contains_key("hook_event_name") {
+                object.insert(
+                    "hook_event_name".to_string(),
+                    serde_json::Value::String(other.to_string()),
+                );
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1299,6 +1890,7 @@ pub fn start_listener(app: AppHandle) {
                         .find(|h| h.field.equiv("X-Alethe-Agent"))
                         .map(|h| h.value.as_str().to_string())
                         .unwrap_or_else(|| "claude".to_string());
+                    let is_antigravity = source_agent == "antigravity";
                     if let Some(object) = payload.as_object_mut() {
                         object.insert(
                             "sourceAgent".to_string(),
@@ -1314,6 +1906,13 @@ pub fn start_listener(app: AppHandle) {
                         if let Some(object) = payload.as_object_mut() {
                             object.insert("voiceOnly".to_string(), serde_json::Value::Bool(true));
                         }
+                    }
+
+                    if is_antigravity
+                        || (payload.get("hook_event_name").is_none()
+                            && payload.get("hookEventName").is_some())
+                    {
+                        normalize_antigravity_hook_payload(&mut payload);
                     }
 
                     let event_name = payload
@@ -1665,6 +2264,260 @@ mod tests {
             "bridge script should report request failures on stderr"
         );
         removed.expect("generated bridge script should be removable");
+    }
+
+    #[test]
+    fn antigravity_mcp_config_upsert_creates_and_preserves_existing_servers() {
+        let args = vec!["/tmp/alethe-mcp-bridge.sh".to_string()];
+        let created = super::upsert_antigravity_mcp_config("", "/bin/sh", &args)
+            .expect("empty config should yield valid JSON");
+        let parsed: serde_json::Value = serde_json::from_str(&created).expect("valid JSON");
+        assert_eq!(parsed["mcpServers"]["alethe"]["command"], "/bin/sh");
+        assert_eq!(parsed["mcpServers"]["alethe"]["args"], serde_json::json!(args));
+
+        let existing = r#"{
+  "otherTopLevel": true,
+  "mcpServers": {
+    "github": { "command": "npx", "args": ["-y", "github-mcp"] },
+    "alethe": { "command": "old-cmd", "args": ["old"] }
+  }
+}"#;
+        let updated = super::upsert_antigravity_mcp_config(existing, "/bin/sh", &args)
+            .expect("existing config should update cleanly");
+        let reparsed: serde_json::Value = serde_json::from_str(&updated).expect("valid JSON");
+        assert_eq!(reparsed["otherTopLevel"], true);
+        assert_eq!(reparsed["mcpServers"]["github"]["command"], "npx");
+        assert_eq!(reparsed["mcpServers"]["alethe"]["command"], "/bin/sh");
+        assert_eq!(
+            reparsed["mcpServers"]["alethe"]["args"],
+            serde_json::json!(args)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_mcp_bridge_script_forwards_token_and_planner_header() {
+        let script = super::unix_mcp_bridge_script("http://127.0.0.1:9123", "tok_test_123");
+        assert!(script.starts_with("#!/bin/sh\n"));
+        assert!(script.contains("X-Alethe-Token: tok_test_123"));
+        assert!(script.contains("X-Alethe-Planner: $ALETHE_PLANNER"));
+        assert!(script.contains("http://127.0.0.1:9123/mcp"));
+        assert!(script.contains("[alethe-mcp] request failed"));
+    }
+
+    #[test]
+    fn antigravity_hooks_config_upsert_creates_and_preserves_other_hook_groups() {
+        let cmd = "/bin/sh '/tmp/alethe-antigravity-hook-forward-tag.sh'";
+        let created = super::upsert_antigravity_hooks_config("", cmd)
+            .expect("empty hooks config should yield valid JSON");
+        let parsed: serde_json::Value = serde_json::from_str(&created).expect("valid JSON");
+        assert_eq!(parsed["alethe"]["enabled"], true);
+        assert_eq!(parsed["alethe"]["SessionStart"][0]["command"], cmd);
+        assert_eq!(parsed["alethe"]["PreInvocation"][0]["command"], cmd);
+        assert_eq!(parsed["alethe"]["Stop"][0]["command"], cmd);
+        assert_eq!(parsed["alethe"]["PreToolUse"][0]["matcher"], "*");
+        assert_eq!(parsed["alethe"]["PreToolUse"][0]["hooks"][0]["command"], cmd);
+        assert_eq!(parsed["alethe"]["PostToolUse"][0]["matcher"], "*");
+        assert_eq!(parsed["alethe"]["PostToolUse"][0]["hooks"][0]["command"], cmd);
+
+        let existing = r#"{
+  "user-linter": {
+    "PostToolUse": [
+      { "matcher": "write_to_file", "hooks": [{ "type": "command", "command": "./lint.sh" }] }
+    ]
+  },
+  "alethe": {
+    "enabled": false
+  }
+}"#;
+        let updated = super::upsert_antigravity_hooks_config(existing, cmd)
+            .expect("existing hooks config should update cleanly");
+        let reparsed: serde_json::Value = serde_json::from_str(&updated).expect("valid JSON");
+        assert_eq!(
+            reparsed["user-linter"]["PostToolUse"][0]["matcher"],
+            "write_to_file"
+        );
+        assert_eq!(reparsed["alethe"]["enabled"], true);
+        assert_eq!(reparsed["alethe"]["PreToolUse"][0]["hooks"][0]["command"], cmd);
+    }
+
+    #[test]
+    fn antigravity_planner_rule_file_writes_always_on_rule() {
+        let dir = std::env::temp_dir().join(format!(
+            "alethe-agy-rule-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        super::write_antigravity_planner_rule_file(&dir).expect("planner rule file should write");
+        let path = dir.join(".agents").join("rules").join("alethe-orchestrator.md");
+        let content = std::fs::read_to_string(&path).expect("rule file should be readable");
+        assert!(content.starts_with("---\ntrigger: always_on\n---\n"));
+        assert!(content.contains("alethe_delegate"));
+        assert!(content.contains("webSearch"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn windows_antigravity_hook_forwarder_outputs_valid_json_and_forwards() {
+        let path = super::write_windows_antigravity_hook_forwarder(9123)
+            .expect("windows forwarder should be written");
+        let script = std::fs::read_to_string(&path).expect("forwarder should be readable");
+        let removed = std::fs::remove_file(&path);
+
+        assert!(script.contains("'{\"decision\":\"allow\"}'"));
+        assert!(script.contains("$reply = '{}'"));
+        assert!(script.contains("'X-Alethe-Agent' = 'antigravity'"));
+        assert!(script.contains("'X-Alethe-Planner' = $planner"));
+        assert!(script.contains("http://127.0.0.1:9123/hook"));
+        removed.expect("generated forwarder should be removable");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_antigravity_hook_forwarder_emits_allow_or_empty_json_per_event() {
+        let script =
+            super::unix_antigravity_hook_forwarder_script("http://127.0.0.1:9123", "tok_agy_123");
+        assert!(script.starts_with("#!/bin/sh\n"));
+        assert!(script.contains("X-Alethe-Token: tok_agy_123"));
+        assert!(script.contains("X-Alethe-Planner: $ALETHE_PLANNER"));
+        assert!(script.contains("X-Alethe-Agent: antigravity"));
+        assert!(script.contains("http://127.0.0.1:9123/hook"));
+
+        let run = |stdin_json: &str| -> String {
+            use std::io::Write;
+            use std::process::{Command, Stdio};
+            let mut child = Command::new("/bin/sh")
+                .arg("-c")
+                .arg(&script)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .expect("run forwarder script");
+            child
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(stdin_json.as_bytes())
+                .unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert!(output.status.success());
+            String::from_utf8(output.stdout).unwrap().trim().to_string()
+        };
+
+        assert_eq!(
+            run(r#"{"hookEventName":"PreToolUse","toolCall":{"name":"run_command"}}"#),
+            r#"{"decision":"allow"}"#
+        );
+        assert_eq!(
+            run(r#"{"hookEventName":"Stop","terminationReason":"NO_TOOL_CALL"}"#),
+            r#"{"decision":"allow"}"#
+        );
+        assert_eq!(
+            run(r#"{"hookEventName":"SessionStart","conversationId":"conv-1"}"#),
+            "{}"
+        );
+        assert_eq!(
+            run(r#"{"hookEventName":"PreInvocation","lastUserInput":"\"hookEventName\":\"PreToolUse\""}"#),
+            "{}"
+        );
+        assert_eq!(
+            run(r#"{"hookEventName":"PostToolUse","toolCall":{"name":"run_command"}}"#),
+            "{}"
+        );
+    }
+
+    #[test]
+    fn normalize_antigravity_hook_payload_maps_lifecycle_and_subagents() {
+        let mut session_start = serde_json::json!({
+            "conversationId": "conv-123",
+            "hookEventName": "SessionStart"
+        });
+        super::normalize_antigravity_hook_payload(&mut session_start);
+        assert_eq!(session_start["hook_event_name"], "SessionStart");
+        assert_eq!(session_start["session_id"], "conv-123");
+
+        let mut pre_invocation = serde_json::json!({
+            "conversationId": "conv-123",
+            "hookEventName": "PreInvocation",
+            "lastUserInput": "Run checks"
+        });
+        super::normalize_antigravity_hook_payload(&mut pre_invocation);
+        assert_eq!(pre_invocation["hook_event_name"], "UserPromptSubmit");
+        assert_eq!(pre_invocation["session_id"], "conv-123");
+        assert_eq!(pre_invocation["prompt"], "Run checks");
+
+        let mut pre_tool = serde_json::json!({
+            "conversationId": "conv-123",
+            "hookEventName": "PreToolUse",
+            "toolCall": {
+                "id": "call-1",
+                "name": "run_command",
+                "args": { "CommandLine": "npm test" }
+            }
+        });
+        super::normalize_antigravity_hook_payload(&mut pre_tool);
+        assert_eq!(pre_tool["hook_event_name"], "PreToolUse");
+        assert_eq!(pre_tool["tool_name"], "run_command");
+        assert_eq!(pre_tool["tool_use_id"], "call-1");
+        assert_eq!(pre_tool["tool_input"]["CommandLine"], "npm test");
+
+        let mut subagent_start = serde_json::json!({
+            "conversationId": "conv-123",
+            "hookEventName": "PreToolUse",
+            "toolCall": {
+                "id": "sub-1",
+                "name": "invoke_subagent",
+                "args": { "TypeName": "research", "Role": "Codebase Researcher", "Prompt": "Inspect hooks" }
+            }
+        });
+        super::normalize_antigravity_hook_payload(&mut subagent_start);
+        assert_eq!(subagent_start["hook_event_name"], "SubagentStart");
+        assert_eq!(subagent_start["agent_id"], "sub-1");
+        assert_eq!(subagent_start["agent_type"], "Codebase Researcher");
+        assert_eq!(subagent_start["prompt"], "Inspect hooks");
+
+        let mut subagent_stop = serde_json::json!({
+            "conversationId": "conv-123",
+            "hookEventName": "PostToolUse",
+            "toolCall": {
+                "id": "sub-1",
+                "name": "invoke_subagent",
+                "args": { "TypeName": "research" }
+            },
+            "toolResponse": { "output": "Found 2 files" }
+        });
+        super::normalize_antigravity_hook_payload(&mut subagent_stop);
+        assert_eq!(subagent_stop["hook_event_name"], "SubagentStop");
+        assert_eq!(subagent_stop["agent_id"], "sub-1");
+        assert_eq!(subagent_stop["last_assistant_message"], "Found 2 files");
+
+        let mut post_tool = serde_json::json!({
+            "conversationId": "conv-123",
+            "hookEventName": "PostToolUse",
+            "toolCall": {
+                "id": "call-1",
+                "name": "run_command",
+                "args": { "CommandLine": "npm test" }
+            },
+            "error": "exit status 1"
+        });
+        super::normalize_antigravity_hook_payload(&mut post_tool);
+        assert_eq!(post_tool["hook_event_name"], "PostToolUse");
+        assert_eq!(post_tool["tool_name"], "run_command");
+        assert_eq!(post_tool["tool_use_id"], "call-1");
+        assert_eq!(post_tool["tool_response"]["error"], "exit status 1");
+
+        let mut stop = serde_json::json!({
+            "conversationId": "conv-123",
+            "hookEventName": "Stop",
+            "fullyIdle": true,
+            "lastAgentPrefix": "All checks passed."
+        });
+        super::normalize_antigravity_hook_payload(&mut stop);
+        assert_eq!(stop["hook_event_name"], "Stop");
+        assert_eq!(stop["last_assistant_message"], "All checks passed.");
+        assert_eq!(stop["background_tasks"], serde_json::json!([]));
     }
 
     fn legacy_hooks(script: &str) -> String {

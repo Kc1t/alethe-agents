@@ -8,8 +8,8 @@ export type AgentHookPayload = {
   source?: string
   /** The terminal (ptyId) this fired from, tagged by the backend (agent_events.rs). */
   plannerId?: string
-  /** Which CLI's own subagent mechanism fired this — 'claude' or 'codex' (agent_events.rs). */
-  sourceAgent?: 'claude' | 'codex'
+  /** Which CLI's own subagent mechanism fired this (agent_events.rs). */
+  sourceAgent?: 'claude' | 'codex' | 'antigravity'
   agent_id?: string
   agent_type?: string
   tool_name?: string
@@ -45,7 +45,7 @@ export type AgentNode = {
   /** The terminal this node belongs to; null when the source hook carried none. */
   plannerId: string | null
   /** Which CLI spawned this subagent — decides the icon on the orchestrator canvas. */
-  sourceAgent: 'claude' | 'codex'
+  sourceAgent: 'claude' | 'codex' | 'antigravity'
   /** Team name, for teammates only. */
   team: string | null
   /** Number of teammate turns represented by this node. */
@@ -104,13 +104,15 @@ export function summarizeTool(toolName: string, input?: Record<string, unknown>)
   if (!input) return ''
   const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n)}…` : s)
 
-  const filePath = str(input.file_path) ?? str(input.notebook_path)
+  const filePath = str(input.file_path) ?? str(input.notebook_path) ?? str(input.Path)
   if (filePath) return basename(filePath)
 
   switch (toolName) {
     case 'Bash':
     case 'PowerShell':
       return clip(str(input.command) ?? '')
+    case 'run_command':
+      return clip(str(input.CommandLine) ?? '')
     case 'Grep':
       return clip(str(input.pattern) ?? '')
     case 'Glob':
@@ -258,7 +260,7 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
               sourceAgent: raw.sourceAgent ?? 'claude',
               team: null,
               turns: 0,
-              prompt: pending?.description ?? pending?.prompt ?? null,
+              prompt: pending?.description ?? pending?.prompt ?? str(raw.prompt) ?? null,
               status: 'running',
               startedAt: Date.now(),
               endedAt: null,

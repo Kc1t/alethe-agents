@@ -167,6 +167,81 @@ describe('OrchestrationPage', { timeout: 20_000 }, () => {
     })
   })
 
+  it('offers Antigravity both as the agent and as the orchestrator of a role', () => {
+    withRoles([reviewer])
+    render(<OrchestrationPage />)
+
+    choose('Agent for reviewer', 'Antigravity')
+    expect(orchestration().roles[0]).toMatchObject({
+      agent: 'antigravity',
+      model: null,
+      effort: null,
+      readOnly: false,
+    })
+    expect(screen.getByRole('switch', { name: 'Read-only for reviewer' })).toBeDisabled()
+
+    choose('Orchestrator for reviewer', 'Antigravity')
+    expect(orchestration().roles[0]).toMatchObject({
+      orchestrator: 'antigravity',
+    })
+  })
+
+  it('offers the approved Antigravity models and only the efforts each one takes', () => {
+    withRoles([
+      {
+        name: 'writer',
+        agent: 'antigravity',
+        model: null,
+        effort: null,
+        readOnly: false,
+        timeoutSeconds: null,
+      },
+    ])
+    render(<OrchestrationPage />)
+
+    // The CLI default carries its own effort, so none is offered next to it.
+    fireEvent.click(screen.getByRole('button', { name: 'Effort for writer' }))
+    expect(screen.queryByRole('option', { name: 'medium' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Effort for writer' }))
+
+    choose('Model for writer', 'claude-sonnet-5-5')
+    fireEvent.click(screen.getByRole('button', { name: 'Effort for writer' }))
+    expect(screen.queryByRole('option', { name: 'low' })).toBeNull()
+    expect(screen.queryByRole('option', { name: 'max' })).toBeNull()
+    fireEvent.click(screen.getByRole('option', { name: 'high' }))
+    expect(orchestration().roles[0]).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'high' })
+
+    // A variant id names its effort, and agy refuses one next to it.
+    choose('Model for writer', 'claude-opus-5-5-high')
+    expect(orchestration().roles[0]).toMatchObject({ model: 'claude-opus-5-5-high', effort: null })
+    fireEvent.click(screen.getByRole('button', { name: 'Effort for writer' }))
+    expect(screen.queryByRole('option', { name: 'high' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Effort for writer' }))
+
+    // OpenAI's open model in agy has a fixed effort, so it carries none either.
+    choose('Model for writer', 'gpt-oss-120b-medium')
+    expect(orchestration().roles[0]).toMatchObject({ model: 'gpt-oss-120b-medium', effort: null })
+    fireEvent.click(screen.getByRole('button', { name: 'Effort for writer' }))
+    expect(screen.queryByRole('option', { name: 'medium' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Effort for writer' }))
+
+    // The owner's vendor order inside Antigravity: Anthropic, then OpenAI, then Google.
+    fireEvent.click(screen.getByRole('button', { name: 'Model for writer' }))
+    const order = [
+      'claude-sonnet-5-5',
+      'claude-opus-5-5-high',
+      'gpt-oss-120b-medium',
+      'gemini-3.8-flash',
+    ]
+    const offered = screen.getAllByRole('option').map((option) => option.textContent ?? '')
+    expect(offered.filter((model) => order.includes(model))).toEqual(order)
+    fireEvent.click(screen.getByRole('button', { name: 'Model for writer' }))
+
+    choose('Model for writer', 'gemini-3.8-flash')
+    choose('Effort for writer', 'medium')
+    expect(orchestration().roles[0]).toMatchObject({ model: 'gemini-3.8-flash', effort: 'medium' })
+  })
+
   it('does not save a rename that takes the name of another role', () => {
     const writer: OrchestrationRole = {
       name: 'writer',

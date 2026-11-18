@@ -248,11 +248,11 @@ fn root_for(agent: &str) -> Option<PathBuf> {
         .and_then(|(_, segments)| skills_home(segments))
 }
 
-/// Claude Code reads repository skills from `.claude/skills`, Codex from `.agents/skills`.
+/// Claude Code reads repository skills from `.claude/skills`, Codex and Antigravity from `.agents/skills`.
 fn project_root_for(project: &Path, agent: &str) -> Option<PathBuf> {
     match agent {
         "claude" => Some(project.join(".claude").join("skills")),
-        "codex" => Some(project.join(".agents").join("skills")),
+        "codex" | "antigravity" => Some(project.join(".agents").join("skills")),
         _ => None,
     }
 }

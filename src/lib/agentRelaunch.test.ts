@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useProjectsStore } from '../stores/projectsStore'
 import { relaunchAgentPty } from './agentRelaunch'
 import { hasOrchestratorTools, recordClaudeLaunch } from './claudeMcpConfigs'
-import { restartPty } from './tauri'
+import {
+  antigravityHooksConfigWrite,
+  antigravityMcpConfigWrite,
+  codexMcpConfigWrite,
+  restartPty,
+} from './tauri'
 
 vi.mock('./tauri', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./tauri')>()),
@@ -11,6 +16,9 @@ vi.mock('./tauri', async (importOriginal) => ({
   restartPty: vi.fn(async ({ id }: { id: string }) => ({ id })),
   orchestratorMcpConfigPath: vi.fn(async () => 'C:\\Temp\\orchestrator-mcp.json'),
   playwrightMcpConfigPath: vi.fn(async () => 'C:\\Temp\\playwright-mcp.json'),
+  antigravityHooksConfigWrite: vi.fn(async () => undefined),
+  antigravityMcpConfigWrite: vi.fn(async () => undefined),
+  codexMcpConfigWrite: vi.fn(async () => undefined),
   aiMemoryDetect: vi.fn(async () => ({ installed: false })),
 }))
 
@@ -63,5 +71,18 @@ describe('relaunchAgentPty', () => {
     ).rejects.toThrow('spawn failed')
 
     expect(hasOrchestratorTools('pty-1')).toBe(false)
+  })
+
+  it('refreshes Antigravity workspace hooks and MCP config on relaunch when orchestration is on', async () => {
+    await relaunchAgentPty({ ptyId: 'pty-agy', agent: 'antigravity', cwd: 'C:\\repo' })
+
+    expect(antigravityHooksConfigWrite).toHaveBeenCalledWith('C:\\repo', 'pty-agy')
+    expect(antigravityMcpConfigWrite).toHaveBeenCalledWith(
+      'C:\\repo',
+      'pty-agy',
+      'Antigravity',
+      'antigravity',
+    )
+    expect(codexMcpConfigWrite).not.toHaveBeenCalled()
   })
 })

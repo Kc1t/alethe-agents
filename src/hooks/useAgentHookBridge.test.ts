@@ -160,4 +160,32 @@ describe('Claude session persistence across terminal views', () => {
     expect(tabs()[0].sessionId).toBe('chat-0')
     expect(peekSession(tabs()[0].id)).toBeNull()
   })
+
+  it('tracks Antigravity conversation IDs from SessionStart hooks into antigravitySessionId', async () => {
+    const project = state().projects[0]
+    const agyTerminal = state().createTerminal(project.id, {
+      name: 'Antigravity',
+      cwd: 'D:/repo',
+      firstTab: { type: 'antigravity', cwd: 'D:/repo' },
+    })
+    const agyTab = agyTerminal.tabs[0]
+    state().setSubTabPtyId(project.id, agyTerminal.id, agyTab.id, 'pty-agy')
+
+    await mountBridge()
+    act(() =>
+      events.handler?.({
+        payload: {
+          plannerId: 'pty-agy',
+          sourceAgent: 'antigravity',
+          session_id: 'agy-conv-1',
+          hook_event_name: 'SessionStart',
+        },
+      }),
+    )
+
+    const updatedTab = state().projects[0].terminals.find((t) => t.id === agyTerminal.id)?.tabs[0]
+    expect(updatedTab?.sessionId).toBe('agy-conv-1')
+    expect(peekSession(agyTab.id)?.antigravitySessionId).toBe('agy-conv-1')
+    expect(isSessionClaimed('antigravity', 'D:/repo', 'agy-conv-1')).toBe(true)
+  })
 })

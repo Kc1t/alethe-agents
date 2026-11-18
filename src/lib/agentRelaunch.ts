@@ -1,11 +1,17 @@
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
-import { claudeLaunchExtras, recordClaudeLaunch } from './claudeMcpConfigs'
+import { claudeLaunchExtras, plannerLabelFor, recordClaudeLaunch } from './claudeMcpConfigs'
 import { ptyLaunchTarget } from './ptyLaunchTarget'
 import { type AgentLaunch, buildAgentLaunch } from './sessionLaunch'
-import { restartPty } from './tauri'
+import {
+  antigravityHooksConfigWrite,
+  antigravityMcpConfigWrite,
+  codexMcpConfigWrite,
+  restartPty,
+} from './tauri'
 import type { AgentRuntimeProfile, AgentType } from './types'
+import { voiceConversationHooksEnabled } from './voice/conversationHooks'
 
 /**
  * Replaces the process in a pane's pty with a fresh launch of its agent. Every relaunch goes
@@ -36,6 +42,23 @@ export async function relaunchAgentPty({
   })
   const extras =
     agent === 'claude' ? await claudeLaunchExtras({ ptyId, cwd, graphifyRepo }) : undefined
+  const orchestratorEnabled = useProjectsStore.getState().preferences.enabledFeatures.orchestrator
+  if (cwd) {
+    if (agent === 'antigravity' && (orchestratorEnabled || voiceConversationHooksEnabled())) {
+      await antigravityHooksConfigWrite(cwd, ptyId).catch(() => undefined)
+    }
+    if (orchestratorEnabled) {
+      if (agent === 'antigravity') {
+        await antigravityMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId, agent), agent).catch(
+          () => undefined,
+        )
+      } else if (agent === 'codex') {
+        await codexMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId, agent), agent).catch(
+          () => undefined,
+        )
+      }
+    }
+  }
   const launch = buildAgentLaunch(
     agent,
     prepared.args,

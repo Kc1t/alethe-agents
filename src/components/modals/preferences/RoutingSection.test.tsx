@@ -146,4 +146,24 @@ describe('RoutingSection', () => {
         .querySelector('img[src*="claude-code.png"]'),
     ).not.toBeNull()
   })
+
+  it('renders the Antigravity icon when a role or gate uses antigravity', () => {
+    const agyRole: OrchestrationRole = { ...reviewer, name: 'agy', agent: 'antigravity' }
+    setup([agyRole], {
+      rules: [rule({ role: 'agy', gates: [{ agent: 'antigravity', window: 'opus', below: 50 }] })],
+    })
+    render(<RoutingSection />)
+    openAdvanced()
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Role for rule 1' })
+        .querySelector('img[src*="antigravity.png"]'),
+    ).not.toBeNull()
+    expect(
+      screen
+        .getByRole('button', { name: 'Gate agent' })
+        .querySelector('img[src*="antigravity.png"]'),
+    ).not.toBeNull()
+  })
 })

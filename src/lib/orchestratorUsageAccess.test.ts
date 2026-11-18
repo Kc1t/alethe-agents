@@ -15,22 +15,22 @@ beforeEach(() => {
 })
 
 describe('enableOrchestratorFeature', () => {
-  it('turns Claude and Codex usage reading on with the feature and says so', () => {
+  it('turns Claude, Codex, and Antigravity usage reading on with the feature and says so', () => {
     enableOrchestratorFeature()
 
     expect(preferences().enabledFeatures.orchestrator).toBe(true)
     expect(preferences().usageAccess).toEqual({
       claude: true,
       codex: true,
-      antigravity: false,
+      antigravity: true,
       kimi: false,
       openrouter: false,
     })
     const [toast] = useUiStore.getState().toasts
-    expect(toast.body).toContain('Claude Code, Codex')
+    expect(toast.body).toContain('Claude Code, Codex, Antigravity')
   })
 
-  it('names only the provider it had to turn on', () => {
+  it('names only the providers it had to turn on', () => {
     useProjectsStore.setState({
       preferences: {
         ...DEFAULT_PREFERENCES,
@@ -40,7 +40,7 @@ describe('enableOrchestratorFeature', () => {
     enableOrchestratorFeature()
 
     const [toast] = useUiStore.getState().toasts
-    expect(toast.body).toContain('Codex')
+    expect(toast.body).toContain('Codex, Antigravity')
     expect(toast.body).not.toContain('Claude Code')
   })
 
@@ -62,11 +62,11 @@ describe('enableOrchestratorFeature', () => {
     expect(useUiStore.getState().toasts).toEqual([])
   })
 
-  it('says nothing when both were already on', () => {
+  it('says nothing when all three were already on', () => {
     useProjectsStore.setState({
       preferences: {
         ...DEFAULT_PREFERENCES,
-        usageAccess: { claude: true, codex: true, antigravity: false, kimi: false },
+        usageAccess: { claude: true, codex: true, antigravity: true, kimi: false },
       },
     })
     enableOrchestratorFeature()

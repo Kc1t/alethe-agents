@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { agentLabel } from '../../../lib/agentProviders'
 import { useT } from '../../../lib/i18n'
 import {
+  ANTIGRAVITY_MODELS,
   canFallBackToName,
   CLAUDE_EFFORTS,
   CODEX_EFFORTS,
@@ -30,8 +31,12 @@ import { SettingsSection } from './primitives'
 import { RoutingSection } from './RoutingSection'
 import { StrategyArchitecture } from './StrategyArchitecture'
 
-const AGENTS: OrchestrationRole['agent'][] = ['codex', 'claude']
-const ORCHESTRATORS: NonNullable<OrchestrationRole['orchestrator']>[] = ['claude', 'codex']
+const AGENTS: OrchestrationRole['agent'][] = ['codex', 'claude', 'antigravity']
+const ORCHESTRATORS: NonNullable<OrchestrationRole['orchestrator']>[] = [
+  'claude',
+  'codex',
+  'antigravity',
+]
 const SKILL_PROVIDERS: Array<{
   value: OrchestrationSkillSettings['conserveProvider']
   label: string
@@ -122,6 +127,18 @@ export function OrchestrationPage({ onOpenPlaybooks }: { onOpenPlaybooks?: () =>
     return [...new Set(listed.flatMap((option) => option.efforts))]
   }
 
+  // An Antigravity model this list does not know, or agy's default, gets no effort: agy refuses
+  // one next to a variant id.
+  const effortsFor = (
+    role: Pick<OrchestrationRole, 'agent'>,
+    model: string | null,
+  ): readonly string[] =>
+    role.agent === 'codex'
+      ? effortsOf(model)
+      : role.agent === 'antigravity'
+        ? (ANTIGRAVITY_MODELS[model ?? ''] ?? [])
+        : CLAUDE_EFFORTS
+
   // A rename is saved only once the orchestrator accepts the name and no other row for the same
   // orchestrator has it, so it can never hand one role's name, and what that role allows, to another.
   const renameRole = (index: number, role: OrchestrationRole, text: string) => {
@@ -149,13 +166,13 @@ export function OrchestrationPage({ onOpenPlaybooks }: { onOpenPlaybooks?: () =>
   }
 
   const setAgent = (index: number, agent: OrchestrationRole['agent']) =>
-    // A model and its efforts belong to one CLI, and Claude has no read-only launch.
+    // A model and its efforts belong to one CLI, and only Codex has a read-only launch.
     saveRole(index, { agent, model: null, effort: null, readOnly: false })
 
   const setModel = (index: number, role: OrchestrationRole, value: string) => {
     if (value !== '' && !isOrchestrationName(value)) return
     const model = value || null
-    const efforts: readonly string[] = role.agent === 'codex' ? effortsOf(model) : CLAUDE_EFFORTS
+    const efforts = effortsFor(role, model)
     const effort = role.effort && efforts.includes(role.effort) ? role.effort : null
     saveRole(index, { model, effort })
   }
@@ -164,7 +181,9 @@ export function OrchestrationPage({ onOpenPlaybooks }: { onOpenPlaybooks?: () =>
     const listed =
       role.agent === 'codex'
         ? (models ?? []).map((option) => ({ value: option.model, label: option.name }))
-        : []
+        : role.agent === 'antigravity'
+          ? Object.keys(ANTIGRAVITY_MODELS).map((model) => ({ value: model, label: model }))
+          : []
     const current =
       role.model && !listed.some((option) => option.value === role.model)
         ? [{ value: role.model, label: role.model }]
@@ -477,7 +496,7 @@ export function OrchestrationPage({ onOpenPlaybooks }: { onOpenPlaybooks?: () =>
                       ariaLabel={t('prefs.orchestrationEffortFor', { name: label })}
                       options={[
                         { value: '', label: t('prefs.orchestrationModelDefault') },
-                        ...(codex ? effortsOf(role.model) : CLAUDE_EFFORTS).map((effort) => ({
+                        ...effortsFor(role, role.model).map((effort) => ({
                           value: effort,
                           label: effort,
                         })),

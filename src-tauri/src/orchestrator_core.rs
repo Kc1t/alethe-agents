@@ -6,7 +6,7 @@
 //! stack a Rust test binary cannot load.
 
 use std::collections::{HashMap, VecDeque};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -89,6 +89,215 @@ impl Launcher {
             env: Vec::new(),
         }
     }
+
+    /// agy (1.3.3+) streams turns over stdin without `-p`, which in agy takes the prompt as its value.
+    /// `accept-edits` lets it edit files on its own. A command runs only when it matches an
+    /// allow-rule of the owner's `alethe-worker` agy project; any other is denied, never asked
+    /// about, and `--sandbox` keeps an allowed one inside the workspace. Never the bypass flag.
+    pub fn antigravity_headless(program: PathBuf) -> Self {
+        Self {
+            kind: "antigravity".into(),
+            program,
+            args: [
+                "--input-format",
+                "stream-json",
+                "--output-format",
+                "stream-json",
+                "--project",
+                "alethe-worker",
+                "--mode",
+                "accept-edits",
+                "--sandbox",
+            ]
+            .map(String::from)
+            .to_vec(),
+            env: Vec::new(),
+        }
+    }
+}
+
+/// Claude and Antigravity run one long-lived headless process that takes one NDJSON user message
+/// per turn on stdin. Codex speaks JSON-RPC instead.
+fn is_stream_worker(agent: &str) -> bool {
+    agent == "claude" || agent == "antigravity"
+}
+
+/// The stdin line that starts one turn on a stream worker. agy tags it `event` where Claude uses
+/// `type`.
+fn user_turn(agent: &str, text: &str) -> Value {
+    let tag = if agent == "antigravity" {
+        "event"
+    } else {
+        "type"
+    };
+    json!({
+        tag: "user",
+        "message": { "role": "user", "content": [{ "type": "text", "text": text }] }
+    })
+}
+
+/// agy refuses a variant id (`claude-sonnet-5-5-medium`) next to `--effort` at start-up, so an
+/// effort only goes with a family (`claude-sonnet-5-5`). Effort alone would ride on whatever variant
+/// agy defaults to.
+fn agy_model_args(model: Option<&str>, effort: Option<&str>) -> Result<Vec<String>, String> {
+    let variant = |model: &str| {
+        ["-low", "-medium", "-high"]
+            .iter()
+            .any(|suffix| model.ends_with(suffix))
+    };
+    match (model, effort) {
+        (None, Some(_)) => Err(
+            "an Antigravity effort needs a model family, such as claude-sonnet-5-5".to_string(),
+        ),
+        (Some(model), Some(_)) if variant(model) => Err(format!(
+            "Antigravity model {model} already names its effort; pass it without effort, or its family with effort"
+        )),
+        _ => {
+            let mut args = Vec::new();
+            if let Some(model) = model {
+                args.extend(["--model".to_string(), model.to_string()]);
+            }
+            if let Some(effort) = effort {
+                args.extend(["--effort".to_string(), effort.to_string()]);
+            }
+            Ok(args)
+        }
+    }
+}
+
+/// What an Antigravity worker's command line adds to its launcher. `--add-dir` names the workspace
+/// (agy 1.2.9 ran its tools in its own scratch folder without it; it is not a write fence), and
+/// `--log-file` is the one place a denied command shows up (see `AgyLog`). agy resumes a
+/// conversation by id at start-up.
+pub fn agy_worker_args(
+    cwd: &str,
+    log_file: &str,
+    resume_thread: Option<&str>,
+    model: Option<&str>,
+    effort: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let mut args = vec!["--add-dir".to_string(), cwd.to_string()];
+    args.extend(agy_model_args(model, effort)?);
+    args.extend(["--log-file".to_string(), log_file.to_string()]);
+    if let Some(conversation) = resume_thread {
+        args.extend(["--conversation".to_string(), conversation.to_string()]);
+    }
+    Ok(args)
+}
+
+/// How long a turn that ran a command, or whose tool step failed, waits for agy to log a denial no
+/// line names yet. agy logged it about 40 ms before `result` in the one run measured, which is too
+/// thin to rely on.
+const AGY_LOG_GRACE: Duration = Duration::from_millis(200);
+
+/// The agy tools a permission rule can deny. A denied one may still end DONE (agy 1.3.3+).
+const AGY_COMMAND_TOOLS: [&str; 2] = ["run_command", "send_command_input"];
+
+/// An Antigravity worker's `--log-file` and the tool steps of the turn in flight.
+struct AgyLog {
+    path: PathBuf,
+    steps: Vec<u64>,
+    /// Steps that may have been denied: commands, and any tool step that failed.
+    watched_steps: Vec<u64>,
+    /// `AGY_LOG_GRACE`, or longer where a test asked for it.
+    grace: Duration,
+}
+
+impl AgyLog {
+    fn open(path: PathBuf, grace: Duration) -> Self {
+        Self {
+            path,
+            steps: Vec::new(),
+            watched_steps: Vec::new(),
+            grace,
+        }
+    }
+
+    fn saw_tool_step(&mut self, index: Option<u64>, tool: &str, failed: bool) {
+        let Some(index) = index else { return };
+        if !self.steps.contains(&index) {
+            self.steps.push(index);
+        }
+        let watched = failed || AGY_COMMAND_TOOLS.contains(&tool);
+        if watched && !self.watched_steps.contains(&index) {
+            self.watched_steps.push(index);
+        }
+    }
+
+    /// The `soft-denying` lines of the turn that just ended. agy ends a turn whose command it
+    /// denied with status SUCCESS, its `denied_actions` stick for the whole conversation, and the
+    /// denied step may still end DONE, so this line is the only exact record of a denial. Each line
+    /// names its step, and only this turn's steps count, so a line that lands late is never taken
+    /// for the next turn's. A line naming no step counts against every turn. An unreadable log is
+    /// an error, never "nothing was denied".
+    ///
+    /// The whole log is read each time, with no position kept: agy starts it over on every launch,
+    /// and step indices never repeat in a conversation, resumes included.
+    fn turn_denials(&mut self) -> Result<Vec<String>, String> {
+        let steps = std::mem::take(&mut self.steps);
+        let watched = std::mem::take(&mut self.watched_steps);
+        // A file another process holds for a moment is read again once before giving up.
+        let (mut lines, _) = self.read_denials().or_else(|_| {
+            thread::sleep(self.grace);
+            self.read_denials()
+        })?;
+        // Only a turn that ran such a step pays the wait.
+        let unexplained = |lines: &[(Option<u64>, String)]| {
+            watched
+                .iter()
+                .any(|step| !lines.iter().any(|(named, _)| *named == Some(*step)))
+        };
+        if unexplained(&lines) {
+            thread::sleep(self.grace);
+            let (mut again, mut unfinished) = self.read_denials()?;
+            // A line agy is still writing may be this turn's denial: wait once more, and never
+            // take it for "nothing was denied".
+            if unfinished && unexplained(&again) {
+                thread::sleep(self.grace);
+                (again, unfinished) = self.read_denials()?;
+                if unfinished && unexplained(&again) {
+                    return Err(format!("{} ends in an unfinished line", self.path.display()));
+                }
+            }
+            lines = again;
+        }
+        Ok(lines
+            .into_iter()
+            .filter(|(named, _)| named.is_none_or(|step| steps.contains(&step)))
+            .map(|(_, line)| line)
+            .collect())
+    }
+
+    /// Every whole `soft-denying` line in the log, with the step each one names, and whether the log
+    /// ends in a line still being written.
+    fn read_denials(&self) -> Result<(Vec<(Option<u64>, String)>, bool), String> {
+        let failed = |error: std::io::Error| format!("{}: {error}", self.path.display());
+        let mut file = std::fs::File::open(&self.path).map_err(failed)?;
+        let meta = file.metadata().map_err(failed)?;
+        // A folder opens fine on Unix and may even read as empty.
+        if !meta.is_file() {
+            return Err(format!("{} is not a file", self.path.display()));
+        }
+        let mut text = Vec::new();
+        file.read_to_end(&mut text).map_err(failed)?;
+        // A line still being written is left for the next read.
+        let whole = text
+            .iter()
+            .rposition(|byte| *byte == b'\n')
+            .map_or(0, |at| at + 1);
+        let lines = String::from_utf8_lossy(&text[..whole])
+            .lines()
+            .filter(|line| line.contains("soft-denying"))
+            .map(|line| {
+                let step = line
+                    .rsplit_once("at step ")
+                    .and_then(|(_, rest)| rest.split(|c: char| !c.is_ascii_digit()).next())
+                    .and_then(|digits| digits.parse().ok());
+                (step, line.trim().to_string())
+            })
+            .collect();
+        Ok((lines, whole < text.len()))
+    }
 }
 
 /// A worker runs its commands inside Codex's sandbox, which uses a lowered token that cannot start
@@ -126,7 +335,7 @@ pub struct Role {
     /// The role to run instead while this one's provider is running out of quota (#268).
     #[serde(default)]
     pub fallback: Option<String>,
-    /// The planner agent this row is for ("claude" or "codex"); None serves any planner (#276).
+    /// The planner agent this row is for ("claude", "codex", or "antigravity"); None serves any planner (#276).
     #[serde(default)]
     pub orchestrator: Option<String>,
 }
@@ -160,7 +369,8 @@ fn default_on_both_critical() -> String {
 
 /// A quota condition on a routing rule: the named window of the named agent must sit below
 /// `below` percent for the rule to fire. `window` is "short" (5h), "week" (7d) or "opus"
-/// (Claude's 7d-Opus; Codex reads it as its secondary window).
+/// (Claude's 7d-Opus; Codex reads it as its secondary window; Antigravity matches a Claude/Opus
+/// bucket for "opus" and falls back to its worst bucket utilization `used`).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuotaGate {
@@ -289,15 +499,92 @@ const ROLE_FIELDS: [&str; 5] = ["agent", "model", "effort", "readOnly", "timeout
 const PARKED_LIMIT: usize = 4;
 
 fn git(cwd: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let output = git_raw(cwd, args, &[0])?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// git's output as it printed it, when it exits with one of `exits`; its stderr otherwise.
+fn git_raw(
+    cwd: &std::path::Path,
+    args: &[&str],
+    exits: &[i32],
+) -> Result<std::process::Output, String> {
     let output = Command::new("git")
         .args(args)
         .current_dir(cwd)
         .output()
         .map_err(|error| format!("git not available: {error}"))?;
-    if !output.status.success() {
+    if !output
+        .status
+        .code()
+        .is_some_and(|code| exits.contains(&code))
+    {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(output)
+}
+
+/// `cwd` as an absolute path with `..` and links resolved, without the `\\?\` prefix Windows adds,
+/// which not every CLI takes as a folder.
+fn resolved_folder(cwd: &str) -> Result<String, String> {
+    let path =
+        std::fs::canonicalize(cwd).map_err(|error| format!("cwd {cwd} cannot be used: {error}"))?;
+    let path = path.to_string_lossy();
+    let Some(verbatim) = path.strip_prefix(r"\\?\") else {
+        return Ok(path.into_owned());
+    };
+    Ok(match verbatim.strip_prefix(r"UNC\") {
+        Some(share) => format!(r"\\{share}"),
+        None => verbatim.to_string(),
+    })
+}
+
+/// What a stream worker changed in its folder, new files included: these CLIs report no diff of
+/// their own. `None` when nothing differs from HEAD, so a change the worker reverted leaves no diff,
+/// and outside a repository, where there is nothing to compare with. A file git cannot read is an
+/// error, never a missing change.
+fn worktree_diff(cwd: &std::path::Path) -> Result<Option<String>, String> {
+    if git(cwd, &["rev-parse", "--is-inside-work-tree"]).is_err() {
+        return Ok(None);
+    }
+    let mut diff = git(cwd, &["diff", "--no-ext-diff", "--no-textconv", "HEAD"])?;
+    // Untrimmed: a name may start or end with a space, and NUL is what separates them.
+    let untracked = git_raw(
+        cwd,
+        &["ls-files", "--others", "--exclude-standard", "-z"],
+        &[0],
+    )?;
+    // A trailing `/` is a nested repository, such as an isolated worker's worktree.
+    for path in String::from_utf8_lossy(&untracked.stdout)
+        .split('\0')
+        .filter(|path| !path.is_empty() && !path.ends_with('/'))
+    {
+        // Measured: exits 1 for a difference but also for a file it could not open, which prints
+        // nothing; any file it can read prints at least a header, even an empty one.
+        let output = git_raw(
+            cwd,
+            &[
+                "diff",
+                "--no-index",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--",
+                "/dev/null",
+                path,
+            ],
+            &[0, 1],
+        )?;
+        let file = String::from_utf8_lossy(&output.stdout);
+        if file.trim().is_empty() {
+            let error = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("{path}: {}", error.trim()));
+        }
+        if !diff.is_empty() {
+            diff.push('\n');
+        }
+        diff.push_str(file.trim_end());
+    }
+    Ok((!diff.trim().is_empty()).then_some(diff))
 }
 
 /// Same path/branch convention as `worktrees.rs` (`<repo>/.alethe/worktrees/<id>/`,
@@ -542,6 +829,33 @@ fn claude_token_count(usage: &Value) -> Value {
     })
 }
 
+/// agy counts reasoning apart (`thinking_tokens`, folded into output here) and has no cache-creation
+/// counter. Its own `total_tokens` leaves the reasoning out, so the total is summed here instead.
+fn agy_token_count(usage: &Value) -> Value {
+    let input = token_value(usage, "input_tokens");
+    let output =
+        token_value(usage, "output_tokens").saturating_add(token_value(usage, "thinking_tokens"));
+    json!({
+        "totalTokens": input.saturating_add(output),
+        "inputTokens": input,
+        "outputTokens": output,
+        "cachedInputTokens": token_value(usage, "cache_read_tokens"),
+        "cacheCreationInputTokens": 0,
+    })
+}
+
+/// One turn's share of counts that only ever grow.
+fn sub_token_counts(total: &Value, earlier: &Value) -> Value {
+    let sub = |key: &str| token_value(total, key).saturating_sub(token_value(earlier, key));
+    json!({
+        "totalTokens": sub("totalTokens"),
+        "inputTokens": sub("inputTokens"),
+        "outputTokens": sub("outputTokens"),
+        "cachedInputTokens": sub("cachedInputTokens"),
+        "cacheCreationInputTokens": sub("cacheCreationInputTokens"),
+    })
+}
+
 fn add_token_counts(total: &Value, turn: &Value) -> Value {
     let add = |key: &str| token_value(total, key).saturating_add(token_value(turn, key));
     json!({
@@ -604,6 +918,10 @@ struct Job {
     pending: Option<Value>,
     child: Option<Arc<Mutex<Child>>>,
     stdin: Option<Arc<Mutex<ChildStdin>>>,
+    /// Held by a worker process's reader from finding an event current until it is applied, and by
+    /// a revive while it queues the next run, so such an event never lands in the run after it.
+    /// Always taken before `Core::inner`, never while holding it.
+    gate: Arc<Mutex<()>>,
     inbox: VecDeque<String>,
     /// Why this worker ran on the agent it ran on, recorded only when one side was actually
     /// running out — so the board stays quiet when the choice carried no signal.
@@ -611,6 +929,9 @@ struct Job {
     /// Set while an interrupt this side requested is still in flight, so the `result` it aborts is
     /// not reported to the planner as a finished turn.
     awaiting_steer: bool,
+    /// Steers waiting at the front of `inbox`, oldest first, so a later correction lands behind the
+    /// earlier ones instead of ahead of them.
+    steers_queued: usize,
     next_request_id: i64,
     /// The worker that took this one's task over after it ended without finishing. The board
     /// leaves a superseded worker out, so a task shows only the worker that currently has it.
@@ -753,9 +1074,11 @@ impl Job {
             pending: None,
             child: None,
             stdin: None,
+            gate: Arc::default(),
             inbox: VecDeque::new(),
             routing: None,
             awaiting_steer: false,
+            steers_queued: 0,
             next_request_id: 10,
             superseded_by: text("supersededBy"),
         })
@@ -766,6 +1089,13 @@ impl Job {
             self.status.as_str(),
             STATUS_DONE | STATUS_FAILED | STATUS_CANCELLED | STATUS_RELEASED | STATUS_INTERRUPTED
         )
+    }
+
+    /// Whether `process` is the worker process this job runs now.
+    fn runs(&self, process: &Arc<Mutex<Child>>) -> bool {
+        self.child
+            .as_ref()
+            .is_some_and(|child| Arc::ptr_eq(child, process))
     }
 
     fn teardown(&mut self) {
@@ -816,6 +1146,8 @@ struct Inner {
     max_concurrent: usize,
     /// The budget a worker gets when the call names none; None lets it run without a limit.
     default_timeout_ms: Option<u64>,
+    /// See `Core::set_agy_log_grace`; zero leaves `AGY_LOG_GRACE`.
+    agy_log_grace: Duration,
     roles: Vec<Role>,
     /// Codex plugins turned off in worker threads.
     worker_disabled_plugins: Vec<String>,
@@ -889,7 +1221,14 @@ pub struct Core {
     rules_injected: Arc<AtomicBool>,
     /// The last model list Codex gave, and when; see `list_codex_models`.
     codex_models: Arc<Mutex<Option<(Instant, Value)>>>,
+    #[cfg(test)]
+    reader_hook: Arc<Mutex<Option<ReaderHook>>>,
 }
+
+/// Called by a worker's reader with each event it found current, just before applying it. Tests
+/// use it to hold an event in that spot.
+#[cfg(test)]
+pub type ReaderHook = Arc<dyn Fn(&Value) + Send + Sync>;
 
 impl Default for Core {
     fn default() -> Self {
@@ -909,6 +1248,8 @@ impl Default for Core {
             rule_sets: Arc::new(Mutex::new(Vec::new())),
             rules_injected: Arc::new(AtomicBool::new(false)),
             codex_models: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            reader_hook: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -1155,8 +1496,10 @@ fn delegate_kind_and_effort(
 }
 
 /// A gate reads the cached fitness snapshot the frontend pushes: the per-window table when it is
-/// there, else the worst window when it is the one named. A window Alethe has no reading for
-/// passes — a gate must never hold work back on a guess.
+/// there, else the worst window when it is the one named. Antigravity meters dynamic model buckets
+/// rather than `5h`/`week`/`opus`, so `opus` checks any `opus`/`claude` bucket first and falls
+/// back to overall `used`. A window Alethe has no reading for passes — a gate must never hold work
+/// back on a guess.
 fn gate_passes(fitness: &HashMap<String, Value>, gate: &QuotaGate) -> bool {
     let Some(snapshot) = fitness.get(&gate.agent) else {
         return true;
@@ -1167,21 +1510,45 @@ fn gate_passes(fitness: &HashMap<String, Value>, gate: &QuotaGate) -> bool {
         "opus" if gate.agent == "codex" => "week",
         other => other,
     };
+    let antigravity_used = || {
+        let bucket = if gate.window == "opus" {
+            snapshot
+                .get("windows")
+                .and_then(Value::as_object)
+                .and_then(|windows| {
+                    windows
+                        .iter()
+                        .filter(|(key, _)| {
+                            let lower = key.to_ascii_lowercase();
+                            lower.contains("opus") || lower.contains("claude")
+                        })
+                        .filter_map(|(_, value)| value.as_f64())
+                        .reduce(f64::max)
+                })
+        } else {
+            None
+        };
+        bucket.or_else(|| snapshot.get("used").and_then(Value::as_f64))
+    };
     let used = snapshot
         .get("windows")
         .and_then(|windows| windows.get(label))
         .and_then(Value::as_f64)
         .or_else(|| {
-            (snapshot.get("worst").and_then(Value::as_str) == Some(label))
-                .then(|| snapshot.get("used").and_then(Value::as_f64))
-                .flatten()
+            if gate.agent == "antigravity" {
+                antigravity_used()
+            } else {
+                (snapshot.get("worst").and_then(Value::as_str) == Some(label))
+                    .then(|| snapshot.get("used").and_then(Value::as_f64))
+                    .flatten()
+            }
         });
     used.is_none_or(|used| used < gate.below)
 }
 
-/// Whether the role runs Claude on an Opus-class model.
+/// Whether the role runs Claude or Antigravity on an Opus-class model.
 fn is_opus_role(role: &Role) -> bool {
-    role.agent == "claude"
+    matches!(role.agent.as_str(), "claude" | "antigravity")
         && role
             .model
             .as_deref()
@@ -1372,22 +1739,32 @@ fn stage_rpc(
     ))
 }
 
+/// Queues a steer ahead of any `alethe_send` messages waiting in `inbox`, behind earlier steers,
+/// and returns its 1-based position in the queue.
+fn queue_steer(job: &mut Job, message: String) -> usize {
+    let index = job.steers_queued.min(job.inbox.len());
+    job.inbox.insert(index, message);
+    job.steers_queued = index + 1;
+    index + 1
+}
+
+/// Pops the next queued turn for `job` and keeps `steers_queued` in step with `inbox`.
+fn take_next_turn(job: &mut Job) -> Option<String> {
+    let message = job.inbox.pop_front()?;
+    job.steers_queued = job.steers_queued.saturating_sub(1);
+    Some(message)
+}
+
 /// Pops the next queued message for a worker and turns it into a fresh turn on its own thread, so
 /// the follow-up keeps everything the worker already read.
 fn next_from_inbox(inner: &mut Inner, job_id: &str) -> Option<(Arc<Mutex<ChildStdin>>, Value)> {
     let job = inner.jobs.get_mut(job_id)?;
     let stdin = job.stdin.clone()?;
     let thread_id = job.thread_id.clone()?;
-    let is_claude = job.agent == "claude";
-    let message = job.inbox.pop_front()?;
-    if is_claude {
-        return Some((
-            stdin,
-            json!({
-                "type": "user",
-                "message": { "role": "user", "content": [{ "type": "text", "text": message }] }
-            }),
-        ));
+    let agent = job.agent.clone();
+    let message = take_next_turn(job)?;
+    if is_stream_worker(&agent) {
+        return Some((stdin, user_turn(&agent, &message)));
     }
     stage_rpc(
         inner,
@@ -1540,6 +1917,18 @@ impl Core {
         if std::fs::write(&temp, &bytes).is_ok() {
             let _ = std::fs::rename(&temp, &path);
         }
+    }
+
+    /// Lets Antigravity workers started from now on wait longer than `AGY_LOG_GRACE` for agy to
+    /// log a denial, never shorter. For tests whose late log line a loaded machine could delay
+    /// past the production wait.
+    pub fn set_agy_log_grace(&self, grace: Duration) {
+        guard(&self.inner).agy_log_grace = grace;
+    }
+
+    #[cfg(test)]
+    pub fn set_reader_hook(&self, hook: ReaderHook) {
+        *guard(&self.reader_hook) = Some(hook);
     }
 
     pub fn set_launcher(&self, launcher: Launcher) {
@@ -2020,6 +2409,23 @@ impl Core {
         }
     }
 
+    /// Where a job keeps what its CLI writes besides its output: next to the store, which outlives
+    /// the app. A core without one gets a temp folder of its own, since job ids repeat across cores.
+    fn job_dir(&self, job_id: &str) -> PathBuf {
+        guard(&self.store)
+            .as_ref()
+            .and_then(|store| store.parent().map(PathBuf::from))
+            .unwrap_or_else(|| {
+                // The shared state's address tells apart the cores alive in this process.
+                let core = Arc::as_ptr(&self.inner) as usize;
+                std::env::temp_dir()
+                    .join("alethe-orchestrator")
+                    .join(format!("{}-{core:x}", std::process::id()))
+            })
+            .join("jobs")
+            .join(job_id)
+    }
+
     fn spawn_worker(&self, job_id: &str) {
         // Read before `inner` is locked: `Core::rule_sets` takes its own lock, and holding both at
         // once is how this file deadlocks.
@@ -2041,7 +2447,7 @@ impl Core {
             // Work that arrived while the worker was down leads; otherwise this is its first turn.
             // Rules ride only on that first turn: a follow-up already has them in its conversation.
             let first_turn = with_budget(
-                match job.inbox.pop_front() {
+                match take_next_turn(job) {
                     Some(queued) => queued,
                     None => first_turn_for(&sets, job),
                 },
@@ -2071,7 +2477,7 @@ impl Core {
             );
             return;
         };
-        let is_claude = agent == "claude";
+        let stream = is_stream_worker(&agent);
 
         let mut command = Command::new(&launcher.program);
         command
@@ -2080,14 +2486,37 @@ impl Core {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        // Claude keeps its own session on disk under this id — no separate resume RPC like Codex's
-        // `thread/resume`, the CLI just needs the id up front.
-        if is_claude {
+        // Stream workers keep their own session on disk under this id — no separate resume RPC
+        // like Codex's `thread/resume`, the CLI just needs the id up front.
+        let mut agy_log = None;
+        if agent == "claude" {
             command.args(claude_worker_args(
                 resume_thread.as_deref(),
                 model.as_deref(),
                 effort.as_deref(),
             ));
+        } else if agent == "antigravity" {
+            let path = self.job_dir(job_id).join("agy-cli.log");
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            match agy_worker_args(
+                &cwd,
+                &path.to_string_lossy(),
+                resume_thread.as_deref(),
+                model.as_deref(),
+                effort.as_deref(),
+            ) {
+                Ok(args) => {
+                    command.args(args);
+                }
+                Err(error) => {
+                    self.settle(job_id, STATUS_FAILED, "failed", &error);
+                    return;
+                }
+            }
+            let grace = guard(&self.inner).agy_log_grace.max(AGY_LOG_GRACE);
+            agy_log = Some(AgyLog::open(path, grace));
         }
         for (key, value) in &launcher.env {
             command.env(key, value);
@@ -2132,15 +2561,9 @@ impl Core {
             self.notify(&inner);
         }
 
-        if is_claude {
+        if stream {
             // no handshake: the first line written is the first turn
-            let _ = send_rpc(
-                &stdin,
-                &json!({
-                    "type": "user",
-                    "message": { "role": "user", "content": [{ "type": "text", "text": spec }] }
-                }),
-            );
+            let _ = send_rpc(&stdin, &user_turn(&agent, &spec));
         } else {
             let _ = send_rpc(
                 &stdin,
@@ -2202,6 +2625,12 @@ impl Core {
             let core = self.clone();
             let owned_id = job_id.to_string();
             let stdin = Arc::clone(&stdin);
+            let process = Arc::clone(&child);
+            let gate = guard(&self.inner)
+                .jobs
+                .get(job_id)
+                .map(|job| Arc::clone(&job.gate))
+                .unwrap_or_default();
             thread::spawn(move || {
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };
@@ -2211,18 +2640,37 @@ impl Core {
                     let Ok(message) = serde_json::from_str::<Value>(&line) else {
                         continue;
                     };
-                    if is_claude {
-                        core.on_worker_message_claude(&owned_id, &message);
-                    } else {
-                        core.on_worker_message(&owned_id, &stdin, &spec, &message);
+                    // A process released or replaced since speaks for a run that is over: a revived
+                    // worker's turn must not take its words. The gate keeps a revive from starting
+                    // that run while an event found current here is still being applied, AGY log
+                    // waits and diffs included. A release does not wait for it: it only ends this
+                    // run, and it kills a process whose input this handler may be stuck writing.
+                    let _applying = guard(&gate);
+                    let current = guard(&core.inner)
+                        .jobs
+                        .get(&owned_id)
+                        .is_some_and(|job| job.runs(&process));
+                    if !current {
+                        continue;
+                    }
+                    #[cfg(test)]
+                    if let Some(hook) = guard(&core.reader_hook).clone() {
+                        hook(&message);
+                    }
+                    match agy_log.as_mut() {
+                        Some(log) => core.on_worker_message_agy(&owned_id, &message, log),
+                        None if stream => core.on_worker_message_claude(&owned_id, &message),
+                        None => core.on_worker_message(&owned_id, &stdin, &spec, &message),
                     }
                 }
-                core.finish(
+                core.finish_turn(
                     &owned_id,
                     STATUS_FAILED,
                     Some("failed".into()),
                     "worker connection closed".into(),
                     true,
+                    true,
+                    Some(&process),
                 );
             });
         }
@@ -2719,9 +3167,8 @@ impl Core {
                     .to_string();
                 let usage = message.get("usage");
                 let turn_cost = message.get("total_cost_usd").and_then(Value::as_f64);
-                let cwd = {
+                {
                     let mut inner = guard(&self.inner);
-                    let cwd = inner.jobs.get(job_id).map(|job| job.cwd.clone());
                     if let Some(job) = inner.jobs.get_mut(job_id) {
                         if let Some(usage) = usage {
                             let last = claude_token_count(usage);
@@ -2739,61 +3186,196 @@ impl Core {
                             job.cost_usd = Some(job.cost_usd.unwrap_or_default() + cost);
                         }
                     }
-                    cwd
-                };
-                if let Some(cwd) = cwd {
-                    if let Ok(diff) = git(&PathBuf::from(&cwd), &["diff", "HEAD"]) {
-                        if !diff.trim().is_empty() {
-                            let mut inner = guard(&self.inner);
-                            if let Some(job) = inner.jobs.get_mut(job_id) {
-                                job.diff = Some(diff);
-                            }
-                        }
-                    }
                 }
-                let summary = if result_text.is_empty() {
-                    let inner = guard(&self.inner);
-                    inner
-                        .jobs
-                        .get(job_id)
-                        .map(|job| tail(job.reply.trim(), REPLY_LIMIT))
-                        .unwrap_or_default()
+                let (status, outcome) = if is_error {
+                    (STATUS_FAILED, "failed")
                 } else {
-                    result_text
+                    (STATUS_DONE, "succeeded")
                 };
-                let steering = {
-                    let mut inner = guard(&self.inner);
-                    inner
-                        .jobs
-                        .get_mut(job_id)
-                        .map(|job| std::mem::take(&mut job.awaiting_steer))
-                        .unwrap_or(false)
-                };
-                if steering {
-                    self.finish_turn(
-                        job_id,
-                        STATUS_INTERRUPTED,
-                        None,
-                        String::new(),
-                        false,
-                        false,
-                    );
-                    return;
-                }
-                self.finish(
-                    job_id,
-                    if is_error { STATUS_FAILED } else { STATUS_DONE },
-                    Some(if is_error {
-                        "failed".into()
-                    } else {
-                        "succeeded".into()
-                    }),
-                    summary,
-                    false,
-                );
+                self.finish_stream_turn(job_id, status, outcome, result_text);
             }
             _ => {}
         }
+    }
+
+    /// `{"event": ...}` lines of agy 1.3.3: `init` names the conversation, `step_update` streams the
+    /// reply and the tool steps, and one `result` closes each turn.
+    fn on_worker_message_agy(&self, job_id: &str, message: &Value, log: &mut AgyLog) {
+        let event = message.get("event").and_then(Value::as_str).unwrap_or("");
+        let body = message.get(event).unwrap_or(&Value::Null);
+        let text = |value: &Value, key: &str| {
+            value
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        match event {
+            "init" => {
+                let conversation = text(message, "conversation_id");
+                if conversation.is_empty() {
+                    return;
+                }
+                let mut inner = guard(&self.inner);
+                if let Some(job) = inner.jobs.get_mut(job_id) {
+                    if job.thread_id.is_none() {
+                        job.thread_id = Some(conversation);
+                    }
+                }
+                self.notify(&inner);
+            }
+            "step_update" => {
+                let failed = body.get("state").and_then(Value::as_str) == Some("ERROR");
+                let step_type = body.get("step_type").and_then(Value::as_str);
+                if step_type == Some("tool") {
+                    log.saw_tool_step(
+                        body.get("step_index").and_then(Value::as_u64),
+                        &text(body, "tool_name"),
+                        failed,
+                    );
+                }
+                let line = match step_type {
+                    Some("agent_response") => text(body, "text_delta"),
+                    // A denied command is one of these, though not always: see `AgyLog`.
+                    Some("tool") if failed => {
+                        let error = body
+                            .pointer("/tool_info/error/message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("failed");
+                        format!("\n[tool failed] {}: {error}\n", text(body, "tool_name"))
+                    }
+                    _ => return,
+                };
+                if line.is_empty() {
+                    return;
+                }
+                let mut inner = guard(&self.inner);
+                if let Some(job) = inner.jobs.get_mut(job_id) {
+                    push_reply(&mut job.reply, &line);
+                }
+                self.notify(&inner);
+            }
+            "result" => {
+                let checked = log.turn_denials();
+                let denials = checked.as_deref().unwrap_or_default();
+                let response = text(body, "response").trim().to_string();
+                let succeeded = body.get("status").and_then(Value::as_str) == Some("SUCCESS");
+                // agy ends a turn whose command it denied with SUCCESS and, usually, no reply.
+                let blocked =
+                    succeeded && checked.is_ok() && (!denials.is_empty() || response.is_empty());
+                {
+                    let mut inner = guard(&self.inner);
+                    if let Some(job) = inner.jobs.get_mut(job_id) {
+                        // The count covers the whole conversation, resumes included, so this turn's
+                        // is what it grew by. One below what was seen is not this conversation's: a
+                        // start-up error reports zeros.
+                        if let Some(usage) = body.get("usage") {
+                            let total = agy_token_count(usage);
+                            let seen = job
+                                .tokens
+                                .as_ref()
+                                .and_then(|tokens| tokens.get("total"))
+                                .cloned()
+                                .unwrap_or(Value::Null);
+                            if token_value(&total, "totalTokens")
+                                >= token_value(&seen, "totalTokens")
+                            {
+                                let last = sub_token_counts(&total, &seen);
+                                job.tokens = Some(json!({ "total": total, "last": last }));
+                            }
+                        }
+                        for denial in denials {
+                            push_reply(&mut job.reply, &format!("\n[blocked] {denial}\n"));
+                        }
+                        if blocked && denials.is_empty() {
+                            push_reply(
+                                &mut job.reply,
+                                "\n[blocked] the turn ended without a reply\n",
+                            );
+                        }
+                    }
+                    self.notify(&inner);
+                }
+                if !succeeded {
+                    let error = text(body, "error");
+                    let reason = if error.is_empty() { response } else { error };
+                    self.finish_stream_turn(job_id, STATUS_FAILED, "failed", reason);
+                } else if let Err(error) = &checked {
+                    // Without the log a denied command reads like a finished turn.
+                    let note = format!(
+                        "[unverified] could not read agy's log to check for denied commands: {error}"
+                    );
+                    let text = format!("{response}\n\n{note}").trim().to_string();
+                    self.finish_stream_turn(job_id, STATUS_FAILED, "failed", text);
+                } else if blocked {
+                    // Empty, so the summary is the live reply with its `[blocked]` lines.
+                    self.finish_stream_turn(job_id, STATUS_FAILED, "blocked", String::new());
+                } else {
+                    self.finish_stream_turn(job_id, STATUS_DONE, "succeeded", response);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Closes one turn of a stream worker: takes the worktree diff, since these CLIs report none of
+    /// their own, then either drops the turn a steer interrupted or delivers it.
+    fn finish_stream_turn(&self, job_id: &str, status: &str, outcome: &str, result_text: String) {
+        let cwd = guard(&self.inner)
+            .jobs
+            .get(job_id)
+            .map(|job| job.cwd.clone());
+        let mut diff_error = None;
+        if let Some(cwd) = cwd {
+            let diff = worktree_diff(&PathBuf::from(&cwd));
+            let mut inner = guard(&self.inner);
+            if let Some(job) = inner.jobs.get_mut(job_id) {
+                job.diff = match diff {
+                    Ok(diff) => diff,
+                    // Kept as the diff too, so neither the board nor alethe_diff reads "no changes".
+                    Err(error) => {
+                        let line = format!("[diff unavailable] {error}");
+                        push_reply(&mut job.reply, &format!("\n{line}\n"));
+                        diff_error = Some(line.clone());
+                        Some(line)
+                    }
+                };
+            }
+        }
+        let summary = if result_text.is_empty() {
+            let inner = guard(&self.inner);
+            inner
+                .jobs
+                .get(job_id)
+                .map(|job| tail(job.reply.trim(), REPLY_LIMIT))
+                .unwrap_or_default()
+        } else if let Some(line) = diff_error {
+            // The planner reads the summary, not the live reply the line went into.
+            format!("{result_text}\n\n{line}")
+        } else {
+            result_text
+        };
+        let steering = {
+            let mut inner = guard(&self.inner);
+            inner
+                .jobs
+                .get_mut(job_id)
+                .map(|job| std::mem::take(&mut job.awaiting_steer))
+                .unwrap_or(false)
+        };
+        if steering {
+            self.finish_turn(
+                job_id,
+                STATUS_INTERRUPTED,
+                None,
+                String::new(),
+                false,
+                false,
+                None,
+            );
+            return;
+        }
+        self.finish(job_id, status, Some(outcome.into()), summary, false);
     }
 
     /// `terminal` decides whether the worker process dies with the turn. A completed turn keeps
@@ -2806,11 +3388,15 @@ impl Core {
         text: String,
         terminal: bool,
     ) {
-        self.finish_turn(job_id, status, outcome, text, terminal, true);
+        self.finish_turn(job_id, status, outcome, text, terminal, true, None);
     }
 
     /// `announce` is false for the `result` that only acknowledges an interrupt this side asked
     /// for: the turn ended, but nothing was delivered, so the planner must not be told it was.
+    /// `from` is the worker process the ending came from, when one did. It counts only while that
+    /// process is still the job's, checked under the same lock that ends the run: the output of one
+    /// released or replaced since can close after a revive, and must not end the run that followed.
+    #[allow(clippy::too_many_arguments)]
     fn finish_turn(
         &self,
         job_id: &str,
@@ -2819,6 +3405,7 @@ impl Core {
         text: String,
         terminal: bool,
         announce: bool,
+        from: Option<&Arc<Mutex<Child>>>,
     ) {
         let staged;
         {
@@ -2826,7 +3413,7 @@ impl Core {
             let Some(job) = inner.jobs.get_mut(job_id) else {
                 return;
             };
-            if job.settled() {
+            if job.settled() || from.is_some_and(|process| !job.runs(process)) {
                 return;
             }
             // Only a running worker, or one blocked on a question, holds a slot. A queued one never
@@ -3191,7 +3778,7 @@ pub fn tools() -> Value {
     json!([
         {
             "name": "alethe_delegate",
-            "description": "Hand independent units of work to Codex or Claude workers that Alethe runs as separate processes. These are NOT your own subagents: they are a different agent on its own token budget, so their reading and writing costs you nothing but the task text. Prefer this over launching subagents of your own for the same work. They also outlive the turn, can be corrected mid-run with alethe_steer, and can each take an isolated git worktree. Returns job ids immediately; the workers run in parallel. Delegate when the work splits into units that each need their own reading and judgement, and there are at least two of them: one unit per area of the codebase, per service, per feature. Send every unit in ONE call so they run at the same time, and make each task self contained. Always say what the work is in kind, and set effortClass when you can tell how much thinking it needs. Name neither role nor model and Alethe picks the role from the person's routing rules - kind, effortClass and the live quotas decide; a role or model you name always wins over the rules. Do NOT delegate work that is uniform across its inputs, that one command or script does in a single pass, or that is quicker to finish than to describe.",
+            "description": "Hand independent units of work to Codex, Claude or Antigravity workers that Alethe runs as separate processes. These are NOT your own subagents: they are a different agent on its own token budget, so their reading and writing costs you nothing but the task text. Prefer this over launching subagents of your own for the same work. They also outlive the turn, can be corrected mid-run with alethe_steer, and can each take an isolated git worktree. Returns job ids immediately; the workers run in parallel. Delegate when the work splits into units that each need their own reading and judgement, and there are at least two of them: one unit per area of the codebase, per service, per feature. Send every unit in ONE call so they run at the same time, and make each task self contained. Always say what the work is in kind, and set effortClass when you can tell how much thinking it needs. Name neither role nor model and Alethe picks the role from the person's routing rules - kind, effortClass and the live quotas decide; a role or model you name always wins over the rules. Do NOT delegate work that is uniform across its inputs, that one command or script does in a single pass, or that is quicker to finish than to describe.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -3202,8 +3789,8 @@ pub fn tools() -> Value {
                     },
                     "agent": {
                         "type": "string",
-                        "enum": ["codex", "claude"],
-                        "description": "Which CLI runs the worker. Defaults to codex. A Claude worker runs without an approval channel (bypasses permissions) and does not yet report a live diff. Each vendor meters a different set of windows - Codex a 5 hour and a weekly one, Claude those two plus a separate weekly budget for Opus - so how much room one has left says nothing about the other. Do not reason about that from here: every response these tools return carries a fitness block with the current reading and names the side with room in headroom. Read it and prefer that side when one is running out."
+                        "enum": ["codex", "claude", "antigravity"],
+                        "description": "Which CLI runs the worker. Defaults to codex. A Claude worker runs without an approval channel (bypasses permissions) and does not yet report a live diff. An Antigravity (agy) worker edits files on its own but runs only the exact commands its agy project allows, has no approval channel or read-only mode, and cannot be interrupted: a steer waits for its turn to end. A turn where agy denied a command ends with outcome blocked. Each vendor meters a different set of windows - Codex a 5 hour and a weekly one, Claude those two plus a separate weekly budget for Opus - so how much room one has left says nothing about the other. Do not reason about that from here: every response these tools return carries a fitness block with the current reading and names the side with room in headroom. Read it and prefer that side when one is running out."
                     },
                     "cwd": { "type": "string", "description": "Working directory. Defaults to the lead's directory." },
                     "rules": {
@@ -3229,7 +3816,7 @@ pub fn tools() -> Value {
                     },
                     "effort": {
                         "type": "string",
-                        "description": "Reasoning effort. For Codex, one the model supports (commonly low, medium, high or xhigh); for Claude, low, medium, high, xhigh or max. Omit it to keep the CLI's own setting."
+                        "description": "Reasoning effort. For Codex, one the model supports (commonly low, medium, high or xhigh); for Claude, low, medium, high, xhigh or max. For Antigravity, only with a model family such as claude-sonnet-5-5 or gemini-3.8-flash; a variant id such as claude-opus-5-5-high already names its effort and takes none. Omit it to keep the CLI's own setting."
                     },
                     "kind": {
                         "type": "string",
@@ -3243,7 +3830,7 @@ pub fn tools() -> Value {
                     },
                     "readOnly": {
                         "type": "boolean",
-                        "description": "Start each Codex worker in a read-only sandbox: it can read files and run commands, but cannot write. Use it for reviews and audits that must not change anything. Cannot be combined with askForApproval, and not available for Claude workers."
+                        "description": "Start each Codex worker in a read-only sandbox: it can read files and run commands, but cannot write. Use it for reviews and audits that must not change anything. Cannot be combined with askForApproval, and not available for Claude or Antigravity workers."
                     },
                     "timeoutSeconds": {
                         "type": "number",
@@ -3718,10 +4305,21 @@ fn dispatch_tool(
                 .filter(|value| !value.is_empty())
                 .unwrap_or("codex")
                 .to_string();
-            // The headless Claude launch bypasses permissions. Dropping readOnly silently would
-            // hand a worker meant to only read the right to write.
+            // The headless launch bypasses permissions, so a read-only flag cannot be honoured;
+            // dropping it silently would hand a worker meant to only read the right to write.
             if agent == "claude" && read_only {
                 return Err("readOnly applies to Codex workers only".into());
+            }
+            // agy runs in accept-edits with no approval channel and no read-only mode. Either flag
+            // dropped silently would let a worker write that was meant to ask or only read.
+            if agent == "antigravity" {
+                if read_only {
+                    return Err("readOnly is not available for Antigravity workers".into());
+                }
+                if ask {
+                    return Err("askForApproval is not available for Antigravity workers".into());
+                }
+                agy_model_args(model.as_deref(), effort.as_deref())?;
             }
             // A read-only worker gives up on a write instead of asking, so it would never ask.
             if read_only && ask {
@@ -3733,16 +4331,21 @@ fn dispatch_tool(
             // the existing approval channel answers a running worker's questions, not a routing
             // decision, so there is nobody to pause for here. A provider Alethe has no reading for
             // is not critical.
-            if matches!(agent.as_str(), "claude" | "codex") {
+            if matches!(agent.as_str(), "claude" | "codex" | "antigravity") {
+                const ORCHESTRATOR_AGENTS: [&str; 3] = ["claude", "codex", "antigravity"];
                 let routing = guard(&core.inner).routing.clone();
-                let other = if agent == "claude" { "codex" } else { "claude" };
                 let fitness = guard(&core.fitness);
                 let past = |name: &str| {
                     fitness
                         .get(name)
                         .is_some_and(|snapshot| past_threshold(snapshot, routing.critical_threshold))
                 };
-                if past(&agent) && past(other) {
+                let known: Vec<&str> = ORCHESTRATOR_AGENTS
+                    .iter()
+                    .copied()
+                    .filter(|name| fitness.contains_key(*name))
+                    .collect();
+                if past(&agent) && known.len() >= 2 && known.iter().all(|name| past(name)) {
                     let used = |name: &str| {
                         fitness
                             .get(name)
@@ -3752,13 +4355,14 @@ fn dispatch_tool(
                     };
                     match routing.on_both_critical.as_str() {
                         "block" => {
+                            let summary = known
+                                .iter()
+                                .map(|name| format!("{name} at {:.0}%", used(name)))
+                                .collect::<Vec<_>>()
+                                .join(", ");
                             return Err(format!(
-                                "both providers are past {:.0}% of quota ({} at {:.0}%, {} at {:.0}%); the routing settings say to block — wait for a window to reset or change onBothCritical",
+                                "both providers are past {:.0}% of quota ({summary}); the routing settings say to block — wait for a window to reset or change onBothCritical",
                                 routing.critical_threshold,
-                                agent,
-                                used(&agent),
-                                other,
-                                used(other),
                             ));
                         }
                         "run-cheapest" => {
@@ -3781,6 +4385,11 @@ fn dispatch_tool(
                     }
                 }
             }
+            let cwd = if agent == "antigravity" {
+                resolved_folder(&cwd)?
+            } else {
+                cwd
+            };
             // The named policies decide for themselves what is worth asking about. The granular
             // form is the one that says plainly which callbacks this client will answer, which is
             // what makes a worker route the question here instead of giving up on it.
@@ -3936,9 +4545,11 @@ fn dispatch_tool(
                             pending: None,
                             child: None,
                             stdin: None,
+                            gate: Arc::default(),
                             inbox: VecDeque::new(),
                             routing: routing_at_start.clone(),
                             awaiting_steer: false,
+                            steers_queued: 0,
                             next_request_id: 10,
                             superseded_by: None,
                         },
@@ -4107,7 +4718,7 @@ fn dispatch_tool(
                 let stdin = job.stdin.clone();
                 match (live, stdin) {
                     (true, Some(stdin)) => {
-                        job.inbox.push_front(message);
+                        let _ = queue_steer(job, message);
                         job.awaiting_steer = true;
                         job.next_request_id += 1;
                         let request_id = format!("{job_id}-interrupt-{}", job.next_request_id);
@@ -4122,8 +4733,7 @@ fn dispatch_tool(
                         return Ok(json!({ "steered": job_id }));
                     }
                     _ => {
-                        job.inbox.push_back(message);
-                        let queued = job.inbox.len();
+                        let queued = queue_steer(job, message);
                         core.notify(&inner);
                         return Ok(json!({
                             "queued": job_id,
@@ -4132,6 +4742,23 @@ fn dispatch_tool(
                         }));
                     }
                 }
+            }
+            if agent == "antigravity" {
+                // `agy --input-format stream-json` reads only user messages on stdin — there is
+                // no control_request / interrupt frame, and sending SIGINT on Windows tears the
+                // whole child process tree down. The correction waits ahead of any queued sends
+                // and runs as the worker's next turn on the same thread.
+                let job = inner
+                    .jobs
+                    .get_mut(&job_id)
+                    .ok_or_else(|| format!("unknown job {job_id}"))?;
+                let queued = queue_steer(job, message);
+                core.notify(&inner);
+                return Ok(json!({
+                    "queued": job_id,
+                    "waiting": queued,
+                    "note": "Antigravity cannot be interrupted mid-turn; the steer runs as its next turn"
+                }));
             }
             let turn_id =
                 turn_id.ok_or_else(|| format!("job {job_id} has no running turn to steer"))?;
@@ -4165,7 +4792,11 @@ fn dispatch_tool(
             // A worker whose process is gone still has its thread on disk, so instead of refusing
             // the message it is started again and picks up where it left off.
             if job.stdin.is_none() {
+                let gate = Arc::clone(&job.gate);
                 drop(inner);
+                // An event of the process it had may be landing right now; the next run starts
+                // after it. Once queued, that process's reader no longer finds anything current.
+                let applying = guard(&gate);
                 let queued = {
                     let mut inner = guard(&core.inner);
                     let job = inner
@@ -4175,10 +4806,19 @@ fn dispatch_tool(
                     job.inbox.push_back(message);
                     job.status = STATUS_QUEUED.to_string();
                     job.superseded_by = None;
+                    // The revive starts a new turn, as a live send does, so the last run's words
+                    // are not this one's. That also wipes what the released process's reader may
+                    // still have written after the release, which does not wait for the gate:
+                    // a late report, reply or question.
+                    job.outcome = None;
+                    job.reply.clear();
+                    job.report.clear();
+                    job.pending = None;
                     inner.queue.push_back(job_id.clone());
                     core.notify(&inner);
                     true
                 };
+                drop(applying);
                 core.persist();
                 core.drain_queue();
                 return Ok(
@@ -4203,21 +4843,15 @@ fn dispatch_tool(
                     inner.max_concurrent
                 ));
             }
-            // Claude's process is already sitting there, multi-turn — the next line written on its
-            // stdin just is the next turn, no `turn/start` RPC to build like Codex needs.
-            let is_claude = job.agent == "claude";
-            let (stdin, request) = if is_claude {
+            // Stream workers' process is already sitting there, multi-turn — the next line written
+            // on its stdin just is the next turn, no `turn/start` RPC to build like Codex needs.
+            let agent = job.agent.clone();
+            let (stdin, request) = if is_stream_worker(&agent) {
                 let stdin = job
                     .stdin
                     .clone()
                     .ok_or_else(|| format!("job {job_id} has no live worker"))?;
-                (
-                    stdin,
-                    json!({
-                        "type": "user",
-                        "message": { "role": "user", "content": [{ "type": "text", "text": message }] }
-                    }),
-                )
+                (stdin, user_turn(&agent, &message))
             } else {
                 stage_rpc(
                     &mut inner,
@@ -4393,9 +5027,11 @@ mod restart_tests {
             pending: None,
             child: None,
             stdin: None,
+            gate: Arc::default(),
             inbox: VecDeque::new(),
             routing: None,
             awaiting_steer: false,
+            steers_queued: 0,
             next_request_id: 10,
             superseded_by: None,
             role: None,
@@ -4824,6 +5460,45 @@ mod restart_tests {
         core.set_agent_fitness("claude", json!({ "worst": "week", "used": 90, "rateLimited": false }));
         let (arguments, _) = routed(&core, call.clone()).expect("a match");
         assert_eq!(arguments["role"], json!("expert"), "opus is unknown here, so it passes");
+
+        // Antigravity gates read its Claude/Opus bucket for `opus` and fall back to `used` for general windows.
+        let agy_core = routing_core(json!({
+            "maxConcurrent": 4,
+            "defaultTimeoutSeconds": 900,
+            "roles": [
+                { "name": "agy-opus", "agent": "antigravity", "model": "claude-opus-5-5-high" },
+                { "name": "agy-flash", "agent": "antigravity", "model": "gemini-3.8-flash" },
+                { "name": "any", "agent": "codex" }
+            ],
+            "routing": { "rules": [
+                { "id": "r-agy-opus", "enabled": true, "kinds": [], "efforts": [], "gates": [{ "agent": "antigravity", "window": "opus", "below": 50 }], "role": "agy-opus" },
+                { "id": "r-agy-short", "enabled": true, "kinds": [], "efforts": [], "gates": [{ "agent": "antigravity", "window": "short", "below": 80 }], "role": "agy-flash" },
+                { "id": "r-any", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "any" }
+            ]}
+        }));
+        agy_core.set_agent_fitness(
+            "antigravity",
+            json!({ "worst": "Gemini", "used": 65, "rateLimited": false,
+                    "windows": { "Claude": 40, "Gemini": 65 } }),
+        );
+        let (arguments, _) = routed(&agy_core, call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("agy-opus"), "Claude bucket at 40% < 50");
+
+        agy_core.set_agent_fitness(
+            "antigravity",
+            json!({ "worst": "Gemini", "used": 65, "rateLimited": false,
+                    "windows": { "Claude": 55, "Gemini": 65 } }),
+        );
+        let (arguments, _) = routed(&agy_core, call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("agy-flash"), "opus bucket 55% fails, short gate reads used=65% < 80");
+
+        agy_core.set_agent_fitness(
+            "antigravity",
+            json!({ "worst": "Gemini", "used": 85, "rateLimited": false,
+                    "windows": { "Claude": 55, "Gemini": 85 } }),
+        );
+        let (arguments, _) = routed(&agy_core, call).expect("a match");
+        assert_eq!(arguments["role"], json!("any"), "short gate falls back to used=85% >= 80");
     }
 
     #[test]
@@ -4867,22 +5542,30 @@ mod restart_tests {
                 "defaultTimeoutSeconds": 900,
                 "roles": [
                     { "name": "expert", "agent": "claude", "model": "claude-opus-4" },
+                    { "name": "agy-expert", "agent": "antigravity", "model": "claude-opus-5-5-high" },
                     { "name": "any", "agent": "codex" }
                 ],
                 "routing": {
                     "allowOpusOnDeep": allow,
                     "rules": [
-                        { "id": "r-expert", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "expert" },
+                        { "id": "r-expert", "enabled": true, "kinds": ["code"], "efforts": [], "gates": [], "role": "expert" },
+                        { "id": "r-agy-expert", "enabled": true, "kinds": ["review"], "efforts": [], "gates": [], "role": "agy-expert" },
                         { "id": "r-any", "enabled": true, "kinds": [], "efforts": [], "gates": [], "role": "any" }
                     ]
                 }
             })
         };
-        let call = json!({ "tasks": ["x"], "kind": "code" });
-        let (arguments, _) = routed(&routing_core(settings(true)), call.clone()).expect("a match");
+        let claude_call = json!({ "tasks": ["x"], "kind": "code" });
+        let (arguments, _) = routed(&routing_core(settings(true)), claude_call.clone()).expect("a match");
         assert_eq!(arguments["role"], json!("expert"));
-        let (arguments, _) = routed(&routing_core(settings(false)), call.clone()).expect("a match");
-        assert_eq!(arguments["role"], json!("any"), "opus is off the rules' table");
+        let (arguments, _) = routed(&routing_core(settings(false)), claude_call).expect("a match");
+        assert_eq!(arguments["role"], json!("any"), "claude opus is off the rules' table");
+
+        let agy_call = json!({ "tasks": ["x"], "kind": "review" });
+        let (arguments, _) = routed(&routing_core(settings(true)), agy_call.clone()).expect("a match");
+        assert_eq!(arguments["role"], json!("agy-expert"));
+        let (arguments, _) = routed(&routing_core(settings(false)), agy_call).expect("a match");
+        assert_eq!(arguments["role"], json!("any"), "antigravity opus is off the rules' table");
     }
 
     #[test]
@@ -4972,10 +5655,12 @@ mod restart_tests {
         exhausted(&cheapest);
         let result = delegate(&cheapest).expect("runs anyway");
         let id = result["jobs"][0]["id"].as_str().expect("a job id");
-        let inner = guard(&cheapest.inner);
-        let note = inner.jobs[id].routing.as_ref().expect("a routing note");
-        assert_eq!(note["verdict"], json!("both-critical"));
-        assert_eq!(note["policy"], json!("run-cheapest"));
+        {
+            let inner = guard(&cheapest.inner);
+            let note = inner.jobs[id].routing.as_ref().expect("a routing note");
+            assert_eq!(note["verdict"], json!("both-critical"));
+            assert_eq!(note["policy"], json!("run-cheapest"));
+        }
 
         // The default ("ask") runs too; the planner hears it through the headroom hint.
         let asking = routing_core(json!({ "maxConcurrent": 4, "defaultTimeoutSeconds": 900 }));
@@ -4993,6 +5678,44 @@ mod restart_tests {
             json!({ "worst": "week", "used": 88, "rateLimited": false }),
         );
         delegate(&half_known).expect("claude unknown is not critical");
+
+        // When Antigravity still has room, block does not fire even if Claude and Codex are critical.
+        exhausted(&half_known);
+        half_known.set_agent_fitness(
+            "antigravity",
+            json!({ "worst": "Gemini", "used": 30, "rateLimited": false }),
+        );
+        delegate(&half_known).expect("antigravity still has headroom");
+
+        // When all three known providers pass threshold, delegating to Antigravity triggers policy too.
+        let temp_cwd = std::env::temp_dir().to_string_lossy().into_owned();
+        let delegate_agy = |core: &Core| {
+            let mut arguments = Map::new();
+            arguments.insert("tasks".into(), json!(["something"]));
+            arguments.insert("cwd".into(), json!(temp_cwd));
+            arguments.insert("agent".into(), json!("antigravity"));
+            call_tool(core, "alethe_delegate", &arguments, None)
+        };
+        let exhaust_all = |core: &Core| {
+            exhausted(core);
+            core.set_agent_fitness(
+                "antigravity",
+                json!({ "worst": "Gemini", "used": 91, "rateLimited": false }),
+            );
+        };
+
+        exhaust_all(&blocking);
+        let error = delegate_agy(&blocking).expect_err("all three critical blocks antigravity");
+        assert!(error.contains("antigravity at 91%"), "{error}");
+
+        exhaust_all(&cheapest);
+        let result = delegate_agy(&cheapest).expect("antigravity runs under run-cheapest");
+        let id = result["jobs"][0]["id"].as_str().expect("a job id");
+        let inner = guard(&cheapest.inner);
+        let note = inner.jobs[id].routing.as_ref().expect("a routing note");
+        assert_eq!(note["verdict"], json!("both-critical"));
+        assert_eq!(note["policy"], json!("run-cheapest"));
+        assert_eq!(note["agent"], json!("antigravity"));
     }
 
     #[test]

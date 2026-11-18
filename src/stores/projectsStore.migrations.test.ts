@@ -224,6 +224,7 @@ describe('preference normalization', () => {
         roles: [
           row('executor', 'claude', 'first'),
           row('executor', 'codex'),
+          row('executor', 'antigravity'),
           row('executor'),
           row('executor', 'claude', 'second'),
           // null is the row for any orchestrator, already taken above.
@@ -237,6 +238,7 @@ describe('preference normalization', () => {
     expect(roles.map((role) => [role.name, role.orchestrator, role.model])).toEqual([
       ['executor', 'claude', 'first'],
       ['executor', 'codex', null],
+      ['executor', 'antigravity', null],
       ['executor', undefined, null],
     ])
     const saved = JSON.parse(JSON.stringify(preferences))
@@ -328,6 +330,39 @@ describe('preference normalization', () => {
       routing: DEFAULT_PREFERENCES.orchestration.routing,
       skill: DEFAULT_PREFERENCES.orchestration.skill,
     })
+  })
+
+  // Antigravity roles (#218).
+  it('keeps an Antigravity worker and planner role and drops what agy cannot enforce', () => {
+    const implementer = {
+      name: 'implementer',
+      agent: 'antigravity' as const,
+      model: 'claude-sonnet-5-5',
+      effort: 'high',
+      readOnly: false,
+      timeoutSeconds: null,
+      orchestrator: 'claude' as const,
+    }
+    const lead = {
+      ...implementer,
+      name: 'lead',
+      orchestrator: 'antigravity' as const,
+    }
+    const saved = normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      orchestration: {
+        ...DEFAULT_PREFERENCES.orchestration,
+        roles: [
+          implementer,
+          // agy has no read-only mode, so this would run writable.
+          { ...implementer, name: 'auditor', readOnly: true },
+          lead,
+        ],
+      },
+    })
+
+    expect(saved.orchestration.roles).toEqual([implementer, lead])
+    expect(normalizePreferences(saved).orchestration.roles).toEqual([implementer, lead])
   })
 
   it('hands off the full conversation by default and narrows an unknown scope', () => {

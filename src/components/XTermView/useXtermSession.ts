@@ -29,7 +29,11 @@ import {
   plannerLabelFor,
   recordClaudeLaunch,
 } from '../../lib/claudeMcpConfigs'
-import { claudeSessionFromHook, shortSessionId } from '../../lib/claudeSessionTracking'
+import {
+  hookSessionForAgent,
+  type HookTrackedAgent,
+  shortSessionId,
+} from '../../lib/claudeSessionTracking'
 import {
   forgetCodexPaneInput,
   noteCodexPaneInput,
@@ -60,6 +64,8 @@ import {
   aiMemoryCodexConfigWrite,
   aiMemoryDetect,
   aiMemoryOpenCodeConfigWrite,
+  antigravityHooksConfigWrite,
+  antigravityMcpConfigWrite,
   attachPty,
   claudeSessionExists,
   clearPtyScrollback,
@@ -96,6 +102,7 @@ import {
   isShellAgentType,
   type Theme,
 } from '../../lib/types'
+import { voiceConversationHooksEnabled } from '../../lib/voice/conversationHooks'
 import { wslTargetFor } from '../../lib/wsl'
 import type { AgentHookPayload } from '../../stores/agentCanvasStore'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -1169,10 +1176,12 @@ export function useXtermSession(params: {
       try {
         // Subscribe before either spawning or attaching. A SessionStart can arrive
         // before spawnPty resolves, and remounting a live PTY must restore tracking.
-        if (command === 'claude' && !readOnly) {
+        const hookAgent: HookTrackedAgent | null =
+          command === 'claude' ? 'claude' : command === 'antigravity' ? 'antigravity' : null
+        if (hookAgent && !readOnly) {
           const off = await listen<AgentHookPayload>('agent-hook', (event) => {
             if (event.payload.plannerId !== attachedPtyId) return
-            const reported = claudeSessionFromHook(event.payload)
+            const reported = hookSessionForAgent(event.payload, hookAgent)
             if (reported) adoptSession(reported)
           })
           if (disposed) {
@@ -1461,6 +1470,29 @@ export function useXtermSession(params: {
           await codexMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId, command), command).catch(
             () => undefined,
           )
+          if (disposed) return
+        }
+
+        if (
+          command === 'antigravity' &&
+          cwd &&
+          (orchestratorEnabled || voiceConversationHooksEnabled())
+        ) {
+          // Provisions `<workspace>/.agents/hooks.json` so Antigravity lifecycle hooks and native
+          // subagents (`invoke_subagent`) flow back to Alethe with `ALETHE_PLANNER`.
+          await antigravityHooksConfigWrite(cwd, ptyId).catch(() => undefined)
+          if (disposed) return
+        }
+
+        if (orchestratorEnabled && command === 'antigravity' && cwd) {
+          // Provisions `<workspace>/.agents/mcp_config.json` with Alethe's stdio bridge so
+          // Antigravity runs as an isolated planner using ALETHE_PLANNER at launch.
+          await antigravityMcpConfigWrite(
+            cwd,
+            ptyId,
+            plannerLabelFor(ptyId, command),
+            command,
+          ).catch(() => undefined)
           if (disposed) return
         }
 
