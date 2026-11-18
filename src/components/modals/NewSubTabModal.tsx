@@ -11,6 +11,7 @@ import {
   resolveUnrestrictedFlag,
   useAgentTypes,
 } from '../../lib/agentProviders'
+import { supportsRuntimeProfile } from '../../lib/agentRuntimeAdapter'
 import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
@@ -182,6 +183,7 @@ export function NewSubTabModal() {
                 key={profile}
                 type="button"
                 className={`${controls.pill} ${runtimeProfile === profile ? controls.pillActive : ''}`}
+                disabled={!supportsRuntimeProfile(type)}
                 onClick={() => setRuntimeProfile(profile)}
                 title={t(`term.runtimeProfile.${profile}.desc`)}
               >

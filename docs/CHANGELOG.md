@@ -19,11 +19,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   enabled, launching or relaunching an Antigravity terminal writes
   `<workspace>/.agents/mcp_config.json` with a cross-platform stdio-to-HTTP bridge carrying
   `ALETHE_PLANNER`, so each Antigravity planner tab receives isolated `alethe_*` orchestration
-  tools, and provisions `<workspace>/.agents/hooks.json` (also when voice conversation hooks are
+  tools, writes `<workspace>/.agents/rules/alethe-orchestrator.md` (`trigger: always_on`) so
+  Antigravity delegates multi-front tasks proactively on turn 1 despite lazy MCP loading, and
+  provisions `<workspace>/.agents/hooks.json` (also when voice conversation hooks are
   active) to forward `SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, and `Stop`
   events to Alethe's `/hook` listener—adopting conversation IDs live and mirroring Antigravity's
   own `invoke_subagent` calls on the orchestration canvas; project-scope MCP inspection and project
-  skill installs for Antigravity also use `.agents/`. Routing quota gates, `allowOpusOnDeep`, and
+  skill installs for Antigravity also use `.agents/`. Runtime profile pills (`Full`, `Lean`,
+  `Diagnostic`) are now disabled in the New Terminal and New Sub-tab modals for agents that do not
+  apply runtime profile flags. Routing quota gates, `allowOpusOnDeep`, and
   `onBothCritical` checks now include Antigravity alongside Claude Code and Codex.
 - **Antigravity workers in orchestration.** The lead can delegate to Antigravity (`agy`) next to
   Claude Code and Codex, and a role in Preferences → Orchestration can run on it with the approved

@@ -1170,6 +1170,31 @@ fn write_antigravity_hooks_file(dir: &Path, command: &str) -> Result<(), String>
     std::fs::write(&path, next).map_err(|e| format!("write_failed:{e}"))
 }
 
+const ANTIGRAVITY_PLANNER_RULE: &str = "\
+---
+trigger: always_on
+---
+# Alethe Orchestrator Planner Rules (MANDATORY)
+
+When the `alethe` MCP server is listed under `<mcp_servers>`, this session is an **Alethe Orchestration Planner**:
+1. **MANDATORY DELEGATION FOR 2+ FRONTS**: Whenever the user request contains **2 or more independent units, numbered items, or parallel research/codebase fronts** (even if the user calls it a \"quick search\" or \"diagnóstico rápido\"), you **MUST NOT** call `search_web`, `invoke_subagent`, `run_workflow`, or `swarm` yourself. You **MUST** delegate every unit on Turn 1 using `call_mcp_tool` with `ServerName: \"alethe\"` and `ToolName: \"alethe_delegate\"`.
+2. **NO SCHEMA READ NEEDED — CALL DIRECTLY ON TURN 1**:
+   - **Step 1 — Delegate all units in ONE call**:
+     `call_mcp_tool` with `ServerName: \"alethe\"`, `ToolName: \"alethe_delegate\"`, and `Arguments`:
+     `{\"tasks\": [\"Front 1...\", \"Front 2...\"], \"kind\": \"research\" | \"implementation\" | \"review\" | \"test-writing\", \"effortClass\": \"light\" | \"standard\" | \"deep\", \"webSearch\": true, \"label\": \"Short batch title\"}` (add `\"isolate\": true` when parallel workers edit files in the same git repo).
+   - **Step 2 — Wait for results**:
+     `call_mcp_tool` with `ServerName: \"alethe\"`, `ToolName: \"alethe_check\"`, `Arguments: {\"wait\": true}` (pass `\"ack\"` on subsequent checks while workers are running).
+   - **Step 3 — Release finished workers**:
+     `call_mcp_tool` with `ServerName: \"alethe\"`, `ToolName: \"alethe_release\"`, `Arguments: {\"jobId\": \"<id>\"}` for each finished worker before presenting the final synthesis.
+";
+
+fn write_antigravity_planner_rule_file(dir: &Path) -> Result<(), String> {
+    let rules_dir = dir.join(".agents").join("rules");
+    std::fs::create_dir_all(&rules_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
+    let path = rules_dir.join("alethe-orchestrator.md");
+    std::fs::write(&path, ANTIGRAVITY_PLANNER_RULE).map_err(|e| format!("write_failed:{e}"))
+}
+
 fn antigravity_hooks_config_write_inner(repo: String, _planner_id: String) -> Result<(), String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "the agent listener is not available yet".to_string())?;
@@ -1192,7 +1217,8 @@ fn antigravity_mcp_config_write_inner(repo: String, _planner_id: String) -> Resu
         "antigravity_mcp_config_write: empty workspace path",
         |dir| {
             write_antigravity_mcp_file(dir, &bridge_cmd, &bridge_args)?;
-            write_antigravity_hooks_file(dir, &hook_cmd)
+            write_antigravity_hooks_file(dir, &hook_cmd)?;
+            write_antigravity_planner_rule_file(dir)
         },
     )
 }
@@ -2313,6 +2339,22 @@ mod tests {
         );
         assert_eq!(reparsed["alethe"]["enabled"], true);
         assert_eq!(reparsed["alethe"]["PreToolUse"][0]["hooks"][0]["command"], cmd);
+    }
+
+    #[test]
+    fn antigravity_planner_rule_file_writes_always_on_rule() {
+        let dir = std::env::temp_dir().join(format!(
+            "alethe-agy-rule-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        super::write_antigravity_planner_rule_file(&dir).expect("planner rule file should write");
+        let path = dir.join(".agents").join("rules").join("alethe-orchestrator.md");
+        let content = std::fs::read_to_string(&path).expect("rule file should be readable");
+        assert!(content.starts_with("---\ntrigger: always_on\n---\n"));
+        assert!(content.contains("alethe_delegate"));
+        assert!(content.contains("webSearch"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

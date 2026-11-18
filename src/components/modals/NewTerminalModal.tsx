@@ -24,6 +24,7 @@ import { basename, pathSegments } from '../../lib/paths'
 import { formatShortcut, isWindows } from '../../lib/platform'
 import { DEFAULT_GRID_ID } from '../../lib/projectGrids'
 import { router9RoutingReady } from '../../lib/router9'
+import { supportsRuntimeProfile } from '../../lib/agentRuntimeAdapter'
 import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { wslTargetFor } from '../../lib/wsl'
 import { enableOrchestratorFeature } from '../../lib/orchestratorUsageAccess'
@@ -588,6 +589,7 @@ export function NewTerminalModal() {
                       key={profile}
                       type="button"
                       className={`${controls.pill} ${runtimeProfile === profile ? controls.pillActive : ''}`}
+                      disabled={!supportsRuntimeProfile(type)}
                       onClick={() => setRuntimeProfile(profile)}
                       title={t(`term.runtimeProfile.${profile}.desc`)}
                     >

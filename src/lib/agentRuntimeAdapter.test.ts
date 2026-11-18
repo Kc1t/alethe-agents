@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { AGENT_RUNTIME_ADAPTERS, preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
+import {
+  AGENT_RUNTIME_ADAPTERS,
+  preparePtyRuntimeLaunch,
+  supportsRuntimeProfile,
+} from './agentRuntimeAdapter'
 
 describe('preparePtyRuntimeLaunch', () => {
   it('full runtime profile preserves arguments and keeps the renderer decision', () => {
@@ -42,6 +46,13 @@ describe('preparePtyRuntimeLaunch', () => {
   it('diagnostic Claude profile uses safe mode once', () => {
     const launch = preparePtyRuntimeLaunch('claude', 'diagnostic', ['--safe-mode'])
     expect(launch.args).toEqual(['--safe-mode'])
+  })
+
+  it('reports runtime profile support only for Claude and Codex', () => {
+    expect(supportsRuntimeProfile('claude')).toBe(true)
+    expect(supportsRuntimeProfile('codex')).toBe(true)
+    expect(supportsRuntimeProfile('antigravity')).toBe(false)
+    expect(supportsRuntimeProfile('opencode')).toBe(false)
   })
 })
 
