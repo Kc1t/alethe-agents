@@ -36,6 +36,9 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `ui` · fix(terminal): open the link actions menu for OSC 8 hyperlinks
+  - Files: `src/components/XTermView/useXtermSession.ts`
+
 - `pending` · `contract` · feat(terminal): preserve pane scroll and make Claude Code fullscreen rendering optional
   - Commit: Merge pull request #322 from MarkHiarley/fix/terminal-scroll-ownership
   - Also: `9135adde` fix(terminal): keep a pane's scroll with the reader; `8657a542` feat(terminal): make Claude Code's fullscreen renderer a preference; `0d1f31da` fix(terminal): close the gaps found porting #322

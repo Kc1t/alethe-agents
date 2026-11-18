@@ -61,7 +61,9 @@ vi.mock('@xterm/xterm', () => ({
     scrollLines = vi.fn()
     scrollToLine = vi.fn()
     scrollToBottom() {}
-    constructor() {
+    linkHandler: { activate: (event: MouseEvent, uri: string) => void } | undefined
+    constructor(init?: { linkHandler?: { activate: (event: MouseEvent, uri: string) => void } }) {
+      this.linkHandler = init?.linkHandler
       terminals.push(this)
     }
     write(data: string, callback?: () => void) {
@@ -376,6 +378,26 @@ describe('Codex terminal session lifecycle', () => {
 
     act(() => trackCodexRollout({ ...rollout('exec-run'), source: 'exec' }))
     expect(peekSession(tabId)?.codexSessionId).toBe('first-chat')
+  })
+})
+
+describe('OSC 8 hyperlinks', () => {
+  it('opens the link actions menu instead of the webview default', async () => {
+    const input = params()
+    renderHook(() => useXtermSession(input))
+    await waitFor(() => expect(input.setBootPhase).toHaveBeenCalledWith('ready'))
+    const terminal = input.terminalRef.current as unknown as {
+      linkHandler?: { activate: (event: MouseEvent, uri: string) => void }
+    }
+    const event = new MouseEvent('click')
+    const uri = 'https://github.com/zaqueu-1/exonous/pull/90'
+
+    terminal.linkHandler?.activate(event, uri)
+
+    expect(input.showLinkActionsMenu).toHaveBeenCalledWith(
+      event,
+      expect.objectContaining({ text: uri, target: uri, kind: 'url' }),
+    )
   })
 })
 
