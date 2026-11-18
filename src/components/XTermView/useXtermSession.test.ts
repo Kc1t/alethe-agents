@@ -389,7 +389,9 @@ describe('Antigravity planner provisioning', () => {
       enabledFeatures: { ...preferences.enabledFeatures, orchestrator: true },
     })
     useProjectsStore.setState({
-      projects: [{ terminals: [{ name: 'Agy planner', tabs: [{ id: 'tab-agy', ptyId: 'pty-0' }] }] }],
+      projects: [
+        { terminals: [{ name: 'Agy planner', tabs: [{ id: 'tab-agy', ptyId: 'pty-0' }] }] },
+      ],
     } as never)
 
     const input = params()

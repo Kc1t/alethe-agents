@@ -100,10 +100,7 @@ export async function codexMcpConfigWrite(
 }
 
 /** Writes `<repo>/.agents/hooks.json` so Antigravity reports lifecycle hooks back to Alethe. */
-export async function antigravityHooksConfigWrite(
-  repo: string,
-  plannerId: string,
-): Promise<void> {
+export async function antigravityHooksConfigWrite(repo: string, plannerId: string): Promise<void> {
   await invoke('antigravity_hooks_config_write', { repo, plannerId })
 }
 
