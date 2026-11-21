@@ -36,6 +36,10 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `backend` · fix(router9): start 9router without its interactive menu and bind it to loopback
+  - Files: `src-tauri/src/router9.rs`
+  - Behavior: `router9_start` passes `--tray --no-browser --skip-update --host 127.0.0.1 --port <port>` for both the managed and the external install, so the CLI skips its "Choose Interface" menu (which exits on the null stdin) and the server listens on loopback at the chosen port.
+
 - `pending` · `contract` · feat(terminal): preserve pane scroll and make Claude Code fullscreen rendering optional
   - Commit: Merge pull request #322 from MarkHiarley/fix/terminal-scroll-ownership
   - Also: `9135adde` fix(terminal): keep a pane's scroll with the reader; `8657a542` feat(terminal): make Claude Code's fullscreen renderer a preference; `0d1f31da` fix(terminal): close the gaps found porting #322

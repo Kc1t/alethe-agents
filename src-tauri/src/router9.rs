@@ -111,6 +111,22 @@ fn port_in_use(port: u16) -> bool {
     TcpStream::connect_timeout(&addr, Duration::from_millis(PORT_PROBE_TIMEOUT_MS)).is_ok()
 }
 
+/// CLI flags for a non-interactive, loopback-only start. Without a mode flag the 9router CLI
+/// opens its "Choose Interface" menu, which reads EOF on the null stdin and exits. The CLI also
+/// sets the server's HOSTNAME from `--host` (default 0.0.0.0) and its port from `--port`, so the
+/// env vars set on the command are not enough on their own.
+fn launch_args(port: u16) -> Vec<String> {
+    vec![
+        "--tray".to_string(),
+        "--no-browser".to_string(),
+        "--skip-update".to_string(),
+        "--host".to_string(),
+        "127.0.0.1".to_string(),
+        "--port".to_string(),
+        port.to_string(),
+    ]
+}
+
 fn quote(path: &Path) -> String {
     format!("\"{}\"", path.to_string_lossy())
 }
@@ -265,6 +281,7 @@ pub fn router9_start(
     };
 
     command
+        .args(launch_args(port))
         .env("PORT", port.to_string())
         .env("NEXT_PUBLIC_BASE_URL", format!("http://127.0.0.1:{port}"))
         // 9router serves a Next.js app, which binds 0.0.0.0 unless HOSTNAME says otherwise. Alethe
@@ -284,4 +301,28 @@ pub fn router9_start(
 pub fn router9_stop(state: tauri::State<'_, Router9Process>) -> Result<(), String> {
     stop_managed(state.inner());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn launch_args_start_without_the_interactive_menu() {
+        let args = launch_args(DEFAULT_PORT);
+        assert!(args.iter().any(|a| a == "--tray"));
+        assert!(args.iter().any(|a| a == "--no-browser"));
+        assert!(args.iter().any(|a| a == "--skip-update"));
+    }
+
+    #[test]
+    fn launch_args_bind_loopback_on_the_requested_port() {
+        let args = launch_args(20199);
+        let value_of = |flag: &str| {
+            let at = args.iter().position(|a| a == flag).expect(flag);
+            args[at + 1].clone()
+        };
+        assert_eq!(value_of("--host"), "127.0.0.1");
+        assert_eq!(value_of("--port"), "20199");
+    }
 }
