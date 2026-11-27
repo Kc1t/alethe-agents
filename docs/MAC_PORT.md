@@ -36,6 +36,15 @@ Mac synced through: `v1.7.0` (`80e44a3`)
 
 ## Unreleased
 
+- `pending` · `contract` · feat(backup): carry agent transcripts in profile backups
+  - Files: `src-tauri/src/backup.rs`, `src-tauri/src/backup_sessions.rs`
+  - Contract: the backup zip gains `agent-sessions/claude/<project-dir>/<id>.jsonl` and
+    `agent-sessions/codex/<yyyy>/<mm>/<dd>/<file>.jsonl` for every `sessionId` and
+    `previousSessionIds` entry in `projects.json`. Import writes them under `~/.claude/projects`
+    and `~/.codex/sessions` (never into the profile), skips any name that could leave those roots,
+    and keeps a local copy that is the same size or longer. Reports gain `agentSessions` and
+    `agentSessionsRestored`.
+
 - `pending` · `contract` · feat(terminal): preserve pane scroll and make Claude Code fullscreen rendering optional
   - Commit: Merge pull request #322 from MarkHiarley/fix/terminal-scroll-ownership
   - Also: `9135adde` fix(terminal): keep a pane's scroll with the reader; `8657a542` feat(terminal): make Claude Code's fullscreen renderer a preference; `0d1f31da` fix(terminal): close the gaps found porting #322

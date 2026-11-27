@@ -8,6 +8,7 @@ mod antigravity_sessions;
 mod antigravity_usage;
 mod audio_out;
 mod backup;
+mod backup_sessions;
 mod browser_pane;
 mod browser_session;
 mod cdp;
