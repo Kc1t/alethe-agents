@@ -11,6 +11,7 @@ use tauri::AppHandle;
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+use crate::backup_sessions::SessionRoots;
 use crate::paths::{activity_stats_file_path, app_data_dir};
 use crate::profiles::profile_data_dir_for_id;
 
@@ -34,6 +35,7 @@ pub struct BackupReport {
     skipped: Vec<String>,
     embedded_images: usize,
     image_links_kept: Vec<String>,
+    agent_sessions: usize,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -41,6 +43,7 @@ pub struct BackupReport {
 pub struct ImportReport {
     local_storage: BTreeMap<String, String>,
     profile_name: Option<String>,
+    agent_sessions_restored: usize,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -70,6 +73,7 @@ struct ExportContext {
     profile_name: Option<String>,
     local_storage: BTreeMap<String, String>,
     images: EmbeddedImages,
+    sessions: SessionRoots,
 }
 
 #[tauri::command]
@@ -126,6 +130,7 @@ async fn export_profile_dir(
         profile_name,
         local_storage: extras.local_storage,
         images: download_images(urls).await,
+        sessions: SessionRoots::host(),
     };
     tokio::task::spawn_blocking(move || export_backup_from_dir(dir, target_path, context))
         .await
@@ -284,6 +289,7 @@ fn export_backup_from_dir(
         &context.images.by_url,
         &mut report,
     )?;
+    add_agent_sessions_to_zip(&mut zip, &source_root, &context.sessions, opts, &mut report)?;
 
     let manifest = BackupManifest {
         format: MANIFEST_FORMAT,
@@ -299,6 +305,35 @@ fn export_backup_from_dir(
 
     zip.finish().map_err(|e| e.to_string())?;
     Ok(report)
+}
+
+fn add_agent_sessions_to_zip<W: Write + io::Seek>(
+    zip: &mut ZipWriter<W>,
+    profile_root: &Path,
+    roots: &SessionRoots,
+    opts: FileOptions,
+    report: &mut BackupReport,
+) -> Result<(), String> {
+    let Some(projects) = fs::read_to_string(profile_root.join("projects.json"))
+        .ok()
+        .and_then(|content| serde_json::from_str::<Value>(&content).ok())
+    else {
+        return Ok(());
+    };
+    let ids = crate::backup_sessions::referenced_session_ids(&projects);
+    for (name, path) in crate::backup_sessions::locate_transcripts(roots, &ids) {
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                report.skipped.push(format!("{name} ({error})"));
+                continue;
+            }
+        };
+        zip.start_file(name, opts).map_err(|e| e.to_string())?;
+        zip.write_all(&bytes).map_err(|e| e.to_string())?;
+        report.agent_sessions += 1;
+    }
+    Ok(())
 }
 
 fn is_runtime_backup_path(root: &Path, path: &Path) -> bool {
@@ -474,6 +509,8 @@ fn import_backup_inner(app: AppHandle, source_path: String) -> Result<ImportRepo
         return Err("backup_missing_projects".to_string());
     }
     let manifest = read_manifest(&mut archive);
+    let session_roots = SessionRoots::host();
+    let mut agent_sessions_restored = 0;
 
     // State that the backup does not carry must not survive the import.
     let scrollback = dir.join("scrollback");
@@ -488,6 +525,18 @@ fn import_backup_inner(app: AppHandle, source_path: String) -> Result<ImportRepo
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let entry_name = entry.name().to_string();
+
+        // Agent transcripts go back to the agents' own homes, never into the profile.
+        if crate::backup_sessions::is_session_entry(&entry_name) {
+            let size = entry.size();
+            if crate::backup_sessions::restore_entry(&session_roots, &entry_name, size, &mut entry)
+                .map_err(|e| e.to_string())?
+            {
+                agent_sessions_restored += 1;
+            }
+            let _ = read_remaining(&mut entry);
+            continue;
+        }
 
         // Legacy WebView caches stay out, and no path may escape the profile directory.
         if is_runtime_archive_entry(&entry_name)
@@ -521,7 +570,10 @@ fn import_backup_inner(app: AppHandle, source_path: String) -> Result<ImportRepo
         &crate::secure_store::OsSecretStore,
     )?;
 
-    let mut report = ImportReport::default();
+    let mut report = ImportReport {
+        agent_sessions_restored,
+        ..ImportReport::default()
+    };
     if let Some(manifest) = manifest {
         report.local_storage = manifest.local_storage;
         if let Some(name) = manifest.profile_name.filter(|name| !name.trim().is_empty()) {
@@ -709,6 +761,7 @@ mod tests {
                 )]),
                 failed: vec!["https://gone.example/b.png".to_string()],
             },
+            sessions: crate::backup_sessions::SessionRoots::default(),
         };
 
         let report = export_backup_from_dir(
@@ -734,6 +787,45 @@ mod tests {
         let projects = read_entry(&mut archive, "projects.json");
         assert!(projects.contains("data:image/jpeg;base64,ME"));
         assert!(projects.contains("\"uiTheme\": \"nord\""));
+
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn the_backup_carries_the_transcripts_its_tabs_resume() {
+        let root = scratch("backup-sessions");
+        let profile = root.join("profile");
+        let archive_path = root.join("profile.zip");
+        fs::write(
+            profile.join("projects.json"),
+            r#"{"projects":[{"terminals":[{"tabs":[{"type":"claude","sessionId":"aaa-1"}]}]}]}"#,
+        )
+        .expect("projects");
+        let claude = root.join("home").join(".claude").join("projects");
+        fs::create_dir_all(claude.join("C--Projetos-app")).expect("claude dir");
+        fs::write(claude.join("C--Projetos-app").join("aaa-1.jsonl"), "{\"t\":1}").expect("kept");
+        fs::write(claude.join("C--Projetos-app").join("unrelated.jsonl"), "{}").expect("other");
+        let context = ExportContext {
+            sessions: crate::backup_sessions::SessionRoots {
+                claude: Some(claude),
+                codex: None,
+            },
+            ..ExportContext::default()
+        };
+
+        let report =
+            export_backup_from_dir(profile, archive_path.to_string_lossy().into_owned(), context)
+                .expect("export");
+
+        assert_eq!(report.agent_sessions, 1);
+        let file = fs::File::open(&archive_path).expect("archive");
+        let mut archive = zip::ZipArchive::new(file).expect("zip");
+        let transcript =
+            read_entry(&mut archive, "agent-sessions/claude/C--Projetos-app/aaa-1.jsonl");
+        assert_eq!(transcript, "{\"t\":1}");
+        assert!(archive
+            .by_name("agent-sessions/claude/C--Projetos-app/unrelated.jsonl")
+            .is_err());
 
         fs::remove_dir_all(root).expect("cleanup");
     }

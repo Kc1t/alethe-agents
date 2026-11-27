@@ -12,6 +12,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Backups carry agent conversations.** Exporting a backup now includes the Claude Code and
+  Codex transcripts the profile's tabs resume from, and importing it on another computer puts
+  them back where each agent looks for them, so the tabs pick up their chats there. A longer copy
+  already on that computer is kept. Projects must sit at the same paths on both computers.
 - **Voice plugin.** A new plugin in the catalogue, [Voice](https://github.com/Kc1t/alethe-voice),
   brings the voice conversation from #336 by @SrAmaral: talk to an agent tab, hear its progress and
   replies, answer permission prompts by voice, and follow along in the floating HUD. Its settings sit

@@ -220,7 +220,7 @@ fn matching_project_dirs(root: &PathBuf, encoded: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-fn is_session_file_stem(session_id: &str) -> bool {
+pub(crate) fn is_session_file_stem(session_id: &str) -> bool {
     !session_id.is_empty()
         && session_id
             .chars()
