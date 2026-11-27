@@ -761,6 +761,7 @@ mod tests {
                 )]),
                 failed: vec!["https://gone.example/b.png".to_string()],
             },
+            sessions: crate::backup_sessions::SessionRoots::default(),
         };
 
         let report = export_backup_from_dir(
